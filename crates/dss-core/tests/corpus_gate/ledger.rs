@@ -23,13 +23,18 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::harness::{ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, Tolerances};
+use dss_core::support::complexutil::Polar;
+
+use crate::harness::{
+    ElementCap, Injection, MonitorCap, ProbeCap, PropsCap, Tolerances, polar_angle_band,
+    residual_band, wrapped_deg,
+};
 use crate::manifest::EngineChannel;
 
 // ---------------------------------------------------------------------------
@@ -140,9 +145,40 @@ struct Scope {
     /// stays `applied` through them, so a `variables` `name_re` that stops
     /// matching (a renamed state variable, a typo) would silently mask nothing.
     hit: AtomicBool,
+    /// Per-SUB-CHANNEL floor-exceed accounting for a [`SUBCHANNEL_FIELDS`]
+    /// scope: bit `i` is set once `channels[i]` was measured diverging beyond
+    /// its tier floor. The entry-level `exceeded_floor` is an OR over every
+    /// channel, so a widened scope whose new sub-channel masks nothing would
+    /// ride along on a sibling channel's divergence for ever — the sub-channel
+    /// twin of the `variables` staleness hole (G1.3a audit settlement,
+    /// 2026-09-04). Policed by `assert_all_hit` for `divergence` entries, which
+    /// are the ones that measure at all (see [`LedgerView::excluded`] on why an
+    /// `exclusion` carries no verdict).
+    channels_exceeded: AtomicU32,
 }
 
 impl Scope {
+    /// Record that sub-channel `ch` of this scope was measured beyond its tier
+    /// floor. A name not in `channels` (i.e. a bare "all sub-channels" scope)
+    /// is silently ignored — there is nothing to attribute the exceed to.
+    fn mark_channel_exceeded(&self, ch: &str) {
+        if let Some(i) = self.channels.iter().position(|c| c == ch) {
+            self.channels_exceeded
+                .fetch_or(1u32 << (i as u32 % 32), Ordering::Relaxed);
+        }
+    }
+
+    /// The `channels` entries never measured beyond their floor this run.
+    fn dead_channels(&self) -> Vec<&str> {
+        let bits = self.channels_exceeded.load(Ordering::Relaxed);
+        self.channels
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| bits & (1u32 << (*i as u32 % 32)) == 0)
+            .map(|(_, c)| c.as_str())
+            .collect()
+    }
+
     fn applies_step(&self, step: usize) -> bool {
         self.steps
             .as_ref()
@@ -360,6 +396,29 @@ impl LedgerRuntime {
                 ));
                 continue;
             }
+            // Per-SUB-CHANNEL liveness on a measured (`divergence`) entry: the
+            // entry-level `exceeded` above is an OR over every sub-channel, so a
+            // scope widened onto a channel that masks nothing keeps riding on a
+            // sibling's divergence. Only `divergence` entries reach
+            // `envelope_element` and therefore measure at all — an `exclusion`
+            // names whole artifacts it never fetches a verdict for (see
+            // [`LedgerView::excluded`]), so its sub-channels stay backed by the
+            // measured provenance recorded in the entry itself.
+            for sc in e.scopes.iter().filter(|sc| !sc.channels.is_empty()) {
+                if e.kind != Kind::Divergence {
+                    continue;
+                }
+                let dead = sc.dead_channels();
+                if !dead.is_empty() {
+                    problems.push(format!(
+                        "  ledger entry `{}` ({:?}, {:?}) has STALE `{}` \
+                         sub-channel(s) {:?} — every selected value on them is \
+                         within the tier floor, so widening the scope onto them \
+                         masks nothing. Drop those names from `channels`.",
+                        e.id, e.case, e.channel, sc.field, dead
+                    ));
+                }
+            }
             // Per-value masks need their own liveness: `applied`/`exceeded` are
             // per ENTRY, so a dead `variables` scope on an entry that also
             // excludes voltages would never be reported. Each
@@ -416,6 +475,46 @@ impl LedgerRuntime {
                     e.hits.load(Ordering::Relaxed),
                 )
             })
+            .collect()
+    }
+
+    /// The (case, entry, channel) triples on which the bus comparator suppressed
+    /// its three continuous per-bus arrays this run — the visibility half of
+    /// coordinator decision **D11(2)** (`GOLDEN_REBASE_PLAN.md` §G1.4, G1.4a).
+    ///
+    /// `harness::compare_bus` bands `puVoltages`/`VMagAngle`/`puVmagAngle` as
+    /// exact images of the node-voltage band over the SAME `Solution.NodeV`, so
+    /// on a case whose `voltages` field is already ledger-excluded those arrays
+    /// would re-raise a divergence that is already triaged and pinned. The
+    /// runner therefore passes `excluded("voltages", None, step)` down as
+    /// `voltages_excluded` and the comparator drops **only** those three arrays
+    /// (bus count, name sequence, `nodes`, `kv_base` and every array length stay
+    /// compared, `harness::mod.rs::the_voltage_exclusion_still_pins_kv_base`).
+    /// That is a documented normalization, not a mask — and a normalization the
+    /// gate has to SAY out loud, which is what this report is: the summary lists
+    /// every case whose bus arrays were suppressed next to the ledger entry that
+    /// caused it.
+    ///
+    /// The predicate is the runner's own, read back off the recorded hits: an
+    /// `exclusion` entry with a deck-wide `voltages` scope (no `name_re`, no
+    /// `node_re` — see [`LedgerView::bus_arrays_suppressed`]) that actually
+    /// fired. That method is the only writer of a `voltages` scope's `hit` flag
+    /// — `voltage_keep_mask` marks the ENTRY, not the scope — and the bus block
+    /// is its only caller, so a scope listed here suppressed arrays on this run
+    /// and one that is silent did not.
+    pub(crate) fn bus_array_suppressions(&self) -> Vec<(String, String, EngineChannel)> {
+        self.entries
+            .iter()
+            .filter(|e| e.kind == Kind::Exclusion)
+            .filter(|e| {
+                e.scopes.iter().any(|s| {
+                    s.field == "voltages"
+                        && s.name_re.is_none()
+                        && s.node_re.is_none()
+                        && s.hit.load(Ordering::Relaxed)
+                })
+            })
+            .map(|e| (e.case.clone(), e.id.clone(), e.channel))
             .collect()
     }
 
@@ -526,15 +625,37 @@ const EXCLUSION_FIELDS: [&str; 11] = [
 /// comparison, each with the closed set of names it accepts.
 ///
 /// `element` is the only one today (its cap carries currents, powers and
-/// losses). Both handlers spell the selector as
-/// `sc.channels.is_empty() || sc.channels.contains(ch)` — so an omitted
-/// `channels` reads as "all of them", and a committed entry written for those
-/// three would **silently widen** onto every sub-channel WP-G1 adds to the
-/// element row (`GOLDEN_REBASE_PLAN.md` §1.1 surface #1, G1.3a–c): no ledger
-/// diff, no population-lock trip, an exclusion quietly covering more than it was
-/// reviewed for. Every committed scope on such a field must therefore name its
-/// channels, and may name only these.
-const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[("element", &["currents", "powers", "losses"])];
+/// losses, plus G1.3a's three polar renderings). Both handlers spell the
+/// selector as `sc.channels.is_empty() || sc.channels.contains(ch)` — so an
+/// omitted `channels` reads as "all of them", and a committed entry written for
+/// the original three would **silently widen** onto every sub-channel WP-G1
+/// adds to the element row (`GOLDEN_REBASE_PLAN.md` §1.1 surface #1, G1.3a–c):
+/// no ledger diff, no population-lock trip, an exclusion quietly covering more
+/// than it was reviewed for. Every committed scope on such a field must
+/// therefore name its channels, and may name only these.
+///
+/// G1.3a (2026-09-04) added `currents_mag_ang`, `voltages_mag_ang` and
+/// `residuals` — the `CktElement.CurrentsMagAng` / `VoltagesMagAng` /
+/// `Residuals` channels of the `compare_derived` surface (r4133
+/// `DDLL/DCktElement.pas:1058`/`:1082`/`:827`), handled by
+/// [`envelope_element`] and [`rewrite_element_selected`] like the first three.
+/// None of the 14 committed `element` scopes widened onto them silently — this
+/// rule is exactly what stopped that: G1.3a F6′ then re-measured the corpus and
+/// widened **13** of them deliberately, each onto only the polar sub-channels
+/// that were measured failing on that entry's own channel (see each entry's
+/// `measured.g13a_polar_first_failure`); `r4133-indmachmidi-injection-ulp` was
+/// measured NOT to fail and keeps the original three.
+const SUBCHANNEL_FIELDS: &[(&str, &[&str])] = &[(
+    "element",
+    &[
+        "currents",
+        "powers",
+        "losses",
+        "currents_mag_ang",
+        "voltages_mag_ang",
+        "residuals",
+    ],
+)];
 
 /// Entry ids allowed to leave `channels` off a [`SUBCHANNEL_FIELDS`] field — the
 /// named, reviewed escape hatch for a scope that really does mean "every
@@ -637,6 +758,7 @@ fn compile_scope(id: &str, s: &RawScope) -> Scope {
         num_rel: s.num_rel,
         line_re: mk(&s.line_re),
         hit: AtomicBool::new(false),
+        channels_exceeded: AtomicU32::new(0),
     }
 }
 
@@ -705,6 +827,46 @@ impl LedgerView<'_> {
                     sc.hit.store(true, Ordering::Relaxed);
                     hit = true;
                 }
+            }
+        }
+        hit
+    }
+
+    /// The D11(2) bus-array normalization's predicate — deliberately NARROWER
+    /// than [`Self::excluded`]`("voltages", None, step)`.
+    ///
+    /// `harness::compare_bus` / `compare_all_bus_vmag_pu` drop the three
+    /// continuous per-bus arrays when this (case, channel)'s node voltages are
+    /// already ledger-excluded at this step, because the arrays are exact images
+    /// of exactly those node voltages — one structural rule instead of a ledger
+    /// row per case. That argument holds only for a scope that excludes the
+    /// WHOLE node set: a `voltages` scope carrying a `node_re` excludes a SUBSET
+    /// of nodes ([`Self::voltage_keep_mask`] drops only the matching ones) while
+    /// the bus arrays cover every bus of the case, so honouring it here would
+    /// suppress far more than the triaged cause. Such a scope therefore
+    /// suppresses nothing: the bus arrays stay compared, and a divergence that
+    /// survives is triaged in its own right (or the exclusion is widened
+    /// deliberately — D10). `name_re` is refused for the reason
+    /// `excluded(…, None, …)` refuses it: a named scope never applies to an
+    /// unnamed artifact.
+    ///
+    /// This is the ONLY writer of a `voltages` scope's `hit` flag, which is what
+    /// makes [`LedgerRuntime::bus_array_suppressions`] an exact report of the
+    /// suppressions this run actually performed (G1.4a audit settlement AC-1/T3).
+    pub(crate) fn bus_arrays_suppressed(&self, step: usize) -> bool {
+        let mut hit = false;
+        for e in self.entries().filter(|e| e.kind == Kind::Exclusion) {
+            for sc in &e.scopes {
+                if sc.field != "voltages"
+                    || !sc.applies_step(step)
+                    || sc.name_re.is_some()
+                    || sc.node_re.is_some()
+                {
+                    continue;
+                }
+                Self::mark_applied(e);
+                sc.hit.store(true, Ordering::Relaxed);
+                hit = true;
             }
         }
         hit
@@ -1450,6 +1612,8 @@ impl LedgerView<'_> {
 /// Layout matches `ElementSnapshot`: `currents`/`powers` are complex per
 /// conductor (A, kW+j·kvar) while the oracle `ElementCap` splits re/im into
 /// parallel arrays; `loss_w` is a `(re, im)` tuple vs the oracle's 2-vector.
+/// G1.3a's three polar channels are `Vec<Polar>` on the Rust side against the
+/// oracle's de-interleaved `*_mag`/`*_ang` pair.
 fn envelope_element(
     e: &Entry,
     sc: &Scope,
@@ -1459,10 +1623,14 @@ fn envelope_element(
     ctx: &str,
 ) {
     let want = |ch: &str| sc.channels.is_empty() || sc.channels.iter().any(|c| c == ch);
-    let mut exceeded = false;
-    let mut check = |label: &str, a: f64, o: f64| {
-        let base = o.abs();
-        let diff = (a - o).abs();
+    // `Cell` rather than a `mut` capture so the rectangular and polar helpers
+    // below can coexist as `Fn` closures over one shared flag. `block` is the
+    // same flag scoped to the sub-channel currently being measured, so a
+    // widened `channels` list can be held to per-sub-channel liveness
+    // (`Scope::dead_channels`) instead of one OR for the whole entry.
+    let exceeded = std::cell::Cell::new(false);
+    let block = std::cell::Cell::new(false);
+    let record = |label: &str, diff: f64, base: f64, floor: f64| {
         let env = sc.max_abs + sc.max_rel * base;
         assert!(
             diff <= env,
@@ -1470,45 +1638,167 @@ fn envelope_element(
             e.id,
             ec.name
         );
-        let floor = tol.i_abs + tol.i_rel * base;
         measure_note(&e.id, "element", diff, base, floor);
         if diff > floor {
-            exceeded = true;
+            exceeded.set(true);
+            block.set(true);
         }
     };
+    let check = |label: &str, a: f64, o: f64| {
+        let base = o.abs();
+        record(label, (a - o).abs(), base, tol.i_abs + tol.i_rel * base);
+    };
+    // One polar sample: the magnitude against its own tier band, the angle
+    // wrap-aware against the angular image of that band — the same two floors
+    // `harness::polar_close` gates the unpinned samples with, so a ledger
+    // envelope on a polar channel is measured on the same scale it excludes.
+    //
+    // A magnitude at or under its band leaves the angle **undefined**
+    // (`polar_angle_band` ⇒ `None`), and there the angle is skipped entirely —
+    // exactly as `harness::polar_close` skips it. Envelope-checking it instead
+    // would hold the ledger to a rule the gate itself does not apply: on such a
+    // sample the two engines' angles are arbitrary (G1.3a measured masked
+    // `CurrentsMagAng` samples 173.7 ° apart at |I| ≈ 7e-12 A), so the only
+    // envelope that could admit them is ±180 °, i.e. a number that bounds
+    // nothing. Measured necessity (GOLDEN_REBASE G1.3a F6′, 2026-09-04): with
+    // the angle recorded, `r4133-combomidi-injection-ulp` reported
+    // `Transformer.t8 cma[9].ang: |diff| 1.394e2 exceeds envelope 2.063e-5` and
+    // `r4133-combomesh-injection-ulp` `Transformer.tg cma[7].ang: |diff|
+    // 1.131e2` — both on conductors whose magnitude is numerical zero, neither
+    // of them the divergence the entry pins. The magnitude is never skipped, so
+    // the sample stays two-sided and the entry can still go stale.
+    let polar = |label: &str, a: &Polar, om: f64, oa: f64, mag_band: f64| {
+        record(
+            &format!("{label}.mag"),
+            (a.mag - om).abs(),
+            om.abs(),
+            mag_band,
+        );
+        if let Some(ang_band) = polar_angle_band(mag_band, om) {
+            record(
+                &format!("{label}.ang"),
+                wrapped_deg(a.ang - oa),
+                oa.abs(),
+                ang_band,
+            );
+        }
+    };
+    block.set(false);
     if want("currents") {
         for (k, (re, im)) in ec.i_re.iter().zip(&ec.i_im).enumerate() {
             check(&format!("i_re[{k}]"), snap.currents[k].re, *re);
             check(&format!("i_im[{k}]"), snap.currents[k].im, *im);
         }
     }
+    if block.get() {
+        sc.mark_channel_exceeded("currents");
+    }
+    block.set(false);
     if want("powers") {
         for (k, (kw, kvar)) in ec.p_kw.iter().zip(&ec.p_kvar).enumerate() {
             check(&format!("p_kw[{k}]"), snap.powers[k].re, *kw);
             check(&format!("p_kvar[{k}]"), snap.powers[k].im, *kvar);
         }
     }
+    if block.get() {
+        sc.mark_channel_exceeded("powers");
+    }
+    block.set(false);
     if want("losses") && ec.loss_w.len() == 2 {
         check("loss_re", snap.loss_w.0, ec.loss_w[0]);
         check("loss_im", snap.loss_w.1, ec.loss_w[1]);
     }
+    // G1.3a. `CurrentsMagAng` inherits the current tier, `VoltagesMagAng` the
+    // voltage tier, and `Residuals` the conductor-sum band
+    // (`harness::residual_band`: a terminal residual is Σ_c I_c, so its floor is
+    // the sum of the conductors' bands). Empty on a disabled element — the
+    // capture skips those channels there — so the loops are inert rather than
+    // special-cased.
+    if block.get() {
+        sc.mark_channel_exceeded("losses");
+    }
+    block.set(false);
+    if want("currents_mag_ang") {
+        // Zipped against the port vector as well: a shape mismatch on a
+        // ledger-scoped element must surface as `compare_element_derived`'s
+        // length message (it runs after this), never as an index panic here.
+        for (k, ((om, oa), p)) in ec
+            .cma_mag
+            .iter()
+            .zip(&ec.cma_ang)
+            .zip(&snap.currents_mag_ang)
+            .enumerate()
+        {
+            let band = tol.i_abs + tol.i_rel * om.abs();
+            polar(&format!("cma[{k}]"), p, *om, *oa, band);
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("currents_mag_ang");
+    }
+    block.set(false);
+    if want("voltages_mag_ang") {
+        for (k, ((om, oa), p)) in ec
+            .vma_mag
+            .iter()
+            .zip(&ec.vma_ang)
+            .zip(&snap.voltages_mag_ang)
+            .enumerate()
+        {
+            let band = tol.v_abs + tol.v_rel * om.abs();
+            polar(&format!("vma[{k}]"), p, *om, *oa, band);
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("voltages_mag_ang");
+    }
+    block.set(false);
+    if want("residuals") {
+        let nterms = ec.res_mag.len();
+        // `Residuals` is one entry per terminal (r4133
+        // `DDLL/DCktElement.pas:835`) summed over a `Yorder`-long current
+        // buffer (`:836-837`), so nconds is their quotient. A zero-terminal cap
+        // leaves the loop below empty, so the fallback divides nothing.
+        let nconds = ec.i_re.len().checked_div(nterms).unwrap_or(0);
+        // The same shape rule `harness::residual_close` asserts before deriving
+        // `nconds`: a cap whose conductor slots do not divide into its terminals
+        // would silently get a too-small band here instead of failing loudly.
+        assert!(
+            nterms == 0 || ec.i_re.len().is_multiple_of(nterms),
+            "{ctx}: ledger `{}` element {}: {} conductor slots do not divide into \
+             {nterms} terminals",
+            e.id,
+            ec.name,
+            ec.i_re.len()
+        );
+        for (t, ((om, oa), p)) in ec
+            .res_mag
+            .iter()
+            .zip(&ec.res_ang)
+            .zip(&snap.residuals)
+            .enumerate()
+        {
+            let band = residual_band(ec, t, nconds, tol.i_rel, tol.i_abs);
+            polar(&format!("res[{t}]"), p, *om, *oa, band);
+        }
+    }
+    if block.get() {
+        sc.mark_channel_exceeded("residuals");
+    }
     LedgerView::mark_applied(e);
-    if exceeded {
+    if exceeded.get() {
         LedgerView::mark_exceeded(e);
     }
 }
 
-/// A value-copy of an oracle element capture (no `Clone` derive on the harness
-/// struct — we build a fresh cap so the rewrite never touches the harness type).
+/// A value-copy of an oracle element capture, so a rewrite never mutates the
+/// capture the other channel still compares against.
+///
+/// Field-complete by construction (`#[derive(Clone)]` on the harness struct):
+/// the enumerated copy this used to be silently dropped every field a later
+/// sub-step added — `GOLDEN_REBASE_PLAN.md` G1.3a adds seven.
 fn clone_element_cap(ec: &ElementCap) -> ElementCap {
-    ElementCap {
-        name: ec.name.clone(),
-        i_re: ec.i_re.clone(),
-        i_im: ec.i_im.clone(),
-        p_kw: ec.p_kw.clone(),
-        p_kvar: ec.p_kvar.clone(),
-        loss_w: ec.loss_w.clone(),
-    }
+    ec.clone()
 }
 
 /// Overwrite a cap's SELECTED sub-channels (per `sc.channels`; empty ⇒ all) with
@@ -1535,6 +1825,29 @@ fn rewrite_element_selected(
     if want("losses") && cap.loss_w.len() == 2 {
         cap.loss_w[0] = snap.loss_w.0;
         cap.loss_w[1] = snap.loss_w.1;
+    }
+    // G1.3a: the polar channels are two parallel oracle arrays per Rust
+    // `Polar`, so a pin has to write BOTH halves back — writing only the
+    // magnitude would leave `compare_element_derived` comparing the port's
+    // angle against the oracle's, i.e. an entry that pins half a channel and
+    // silently keeps gating the other half.
+    if want("currents_mag_ang") {
+        for k in 0..cap.cma_mag.len().min(cap.cma_ang.len()) {
+            cap.cma_mag[k] = snap.currents_mag_ang[k].mag;
+            cap.cma_ang[k] = snap.currents_mag_ang[k].ang;
+        }
+    }
+    if want("voltages_mag_ang") {
+        for k in 0..cap.vma_mag.len().min(cap.vma_ang.len()) {
+            cap.vma_mag[k] = snap.voltages_mag_ang[k].mag;
+            cap.vma_ang[k] = snap.voltages_mag_ang[k].ang;
+        }
+    }
+    if want("residuals") {
+        for t in 0..cap.res_mag.len().min(cap.res_ang.len()) {
+            cap.res_mag[t] = snap.residuals[t].mag;
+            cap.res_ang[t] = snap.residuals[t].ang;
+        }
     }
 }
 
@@ -1816,6 +2129,7 @@ fn every_exclusion_field_is_honoured_by_the_runtime() {
             num_rel: None,
             line_re: None,
             hit: AtomicBool::new(false),
+            channels_exceeded: AtomicU32::new(0),
         }
     }
     fn entry(id: &str, kind: Kind, scopes: Vec<Scope>) -> Entry {
@@ -1940,6 +2254,7 @@ fn property_scope_keys_names_the_cells_the_gate_would_handle() {
             num_rel: None,
             line_re: None,
             hit: AtomicBool::new(false),
+            channels_exceeded: AtomicU32::new(0),
         }
     }
     fn entry(kind: Kind, scopes: Vec<Scope>) -> Entry {
@@ -2047,6 +2362,7 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
             num_rel: None,
             line_re: None,
             hit: AtomicBool::new(false),
+            channels_exceeded: AtomicU32::new(0),
         }
     }
     let mk = |field: &str, exceeded: bool| LedgerRuntime {
@@ -2108,6 +2424,148 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
             "a `{field}` scope that matched a value must pass"
         );
     }
+}
+
+/// The D11(2) normalization must be VISIBLE: a case whose per-bus continuous
+/// arrays the bus comparator suppressed is listed in the gate summary next to
+/// the ledger entry that caused it
+/// ([`LedgerRuntime::bus_array_suppressions`], printed by
+/// `corpus_gate_all_cases_match_engines`).
+///
+/// Driven both ways on synthetic entries, because the report is only worth
+/// printing if it tracks the runner's own predicate: it must appear exactly when
+/// [`LedgerView::bus_arrays_suppressed`] fired (that call being the sole writer
+/// of a `voltages` scope's `hit` flag), stay silent for an entry that was never
+/// consulted, and never claim a suppression for a `voltages` scope carrying a
+/// `name_re` — which the unnamed artifact can never match — for one carrying a
+/// `node_re` — which excludes a node SUBSET, far narrower than every bus of the
+/// case (G1.4a audit settlement AC-1/T3) — or for a divergence-kind entry, which
+/// the exclusion path ignores.
+#[test]
+fn a_suppressed_bus_array_is_named_with_the_entry_that_caused_it() {
+    fn scope(field: &str, name_re: Option<&str>) -> Scope {
+        scope_n(field, name_re, None)
+    }
+    fn scope_n(field: &str, name_re: Option<&str>, node_re: Option<&str>) -> Scope {
+        Scope {
+            field: field.to_string(),
+            policy: None,
+            steps: None,
+            node_re: node_re.map(|r| Regex::new(r).expect("test regex")),
+            name_re: name_re.map(|r| Regex::new(r).expect("test regex")),
+            channel_idx: None,
+            channels: Vec::new(),
+            max_rel: 0.0,
+            max_abs: 0.0,
+            rust: None,
+            oracle: None,
+            num_rel: None,
+            line_re: None,
+            hit: AtomicBool::new(false),
+            channels_exceeded: AtomicU32::new(0),
+        }
+    }
+    fn entry(id: &str, case: &str, kind: Kind, scopes: Vec<Scope>) -> Entry {
+        Entry {
+            id: id.to_string(),
+            case: case.to_string(),
+            channel: EngineChannel::CapiV0145,
+            kind,
+            scopes,
+            applied: AtomicBool::new(false),
+            exceeded_floor: AtomicBool::new(false),
+            hits: AtomicUsize::new(0),
+        }
+    }
+    let rt = LedgerRuntime {
+        causes: std::collections::BTreeMap::new(),
+        entries: vec![
+            entry(
+                "fires",
+                "synthetic:fires.dss",
+                Kind::Exclusion,
+                vec![scope("voltages", None)],
+            ),
+            entry(
+                "untouched",
+                "synthetic:untouched.dss",
+                Kind::Exclusion,
+                vec![scope("voltages", None)],
+            ),
+            entry(
+                "named",
+                "synthetic:named.dss",
+                Kind::Exclusion,
+                vec![scope("voltages", Some("^b1$"))],
+            ),
+            entry(
+                "node-scoped",
+                "synthetic:node_scoped.dss",
+                Kind::Exclusion,
+                vec![scope_n("voltages", None, Some("(?i)^b3\\.[123]$"))],
+            ),
+            entry(
+                "divergence",
+                "synthetic:divergence.dss",
+                Kind::Divergence,
+                vec![scope("voltages", None)],
+            ),
+        ],
+    };
+    // Nothing was consulted yet: the gate reports no suppression.
+    assert!(
+        rt.bus_array_suppressions().is_empty(),
+        "a ledger nobody consulted must report no suppression"
+    );
+    // The runner's call for `synthetic:fires.dss` — the only thing that makes
+    // `harness::compare_bus` drop the three arrays.
+    assert!(
+        rt.view("synthetic:fires.dss", EngineChannel::CapiV0145)
+            .bus_arrays_suppressed(0),
+        "the deck-wide voltages exclusion must fire for its own case"
+    );
+    // The named, node-scoped and divergence entries are consulted on their own
+    // cases and must NOT report: a `name_re` scope never applies to an unnamed
+    // artifact, a `node_re` scope excludes a node subset (never every bus of the
+    // case), and a divergence entry is not an exclusion.
+    for case in [
+        "synthetic:named.dss",
+        "synthetic:node_scoped.dss",
+        "synthetic:divergence.dss",
+    ] {
+        assert!(
+            !rt.view(case, EngineChannel::CapiV0145)
+                .bus_arrays_suppressed(0),
+            "{case}: this scope must not suppress the bus arrays"
+        );
+    }
+    // …and the node-scoped one is still a live voltages exclusion for the node
+    // channel itself: `voltage_keep_mask` drops exactly the matching node.
+    let keep = rt
+        .view("synthetic:node_scoped.dss", EngineChannel::CapiV0145)
+        .voltage_keep_mask(
+            0,
+            &["b3.1".to_string(), "b4.1".to_string()],
+            &[1.0, 0.0, 1.0, 0.0],
+            &[1.0, 0.0, 1.0, 0.0],
+            &crate::harness::tol_for("feeder"),
+            "settlement drive",
+        );
+    assert_eq!(
+        keep,
+        Some(vec![false, true]),
+        "a node-scoped voltages exclusion must still mask its own node"
+    );
+    let got = rt.bus_array_suppressions();
+    assert_eq!(
+        got,
+        vec![(
+            "synthetic:fires.dss".to_string(),
+            "fires".to_string(),
+            EngineChannel::CapiV0145
+        )],
+        "the suppression report must name exactly the case+entry that fired"
+    );
 }
 
 /// The three [`check_scope_channels`] rules, driven on synthetic scopes because
@@ -2188,6 +2646,89 @@ fn a_scope_that_misuses_channels_is_refused_at_load() {
     }
 }
 
+/// The (case, channel) pairs on which GOLDEN_REBASE G1.9's aggregate **value**
+/// arms inherit the element ledger *whole*: a deck-wide `element` scope that
+/// selects the `losses` sub-channel rewrites EVERY summand to the port's own
+/// value, so the aggregate's value arm becomes a self-comparison there.
+///
+/// That is inherent, not a comparator slip — with every summand accepted, no
+/// bound on their sum can carry oracle content the entries do not already own
+/// (triangle inequality; see `harness::aggregates`' module doc). What must not
+/// happen silently is the inheritance SPREADING, so the set is recorded here
+/// and asserted exactly: a new deck-wide `element` scope reds this test until
+/// its author acknowledges that it also switches that deck's aggregate value
+/// arm off. Same visibility rule as coordinator decision D11(2) for the bus
+/// arrays. Membership (P1) and identity (P1b) are untouched on these decks —
+/// they run on the raw oracle capture everywhere.
+///
+/// 14 → 12 at the lane-b G1.4a merge (2026-09-05): the two `capi_v0145` GIC rows
+/// went with their entries when coordinator decisions D12/D14 moved every
+/// `GICTransformer` deck onto the `r4133` channel alone — a SHRINK of the
+/// inheritance, i.e. two decks whose capi aggregate value arms now compare
+/// against the oracle again.
+const AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER: [(&str, &str); 12] = [
+    ("asymmetric:combo/combo_mesh_asym.dss", "r4133"),
+    ("asymmetric:combo/midi_asym.dss", "r4133"),
+    ("asymmetric:gic/gic_midi.dss", "r4133"),
+    ("asymmetric:gic/gictransformer_gic.dss", "r4133"),
+    ("asymmetric:indmach/indmach_asym.dss", "r4133"),
+    ("asymmetric:indmach/midi_indmach_asym.dss", "r4133"),
+    ("modes:inputformat/shape_mmf/shape_mmf.dss", "capi_v0145"),
+    ("modes:makeposseq/makeposseq_shunt.dss", "capi_v0145"),
+    ("modes:windgen/windgen_daily.dss", "r4133"),
+    ("modes:windgen/windgen_dyn.dss", "r4133"),
+    ("modes:windgen/windgen_dyn_fault.dss", "r4133"),
+    ("modes:windgen/windgen_snap_delta.dss", "r4133"),
+];
+
+#[test]
+fn the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes() {
+    let text = std::fs::read_to_string(ledger_path()).expect("ledger.json is readable");
+    let doc: Value = serde_json::from_str(&text).expect("ledger.json parses");
+    let mut found: BTreeSet<(String, String)> = BTreeSet::new();
+    for entry in doc["entries"].as_array().expect("`entries` is an array") {
+        // A `skip` entry carries no `match` array.
+        let Some(scopes) = entry.get("match").and_then(Value::as_array) else {
+            continue;
+        };
+        for scope in scopes {
+            if scope["field"].as_str() != Some("element") {
+                continue;
+            }
+            // An absent `name_re` and `.*` both mean "every element".
+            let deck_wide = match scope.get("name_re").and_then(Value::as_str) {
+                None => true,
+                Some(re) => re == ".*",
+            };
+            // An absent `channels` means all three (G1.0 spelled them out).
+            let selects_losses = match scope.get("channels").and_then(Value::as_array) {
+                None => true,
+                Some(list) => list.iter().any(|c| c.as_str() == Some("losses")),
+            };
+            if deck_wide && selects_losses {
+                found.insert((
+                    entry["case"].as_str().expect("case").to_string(),
+                    entry["channel"].as_str().expect("channel").to_string(),
+                ));
+            }
+        }
+    }
+    let recorded: BTreeSet<(String, String)> = AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER
+        .iter()
+        .map(|(c, ch)| ((*c).to_string(), (*ch).to_string()))
+        .collect();
+    assert_eq!(
+        found,
+        recorded,
+        "the set of (case, channel) pairs whose G1.9 aggregate VALUE arms          inherit the element ledger whole has changed.
+new: {:?}
+gone: {:?}
+         A deck-wide `element` scope selecting `losses` also switches that          deck's Circuit.Losses / LineLosses / SubstationLosses /          AllElementLosses value comparison into a self-comparison (membership          and identity still run). Record the pair here once that is the          intended reading — never leave it undeclared.",
+        found.difference(&recorded).collect::<Vec<_>>(),
+        recorded.difference(&found).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn ledger_is_structurally_valid() {
     let rt = LedgerRuntime::load();
@@ -2197,5 +2738,173 @@ fn ledger_is_structurally_valid() {
         "ledger.json: {} entry(ies) structurally valid ({} cause key(s))",
         rt.entries.len(),
         rt.causes.len()
+    );
+}
+
+// --- the polar-channel envelope handler (GOLDEN_REBASE G1.3a F6') -----------
+
+/// A divergence entry scoped to one element's `currents_mag_ang`, with the
+/// `injection-ulp` family's committed envelope (`max_abs 2e-5`, `max_rel 1e-8`).
+#[cfg(test)]
+fn polar_envelope_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapshot) {
+    let scope = Scope {
+        field: "element".to_string(),
+        policy: None,
+        steps: None,
+        node_re: None,
+        name_re: None,
+        channel_idx: None,
+        channels: vec!["currents_mag_ang".to_string()],
+        max_rel: 1e-8,
+        max_abs: 2e-5,
+        rust: None,
+        oracle: None,
+        num_rel: None,
+        line_re: None,
+        hit: AtomicBool::new(false),
+        channels_exceeded: AtomicU32::new(0),
+    };
+    let entry = Entry {
+        id: "test-polar-envelope".to_string(),
+        case: "unit:test".to_string(),
+        channel: EngineChannel::R4133,
+        kind: Kind::Divergence,
+        scopes: vec![scope],
+        applied: AtomicBool::new(false),
+        exceeded_floor: AtomicBool::new(false),
+        hits: AtomicUsize::new(0),
+    };
+    let cap = ElementCap {
+        name: "Transformer.t8".to_string(),
+        i_re: vec![0.0],
+        i_im: vec![0.0],
+        cma_mag: vec![0.0],
+        cma_ang: vec![0.0],
+        ..ElementCap::default()
+    };
+    let snap = dss_core::exec::ElementSnapshot {
+        name: "Transformer.t8".to_string(),
+        enabled: true,
+        // One terminal, one conductor: the shape of the single-slot payload
+        // below (GOLDEN_REBASE G1.3d(i) added these five fields to
+        // `ElementSnapshot`; this fixture never reaches
+        // `harness::compare_element_extras`).
+        n_terms: 1,
+        n_conds: 1,
+        n_phases: 1,
+        node_order: Vec::new(),
+        energy_meter: None,
+        bus_names: vec!["b".to_string()],
+        powers: vec![num_complex::Complex64::new(0.0, 0.0)],
+        currents: vec![num_complex::Complex64::new(0.0, 0.0)],
+        loss_w: (0.0, 0.0),
+        currents_mag_ang: vec![Polar { mag: 0.0, ang: 0.0 }],
+        voltages_mag_ang: vec![],
+        residuals: vec![],
+    };
+    (entry, cap, snap)
+}
+
+// The angle of a phasor whose magnitude is at or under its own band carries no
+// information: `harness::polar_close` skips it, and so must the ledger's
+// envelope check. Measured on the live corpus (G1.3a F6', 2026-09-04): with the
+// angle recorded, widening `r4133-combomidi-injection-ulp` onto
+// `currents_mag_ang` failed with `Transformer.t8 cma[9].ang: |diff| 1.394e2
+// exceeds envelope 2.063e-5` on a numerically-zero conductor — a "divergence"
+// no envelope short of +/-180 deg could admit, i.e. one that bounds nothing.
+/// A masked angle (magnitude at or under its band) is not envelope-checked.
+#[test]
+fn a_masked_polar_angle_is_not_envelope_checked() {
+    let (entry, mut cap, mut snap) = polar_envelope_fixture();
+    let tol = crate::harness::tol_for("micro");
+    // |I| = 1e-9 A, four orders under the micro tier's 1e-6 A abs floor: the
+    // magnitude is numerical zero, so the two engines' angles are arbitrary.
+    cap.cma_mag[0] = 1e-9;
+    cap.cma_ang[0] = -135.0;
+    snap.currents_mag_ang[0] = Polar {
+        mag: 1e-9,
+        ang: 38.66,
+    };
+    assert!(
+        polar_angle_band(tol.i_abs + tol.i_rel * cap.cma_mag[0], cap.cma_mag[0]).is_none(),
+        "the fixture must be a MASKED sample or it proves nothing",
+    );
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    // The magnitude is still compared: it is inside both the envelope and the
+    // tier floor here, so the entry records no floor-exceed from this sample.
+    assert!(
+        !entry.exceeded_floor.load(Ordering::Relaxed),
+        "a masked angle must not count as the divergence the entry pins",
+    );
+}
+
+// The other half of the rule: an angle whose magnitude is healthy is still
+// envelope-checked, so the skip above cannot become a blanket angle bypass.
+/// An unmasked angle above the envelope still fails.
+#[test]
+#[should_panic(expected = "cma[0].ang")]
+fn an_unmasked_polar_angle_still_hits_the_envelope() {
+    let (entry, mut cap, mut snap) = polar_envelope_fixture();
+    let tol = crate::harness::tol_for("micro");
+    // |I| = 1000 A: band = 1e-6 + 1e-9*1000 = 2e-6 A, angular image
+    // 57.29577951308232 * 2e-6 / 1000 = 1.1459155902616465e-7 deg, and the
+    // envelope is 2e-5 + 1e-8*90 = 2.09e-5 deg. A 1 deg gap blows both.
+    cap.cma_mag[0] = 1000.0;
+    cap.cma_ang[0] = 90.0;
+    snap.currents_mag_ang[0] = Polar {
+        mag: 1000.0,
+        ang: 91.0,
+    };
+    assert!(
+        polar_angle_band(tol.i_abs + tol.i_rel * cap.cma_mag[0], cap.cma_mag[0]).is_some(),
+        "the fixture must be an UNMASKED sample or it proves nothing",
+    );
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+}
+
+// Per-SUB-CHANNEL staleness (G1.3a audit settlement, 2026-09-04, finding T3):
+// `exceeded_floor` is ONE flag for the whole entry, so a scope widened onto a
+// sub-channel that masks nothing rides on a sibling channel's divergence for
+// ever and the fail-on-stale gate cannot see it. `Scope::channels_exceeded`
+// attributes each floor-exceed to the sub-channel that produced it.
+/// A sub-channel that never exceeds its floor is reported stale; its diverging
+/// sibling in the same scope is not.
+#[test]
+fn a_widened_sub_channel_that_masks_nothing_is_reported_stale() {
+    let (mut entry, mut cap, mut snap) = polar_envelope_fixture();
+    entry.scopes[0].channels = vec!["currents".to_string(), "currents_mag_ang".to_string()];
+    let tol = crate::harness::tol_for("micro");
+    // `currents` diverges by 1e-5 A: above the micro floor (1e-6 A) and inside
+    // the entry's envelope (2e-5 A). `currents_mag_ang` is identical on both
+    // sides, i.e. the widening onto it masks nothing.
+    cap.i_re[0] = 0.0;
+    snap.currents[0] = num_complex::Complex64::new(1e-5, 0.0);
+    cap.cma_mag[0] = 0.0;
+    cap.cma_ang[0] = 0.0;
+    snap.currents_mag_ang[0] = Polar { mag: 0.0, ang: 0.0 };
+    envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+    assert!(
+        entry.exceeded_floor.load(Ordering::Relaxed),
+        "the entry as a whole still masks something — that is exactly why the \
+         per-entry flag cannot report the dead sub-channel",
+    );
+    entry.hits.store(1, Ordering::Relaxed);
+    let rt = LedgerRuntime {
+        causes: std::collections::BTreeMap::new(),
+        entries: vec![entry],
+    };
+    let err = rt
+        .assert_all_hit()
+        .expect_err("a sub-channel that masks nothing must fail the gate");
+    assert!(
+        err.contains("STALE `element`") && err.contains("[\"currents_mag_ang\"]"),
+        "wrong failure text: {err}"
+    );
+    // The other direction: once that sub-channel does exceed its floor, the
+    // entry passes — the rule reports dead channels, not every channel.
+    rt.entries[0].scopes[0].mark_channel_exceeded("currents_mag_ang");
+    assert!(
+        rt.assert_all_hit().is_ok(),
+        "a sub-channel that masks something must pass"
     );
 }

@@ -87,9 +87,12 @@ fn solved_ieee13() -> Engine {
 }
 
 /// Re-select the fixture the family rows read from. Called before **every**
-/// mode: three rows are [`ModeEffect::Impure`] and move a cursor
-/// (`PDElements.ParentPDElement` moves `ActiveCktElement` itself), so without
-/// this a later row would silently read a different object.
+/// mode: fifteen rows are [`ModeEffect::Impure`] and move a cursor or a memoized
+/// structure (`PDElements.ParentPDElement` moves `ActiveCktElement` itself; the
+/// five `Circuit` loss/power rows, the two `CktElement.Has*Control` rows and
+/// `Meters.Totals` walk a `PointerList` to exhaustion or re-totalize; the six
+/// `Topology` rows build and memoize `GetTopology` and move its cursor), so
+/// without this a later row would silently read a different object.
 fn select_fixture(e: &Engine) {
     // `Meters.First` (`MetersI(0)`, `DMeters.pas:32-52`) sets `ActiveCktElement`
     // to the meter object itself, so it must run BEFORE the element selection —
@@ -116,6 +119,8 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     the_bus_v_sentinel_is_only_caught_by_containment(&e);
     the_do_not_call_modes_are_refused_before_any_ffi(&e);
     every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(&e);
+    distinguishing_readings_separate_same_shape_modes_within_a_family(&e);
+    r4133_solution_flags_are_zero_one_ints(&e);
     the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(&e);
     // LAST: this phase runs `RelCalc` and adds elements to the circuit.
     the_relcalc_protocol_and_the_section_cursor(&e);
@@ -150,9 +155,86 @@ fn the_fixture_selects_the_line_the_bus_and_the_meter(e: &Engine) {
         "the PDElements cursor must see the Line (its default faultrate), not the meter"
     );
     select_fixture(e);
+    // `CktElementI(12)`'s codomain is {0, 1} (`DCktElement.pas:137`, `:263`), so
+    // the strict decode must read the live element as enabled — under a `!= 0`
+    // decode the family's `-1` unknown-mode sentinel (`:308`) would read the
+    // same way, which is what routes a capture into `CktElementV(19)`'s
+    // unguarded `NodeRef^[i]` (`:1099`).
+    assert!(
+        e.ckt_element_enabled().unwrap(),
+        "Line.650632 is enabled in IEEE13"
+    );
+    select_fixture(e);
     assert_eq!(e.bus_distance().unwrap(), 1.2192, "bus 671's DistFromMeter");
     select_fixture(e);
     assert_eq!(e.solution_iterations().unwrap(), 2, "IEEE13 snapshot solve");
+}
+
+/// G1.0 audit settlement (T4): the walk above proves *capability* — that each
+/// mode exists and decodes into its declared shape — not *identity*: a mode
+/// index transposed with a sibling of the same family and shape would still
+/// classify `Served`. These are exact readings of the vendored r4133 DLL on the
+/// vendored IEEE13 fixture (measured 2026-09-04) chosen so that a transposition
+/// inside a family moves the number, family by family.
+///
+/// `Meters` is deliberately absent: every one of its `I:20..27` / `F:0..6`
+/// reliability registers reads `0` / `0.0` on this fixture (no `RelCalc`), so no
+/// pin there could discriminate. G1.6 wires that surface and gets its own
+/// values; the full per-mode value validation is D2's job for each surface
+/// sub-step, not this rail's.
+fn distinguishing_readings_separate_same_shape_modes_within_a_family(e: &Engine) {
+    // Circuit V:0 (whole-circuit PD losses, W) vs V:1 (Line losses only, kW) vs
+    // V:3 (source power) — three `myType = 3` rows of one family.
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_losses().unwrap(),
+        vec![112_391.709_058_989_2, 327_860.856_436_449_6],
+        "Circuit.Losses (V:0)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_line_losses().unwrap(),
+        vec![106.484_751_187_618_73, 317.175_285_717_855_73],
+        "Circuit.LineLosses (V:1) — a different mode of the same family and shape"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.circuit_total_power().unwrap(),
+        vec![-3_567.053_778_419_098_3, -1_736.439_510_362_667_5],
+        "Circuit.TotalPower (V:3)"
+    );
+    // Topology I:0 vs its two I siblings, which are both 0 on this radial deck.
+    select_fixture(e);
+    assert_eq!(
+        e.topology_num_loops().unwrap(),
+        1,
+        "Topology.NumLoops (I:0)"
+    );
+    // PDElements: two `I` and two `F` rows that are pairwise distinct.
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_total_customers().unwrap(),
+        15,
+        "PDElements.TotalCustomers (I:5)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_from_terminal().unwrap(),
+        1,
+        "PDElements.FromTerminal (I:7)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_pct_permanent().unwrap(),
+        20.0,
+        "PDElements.PctPermanent (F:2)"
+    );
+    select_fixture(e);
+    assert_eq!(
+        e.pd_elements_repair_time().unwrap(),
+        3.0,
+        "PDElements.RepairTime (F:6)"
+    );
 }
 
 /// **The G1.0 acceptance**: every mode WP-G1 will read is served by the
@@ -329,6 +411,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(CKT_ELEMENT_NUM_CONTROLS, e.ckt_element_num_controls());
     chk!(CKT_ELEMENT_OCP_DEV_INDEX, e.ckt_element_ocp_dev_index());
     chk!(CKT_ELEMENT_OCP_DEV_TYPE, e.ckt_element_ocp_dev_type());
+    chk!(CKT_ELEMENT_ENABLED, e.ckt_element_enabled());
     chk!(CKT_ELEMENT_HAS_OCP_DEVICE, e.ckt_element_has_ocp_device());
     chk!(CKT_ELEMENT_ENERGY_METER, e.ckt_element_energy_meter());
     chk!(CKT_ELEMENT_PHASE_LOSSES, e.ckt_element_phase_losses());
@@ -357,6 +440,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     // Bus
     chk!(BUS_DISTANCE, e.bus_distance());
     chk!(BUS_SEQ_VOLTAGES, e.bus_seq_voltages());
+    chk!(BUS_NODES, e.bus_nodes());
     chk!(BUS_VOC, e.bus_voc());
     chk!(BUS_ISC, e.bus_isc());
     chk!(BUS_PU_VOLTAGES, e.bus_pu_voltages());
@@ -376,6 +460,7 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
     chk!(CIRCUIT_LINE_LOSSES, e.circuit_line_losses());
     chk!(CIRCUIT_SUBSTATION_LOSSES, e.circuit_substation_losses());
     chk!(CIRCUIT_TOTAL_POWER, e.circuit_total_power());
+    chk!(CIRCUIT_ALL_BUS_NAMES, e.circuit_all_bus_names());
     chk!(CIRCUIT_ALL_ELEMENT_LOSSES, e.circuit_all_element_losses());
     chk!(CIRCUIT_ALL_BUS_MAG_PU, e.circuit_all_bus_mag_pu());
     chk!(CIRCUIT_ALL_BUS_DISTANCES, e.circuit_all_bus_distances());
@@ -468,6 +553,87 @@ fn every_wp_g1_mode_has_a_typed_accessor_that_reads_the_solved_deck(e: &Engine) 
         "these WP-G1 rows have no typed accessor call: {missing:?}"
     );
     assert_eq!(seen.len(), modes::WP_G1_MODES.len());
+}
+
+/// **G1.9 bridge pin.** The two `Solution` flag rows come back from r4133 as
+/// `0|1` *ints*, not booleans: `SolutionI(37)` is
+/// `if ...SystemYChanged then Result:=1 else Result:=0`
+/// (`DDLL/DSolution.pas:192-197`) and `SolutionI(42)` is
+/// `Result:=0; ... if ...ControlActionsDone then Result := 1`
+/// (`:226-230`).
+///
+/// `capture::capture_solution_scalars` converts both with `!= 0` so this
+/// transport's `CaseResult` JSON stays shape-identical to
+/// `oracle_server.capture_solution_scalars`, whose dss-python reads are already
+/// Python `bool`s (decision D4: a sentinel/shape difference between the two
+/// channels is a bridge normalization plus one pin, never a ledger row). This
+/// is that pin: it fixes both the `{0, 1}` codomain the conversion relies on and
+/// the values the vendored DLL actually returns on the solved fixture.
+///
+/// The two readings are the ones measured across the whole G1.9 sample
+/// (14 decks x every step, snapshot and daily): `SystemYChanged` is `0` after
+/// every solve — the solve rebuilds Y and clears the flag, including here where
+/// the fixture adds an EnergyMeter between `Compile` and `Solve` — and
+/// `ControlActionsDone` is `1`, the control loop having run to completion.
+fn r4133_solution_flags_are_zero_one_ints(e: &Engine) {
+    select_fixture(e);
+    let syc = e.solution_system_y_changed().expect("SolutionI(37)");
+    select_fixture(e);
+    let cad = e.solution_control_actions_done().expect("SolutionI(42)");
+    assert!(
+        syc == 0 || syc == 1,
+        "SystemYChanged must be the 0|1 int DSolution.pas:192-197 assigns, got {syc} — \
+         the `!= 0` normalization in capture.rs would silently mis-read anything else"
+    );
+    assert!(
+        cad == 0 || cad == 1,
+        "ControlActionsDone must be the 0|1 int DSolution.pas:226-230 assigns, got {cad}"
+    );
+    assert_eq!(syc, 0, "a converged solve leaves SystemYChanged clear");
+    assert_eq!(cad, 1, "a converged solve leaves ControlActionsDone set");
+}
+
+/// **G1.9 table pin.** The five `Circuit` aggregate rows are *not* pure reads,
+/// and the table must say so: each one walks a `TPointerList` to exhaustion and
+/// leaves its cursor at the end, and each one refreshes the `Iterminal` cache of
+/// every element it walks (`Get_Losses`/`Get_Power` call `ComputeIterminal` —
+/// `Common/CktElement.pas:743` and `:677-680`).
+///
+/// This is not cosmetic bookkeeping. `Circuit.Losses` moves exactly the
+/// `PDElements` cursor that `Circuit.NextPDElement` resumes from
+/// (`Common/Circuit.pas:2436-2443`), and `Circuit.SubstationLosses` moves the
+/// `Transformers` cursor the discrete capture drives — so a caller that reads
+/// one of these rows mid-walk and trusts a `Pure` label reads the wrong object.
+/// [`select_fixture`] re-selects before every row precisely because of this
+/// class of row.
+///
+/// Needs no DLL: it is a statement about [`modes`]' own table.
+#[test]
+fn the_five_circuit_aggregate_rows_are_impure() {
+    let rows: [(&str, &ModeSpec); 5] = [
+        ("PDElements", &modes::CIRCUIT_LOSSES),
+        ("Lines", &modes::CIRCUIT_LINE_LOSSES),
+        ("Transformers", &modes::CIRCUIT_SUBSTATION_LOSSES),
+        ("Sources", &modes::CIRCUIT_TOTAL_POWER),
+        ("CktElements", &modes::CIRCUIT_ALL_ELEMENT_LOSSES),
+    ];
+    for (list, row) in rows {
+        let ModeEffect::Impure(why) = row.effect else {
+            panic!(
+                "{row} walks ActiveCircuit.{list}.First/Next to exhaustion and calls \
+                 ComputeIterminal on what it walks (r4133 DDLL/DCircuit.pas), so it cannot be \
+                 ModeEffect::Pure"
+            );
+        };
+        assert!(
+            why.contains(list),
+            "{row}: the Impure payload must name the {list} list it moves, got: {why}"
+        );
+        assert!(
+            why.contains("ComputeIterminal"),
+            "{row}: the Impure payload must name the Iterminal refresh, got: {why}"
+        );
+    }
 }
 
 /// The behavioural half of GOLDEN_REBASE G1.6b's read-order contract: the

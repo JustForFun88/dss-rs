@@ -1047,7 +1047,48 @@
    ],
    "pending": false,
    "wp": "WPG.21",
-   "note": "MakePosSequence shunt coverage: Capacitor SpecType 1 (kvar 600 -> [200], kV 12.47 -> 7.19956), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar 200 -> 66.667), 2 (R+jX kept), 3 (rmatrix/xmatrix averaged R=0.26667 X=3), 4 (Z1 sym); Fault; GICTransformer. All -> phases=1; cap/reactor/fault/GICxfmr default grounded bus2 gets the IsGroundBus `.0` re-append (e.g. cap_kvar bus2=b1.0). Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 3 nodes); feature-sensitive. Pending until WPG.21 A2."
+   "note": "MakePosSequence shunt coverage: Capacitor SpecType 1 (kvar 600 -> [200], kV 12.47 -> 7.19956), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar 200 -> 66.667), 2 (R+jX kept), 3 (rmatrix/xmatrix averaged R=0.26667 X=3), 4 (Z1 sym); Fault. All -> phases=1; cap/reactor/fault default grounded bus2 gets the IsGroundBus `.0` re-append (e.g. cap_kvar bus2=b1.0). The GICTransformer this deck used to carry moved to makeposseq_gic.dss at GOLDEN_REBASE G1.4a (2026-09-04, D12/D14) because the capi 0.14.5 oracle is nondeterministic on GICTransformer decks; without it this deck is deterministic on capi (20/20 fresh processes) and keeps its full-precision capi gating. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 2 iters, 3 nodes); feature-sensitive. Pending until WPG.21 A2."
+  },
+  {
+   "path": "makeposseq/makeposseq_gic.dss",
+   "engines": "r4133",
+   "ad": "off:too-small",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "GICTransformer.gt",
+     "props": [
+      "phases",
+      "bush",
+      "busnh",
+      "r1",
+      "type"
+     ]
+    },
+    {
+     "element": "Vsource.source",
+     "props": [
+      "phases",
+      "basekv"
+     ]
+    },
+    {
+     "element": "Load.ld1",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "kvar"
+     ]
+    }
+   ],
+   "pending": false,
+   "wp": "WPG.21",
+   "note": "MakePosSequence GICTransformer coverage, split out of makeposseq_shunt.dss at GOLDEN_REBASE G1.4a (2026-09-04, coordinator decisions D12/D14). Gated on r4133 ONLY: the pinned dss_capi 0.14.5 oracle is nondeterministic across fresh processes on any deck that instantiates a GICTransformer (7 bad runs of 60 with the element, 0 of 40 without; r4133 80/80 bit-identical, and 20/20 on this deck). Covers TGICTransformerObj.MakePosSequence -- `Phases=1` plus the inherited bus strip (r4133 PDElements/GICTransformer.pas:736-747 == pinned dss_capi 0.14.5 src/PDElements/GICTransformer.pas:588-593; CktElement.pas:1352-1363), so busH/busNH both collapse to b1. Every other reduced parameter is chosen so r4133's Format('%-.5g') command-string round trip is EXACT (Vsource.pas:1396-1402, Load.pas:2305-2332, Line.pas:1591-1596): basekv = 7.2*sqrt(3) -> line-neutral 7.2, kw=900 -> 300/phase, pf=1 -> kvar 0. r4133-validated 2026-09-04 (epri-worker, 20 fresh one-shot processes bit-identical; 2 nodes / 2 buses after the reduction, src kVBase 7.2)."
   },
   {
    "path": "makeposseq/makeposseq_pc.dss",
