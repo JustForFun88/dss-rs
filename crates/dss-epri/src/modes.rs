@@ -899,6 +899,121 @@ pub const BUS_ALL_PDE_AT_BUS: ModeSpec = ModeSpec::array(
     ModeEffect::Pure,
 );
 
+// -- Bus reliability columns (DBus.pas; GOLDEN_REBASE G1.6(ii)) -------------
+//
+// The eight per-bus reliability accumulators the EnergyMeter reliability sweep
+// writes (`Meters/EnergyMeter.pas:2449-2616`, driven by the executive
+// `RelCalc`) and of which `Export BusReliability` renders six. Every arm is a
+// plain field read of `Buses^[ActiveBusIndex]` guarded only by
+// `ActiveBusIndex > 0` — no `Assigned` test, no allocation, no write — so the
+// whole group is [`ModeEffect::Pure`] and none of it is a do-not-call risk.
+//
+// The surface they serve is fastdss' `IBus._columns`
+// (`DSS-Python@origin/fastdss` `dss/IBus.py:19-53`, where `Cust_Interrupts` is
+// listed twice — `:26` and `:27` — and each field is nevertheless read once),
+// archived for every bus through `ActiveCircuit.ActiveBus`
+// (`tests/save_outputs.py:351`).
+
+/// `BUSF(6)` `Bus.Lambda` — `BusFltRate`, the accumulated downstream failure
+/// rate (faults/yr) at the active bus.
+pub const BUS_LAMBDA: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::F,
+    6,
+    "Bus.Lambda",
+    "DBus.pas:129",
+    ModeEffect::Pure,
+);
+/// `BUSF(7)` `Bus.N_interrupts` — `Bus_Num_Interrupt`, interruptions per year.
+pub const BUS_N_INTERRUPTS: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::F,
+    7,
+    "Bus.N_interrupts",
+    "DBus.pas:136",
+    ModeEffect::Pure,
+);
+/// `BUSF(8)` — `Bus_Int_Duration`, the average annual interruption duration.
+/// The `case` comment reads `Bus.int_duration`; the dss-python spelling this
+/// row carries is `Int_Duration` (`dss/IBus.py:29`).
+///
+/// The one column the zone zeroing does **not** clear
+/// (`PDElements/PDElement.pas:313-327` zeroes the other seven and leaves this
+/// one), so it survives from a previous `RelCalc` — one more reason the
+/// executive command is driven exactly once per case.
+pub const BUS_INT_DURATION: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::F,
+    8,
+    "Bus.Int_Duration",
+    "DBus.pas:143",
+    ModeEffect::Pure,
+);
+/// `BUSF(9)` — `BusCustInterrupts`, accumulated customer interruptions. The
+/// `case` comment reads `Bus.Cust_interrupts`.
+pub const BUS_CUST_INTERRUPTS: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::F,
+    9,
+    "Bus.Cust_Interrupts",
+    "DBus.pas:150",
+    ModeEffect::Pure,
+);
+/// `BUSF(10)` — `BusCustDurations`, accumulated customer outage durations. The
+/// `case` comment reads `Bus.Cust_duration`.
+pub const BUS_CUST_DURATION: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::F,
+    10,
+    "Bus.Cust_Duration",
+    "DBus.pas:157",
+    ModeEffect::Pure,
+);
+/// `BUSF(11)` — `BusTotalMiles`, line miles downstream of the bus. The `case`
+/// comment reads `Bus.Totalmiles`.
+pub const BUS_TOTAL_MILES: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::F,
+    11,
+    "Bus.TotalMiles",
+    "DBus.pas:164",
+    ModeEffect::Pure,
+);
+/// `BUSI(4)` `Bus.N_Customers` — `BusTotalNumCustomers`, the customers served
+/// from the bus, a **longint** (the two `I` rows of this group are the only
+/// integers among the eight columns).
+pub const BUS_N_CUSTOMERS: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::I,
+    4,
+    "Bus.N_Customers",
+    "DBus.pas:60",
+    ModeEffect::Pure,
+);
+/// `BUSI(5)` `Bus.SectionID` — `BusSectionID`, the feeder section the bus
+/// belongs to (`longint`).
+///
+/// **`-1` is a value the model can hold**, not only the family's unknown-mode
+/// sentinel ([`SENTINEL_I`], `DBus.pas:74-75`): the zone zeroing writes
+/// `BusSectionID := -1; // signify not set`
+/// (`PDElements/PDElement.pas:326`) before the forward sweep re-stamps the head
+/// bus (`Meters/EnergyMeter.pas:2494`) and every TO bus
+/// (`PDElement.pas:179-181`), so a bus the sweep does not reach keeps the `-1`.
+/// The module doc's rule — on `I`/`F` a [`ModeStatus::UnknownMode`] verdict is
+/// *evidence*, never proof — is therefore load-bearing here: the G1.0 walk
+/// probes this row on a fixture whose `RelCalc` has not run (the field is FPC
+/// zero-filled there), and its identity is proven by value instead
+/// (`crates/dss-epri/tests/modes.rs`, which also measures that no bus of the
+/// solved fixture reads `-1`).
+pub const BUS_SECTION_ID: ModeSpec = ModeSpec::scalar(
+    "Bus",
+    ModeKind::I,
+    5,
+    "Bus.SectionID",
+    "DBus.pas:67",
+    ModeEffect::Pure,
+);
+
 // -- Circuit (DCircuit.pas) -------------------------------------------------
 
 /// `CircuitV(0)` — total circuit losses, complex `[re, im]`.
@@ -1588,7 +1703,7 @@ pub const PD_ELEMENTS_NAME: ModeSpec = ModeSpec::scalar(
     ModeEffect::Pure,
 );
 
-/// Every mode WP-G1 reads through the r4133 bridge — 103 rows over the seven
+/// Every mode WP-G1 reads through the r4133 bridge — 111 rows over the seven
 /// families the plan's surface sub-steps touch (`GOLDEN_REBASE_PLAN.md` WP-G1).
 /// The set was measured `Served` on the vendored DLL by the G1.0 probe
 /// (2026-09-04) with zero misses, and the acceptance test
@@ -1600,7 +1715,10 @@ pub const PD_ELEMENTS_NAME: ModeSpec = ModeSpec::scalar(
 /// `myType` check (96 -> 98 on its own lane; 100 -> 102 merged onto the four
 /// rows G1.9 and G1.6b added in parallel). G1.6(i) (lane `lane-m`, 2026-09-05)
 /// added [`METERS_SET_ACTIVE_SECTION`], the section cursor its reliability
-/// capture drives — 102 -> **103** at that lane's merge.
+/// capture drives — 102 -> **103** at that lane's merge. G1.6(ii) (lane
+/// `lane-m`, 2026-09-05) added the eight per-bus reliability columns
+/// ([`BUS_LAMBDA`] .. [`BUS_SECTION_ID`]) its bus capture reads —
+/// 103 -> **111**.
 ///
 /// Each row also has a typed accessor on [`crate::dss::Engine`] that takes the
 /// row **by reference**, so no mode number is ever written twice.
@@ -1644,6 +1762,14 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &BUS_PU_VMAG_ANGLE,
     &BUS_ALL_PCE_AT_BUS,
     &BUS_ALL_PDE_AT_BUS,
+    &BUS_LAMBDA,
+    &BUS_N_INTERRUPTS,
+    &BUS_INT_DURATION,
+    &BUS_CUST_INTERRUPTS,
+    &BUS_CUST_DURATION,
+    &BUS_TOTAL_MILES,
+    &BUS_N_CUSTOMERS,
+    &BUS_SECTION_ID,
     &CIRCUIT_LOSSES,
     &CIRCUIT_LINE_LOSSES,
     &CIRCUIT_SUBSTATION_LOSSES,
@@ -1751,6 +1877,12 @@ pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
          searching the whole PDElements list for `arg`; driven with the generic reader's neutral \
          \"\" it matches nothing and leaves the pointer-list cursor past the end of the list, \
          silently truncating an in-progress walk; the reader is S:0",
+    ),
+    (
+        "Bus",
+        ModeKind::F,
+        4,
+        "Bus.Y WRITE — DBus.pas:113-121 sets Coorddefined := TRUE and y := arg on the active bus.          It is not the write twin of a reader but a SHAPE collision: the two integer reliability          columns are BUSI(4) Bus.N_Customers and BUSI(5) Bus.SectionID, so reading mode 4 on the          F entry point instead of the I one would move the bus coordinate; the reader is I:4",
     ),
     (
         "CktElement",
@@ -1972,7 +2104,7 @@ mod tests {
     fn the_wp_g1_mode_table_is_internally_consistent() {
         assert_eq!(
             WP_G1_MODES.len(),
-            103,
+            111,
             "WP-G1 mode count changed — update the count, the record and TESTING.md"
         );
         let mut names: Vec<&str> = Vec::new();
@@ -2058,7 +2190,7 @@ mod tests {
         // PDElements-only — G1.3a's `CktElement.Enabled` read brought its write
         // arm in — so the neighbourhood is asserted both against the table
         // itself and, row by row, against each excluded arm's named reader.)
-        assert_eq!(EXCLUDED_WRITE_MODES.len(), 4);
+        assert_eq!(EXCLUDED_WRITE_MODES.len(), 5);
         for (fam, kind, mode, why) in EXCLUDED_WRITE_MODES {
             assert!(
                 WP_G1_MODES
@@ -2081,6 +2213,19 @@ mod tests {
                 "{reader}'s write arm is not on the excluded register"
             );
         }
+        // G1.6(ii): the fifth row is not a reader's write twin but the shape
+        // collision the pairing loop above cannot express — the two integer
+        // reliability columns sit at `I:4`/`I:5`, and mode 4 read on the `F`
+        // entry point is `Bus.Y - Write`. Pinned so neither column can be
+        // "simplified" onto `BUSF`.
+        assert_eq!(BUS_N_CUSTOMERS.kind, ModeKind::I);
+        assert_eq!(BUS_SECTION_ID.kind, ModeKind::I);
+        assert!(
+            EXCLUDED_WRITE_MODES
+                .iter()
+                .any(|(f, k, m, _)| *f == "Bus" && *k == ModeKind::F && *m == 4),
+            "the Bus.Y write arm that BUSI(4) collides with is not registered"
+        );
         assert_eq!(PD_ELEMENTS_FAULT_RATE.mode, 0);
         assert_eq!(PD_ELEMENTS_PCT_PERMANENT.mode, 2);
         assert_eq!(PD_ELEMENTS_NAME.mode, 0);

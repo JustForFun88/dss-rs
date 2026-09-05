@@ -2584,3 +2584,54 @@ non-vacuously by `…::the_gictransformer_channel_guard_refuses_a_capi_gated_dec
 `FORCED_PROPS_POPULATION` / `FORCED_BUS_POPULATION` move
 `(440, 313, 83, 44) → (441, 310, 87, 44)` (three flips + one new case), both
 re-derived from the manifests on every run.
+
+## D22 — `CalcReliabilityIndices` recomputes `TotalUpDownstreamCustomers`; dss_capi 0.14.5 dropped the call — GOLDEN_REBASE G1.6(ii), 2026-09-05
+
+**Observable.** Only under a restoration flag: `RelCalc <restore>` (`Relcalc yes`,
+`RelCalc restore=y`). With a bare `RelCalc` — the form the live gate and every
+corpus deck use — all three engines are bit-identical, so this divergence is
+**unreachable on the corpus: 0 ledger rows, 0 golden bytes, `population.lock.json`
+untouched** (measured; the full unscoped gate is green over all 525 cases).
+
+**Source, all four revisions.** `Version8/Source/Meters/EnergyMeter.pas`
+`CalcReliabilityIndices` in **r3723, r4088 and r4133** runs, between the
+`Assigned(SequenceList)` check and `// Zero reliability accumulators`, the two
+statements `AssumeRestoration := AssumeRestoration_input;` and
+`TotalUpDownstreamCustomers;` (r4133 `:2466-2468`, routine `:2449`, roll-up
+`:1629`; the caller passes the flag as an argument and never touches the field,
+`Executive/ExecHelper.pas:4440`). The pinned **dss_capi 0.14.5**
+(`.inputs/dss_capi/src/Meters/EnergyMeter.pas:2411-2427`) has **neither** line —
+it goes straight to the zeroing loop and assigns the flag in the caller instead
+(`ExecHelper.pas:4884`) — although its own banner says it is based on SVN 3723,
+the revision that carries the call. It is a **capi-only regression of the dss_capi
+refactor**, not an r4133-era feature.
+
+**Measured** (`tmp/g16ii/probe_f7_*.py`, worktree quiet, both oracles live).
+Fixture A, the in-engine auto-recloser feeder under `Relcalc yes`: port **==**
+r4133 `SAIDI 2.1583333333333337`, `src.N_Customers 35`, `b1.N_Customers 25`,
+`b1.Cust_Interrupts 10.750000000000002`, `b1.Cust_Duration 69.64999999999999`,
+section 1 `SectTotalCust 35`; dss_capi 0.14.5 returns `2.4899999999999998`, `42`,
+`32`, `13.760000000000002`, `83.58`, `42`. Under `Relcalc no` all three engines
+agree bit-for-bit. Fixture B, the gate's own
+`tests/corpus/controls/energymeter/midi_relcalc.dss` under `RelCalc restore=y`:
+port == r4133 `src.N_Customers 0`, `SectTotalCust 0`, `SAIDI 0.27623590504451034`
+vs dss_capi `30`, `30`, `0.5496409495548961`; SAIFI, SAIFIkW, CustInterrupts and
+every other bus column agree on all three engines under both flags.
+
+**Decision — the port follows r4133 (CLAUDE.md: r4133 is the behavioral
+authority; capi 0.14.5 is a numeric oracle only).** The two statements are
+restored in `crates/dss-core/src/solution/meters/reliability.rs`
+(`calc_reliability_indices`, `:72`), with the `AssumeRestoration` assignment moved
+from the caller into the callee exactly as r4133 places it — which also makes the
+port faithful on the error path (a meter whose zone was never built keeps the flag
+it had). Nothing is masked: the one in-engine literal that pinned the capi answer
+is **re-pinned with both numbers, never relaxed**, by
+`dss_core::exec::tests::reliability::relcalc_assume_restoration_changes_auto_ocp_interruptions`
+(whose doc carries the six-row port==r4133 vs dss_capi table), and the restored
+call is exercised — so it cannot rot into dead code — by
+`dss_core::exec::tests::reliability::relcalc_recomputes_the_customer_totals_it_depends_on`,
+which drives the gate's own deck under both `RelCalc` and `RelCalc restore=y`.
+**No EPRI report is owed** — r4133 is the side that is right; this is a capi-only
+finding. Coordinator decisions **D20** (take the fix in-sub-step, "port gaps
+immediately") and **D22** (ratified as measured: zero on goldens, corpus, ledger
+and locks, non-zero on one dss_capi-pinned in-engine literal).

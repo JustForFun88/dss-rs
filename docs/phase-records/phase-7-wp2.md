@@ -418,6 +418,13 @@ head-line and a downstream-line recloser (`tools/golden/probe_reliability.py`).
   3-section auto-recloser feeder — SAIFI 0.5133→0.4417, CustInt 21.56→18.55, SAIDI
   2.49 both, oracle-pinned); `enable_then_disable_leaves_ocp_flag_stale` pins the
   documented move/disable deferral explicitly. **lib 506 → 509**.
+  *Correction (2026-09-05, GOLDEN_REBASE G1.6(ii), decisions D20/D22):* “SAIDI 2.49
+  both” was the dss_capi 0.14.5 answer. `calc_reliability_indices` now re-runs
+  `TotalUpDownstreamCustomers` under the flag as r3723/r4088/r4133 do (r4133
+  `Meters/EnergyMeter.pas:2466-2468`), so the pin reads SAIDI **2.49** under
+  `Relcalc no` and **2.1583333333333337** under `Relcalc yes` — both numbers in its
+  own doc table, SAIFI and CustInterrupts unchanged. See `docs/upgrade/DIVERGENCES.md`
+  §D22.
 
 ### 1e WP7.2 step 4 — protection gate + corpus migration — ✅ done
 

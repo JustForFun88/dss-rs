@@ -554,7 +554,7 @@ fn pd_elements_shunt_reliability_inputs_survive_the_meter_zone() {
 /// the reliability sweep's **accumulators**, written only by `CalcFltRate` /
 /// `AccumFltRate` inside `CalcReliabilityIndices`
 /// (r4133 `Version8/Source/Meters/EnergyMeter.pas:2474-2482`; port side
-/// `solution/meters/reliability.rs:113-115,180`). No live corpus deck runs
+/// `solution/meters/reliability.rs:147-149,214`). No live corpus deck runs
 /// `RelCalc`, so the correct value everywhere on this surface today is **0.0** —
 /// and it stays 0.0 on the shunt rows even after a `RelCalc`, because a shunt PD
 /// element is filed on the meter's PC list and never enters the branch sequence

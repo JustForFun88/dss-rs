@@ -300,6 +300,13 @@ pub struct ReliabilityCap {
     pub meters: Vec<MeterReliabilityCap>,
     /// `Meters.Totals` — read LAST, see [`capture_reliability`].
     pub totals: Vec<f64>,
+    /// The per-bus half of the same post-`RelCalc` surface (GOLDEN_REBASE
+    /// G1.6(ii)), in `BusList` order — see [`capture_bus_reliability`]. It is
+    /// nested HERE and not at the checkpoint's top level, exactly as
+    /// `oracle_server.capture_reliability` nests its own `"buses"` key; the
+    /// `Checkpoint`'s `buses` is G1.4a's voltage capture, a different
+    /// surface.
+    pub buses: Vec<BusReliabilityCap>,
 }
 
 /// One meter's reliability record. Field order here is the *shape* contract, not
@@ -350,6 +357,64 @@ pub struct FeederSectionCap {
     /// everywhere.
     pub avg_repair_time: f64,
     pub fault_rate_x_repair_hrs: f64,
+}
+
+/// One bus's eight reliability columns (GOLDEN_REBASE G1.6(ii)): the six
+/// `Export BusReliability` renders plus the two it does not — `Cust_Duration`
+/// and `SectionID` — captured once per case, right after the executive
+/// `RelCalc` the same payload reports on.
+///
+/// Key names and types are the contract on the wire (the worker serializes
+/// through `serde_json::Value`, which sorts object keys, so JSON order carries
+/// no meaning); they match `oracle_server.capture_bus_reliability` field for
+/// field, which is what the gate's `harness::BusReliabilityCap` deserializes on
+/// both channels. The port side is `dss-core`'s
+/// `exec/view.rs::BusReliabilityView` over the `TDSSBus` mirror
+/// `circuit/bus.rs:48-63`.
+///
+/// `Lambda` travels as `lambda_`, because `lambda` is a keyword in both Python
+/// and Rust; the rename is identical on both transports. Do not "fix" it.
+///
+/// Field order below is also the READ order — see [`capture_bus_reliability`],
+/// which reads in fastdss' `IBus._columns` order.
+#[derive(Serialize)]
+pub struct BusReliabilityCap {
+    /// `Circuit.AllBusNames` entry i, re-asserted as the active bus by
+    /// `SetActiveBus`'s returned index (`DCircuit.pas:439`, `:247-250`) — the
+    /// same walk key `BusCap` carries.
+    pub name: String,
+    /// `BUSF(10)` `Bus.Cust_Duration` — `BusCustDurations` (`DBus.pas:157-163`).
+    pub cust_duration: f64,
+    /// `BUSF(9)` `Bus.Cust_Interrupts` — `BusCustInterrupts` (`DBus.pas:150-156`).
+    pub cust_interrupts: f64,
+    /// `BUSF(8)` `Bus.Int_Duration` — `Bus_Int_Duration` (`DBus.pas:143-149`).
+    ///
+    /// `Source_IntDuration + AverageRepairTime` (`Meters/EnergyMeter.pas:2567-2575`),
+    /// so it inherits the section's unguarded `SumFltRatesXRepairHrs /
+    /// SumBranchFltRates` (`:2561-2563`, [`FeederSectionCap::avg_repair_time`]):
+    /// a `NaN` here is a `NaN` on every engine alike. It reaches the wire as
+    /// JSON `null` and fails the harness' decode loudly rather than becoming a
+    /// plausible `0`.
+    pub int_duration: f64,
+    /// `BUSF(6)` `Bus.Lambda` — `BusFltRate` (`DBus.pas:129-135`).
+    pub lambda_: f64,
+    /// `BUSI(4)` `Bus.N_Customers` — `BusTotalNumCustomers`, a `longint`
+    /// (`DBus.pas:60-66`).
+    pub n_customers: i32,
+    /// `BUSF(7)` `Bus.N_interrupts` — `Bus_Num_Interrupt` (`DBus.pas:136-142`).
+    pub n_interrupts: f64,
+    /// `BUSI(5)` `Bus.SectionID` — `BusSectionID`, a `longint`
+    /// (`DBus.pas:67-73`).
+    ///
+    /// A `-1` here is DATA — the mid-sweep `ZeroReliabilityAccums` writes it to
+    /// "signify not set" (`PDElements/PDElement.pas:326`) before the forward
+    /// sweep re-stamps the head bus (`EnergyMeter.pas:2494`) — and NOT the
+    /// family's unknown-mode sentinel (`DBus.pas:75`). Which is why the walk
+    /// proves its selection by the returned index and never by the shape of a
+    /// value.
+    pub section_id: i32,
+    /// `BUSF(11)` `Bus.TotalMiles` — `BusTotalMiles` (`DBus.pas:164-170`).
+    pub total_miles: f64,
 }
 
 /// One enabled PD element's `PDElements` record (GOLDEN_REBASE G1.6b): the
@@ -1133,6 +1198,10 @@ fn capture_meters(engine: &Engine) -> Result<Vec<MeterCap>, EngineError> {
 ///    cursor past the end — reading it mid-walk silently truncates the capture
 ///    (measured on both transports; fastdss says the same at
 ///    `save_outputs.py:330-332`).
+/// 4. finally, once the meter walk is over, the per-bus half of the same
+///    surface — [`capture_bus_reliability`], which touches no `Meters` handle
+///    and so leaves rule 3 literally true (the capi transport nests its
+///    `"buses"` key at the same point, for the same reason).
 ///
 /// This is group **C** of the capture-order partition (`GOLDEN_REBASE_PLAN.md`
 /// §1.1(a), coordinator decision D3): not one read here goes through
@@ -1212,12 +1281,100 @@ pub fn capture_reliability(
     // Step 3: LAST, after the walk — `TotalizeMeters` ends it.
     let totals = engine.meters_totals()?;
     engine.assert_clean("reliability")?;
+    // Step 4 (G1.6(ii)): the per-bus half of the same post-`RelCalc` surface,
+    // through its own function so no `Meters` read can follow `Totals`, and
+    // after `totals` so the payload reads meters-then-buses exactly as
+    // `oracle_server.capture_reliability` builds it. Its reads are order-free
+    // (group C) and move only `ActiveBusIndex`; its own `assert_clean` keeps
+    // the two error scopes apart.
+    let buses = capture_bus_reliability(engine)?;
     Ok(ReliabilityCap {
         aborted: rel.aborted,
         message: rel.message.clone(),
         meters,
         totals,
+        buses,
     })
+}
+
+/// Every bus's eight reliability columns, read AFTER the executive `RelCalc`
+/// (`GOLDEN_REBASE_PLAN.md` §1.1, sub-step G1.6(ii)) — the r4133 half of the
+/// per-bus reliability capture, a field-for-field port of
+/// `oracle_server.capture_bus_reliability` over the typed mode accessors
+/// ([`crate::modes`] rows `Bus.Lambda`, `Bus.N_interrupts`, `Bus.Int_Duration`,
+/// `Bus.Cust_Interrupts`, `Bus.Cust_Duration`, `Bus.TotalMiles`,
+/// `Bus.N_Customers`, `Bus.SectionID`).
+///
+/// The parity target is `origin/fastdss` `dss/IBus.py:19-53` `_columns`, which
+/// the fastdss harness archives for every bus through the iterable
+/// `dss.ActiveCircuit.ActiveBus` (`tests/save_outputs.py:351`); these eight are
+/// its reliability half and are read in that `_columns` order —
+/// `Cust_Duration`, `Cust_Interrupts`, `Int_Duration`, `Lambda`,
+/// `N_Customers`, `N_interrupts`, `SectionID`, `TotalMiles` — with the list's
+/// DUPLICATE `Cust_Interrupts` entry (`dss/IBus.py:27`) collapsed to a single
+/// read, exactly as the capi transport does: reading a pure field twice proves
+/// nothing and would make the read-order pin ambiguous.
+///
+/// Walked in `BusList` order, which `SetActiveBus`'s returned 0-based index
+/// (`DCircuit.pas:247-250`, `ActiveBusIndex - 1`) re-asserts per bus, the way
+/// `capture_all_buses` does: a failed lookup leaves `ActiveBusIndex` at 0
+/// (`Common/DSSGlobals.pas:739-757`) and would silently attribute the previous
+/// bus's reliability row to this one. That assertion — never the shape of a
+/// value — is what proves a row belongs to its bus: all eight arms initialize
+/// their `Result` to `0`/`0.0` BEFORE the `ActiveBusIndex > 0` guard
+/// (`DBus.pas:60-73`, `:129-170`), so an unselected bus answers a perfectly
+/// plausible zero row, and the family's `-1` else arm (`DBus.pas:75`) collides
+/// with a legitimate `SectionID` of `-1`.
+///
+/// Capture-order class **C, order-free** (`GOLDEN_REBASE_PLAN.md` §1.1(a),
+/// coordinator decision D3): all eight are plain `Buses^[ActiveBusIndex]` field
+/// reads — none goes through `ComputeIterminal`/`GetCurrents`, none writes
+/// engine state, and the only cursor that moves is `ActiveBusIndex`, which
+/// `capture_all_buses`, its one later reader, re-selects per bus anyway.
+///
+/// A SEPARATE function from [`capture_reliability`] on purpose: the read-order
+/// pins scan that body for its `Meters`-handle reads and require
+/// `Meters.Totals` to be the last of them
+/// (`crates/dss-core/tests/reliability_pins.rs`), so the bus block gets its own
+/// scanned body and its own order test instead of perturbing that rule.
+///
+/// The name comes from the walk (`Circuit.AllBusNames`) rather than from a
+/// per-bus read: this bridge binds no `BUSS` family, and `capture_all_buses`
+/// — which owns the bus plumbing — takes it the same way.
+pub fn capture_bus_reliability(engine: &Engine) -> Result<Vec<BusReliabilityCap>, EngineError> {
+    let names = engine.circuit_all_bus_names()?;
+    let mut out = Vec::with_capacity(names.len());
+    for (i, name) in names.iter().enumerate() {
+        let idx = engine.set_active_bus(name);
+        if idx != i as i32 {
+            return Err(EngineError::Other(format!(
+                "bus reliability capture: SetActiveBus({name:?}) returned {idx}, \
+                 expected {i} (AllBusNames must be the engine's BusList order)"
+            )));
+        }
+        // `IBus._columns` order, the duplicate collapsed.
+        let cust_duration = engine.bus_cust_duration()?;
+        let cust_interrupts = engine.bus_cust_interrupts()?;
+        let int_duration = engine.bus_int_duration()?;
+        let lambda_ = engine.bus_lambda()?;
+        let n_customers = engine.bus_n_customers()?;
+        let n_interrupts = engine.bus_n_interrupts()?;
+        let section_id = engine.bus_section_id()?;
+        let total_miles = engine.bus_total_miles()?;
+        out.push(BusReliabilityCap {
+            name: name.clone(),
+            cust_duration,
+            cust_interrupts,
+            int_duration,
+            lambda_,
+            n_customers,
+            n_interrupts,
+            section_id,
+            total_miles,
+        });
+    }
+    engine.assert_clean("bus_reliability")?;
+    Ok(out)
 }
 
 /// The `PDElements` walk (GOLDEN_REBASE G1.6b): every **enabled** PD element of

@@ -267,6 +267,19 @@ fn corpus_gate_all_cases_match_engines() {
     }
     harness::assert_reliability_compare_ran();
     harness::assert_reliability_skip_rows_are_live();
+    // And the G1.6(ii) per-BUS half of that same payload, which needs a guard of
+    // its own precisely because it rides INSIDE the reliability payload: a
+    // transport that stopped emitting the `buses` block, or a dropped
+    // `compare_bus_reliability` call, would leave the meter counters above happy
+    // while every bus of every flagged case went uncompared. Printed before it
+    // is asserted, so a run that is about to fail still shows which channel
+    // reached how many buses. Self-silences under `DSS_GATE_ONLY`.
+    let (bus_cw, bus_cb, bus_rw, bus_rb) = harness::bus_reliability_walk_counters();
+    eprintln!(
+        "corpus_gate bus reliability: capi_v0145 {bus_cw} payload(s) / {bus_cb} bus(es), \
+         r4133 {bus_rw} payload(s) / {bus_rb} bus(es)"
+    );
+    harness::assert_bus_reliability_compare_ran();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
@@ -490,7 +503,13 @@ fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
             "\"variables\":",
             "\"eventlog\":",
             "\"ctrlqueue\":",
-            "\"buses\":",
+            // Named by its producing call, not by the bare key: GOLDEN_REBASE
+            // G1.6(ii) gave the reliability payload its own nested `"buses"`
+            // key (the eight per-bus reliability columns,
+            // `capture_bus_reliability`), so `"buses":` alone matches two sites
+            // and `sole_offset` refuses it. This spelling still names exactly
+            // the checkpoint-level bus-voltage read this test measures.
+            "\"buses\": capture_all_buses(",
             "\"all_bus_vmag_pu\":",
             "\"all_properties\":",
         ],
