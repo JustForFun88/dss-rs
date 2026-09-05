@@ -417,6 +417,11 @@ impl LedgerRuntime {
             // and a STALE report a flaky gate. What stands behind an exclusion
             // is instead the measured first failure recorded in the entry
             // (`measured.*` + `source`), and TESTING.md states the rule.
+            // Kept visible rather than quietly inherited (G1.3c audit
+            // settlement, 2026-09-06): the exempt surface is now **139**
+            // `element` sub-channel names, 128 of them on `exclusion` entries —
+            // G1.3c widened 31 onto 11 of those — so the measured-provenance
+            // requirement above is the whole of their liveness proof.
             for sc in e.scopes.iter().filter(|sc| !sc.channels.is_empty()) {
                 if e.kind != Kind::Divergence {
                     continue;
@@ -616,7 +621,7 @@ const EXCLUSION_FIELDS: [&str; 10] = [
 /// discrete miss, which is the same guarantee the ten discrete extras get by
 /// having no sub-channel at all.
 ///
-/// G1.3c (2026-09-05) added `cplx_seq_currents`, `cplx_seq_voltages` and
+/// G1.3c (2026-09-06) added `cplx_seq_currents`, `cplx_seq_voltages` and
 /// `total_powers` — `CktElement.CplxSeqCurrents` / `CplxSeqVoltages`, the
 /// **un-`Cabs`'d** output of the very transform `seq_currents`/`seq_voltages`
 /// report the magnitudes of (r4133 `DDLL/DCktElement.pas:931-975` / `:885-928`
@@ -1907,7 +1912,7 @@ fn envelope_element(
         );
         // G1.3c: the complex halves are `3·NTerms` too (both engines size them
         // at `3*NTerms` and copy the same transform's output — r4133
-        // `DDLL/DCktElement.pas:889`/`:935`, capi `CAPI/CAPI_Alt.pas:874`/`:900`),
+        // `DDLL/DCktElement.pas:900`/`:946`, capi `CAPI/CAPI_Alt.pas:882`/`:910`),
         // asserted only when a scope actually names one of them so an entry
         // written for the magnitude channels keeps its own message.
         assert!(
@@ -2027,6 +2032,15 @@ fn envelope_element(
     // own exact assertions on both sides, which is what keeps a `cplx_seq_*`
     // scope from excusing a wrong `(-1, 0)` sentinel or a wrong
     // positive-sequence slot.
+    //
+    // Reachability, stated rather than assumed (G1.3c audit settlement,
+    // 2026-09-06): only a `divergence` entry reaches this function, and the
+    // four that carry an `element` scope today (`r4133-*-injection-ulp`) select
+    // `currents`/`losses`/`currents_mag_ang` only, so these three branches are
+    // exercised by the `ledger::*` fixtures alone until some future divergence
+    // names one. That is the shape the `seq_*` branches above already have; the
+    // alternative — inventing a ledger row so the branch runs live — is exactly
+    // the mask WP-G1 forbids.
     block.set(false);
     if want("cplx_seq_currents") {
         for (t, (_, bi)) in seq_bands.iter().enumerate() {
@@ -2248,10 +2262,12 @@ fn rewrite_element_selected(
         }
     }
     // G1.3c: the complex sequence pair. Same units on both sides (neither engine
-    // scales — r4133 `DDLL/DCktElement.pas:919-925`/`:966-972` copy the
-    // transform's own amps/volts, capi `CAPI/CAPI_Alt.pas:917-923`/`:889-893` do
-    // the same), so the pin writes both halves straight through — writing only
-    // the real part would leave `harness::compare_element_cplx_seq` comparing
+    // scales — r4133 `DDLL/DCktElement.pas:906-910`/`:952-956` copy the
+    // transform's own amps/volts out of `cValues` unchanged; capi never copies:
+    // `CalcSeqVoltages`/`_CalcSeqCurrents` write straight into `ResultPtr`,
+    // `CAPI/CAPI_Alt.pas:882-883`/`:910-913`), so the pin writes both halves
+    // straight through — writing only the real part would leave
+    // `harness::compare_element_cplx_seq` comparing
     // the port's imaginary part against the oracle's, i.e. an entry that pins
     // half a channel. Only the arm's BANDED slots are neutralized (the same
     // `seq_slots` filter the magnitude channels use), so the `(-1, 0)`
@@ -2283,7 +2299,7 @@ fn rewrite_element_selected(
     }
     // G1.3c: `TotalPowers`. Both sides are kW/kvar — each engine applies its
     // `0.001` to the terminal SUM inside its own arm (r4133
-    // `DDLL/DCktElement.pas:1134`, capi `CAPI/CAPI_Alt.pas:1138-1139`) and
+    // `DDLL/DCktElement.pas:1132`, capi `CAPI/CAPI_Alt.pas:1138-1139`) and
     // `ElementSnapshot::total_powers` is accumulated and scaled the same way —
     // so, unlike `phase_losses`, the pin writes the value straight through. Every
     // terminal is a banded sample (there is no discrete arm here), and the
@@ -3851,7 +3867,7 @@ fn a_discrete_cplx_slot_is_never_neutralized_by_a_scope() {
 /// one [`phase_loss_envelope_fixture`] uses on the other index set.
 ///
 /// Both sides are kW/kvar here: each engine applies its `0.001` to the terminal
-/// SUM inside its own arm (r4133 `DDLL/DCktElement.pas:1134`, capi
+/// SUM inside its own arm (r4133 `DDLL/DCktElement.pas:1132`, capi
 /// `CAPI/CAPI_Alt.pas:1138-1139`) and `ElementSnapshot::total_powers` is scaled
 /// the same way, so — unlike `phase_losses` — nothing is converted at either the
 /// envelope or the rewrite.

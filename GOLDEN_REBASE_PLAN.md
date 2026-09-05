@@ -733,7 +733,7 @@ transform.
 > * **Two shape asymmetries survive the enabled-only rule and are comparator business, 0
 >   ledger rows** (D4, the `no_seq_payload` precedent): on a 0-terminal element capi's
 >   `NodeRef = NIL` early returns put `[0.0]`/`[0.0]` on `tp_kw`/`tp_kvar` and `[0.0]` on
->   `cseq_v_re` (`CAPI_Alt.pas:1119-1123`, `:877`) where r4133's `setlength(…, NTerms)`
+>   `cseq_v_re` (`CAPI_Alt.pas:1119-1123`, `:878`) where r4133's `setlength(…, NTerms)`
 >   collapses to nothing. Both are admitted by two-sided emptiness predicates and pinned.
 
 ### G1.3d — per-element discrete extras

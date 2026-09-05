@@ -485,10 +485,10 @@ are not obvious from the field names:
   its own envelope on a folded capi sentinel and would neutralize a discrete
   miss the comparator asserts exactly. `envelope_element` and
   `rewrite_element_selected` are therefore both keyed on one predicate,
-  `seq_slot_is_banded` (`crates/dss-core/tests/corpus_gate/ledger.rs:1592`),
+  `seq_slot_is_banded` (`crates/dss-core/tests/corpus_gate/ledger.rs:1597`),
   pinned slot by slot on all three arms by
   `the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`
-  (`ledger.rs:3511`); a `seq_*` scope over an element with no banded slot
+  (`ledger.rs:3527`); a `seq_*` scope over an element with no banded slot
   measures nothing and is reported STALE rather than passing silently.
 * **The 1φ-positive-sequence population is a fail-on-stale census, recorded by
   the runner.** r4133's `SeqPowers` writes the single positive-sequence value
@@ -512,7 +512,7 @@ are not obvious from the field names:
   (`the_seq_arm_population_fires_when_the_capi_arm_collapses`).
   The count is incremented **only** from the corpus-gate runner's loop
   (`harness::record_seq_arm`,
-  `crates/dss-core/tests/corpus_gate/runner.rs:633`), the
+  `crates/dss-core/tests/corpus_gate/runner.rs:650`), the
   `record_control_census` precedent, because `harness::seq_floors`' fixture calls
   run inside the same test binary and would otherwise move the shipped statics —
   coordinator decision D24, pinned by
@@ -587,7 +587,7 @@ Five things that are not obvious from the field names:
   oracle side is silent — the rule G1.3a and G1.3b already set for this flag.
   What remains is a **0-terminal** element (`UPFCControl`): capi's early
   returns still put `[0.0]`/`[0.0]` on `tp_kw`/`tp_kvar` and `[0.0]` on
-  `cseq_v_re` (`CAPI_Alt.pas:1119-1123`, `:877`) where r4133's
+  `cseq_v_re` (`CAPI_Alt.pas:1119-1123`, `:878`) where r4133's
   `setlength(…, NTerms)` collapses to nothing. Both are admitted by two-sided
   emptiness predicates measured from the wire, not assumed — the
   `no_seq_payload` precedent, i.e. comparator-level normalizations with **0
@@ -749,7 +749,7 @@ knowing:
   capture predicate, no sentinel normalization and **no `DoNotCall` row** is
   owed for this group. The runner's non-vacuity rail counts elements with a
   **non-empty** `pl_kw` (`require_capture`,
-  `crates/dss-core/tests/corpus_gate/runner.rs:687`) rather than key presence,
+  `crates/dss-core/tests/corpus_gate/runner.rs:704`) rather than key presence,
   because r4133 omits the key on a 0-phase element while capi sends `[]`.
 * **Trap, measured while proving the r4133 rail non-vacuous:** `cargo test -p
   dss-core` recompiles the `dss-epri` *library* but does **not** rebuild the
@@ -1042,14 +1042,14 @@ the runtime reads a scope's `channels` as
 *empty ⇒ all of them* — so a committed entry written for the original three would
 silently widen onto every new element sub-channel WP-G1 adds (G1.3a–c), with no
 ledger diff and no population-lock trip. `SUBCHANNEL_FIELDS`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:638`) closes that with three
+(`crates/dss-core/tests/corpus_gate/ledger.rs:643`) closes that with three
 load-time rules: a scope on such a field must carry a **non-empty** `channels`;
 every name in it must be one of that field's declared sub-channels (a typo like
 `"curents"` otherwise loads cleanly, selects nothing, and leaves the entry
 reporting itself applied while masking not one value); and a scope on any other
 field must carry no `channels` at all, since the runtime would never read it.
 "All sub-channels" survives only as a named, reviewed exception in
-`BARE_CHANNELS_ALLOWED` (`ledger.rs:663`), which is **empty**. The rules are
+`BARE_CHANNELS_ALLOWED` (`ledger.rs:668`), which is **empty**. The rules are
 driven both ways by `a_scope_that_misuses_channels_is_refused_at_load`. When a
 sub-step adds a new element sub-channel it adds the name to `SUBCHANNEL_FIELDS`
 **in the same commit**, so the committed exclusions keep the width they were
@@ -1111,7 +1111,7 @@ cause as the rectangular channels the scope already named.
 
 G1.3c (2026-09-06) is the fourth and closes the flag: `cplx_seq_currents`,
 `cplx_seq_voltages` and `total_powers` join `SUBCHANNEL_FIELDS`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:638`) in the commit that starts
+(`crates/dss-core/tests/corpus_gate/ledger.rs:643`) in the commit that starts
 comparing them, taking the `element` row to **thirteen** names. The complex pair
 rides the *same* `seq_slot_is_banded` predicate as the magnitudes — modes 13/14
 are the same `Calc*` output read without the `Cabs`, so the arms and the banded
@@ -1143,9 +1143,15 @@ is itself pinned (`a_zero_terminal_total_power_sentinel_is_not_envelope_checked`
 Each of the two new comparators has its own `require_capture` rail with its own
 sentence, because the four element comparators read disjoint capture fields —
 `require_capture` on `tp_kw`
-(`crates/dss-core/tests/corpus_gate/runner.rs:592`) and `require_capture` on
-`cseq_i_re` (`:598`); neither records a
-census (D24).
+(`crates/dss-core/tests/corpus_gate/runner.rs:592`), on `cseq_i_re` (`:598`) and,
+since the G1.3c audit settlement (2026-09-06), on `cseq_v_re` (`:620`): the
+voltage half is the one field of this surface no other rail counts, and the one
+whose guards differ per channel (capi's `CplxSeqVoltages` alone tests
+`NodeRef = NIL`, `CAPI/CAPI_Alt.pas:878`), so a transport that dropped exactly
+that key would otherwise reach the comparator's length assert rather than a
+sentence naming it. All three sentences were driven empty on **both** channels
+(capi `oracle_server.py`, r4133 `capture.rs` + a worker rebuild — see the trap
+above); none records a census (D24).
 
 **A widened sub-channel has to keep masking something** (G1.3a audit settlement,
 2026-09-04). `applied`/`exceeded_floor` are per ENTRY, so a scope widened onto a
@@ -1642,7 +1648,7 @@ deliberate exception: `skip_prop` is a free function taking the channel, so its
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:332` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
-`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1293`, `:1256`) —
+`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1293`, `:1271`) —
 which is why the triage order below ends there and not before.
 
 **Link 2 — the normalization table** `PROPS_NORM_R4133` (`harness/props_norm.rs:560`). **168 rows**

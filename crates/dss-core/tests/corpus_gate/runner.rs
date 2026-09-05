@@ -604,6 +604,23 @@ pub(crate) fn compare_capture(
                     .count(),
                 &ctx,
             );
+            // The voltage half gets its own rail too (G1.3c audit settlement,
+            // 2026-09-06): it is the one capture field of this surface that no
+            // other rail counts, and it is the half whose guards differ between
+            // the channels (capi's `CplxSeqVoltages` alone tests
+            // `NodeRef = NIL`, `CAPI/CAPI_Alt.pas:878`, where r4133 mode `13`
+            // tests only `Enabled`), so a transport that dropped exactly this
+            // key would otherwise reach the comparator's length assert rather
+            // than a sentence naming the field that went missing.
+            capture_guard::require_capture(
+                "compare_derived (CplxSeqVoltages)",
+                channel_tag(channel),
+                cp.elements
+                    .iter()
+                    .filter(|e| !e.cseq_v_re.is_empty())
+                    .count(),
+                &ctx,
+            );
             // The channel travels with the capture for one reason only: the
             // `SeqPowers` "not available" sentinel is spelled per channel and is
             // folded per channel (`harness::na_seq_power`, G1.3b D-b2), and the
