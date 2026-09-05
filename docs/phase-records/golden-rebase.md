@@ -2804,13 +2804,14 @@ row against the pre-fix lock.
   note; **28** `file.rs:LINE` citations in `TESTING.md` / `tests/TOLERANCE_NOTES.md` were
   re-pointed after `harness/mod.rs` (+6) and `corpus_gate.rs` (+10) shifted under them
   (`operational_docs_line_citations_point_at_the_line_they_name` was red until they were).
-  Commit: `8fc32991`, one surface commit carrying both port-gap fixes.
-  Gate on the final tree: fmt + clippy clean in both lanes, `cargo test
+  Commits: `8fc32991` (surface, one commit carrying both port-gap fixes) + `898f8a86`
+  (audit settlement) + `434a6b51` and this record (docs).
+  Gate at `8fc32991`: fmt + clippy clean in both lanes, `cargo test
   --workspace` **5 043 / 0 failed / 5 ignored** per lane (+317 on G1.9's 4 726 — 121 in the
-  new `topology_pins` binary, 8 `harness::topology` cases in each of the 22 binaries carrying
-  `mod harness`, the rest in-engine and gate code), 523 manifest cases (519 compared) green on
-  both channels in both lanes, census 3 314 / (16, 135) / (8, 96), ledger 57 entries /
-  1 588 hits / 0 stale, `golden_lock` + `population_lock` + `oracle_parity_cfg_gate` green,
+  new `topology_pins` binary, 8 `harness::topology` cases in each of the other 22 of the
+  23 binaries carrying `mod harness`, the rest in-engine and gate code), 523 manifest
+  cases (519 compared) green on both channels in both lanes, census
+  3 314 / (16, 135) / (8, 96), ledger 57 entries / 1 588 hits / 0 stale, `golden_lock` + `population_lock` + `oracle_parity_cfg_gate` green,
   no golden byte; `lane_diff` run (product code moved — `exec/view.rs`, `ckt_tree/mod.rs`,
   `solution/topology.rs`, `elements/ckt.rs`): **PASS**, max |Δ| = 0 on all eight gated kinds
   over 3 220 861 records, 0 iteration drifts.
@@ -2840,4 +2841,5 @@ row against the pre-fix lock.
   reds). Gate, both lanes: fmt + clippy clean,
   **5 067 / 0 failed / 5 ignored** (+24 = 23 `mod harness` binaries + the cfg gate), census
   3 314 / (16, 135) / (8, 96) and ledger 57 / 1 588 hits / 0 stale unmoved, no lock or
-  golden byte; `lane_diff` re-run: **PASS**, max |Δ| = 0 over 3 220 861 records.
+  golden byte; `lane_diff` re-run: **PASS**, max |Δ| = 0 over 3 220 861 records — the
+  final-tree totals for G1.7.
