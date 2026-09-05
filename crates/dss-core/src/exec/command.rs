@@ -2020,6 +2020,10 @@ impl Dss {
         // active-class borrows above are dead by here (last used at `end_edit`),
         // so the full `classes` slice is free for the ref-action targets.
         apply_edit_signal_tail(classes, circuit, errors, ci, oi);
+        // …and, for a control, the `Set_ControlledElement` re-attach that ends
+        // its `RecalcElementData`. Outside the shared tail on purpose — the
+        // MakePosSequence applier must NOT run it (see the function's doc).
+        reattach_edited_control(classes, circuit, ci, oi);
     }
 }
 
@@ -2175,6 +2179,52 @@ pub(super) fn apply_edit_signal_tail(
                 ckt.solution.system_y_changed = true;
             }
         }
+    }
+}
+
+/// The control half of Pascal `RecalcElementData`: it ends by re-assigning
+/// `ControlledElement`, which is the property setter
+/// `TControlElem.Set_ControlledElement` (r4133 `Controls/ControlElem.pas:113-131`):
+/// remove self from the previous target's `ControlElementList`, append to the new
+/// target's. r4133 runs it on EVERY edit (`Controls/Relay.pas:955` from `:626`;
+/// `Recloser.pas:702`, `SwtControl.pas:332`, `CapControl.pas:580`,
+/// `RegControl.pas:693`, `Controls/fuse.pas`), so a re-edited control moves to the
+/// end of its element's list. capi 0.14.5 instead makes `ControlledElement` a
+/// property-write target (`Controls/Relay.pas:439-441`) and leaves the order alone
+/// on a re-edit — r4133 is the behavioral authority (`DIVERGENCES.md`).
+///
+/// Call it where the edit is over (`end_edit` = `RecalcElementData` has run, and
+/// so have the deferred ref-actions of [`apply_edit_signal_tail`]), so
+/// `controlled_element()` is the control's final target for this edit. Guarded on
+/// the class kind — only a `TControlElem` has a `ControlElementList` membership to
+/// maintain.
+///
+/// **Deliberately not part of [`apply_edit_signal_tail`]** (G1.3d(ii) audit
+/// settlement, 2026-09-05): the MakePosSequence applier
+/// (`exec/make_pos_seq.rs`) shares that tail, and r4133's `MakePosSequence` never
+/// re-runs `RecalcElementData` on a control — every control override mutates its
+/// own fields and ends with `inherited`, the base bus rename
+/// (`Common/CktElement.pas:1352`): `Controls/Relay.pas:1008`, `Recloser.pas:738`,
+/// `SwtControl.pas:367`, `CapControl.pas:656`, `RegControl.pas:1491`, and `Fuse`
+/// has no override at all. `DoMakePosSeq` calls nothing else
+/// (`Executive/ExecHelper.pas:3069-3086`), so a `MakePosSeq` leaves every
+/// `ControlElementList` order untouched. Pinned by
+/// `exec::tests::element_extras::makeposseq_does_not_reattach_controls`.
+pub(super) fn reattach_edited_control(
+    classes: &mut [DssClass],
+    circuit: &mut Option<Circuit>,
+    ci: usize,
+    oi: usize,
+) {
+    if classes[ci].kind == Some(crate::circuit::ElemKind::Control)
+        && let Some(ckt) = circuit.as_mut()
+    {
+        let attached = classes[ci]
+            .arena
+            .try_ckt_elem(oi)
+            .and_then(|ce| ce.controlled_element())
+            .is_some();
+        ckt.reattach_control(classes[ci].arena.id(oi), attached);
     }
 }
 

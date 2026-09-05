@@ -33,9 +33,24 @@ pub(crate) struct ProbeSpec {
     pub(crate) props: Vec<String>,
 }
 
+/// One manifest case.
+///
+/// `deny_unknown_fields` (G1.0 audit settlement): every field below is
+/// `#[serde(default)]`, so without it a misspelled key — `compare_zsc_`,
+/// `compare_zsC` — deserializes cleanly to `false`, the unwired-flag gate never
+/// fires, the lock records the flag as off and the author believes the surface
+/// is on. That is exactly the silent vacuity the G1.0 rails exist to close, so
+/// an unknown key is a load error naming the case.
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct SolvableCase {
     pub(crate) path: String,
+    /// Free-text authoring rationale (`tests/corpus/modes/manifest.json`). Never
+    /// read by the gate; declared so `deny_unknown_fields` above can refuse a
+    /// key that is *not* one of ours.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) notes: String,
     #[serde(default = "default_kind")]
     pub(crate) kind: String,
     #[serde(default)]
@@ -88,6 +103,13 @@ pub(crate) struct SolvableCase {
     /// `SeqPowers`, `CplxSeqVoltages`/`CplxSeqCurrents`, `TotalPowers`
     /// (`.inputs/DSS-Python` `origin/fastdss` `dss/ICktElement.py:53,58-69`
     /// `_columns`; r4133 transport `DDLL/DCktElement.pas` `CktElementV`).
+    ///
+    /// **Live since G1.3a** (`wired: true` in [`G1_SURFACE_FLAGS`]): the flag
+    /// today carries `Enabled` + `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`
+    /// (`DDLL/DCktElement.pas:1058`/`:1082`/`:827`). G1.3b adds the symmetrical
+    /// components and G1.3c `TotalPowers`; both extend this same flag rather
+    /// than adding their own, so a case that opts in now gains those channels
+    /// with them.
     #[serde(default)]
     pub(crate) compare_derived: bool,
     /// G1.3d: the per-element **discrete extras** — `PhaseLosses`, `NodeOrder`,
@@ -95,13 +117,36 @@ pub(crate) struct SolvableCase {
     /// `HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/
     /// `NumConductors` (`origin/fastdss` `dss/ICktElement.py:35-38,46-52,56,69`;
     /// r4133 `DDLL/DCktElement.pas` `CktElementI`/`CktElementS`).
+    ///
+    /// **Live since G1.3d(i)** (`wired: true` in [`G1_SURFACE_FLAGS`]), and
+    /// **complete since G1.3d(ii)** (2026-09-05). G1.3d(i) brought the four pure
+    /// scalars `NumTerminals`/`NumConductors`/
+    /// `NumPhases` (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`, `CktElementI`
+    /// arms 0..2; capi `CAPI/CAPI_CktElement.pas:182-211`) and `EnergyMeter`
+    /// (`:442`, `CktElementS(4)`; capi `:672-687`), plus `NodeOrder`
+    /// (`:1032-1056`, `CktElementV(17)`; capi `CAPI/CAPI_CktElement.pas:885-917`) on
+    /// elements that are `Enabled` **and** carry `NumTerminals > 0` — the two
+    /// conditions under which neither transport dereferences a nil `NodeRef`.
+    /// G1.3d(ii) widened this same flag with `PhaseLosses`
+    /// (`CktElementV(6)`; capi `CAPI/CAPI_Alt.pas:449-467`) and the
+    /// control-derived extras `OCPDevType`/`OCPDevIndex`,
+    /// `HasVoltControl`/`HasSwitchControl` and `NumControls`
+    /// (`CktElementI` arms 7..11) rather than adding its own, so the flag now
+    /// carries the whole surface and the forced population never moved.
     #[serde(default)]
     pub(crate) compare_element_extras: bool,
-    /// G1.4: the **bus** surface — `puVoltages`/`puVmagAngle`/`VMagAngle`/`VLL`/
-    /// `puVLL`, `SeqVoltages`/`CplxSeqVoltages`, `AllPCEatBus`/`AllPDEatBus`,
-    /// `Distance` (+ the circuit-level `AllBusDistances`/`AllNodeDistances`/
-    /// `AllBusVmagPu`) — `origin/fastdss` `dss/IBus.py:19-53` `_columns`;
-    /// r4133 `DDLL/DBus.pas`.
+    /// G1.4: the **bus** surface — `origin/fastdss` `dss/IBus.py:19-53`
+    /// `_columns`; r4133 `DDLL/DBus.pas`, capi `CAPI/CAPI_Alt.pas`.
+    ///
+    /// **Wired by G1.4a (2026-09-04, settlement D8):** `puVoltages`
+    /// (`DBus.pas:399-430` == `CAPI_Alt.pas:2251-2280`), `VMagAngle`
+    /// (`:659-689` == `:2573-2597`), `puVmagAngle` (`:690-723` == `:2540-2571`),
+    /// the per-bus `Nodes`/`kVBase` (`:319-345` == `:2143-2163`) and the
+    /// circuit-level `AllBusVmagPu` (`DCircuit.pas:481-500` ==
+    /// `CAPI_Circuit.pas:521-548`) — the arms both oracles run identically.
+    /// **Still to come on this same flag:** `SeqVoltages`/`CplxSeqVoltages` and
+    /// `VLL`/`puVLL` (G1.4c — the channels disagree there), `AllPCEatBus`/
+    /// `AllPDEatBus`/`Distance` + `AllBusDistances`/`AllNodeDistances` (G1.4b).
     #[serde(default)]
     pub(crate) compare_bus: bool,
     /// G1.5: the bus **short-circuit** surface — `Zsc1`/`Zsc0`/`ZscMatrix`/
@@ -112,18 +157,41 @@ pub(crate) struct SolvableCase {
     pub(crate) compare_zsc: bool,
     /// G1.6: the **meter extras + per-bus reliability** surface — `CalcCurrent`,
     /// `AllocFactors`, `SAIFI`/`SAIFIKW`/`SAIDI`/`CustInterrupts`, the ordered
-    /// zone vectors and the active-section fields (`origin/fastdss`
-    /// `dss/IMeters.py:13-42` `_columns`), plus `Bus.Lambda`/`N_interrupts`/
-    /// `N_Customers`/`Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/
-    /// `TotalMiles`/`SectionID` (`dss/IBus.py:25-36`). Also drives the executive
-    /// `RelCalc` the surface needs (`save_outputs.py:117-129`); r4133
-    /// `DDLL/DMeters.pas`.
+    /// zone vectors, the active-section fields and `Meters.Totals`
+    /// (`origin/fastdss` `dss/IMeters.py:13-42` `_columns`; r4133
+    /// `DDLL/DMeters.pas`). **Wired 2026-09-04 by G1.6(i)**; the per-bus
+    /// reliability columns (`Bus.Lambda`/`N_interrupts`/`N_Customers`/
+    /// `Cust_Interrupts`/`Cust_Duration`/`Int_Duration`/`TotalMiles`/
+    /// `SectionID`, `dss/IBus.py:25-36`) join the same payload at G1.6(ii).
+    ///
+    /// It is the ONLY flag that also DRIVES an executive command: no vendored
+    /// deck runs `RelCalc` (measured: the two that do are `expect_solve_abort`),
+    /// so without driving it the whole reliability half would compare `0 == 0`.
+    /// The gate therefore runs it once per case on the LAST step, on all three
+    /// engines (`corpus_gate/runner.rs`); it is not idempotent, so never per
+    /// step.
+    ///
+    /// Set by the MANIFESTS, never scheduler-forced — and the absence of a
+    /// `force_reliability` beside [`super::scheduler::force_pdelements`] is a
+    /// decision, not an omission: the predicate is "this deck defines an
+    /// EnergyMeter", which is not a manifest field, and forcing the flag
+    /// circuit-wide would fire the executive's `28724 No EnergyMeter Objects
+    /// Defined` on the ~340 meterless cases on three engines. The population is
+    /// therefore the manifest set, which `population.lock.json` records through
+    /// `population_lock::rigor`'s `rel=` token; `harness::
+    /// assert_reliability_compare_ran` is the fail-on-nothing-ran half.
     #[serde(default)]
     pub(crate) compare_reliability: bool,
-    /// G1.6b: the **PDElements** interface walk — `AccumulatedL`,
-    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`, `SectionID`,
-    /// `RepairTime`, `Totalcustomers`, `Lambda` (`origin/fastdss`
-    /// `dss/IPDElements.py:26-40` `_columns`; r4133 `DDLL/DPDELements.pas`).
+    /// G1.6b: the **PDElements** interface walk — all THIRTEEN
+    /// `IPDElements._columns` fields (`Name`, `AccumulatedL`,
+    /// `ParentPDElement`, `FromTerminal`, `IsShunt`, `Numcustomers`,
+    /// `SectionID`, `FaultRate`, `RepairTime`, `TotalMiles`, `Totalcustomers`,
+    /// `pctPermanent`, `Lambda` — `origin/fastdss` `dss/IPDElements.py:26-40`;
+    /// r4133 `DDLL/DPDELements.pas`) plus the parent's full name, which the
+    /// `ParentPDElement` active-element hijack hands out for free. **Wired
+    /// 2026-09-04**; forced on every live non-`large` case by
+    /// `scheduler::force_pdelements`, so no manifest sets it (the
+    /// `compare_all_properties` shape).
     #[serde(default)]
     pub(crate) compare_pdelements: bool,
     /// G1.7: the **topology** interface — `NumLoops`, `NumIsolatedBranches`/
@@ -522,40 +590,54 @@ pub(crate) struct G1Flag {
 /// declaration order in [`SolvableCase`] and the token order in
 /// `population_lock.rs::rigor()`.
 pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
+    // Wired by G1.3a (2026-09-04) — request key `derived` in
+    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
+    // + `crates/dss-epri/src/capture.rs`, comparator
+    // `harness::compare_element_derived` behind
+    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3b/c
+    // widen the same flag's surface; the row stays as it is.
     G1Flag {
         name: "compare_derived",
         sub_step: "G1.3a-c",
-        wired: false,
+        wired: true,
         get: |c| c.compare_derived,
     },
+    // Wired by G1.3d(i) (2026-09-04) — request key `element_extras` in
+    // `engines::build_run_request`, capture in `tools/oracle/oracle_server.py`
+    // + `crates/dss-epri/src/capture.rs` (`Engine::element_extras` in `dss.rs`
+    // for the four pure scalars; the conditional `NodeOrder` read stays at the
+    // call site), comparator `harness::compare_element_extras` behind
+    // `capture_guard::require_capture` in `runner::compare_capture`. G1.3d(ii)
+    // widens the same flag's surface (`PhaseLosses`, the control-derived
+    // extras); the row stays as it is.
     G1Flag {
         name: "compare_element_extras",
         sub_step: "G1.3d",
-        wired: false,
+        wired: true,
         get: |c| c.compare_element_extras,
     },
     G1Flag {
         name: "compare_bus",
         sub_step: "G1.4",
-        wired: false,
+        wired: true,
         get: |c| c.compare_bus,
     },
     G1Flag {
         name: "compare_zsc",
         sub_step: "G1.5",
-        wired: false,
+        wired: true,
         get: |c| c.compare_zsc,
     },
     G1Flag {
         name: "compare_reliability",
         sub_step: "G1.6",
-        wired: false,
+        wired: true,
         get: |c| c.compare_reliability,
     },
     G1Flag {
         name: "compare_pdelements",
         sub_step: "G1.6b",
-        wired: false,
+        wired: true,
         get: |c| c.compare_pdelements,
     },
     G1Flag {
@@ -844,6 +926,10 @@ const MODES_REQUIRED: &[&str] = &[
     "makeposseq/makeposseq_line.dss",
     "makeposseq/makeposseq_xfmr.dss",
     "makeposseq/makeposseq_shunt.dss",
+    // GOLDEN_REBASE G1.4a (D12/D14, 2026-09-04): the GICTransformer arm of the
+    // shunt deck, split into its own `engines: "r4133"` case because capi 0.14.5
+    // is nondeterministic on any deck that instantiates a GICTransformer.
+    "makeposseq/makeposseq_gic.dss",
     "makeposseq/makeposseq_pc.dss",
     "makeposseq/makeposseq_ctrl.dss",
     "makeposseq/makeposseq_report.dss",
@@ -861,6 +947,14 @@ const MODES_REQUIRED: &[&str] = &[
     "windgen/windgen_dyn.dss",
     "windgen/windgen_dyn_fault.dss",
     "upgrade/upgrade_linecs_eqspacing.dss",
+    // GOLDEN_REBASE G1.5 (2026-09-05, lane `lane-b`): the micro-tier witness
+    // for the bus short-circuit surface. The corpus' four vendored
+    // fault-study decks are all `kind: "feeder"`, so this is the only case
+    // that compares `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` at the
+    // `micro` band — and the only one whose `b2` has an insertion node order
+    // (`[2,1,3]`) different from its ascending one, which is what makes the
+    // surface's indexing convention observable at all.
+    "faultstudy/faultstudy_micro.dss",
 ];
 
 pub(crate) const MODES: Family = Family {
@@ -1053,4 +1147,211 @@ fn set_g1_flag(c: &mut SolvableCase, name: &str) {
         "compare_di" => c.compare_di = true,
         other => panic!("G1_SURFACE_FLAGS row {other:?} has no writer in `set_g1_flag`"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// GICTransformer decks gate on r4133 alone (GOLDEN_REBASE G1.4a, coordinator
+// decisions D12/D14, 2026-09-04 — see `DIVERGENCES.md` and `TESTING.md`).
+// ---------------------------------------------------------------------------
+
+/// Every corpus deck that `new`s a `GICTransformer`, relative to
+/// `tests/corpus/`, sorted.
+///
+/// Pinned as a closed set, not merely walked, because the per-case scan below
+/// reads only the deck a case names: a GICTransformer hidden one `Redirect`
+/// deeper would slip past it. A new deck here fails this test and forces the
+/// channel review — the element makes the pinned dss_capi 0.14.5 oracle
+/// **nondeterministic across processes** (7 bad runs of 60 with one in the deck,
+/// 0 of 40 without; the whole no-load solve lands elsewhere and `Bus.kVBase` is
+/// punted to 0), while EPRI r4133 is deterministic (80/80 bit-identical), so
+/// such a deck may gate on `r4133` only.
+const GICTRANSFORMER_DECKS: &[&str] = &[
+    "asymmetric/gic/gic_midi.dss",
+    "asymmetric/gic/gictransformer_gic.dss",
+    "electricdss-tst/Version8/Distrib/Examples/GICExample/GIC_Example.dss",
+    "modes/makeposseq/makeposseq_gic.dss",
+];
+
+/// `tests/corpus/` itself (the four manifests' two deck roots live under it).
+fn corpus_root() -> PathBuf {
+    [env!("CARGO_MANIFEST_DIR"), "..", "..", "tests", "corpus"]
+        .iter()
+        .collect()
+}
+
+/// Does this deck text create a `GICTransformer`?
+///
+/// Comment-stripped (`!` and `//` run to end of line, the DSS comment rules) so
+/// a prose mention — `makeposseq_shunt.dss`'s header now carries one — is not an
+/// instantiation, and `New` must be the verb: `edit`/`~` lines touch an element
+/// that already exists and cannot introduce the nondeterminism.
+fn deck_instantiates_a_gictransformer(text: &str) -> bool {
+    for line in text.lines() {
+        let code = line.split('!').next().unwrap_or_default();
+        let code = code.split("//").next().unwrap_or_default();
+        let lower = code.to_ascii_lowercase();
+        let mut toks = lower.split_whitespace();
+        while let Some(tok) = toks.next() {
+            if tok != "new" {
+                continue;
+            }
+            let Some(obj) = toks.next() else { continue };
+            let obj = obj.trim_start_matches('"');
+            if obj == "gictransformer" || obj.starts_with("gictransformer.") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Collect every `.dss` under `dir` that [`deck_instantiates_a_gictransformer`]
+/// accepts, as forward-slashed paths relative to `base`.
+fn collect_gictransformer_decks(dir: &Path, base: &Path, out: &mut Vec<String>) {
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let p = entry.expect("dir entry").path();
+        if p.is_dir() {
+            collect_gictransformer_decks(&p, base, out);
+            continue;
+        }
+        if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dss")) {
+            continue;
+        }
+        // Decks are ASCII/Latin-1 in practice; a non-UTF-8 byte must not hide a
+        // GICTransformer, so read lossily instead of skipping the file.
+        let text = String::from_utf8_lossy(
+            &std::fs::read(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display())),
+        )
+        .into_owned();
+        if deck_instantiates_a_gictransformer(&text) {
+            out.push(
+                p.strip_prefix(base)
+                    .expect("under corpus root")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+}
+
+/// The refusal itself, factored out so the negative drive can fire it without
+/// mutating the corpus.
+fn assert_gictransformer_case_gates_r4133(label: &str, engines: &str) {
+    assert_eq!(
+        engines, "r4133",
+        "{label}: this deck instantiates a GICTransformer, so it must gate on the r4133 channel \
+         ALONE (`engines: \"r4133\"`), not `{engines}`. The pinned dss_capi 0.14.5 oracle \
+         disagrees with ITSELF across fresh processes on such decks (7 bad runs of 60 with the \
+         element, 0 of 40 without — the whole no-load solve lands elsewhere and Bus.kVBase is \
+         punted to 0), and an oracle channel that disagrees with itself cannot gate; r4133 is \
+         deterministic (80/80). GOLDEN_REBASE G1.4a, coordinator decisions D12/D14 — see \
+         DIVERGENCES.md."
+    );
+}
+
+/// **No capi-gated case instantiates a GICTransformer** (D12/D14).
+///
+/// Two rails in one test: the corpus-wide census pins WHICH decks carry the
+/// element ([`GICTRANSFORMER_DECKS`]), and the manifest walk pins that every
+/// gated case naming one of them declares `engines: "r4133"`.
+#[test]
+fn no_capi_gated_case_instantiates_a_gictransformer() {
+    let root = corpus_root();
+    let mut found: Vec<String> = Vec::new();
+    collect_gictransformer_decks(&root, &root, &mut found);
+    found.sort();
+    assert_eq!(
+        found, GICTRANSFORMER_DECKS,
+        "the set of corpus decks that `new` a GICTransformer moved. Every one of them must gate \
+         on the r4133 channel alone (capi 0.14.5 is nondeterministic on them — D12/D14); update \
+         GICTRANSFORMER_DECKS in the same commit that adds or removes one."
+    );
+
+    let mut checked: Vec<String> = Vec::new();
+    for c in load_solvable() {
+        let rel = format!("electricdss-tst/{}", c.path.replace('\\', "/"));
+        if GICTRANSFORMER_DECKS.contains(&rel.as_str()) {
+            let label = format!("solvable_now:{}", c.path);
+            assert_gictransformer_case_gates_r4133(&label, &c.engines);
+            checked.push(label);
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            let rel = format!("{}/{}", fam.name, c.path.replace('\\', "/"));
+            if GICTRANSFORMER_DECKS.contains(&rel.as_str()) {
+                let label = format!("{}:{}", fam.name, c.path);
+                assert_gictransformer_case_gates_r4133(&label, &c.engines);
+                checked.push(label);
+            }
+        }
+    }
+    assert_eq!(
+        checked.len(),
+        GICTRANSFORMER_DECKS.len(),
+        "every GICTransformer deck is a gated case exactly once; walked {checked:?}"
+    );
+}
+
+/// Non-vacuity for the guard above (§1.1(f)): the scanner must separate a prose
+/// mention from an instantiation, and the refusal must fire on both capi-gating
+/// spellings.
+#[test]
+fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
+    // The scanner, driven on a MUTATED COPY of a real deck (never written to
+    // disk): `makeposseq_shunt.dss` mentions the element in prose since G1.4a
+    // split it out, and must read as clean until a `new` line is appended.
+    let shunt =
+        std::fs::read_to_string(corpus_root().join("modes/makeposseq/makeposseq_shunt.dss"))
+            .expect("read makeposseq_shunt.dss");
+    assert!(
+        shunt.to_ascii_lowercase().contains("gictransformer"),
+        "the drive is vacuous unless the deck still mentions the element in prose"
+    );
+    assert!(
+        !deck_instantiates_a_gictransformer(&shunt),
+        "a `!` comment mentioning a GICTransformer is not an instantiation"
+    );
+    let mutated =
+        format!("{shunt}\nnew gictransformer.gt busH=b1 busNH=b1.4.4.4 R1=0.1 type=GSU\n");
+    assert!(
+        deck_instantiates_a_gictransformer(&mutated),
+        "appending the `new` line must be seen"
+    );
+    for clean in [
+        "// new gictransformer.gt busH=b1",
+        "edit gictransformer.gt R1=0.2",
+        "~ gictransformer=no",
+    ] {
+        assert!(
+            !deck_instantiates_a_gictransformer(clean),
+            "{clean:?} creates no GICTransformer"
+        );
+    }
+    for created in [
+        "New GICTransformer.tg1 busH=b1 R1=0.12 type=GSU",
+        "  new \"gictransformer.gt\" busH=b1",
+    ] {
+        assert!(
+            deck_instantiates_a_gictransformer(created),
+            "{created:?} creates a GICTransformer"
+        );
+    }
+
+    // The refusal: both capi-gating spellings must panic, `r4133` must not.
+    for engines in ["capi_v0145", "both"] {
+        let payload = std::panic::catch_unwind(|| {
+            assert_gictransformer_case_gates_r4133("modes:mutated_gic.dss", engines)
+        })
+        .expect_err("a capi-gated GICTransformer case must be refused");
+        let msg = crate::runner::panic_msg(payload);
+        assert!(
+            msg.contains("mutated_gic.dss") && msg.contains("r4133") && msg.contains("D12/D14"),
+            "the refusal must name the case, the channel and the decision; got {msg:?}"
+        );
+    }
+    assert!(
+        std::panic::catch_unwind(|| assert_gictransformer_case_gates_r4133("ok", "r4133")).is_ok(),
+        "an r4133-gated GICTransformer case must be allowed"
+    );
 }

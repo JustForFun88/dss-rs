@@ -1,9 +1,14 @@
 ! makeposseq_shunt.dss — shunt-element MakePosSequence coverage (WPG.21).
 ! Capacitor SpecType 1 (kvar), 2 (cuf), 3 (cmatrix); Reactor SpecType 1 (kvar),
-! 2 (R+jX), 3 (RMatrix/XMatrix), 4 (Z1 symmetrical components); a Fault; a
-! GICTransformer. build -> solve -> makeposseq -> solve. The cap/reactor
-! overrides (Capacitor.pas:1... / Reactor.pas:1052) divide kvar by 3, average
-! the C/R/X matrices to their positive-sequence value, and set Phases:=1.
+! 2 (R+jX), 3 (RMatrix/XMatrix), 4 (Z1 symmetrical components); a Fault.
+! build -> solve -> makeposseq -> solve. The cap/reactor overrides
+! (Capacitor.pas:1... / Reactor.pas:1052) divide kvar by 3, average the C/R/X
+! matrices to their positive-sequence value, and set Phases:=1.
+! The GICTransformer that used to sit on b1 moved to makeposseq_gic.dss at
+! GOLDEN_REBASE G1.4a (2026-09-04, coordinator decisions D12/D14): the pinned
+! dss_capi 0.14.5 oracle is nondeterministic across processes on any deck that
+! instantiates one, so that coverage gates on r4133 and this deck keeps its
+! full-precision capi gating.
 clear
 set defaultbasefrequency=60
 new circuit.psq_shunt basekv=12.47 pu=1.0 phases=3 bus1=src
@@ -35,9 +40,6 @@ new reactor.rx_z1 bus1=b2 phases=3 Z1=[1, 12] Z0=[3, 20]
 
 ! Fault to ground
 new fault.flt bus1=b2 phases=3 r=10
-
-! GICTransformer (DC/GIC resistance model, GSU type)
-new gictransformer.gt busH=b1 busNH=b1.4.4.4 R1=0.1 type=GSU
 
 new load.ld1 bus1=b1 phases=3 kv=12.47 kw=400 pf=0.95 model=1
 new load.ld2 bus1=b2 phases=3 kv=12.47 kw=300 pf=0.95 model=1

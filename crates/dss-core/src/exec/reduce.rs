@@ -1068,34 +1068,55 @@ impl Dss {
         )
     }
 
-    /// Pascal head-bus kV base for the lateral removal (ReduceAlgs.pas:487):
-    /// the defined `kVBase`, else `Solution.UpdateVBus` +
-    /// `Cabs(Bus.VBus[1])·0.001`. `UpdateVBus` (`Solution.pas:2377`) copies the
-    /// live `NodeV[RefNo[j]]` into `VBus` — but only for buses whose `VBus` is
-    /// allocated (fault study / `AllocateBusQuantities`); with `VBus = NIL`
-    /// (any plain power-flow run) the upstream `VBus[1]` read is a NIL
-    /// dereference — nondeterministic upstream UB, NOT reproduced (CLAUDE.md
-    /// rule). The port reads the live `NodeV[RefNo[1]]` directly, which is
-    /// exactly the refreshed-`VBus` value in the well-defined case.
+    /// Pascal head-bus kV base for the lateral removal: the defined `kVBase`,
+    /// else `Solution.UpdateVBus` + `Cabs(Bus.VBus[1])·0.001` (r4133
+    /// `Meters/ReduceAlgs.pas:500-508`, capi `src/Meters/ReduceAlgs.pas:487-494`;
+    /// the branch-removal twin is r4133 `:405-411` / capi `:407-414`, reached
+    /// through [`Self::red_load_base_kv`]).
+    ///
+    /// `UpdateVBus` (r4133 `Common/Solution.pas:4070-4083`, capi
+    /// `Common/Solution.pas:2377-2390`) snapshots `NodeV[RefNo[j]]` into `VBus`
+    /// for **every** bus whose `VBus` is assigned, and `ReProcessBusDefs`
+    /// allocates `VBus` for every bus (r4133 `Common/Circuit.pas:2407-2408`,
+    /// == [`crate::circuit::Circuit::reprocess_bus_defs`]) — so on any solved
+    /// circuit the upstream `VBus[1]` read is well defined and the call's
+    /// *side effect* is part of the behavior: it refreshes the array that
+    /// `Bus.Voc` publishes. GOLDEN_REBASE G1.5 ports that side effect (it had
+    /// been skipped over a since-disproven NIL-dereference reading of the
+    /// upstream code); the kV base itself is unchanged, because `VBus[1]`
+    /// *after* the refresh is exactly `NodeV[RefNo[1]]`.
     fn red_head_base_kv(&mut self, from_bus: Option<usize>) -> f64 {
-        let Some(ckt) = self.circuit.as_ref() else {
+        let Some(ckt) = self.circuit.as_mut() else {
             return 1.0;
         };
-        let Some(bus) = from_bus.and_then(|b| ckt.buses.get(b)) else {
+        let Some(bus_idx) = from_bus else {
             return 1.0;
         };
-        if bus.kv_base > 0.0 {
-            return bus.kv_base;
+        match ckt.buses.get(bus_idx) {
+            None => return 1.0,
+            Some(bus) if bus.kv_base > 0.0 => return bus.kv_base,
+            Some(_) => {}
         }
-        bus.ref_no
-            .first()
-            .and_then(|&n| ckt.solution.node_v.get(n))
-            .map(|v| v.norm() * 0.001)
-            .unwrap_or(1.0)
+        crate::solution::ymatrix::update_vbus(ckt);
+        let bus = &ckt.buses[bus_idx];
+        let vbus1 = match bus.vbus.first() {
+            Some(v) => Some(*v),
+            // `VBus` never allocated (no `ReProcessBusDefs` yet): upstream
+            // dereferences NIL here, which the port never reproduces — read
+            // the value `UpdateVBus` would have written instead.
+            None => bus
+                .ref_no
+                .first()
+                .and_then(|&n| ckt.solution.node_v.get(n))
+                .copied(),
+        };
+        vbus1.map(|v| v.norm() * 0.001).unwrap_or(1.0)
     }
 
-    /// Pascal load kV base for the branch removal (ReduceAlgs.pas:407): the
-    /// from-bus `kVBase` (or the `|VBus[1]|·0.001` fallback), ×√3 when NPhases>1.
+    /// Pascal load kV base for the branch removal (r4133
+    /// `Meters/ReduceAlgs.pas:405-412`, capi `:407-416`): the from-bus
+    /// `kVBase` (or the `UpdateVBus` + `|VBus[1]|·0.001` fallback of
+    /// [`Self::red_head_base_kv`]), ×√3 when NPhases>1.
     fn red_load_base_kv(&mut self, from_bus: Option<usize>, nphases: usize) -> f64 {
         let base = self.red_head_base_kv(from_bus);
         if nphases > 1 {
@@ -1127,8 +1148,16 @@ impl Dss {
     // ------------------------------------------------------------------
 
     /// Pascal `ReprocessBusDefs` + `Solution.SystemYChanged := TRUE`, the tail of
-    /// the reprocessing strategies. Drains pending signals, rebuilds bus defs and
+    /// the reprocessing strategies (`ReduceAlgs.pas`, capi `:292-294` /
+    /// `:444-446` / `:535-537`). Drains pending signals, rebuilds bus defs and
     /// meter zones, forces a Y rebuild.
+    ///
+    /// The meter-zone rebuild is `ReprocessBusDefs`' own tail
+    /// (`Circuit.pas:2411` / capi `:2246`), so it is not called again here —
+    /// exactly as capi's own comment at `ReduceAlgs.pas:293` says
+    /// (`// DSS.ActiveCircuit.DoResetMeterZones(); … -- already called in
+    /// ReprocessBusDefs`). r4133 `ReduceAlgs.pas:282` keeps the redundant second
+    /// call; `DoResetMeterZones` is idempotent, so the two revisions agree.
     fn red_reprocess(&mut self) {
         self.red_drain_all();
         let Dss {
@@ -1144,7 +1173,6 @@ impl Dss {
         };
         let mut store = ClassStore { classes };
         ckt.reprocess_bus_defs(&mut store, aux_parser, vars, errors);
-        crate::solution::meters::do_reset_meter_zones(ckt, &mut store);
         ckt.solution.system_y_changed = true;
     }
 

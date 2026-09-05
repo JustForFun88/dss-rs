@@ -504,61 +504,71 @@ fn the_oracle_pair_list_is_the_window_scan_of_the_candidates() {
 /// (`FindAllChildBranches`, `:566`). Fixed in
 /// [`crate::circuit::ckt_tree::is_shunt_element`] and its three call sites.
 ///
-/// `modes/makeposseq/makeposseq_shunt.dss` puts `GICTransformer.gt` on `b1`
-/// (`busH=b1`, `busNH=b1.4.4.4`) between `Line.feed` and `Line.l2`. Measured on
-/// BOTH oracles — the r4133 DLL one-shot (`tmp/g17/probe_gic_r4133.py`: identical
-/// after the deck, after an extra solve and at the fresh tree) and the capi probe
-/// (`tmp/g17/capi_topo_merged.json`) — `NumLoops` **1** and `AllLoopedPairs`
-/// `[Line.feed, GICTransformer.gt, GICTransformer.gt, Line.l2]`. The port
-/// answered **0** loops before the fix.
+/// The fixture moved at the merge into `update`: G1.4a's coordinator decision
+/// **D14** split the single `new gictransformer.gt` line out of
+/// `modes/makeposseq/makeposseq_shunt.dss` into the `r4133`-gated
+/// `modes/makeposseq/makeposseq_gic.dss` (capi 0.14.5 is nondeterministic on any
+/// deck that instantiates one — D12), so the pin now drives BOTH halves of the
+/// class switch, one deck each.
 ///
-/// The same deck is the two-sided guard: three Capacitors and four Reactors also
-/// sit with both terminals on one bus and must stay shunt objects — if the class
-/// switch were dropped they would each contribute candidates and the count would
-/// not be 2.
+/// (a) `makeposseq_gic.dss` puts `GICTransformer.gt` on `b1` (`busH=b1`,
+/// `busNH=b1.4.4.4`) behind `Line.feed`, so the transformer's own second terminal
+/// returns to a bus the tree has already checked. Measured on the r4133 DLL
+/// one-shot (`tmp/merge/lane-s-G17/probe_gic.py`, identical after the deck and
+/// after an extra solve): `NumLoops` **1**, `AllLoopedPairs`
+/// `[Line.feed, GICTransformer.gt]`. Routed as a shunt the element leaves the
+/// tree entirely and the deck has **0** loops — which is what the port answered
+/// before the fix.
+///
+/// (b) `makeposseq_shunt.dss` is now the converse guard, and a sharper one than
+/// it was: with the GICTransformer gone its three Capacitors and four Reactors
+/// are the only elements with both terminals on one bus, and r4133 measures
+/// `NumLoops` **0** with no pairs at all (same probe; the deck is capi-gated in
+/// the live corpus gate, which compares the same six rows every run). If the
+/// class switch were dropped in the other direction every one of those seven
+/// would become a branch and contribute candidates.
 #[test]
 fn a_gictransformer_is_a_tree_branch_and_can_close_a_loop() {
-    let mut dss = compile_corpus_deck("modes/makeposseq/makeposseq_shunt.dss");
+    // (a) The branch half — the deck that carries the GICTransformer.
+    let mut dss = compile_corpus_deck("modes/makeposseq/makeposseq_gic.dss");
     let t = dss.topology_view();
-    assert_eq!(t.num_loops, 1, "both oracles measure NumLoops = 1");
+    assert_eq!(t.num_loops, 1, "r4133 measures NumLoops = 1");
     assert_eq!(
         lower_pairs(&t.looped_pairs),
-        lower_pairs(&pairs(&[
-            ("Line.feed", "GICTransformer.gt"),
-            ("GICTransformer.gt", "Line.l2"),
-        ])),
-        "both oracles measure exactly these two pairs"
+        lower_pairs(&pairs(&[("Line.feed", "GICTransformer.gt")])),
+        "r4133 measures exactly this pair"
     );
-    // Exactly two candidates: the shunt Capacitors / Reactors on the same buses
-    // contribute none (`IsShuntElement` is class-switched, not flag-driven).
+    // Both orientations reach the candidate list; the window scan folds them onto
+    // the single pair the oracle reports, with no straddling window to lose.
     assert_eq!(t.looped_pair_candidates.len(), 2);
     assert_eq!(
-        window_dedup(&t.looped_pair_candidates).len(),
-        2,
-        "no straddling window here — the port and both oracles agree exactly"
+        lower_pairs(&window_dedup(&t.looped_pair_candidates)),
+        lower_pairs(&pairs(&[("Line.feed", "GICTransformer.gt")])),
+        "the port and r4133 agree exactly"
     );
-    // Two-sided guard: the deck really carries seven shunt Capacitor / Reactor
-    // elements, several of them with both terminals on one bus, and not one of
-    // them may become a branch (that is the class switch, not the flag).
-    let names: Vec<String> = dss
+    assert_eq!(t.num_isolated_branches, 0);
+    assert_eq!(t.num_isolated_loads, 0);
+
+    // (b) The converse half — the shunt deck the GICTransformer was split out of
+    // still carries seven shunt Capacitor / Reactor elements, several of them with
+    // both terminals on one bus, and not one of them may become a branch (that is
+    // the class switch, not the flag).
+    let mut dss = compile_corpus_deck("modes/makeposseq/makeposseq_shunt.dss");
+    let t = dss.topology_view();
+    assert_eq!(t.num_loops, 0, "both oracles measure NumLoops = 0");
+    assert!(t.looped_pairs.is_empty(), "{:?}", t.looped_pairs);
+    assert!(
+        t.looped_pair_candidates.is_empty(),
+        "a shunt Capacitor/Reactor must never be a tree branch: {:?}",
+        t.looped_pair_candidates
+    );
+    let shunts = dss
         .snapshot_elements()
         .iter()
         .map(|e| e.name.to_ascii_lowercase())
-        .collect();
-    let shunts = names
-        .iter()
         .filter(|n| n.starts_with("capacitor.") || n.starts_with("reactor."))
         .count();
     assert_eq!(shunts, 7, "3 capacitors + 4 reactors are in this deck");
-    for (a, b) in &t.looped_pair_candidates {
-        for n in [a, b] {
-            let n = n.to_ascii_lowercase();
-            assert!(
-                !n.starts_with("capacitor.") && !n.starts_with("reactor."),
-                "a shunt Capacitor/Reactor must never be a tree branch: {n}"
-            );
-        }
-    }
     assert_eq!(t.num_isolated_branches, 0);
     assert_eq!(t.num_isolated_loads, 0);
 }

@@ -719,3 +719,117 @@ fn merge_repoints_the_controls_of_the_surviving_line() {
     // still solves, which it did not while the stale name was in place.
     assert!(dss.circuit().expect("circuit").is_solved);
 }
+
+/// GOLDEN_REBASE G1.5 (R3) — the `kVBase <= 0` fallback of the lateral removal
+/// is `Solution.UpdateVBus` + `Cabs(VBus[1])·0.001` (r4133
+/// `Meters/ReduceAlgs.pas:500-508`, capi `:487-494`), and `UpdateVBus` (r4133
+/// `Common/Solution.pas:4070-4083`) snapshots the live node voltages into
+/// **every** bus's `VBus` — the array `Bus.Voc` publishes — not just the head
+/// bus's. The port used to skip the call and read `NodeV` directly, which gets
+/// the same kV base but loses the side effect.
+///
+/// The two numbers: before the reduce every `VBus` entry is still the
+/// allocation zero (a plain `Solve` snapshots nothing — `PreserveNodeVoltages`
+/// is off), while `NodeV` is at feeder scale; after the reduce every surviving
+/// bus/node carries exactly its own solved `NodeV[RefNo[j]]`.
+#[test]
+fn a_reduce_without_a_kv_base_refreshes_every_buses_vbus() {
+    let mut dss = Dss::new();
+    for cmd in [
+        "new circuit.rvb basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new line.lfeed bus1=src bus2=b1 length=1 r1=0.3 x1=0.6",
+        "new line.lat bus1=b1.1 bus2=b2.1 phases=1 length=1 r1=0.3 x1=0.6",
+        "new load.latload bus1=b2.1 phases=1 conn=wye model=1 kv=7.2 kw=50 pf=0.95",
+        "new load.mainload bus1=b1 phases=3 conn=wye model=1 kv=12.47 kw=300 pf=0.95",
+        "new energymeter.em element=line.lfeed terminal=1",
+        // NO `calcvoltagebases`: every bus keeps `kVBase = 0`, so the lateral
+        // removal must take Pascal's `else` branch.
+        "solve",
+    ] {
+        dss.command(cmd);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Before: `VBus` all zero, `NodeV` at feeder scale, `kVBase` all zero.
+    let solved: Vec<(String, Vec<i32>, Vec<num_complex::Complex64>)> = {
+        let ckt = dss.circuit().expect("circuit");
+        assert!(ckt.is_solved, "the deck must solve");
+        assert!(
+            ckt.buses.iter().all(|b| b.kv_base == 0.0),
+            "the deck must leave every kVBase at 0 (no CalcVoltageBases)"
+        );
+        let vbus_max = ckt
+            .buses
+            .iter()
+            .flat_map(|b| b.vbus.iter())
+            .fold(0.0f64, |m, v| m.max(v.norm()));
+        assert_eq!(vbus_max, 0.0, "Solve must not snapshot VBus");
+        ckt.buses
+            .iter()
+            .map(|b| {
+                (
+                    b.name.clone(),
+                    b.nodes.clone(),
+                    b.ref_no
+                        .iter()
+                        .map(|&n| ckt.solution.node_v[n])
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect()
+    };
+    let node_v_max = solved
+        .iter()
+        .flat_map(|(_, _, v)| v.iter())
+        .fold(0.0f64, |m, v| m.max(v.norm()));
+    assert!(node_v_max > 6.0e3, "unsolved-looking deck: {node_v_max}");
+
+    dss.command("set reduceoption=laterals");
+    dss.command("reduce");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // The lateral was removed and its load lumped onto the head bus at the kV
+    // base the fallback computed — i.e. the `else` branch really ran.
+    assert_eq!(prop_of(&mut dss, "Load.latload.bus1"), "b1.1");
+    let head_v = solved
+        .iter()
+        .find(|(n, _, _)| n == "b1")
+        .map(|(_, _, v)| v[0].norm())
+        .expect("head bus");
+    let lumped_kv: f64 = prop_of(&mut dss, "Load.latload.kv").parse().expect("kv");
+    assert!(
+        (lumped_kv - head_v * 0.001).abs() < 5.0e-6,
+        "lumped kV {lumped_kv} vs |V_b1.1|*0.001 {}",
+        head_v * 0.001
+    );
+
+    // After: every surviving bus/node carries its own solved node voltage.
+    let ckt = dss.circuit().expect("circuit");
+    let mut checked = 0usize;
+    for bus in &ckt.buses {
+        let Some((_, nodes, v)) = solved
+            .iter()
+            .find(|(n, _, _)| n.eq_ignore_ascii_case(&bus.name))
+        else {
+            continue;
+        };
+        for (j, num) in bus.nodes.iter().enumerate() {
+            let Some(k) = nodes.iter().position(|x| x == num) else {
+                continue;
+            };
+            assert_eq!(
+                bus.vbus[j], v[k],
+                "bus {} node {num}: VBus was not refreshed",
+                bus.name
+            );
+            assert!(
+                v[k].norm() > 1.0,
+                "bus {} node {num}: expected a live voltage",
+                bus.name
+            );
+            checked += 1;
+        }
+    }
+    // `src` and `b1`, three nodes each; `b2` is gone with the lateral.
+    assert_eq!(checked, 6, "bus nodes carried through the reduce");
+}

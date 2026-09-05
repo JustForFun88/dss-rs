@@ -688,6 +688,33 @@ mod tests {
             p_kw: p_kw.to_vec(),
             p_kvar: p_kvar.to_vec(),
             loss_w: vec![loss.0, loss.1],
+            // The G1.3a derived channels are not part of this fixture: it
+            // exercises `compare_aggregates`, which never reads them. Spelled
+            // out rather than defaulted so a future channel has to be
+            // considered here too.
+            enabled: None,
+            cma_mag: Vec::new(),
+            cma_ang: Vec::new(),
+            res_mag: Vec::new(),
+            res_ang: Vec::new(),
+            vma_mag: Vec::new(),
+            vma_ang: Vec::new(),
+            // The G1.3d(i) element-extras channels are likewise unread by
+            // `compare_aggregates`; spelled out for the same reason.
+            n_terms: None,
+            n_conds: None,
+            n_phases: None,
+            energy_meter: None,
+            node_order: Vec::new(),
+            // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+            // `compare_aggregates` too; spelled out for the same reason.
+            pl_kw: Vec::new(),
+            pl_kvar: Vec::new(),
+            num_controls: None,
+            ocp_dev_index: None,
+            ocp_dev_type: None,
+            has_volt_control: None,
+            has_switch_control: None,
         }
     }
 
@@ -722,6 +749,33 @@ mod tests {
                 p_kw: s.powers.iter().map(|c| c.re).collect(),
                 p_kvar: s.powers.iter().map(|c| c.im).collect(),
                 loss_w: vec![s.loss_w.0, s.loss_w.1],
+                // The G1.3a derived channels are not part of this fixture: it
+                // exercises `compare_aggregates`, which never reads them. Spelled
+                // out rather than defaulted so a future channel has to be
+                // considered here too.
+                enabled: None,
+                cma_mag: Vec::new(),
+                cma_ang: Vec::new(),
+                res_mag: Vec::new(),
+                res_ang: Vec::new(),
+                vma_mag: Vec::new(),
+                vma_ang: Vec::new(),
+                // The G1.3d(i) element-extras channels are likewise unread by
+                // `compare_aggregates`; spelled out for the same reason.
+                n_terms: None,
+                n_conds: None,
+                n_phases: None,
+                energy_meter: None,
+                node_order: Vec::new(),
+                // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+                // `compare_aggregates` too; spelled out for the same reason.
+                pl_kw: Vec::new(),
+                pl_kvar: Vec::new(),
+                num_controls: None,
+                ocp_dev_index: None,
+                ocp_dev_type: None,
+                has_volt_control: None,
+                has_switch_control: None,
             })
             .collect();
         let losses = dss.losses();
@@ -783,6 +837,33 @@ mod tests {
             p_kw: src.p_kw.clone(),
             p_kvar: src.p_kvar.clone(),
             loss_w: src.loss_w.clone(),
+            // The G1.3a derived channels are not part of this fixture: it
+            // exercises `compare_aggregates`, which never reads them. Spelled
+            // out rather than defaulted so a future channel has to be
+            // considered here too.
+            enabled: None,
+            cma_mag: Vec::new(),
+            cma_ang: Vec::new(),
+            res_mag: Vec::new(),
+            res_ang: Vec::new(),
+            vma_mag: Vec::new(),
+            vma_ang: Vec::new(),
+            // The G1.3d(i) element-extras channels are likewise unread by
+            // `compare_aggregates`; spelled out for the same reason.
+            n_terms: None,
+            n_conds: None,
+            n_phases: None,
+            energy_meter: None,
+            node_order: Vec::new(),
+            // The G1.3d(ii) `PhaseLosses` + control-derived channels are unread by
+            // `compare_aggregates` too; spelled out for the same reason.
+            pl_kw: Vec::new(),
+            pl_kvar: Vec::new(),
+            num_controls: None,
+            ocp_dev_index: None,
+            ocp_dev_type: None,
+            has_volt_control: None,
+            has_switch_control: None,
         };
         for v in &mut rewritten.i_re {
             *v += 1.0;

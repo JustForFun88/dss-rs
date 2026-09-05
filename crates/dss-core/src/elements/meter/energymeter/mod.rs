@@ -430,6 +430,39 @@ impl EnergyMeter {
     pub fn section_count(&self) -> i32 {
         self.section_count
     }
+    /// `SAIFI` — the reliability index written back by
+    /// `CalcReliabilityIndices` (`0.0` until a `RelCalc` completes). Read by
+    /// the oracles as capi `Meters_Get_SAIFI`
+    /// (`CAPI/CAPI_Meters.pas:617-626`) / r4133 `MetersF(0)`
+    /// (`Version8/Source/DDLL/DMeters.pas:329-339`); the same number the
+    /// EnergyMeter property channel reports as `SAIFI` ([`prop::SAIFI`]).
+    pub fn saifi(&self) -> f64 {
+        self.saifi
+    }
+    /// `SAIFIkW` — capi `Meters_Get_SAIFIKW` (`CAPI_Meters.pas:652-661`) /
+    /// r4133 `MetersF(1)` (`DMeters.pas:340-350`).
+    pub fn saifi_kw(&self) -> f64 {
+        self.saifi_kw
+    }
+    /// `SAIDI` — capi `Meters_Get_SAIDI` (`CAPI_Meters.pas:696-705`) /
+    /// r4133 `MetersF(2)` (`DMeters.pas:351-359`).
+    pub fn saidi(&self) -> f64 {
+        self.saidi
+    }
+    /// `CAIDI` = `SAIDI / SAIFI`. **No API mode exists on either oracle
+    /// channel** — neither `CAPI_Meters.pas` nor r4133's `MetersF` carries a
+    /// `CAIDI` entry — so it reaches the live gate only as EnergyMeter
+    /// property `CAIDI` ([`prop::CAIDI`]), which `compare_all_properties`
+    /// already compares on both channels.
+    pub fn caidi(&self) -> f64 {
+        self.caidi
+    }
+    /// `CustInterrupts` — capi `Meters_Get_CustInterrupts`
+    /// (`CAPI_Meters.pas:707-716`) / r4133 `MetersF(3)`
+    /// (`DMeters.pas:360-368`).
+    pub fn cust_interrupts(&self) -> f64 {
+        self.cust_interrupts
+    }
     /// Pascal `FeederSections` (indices `0..=section_count`; empty until a
     /// `RelCalc` completes).
     pub fn feeder_sections(&self) -> &[FeederSection] {

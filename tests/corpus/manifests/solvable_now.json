@@ -96,7 +96,9 @@
    "path": "Test/AutoTrans/Auto3bus.dss",
    "engines": "both",
    "kind": "large_near_ideal_source",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_derived": true,
+   "note": "G1.3a OPT-IN (2026-09-04): `compare_derived` on despite `kind=large_near_ideal_source` — the `large*` cost guard in `scheduler::force_derived` does not apply to an 8-element deck, and this is one of exactly two decks the fastdss reference harness SKIPS `Residuals` on (`.inputs/DSS-Python` `origin/fastdss` `tests/compare_outputs.py:56-59`, \"Close enough for the system\"). Gating it is where our comparator is strictly stronger than the harness we are reaching parity with. Pinned in Rust as `scheduler::DERIVED_MANIFEST_OPT_INS`."
   },
   {
    "path": "Test/AutoTrans/AutoAuto.dss",
@@ -108,7 +110,9 @@
    "path": "Test/AutoTrans/AutoHLT.dss",
    "engines": "both",
    "kind": "large_near_ideal_source",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_derived": true,
+   "note": "G1.3a OPT-IN (2026-09-04): `compare_derived` on despite `kind=large_near_ideal_source` — the `large*` cost guard in `scheduler::force_derived` does not apply to a 5-element deck, and this is one of exactly two decks the fastdss reference harness SKIPS `Residuals` on (`.inputs/DSS-Python` `origin/fastdss` `tests/compare_outputs.py:56-59`, \"Close enough for the system\"). Gating it is where our comparator is strictly stronger than the harness we are reaching parity with. Pinned in Rust as `scheduler::DERIVED_MANIFEST_OPT_INS`."
   },
   {
    "path": "Test/BundleDemo.DSS",
@@ -607,7 +611,8 @@
   },
   {
    "path": "Version8/Distrib/Examples/GICExample/GIC_Example.dss",
-   "engines": "both",
+   "engines": "r4133",
+   "note": "GOLDEN_REBASE G1.4a (2026-09-04, coordinator decision D12): gated on r4133 ONLY. The pinned dss_capi 0.14.5 oracle disagrees with ITSELF across fresh processes on any deck that instantiates a GICTransformer -- 7 bad runs of 60 with the element, 0 of 40 without; the whole no-load solve lands elsewhere and Bus.kVBase is punted to 0. EPRI r4133 is deterministic (80/80 bit-identical over 20 one-shot runs x 4 decks), and an oracle channel that disagrees with itself cannot gate (CLAUDE.md: prefer the r4133 channel). See DIVERGENCES.md D12/D14.",
    "kind": "feeder",
    "n_steps": 1
   },
