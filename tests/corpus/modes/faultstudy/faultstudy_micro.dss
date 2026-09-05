@@ -3,7 +3,9 @@
 ! `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc` surface only exists after a fault
 ! study, and the corpus's other four fault-study decks (IEEE123Master-SC, ieee34Mod2_SC_Case_II,
 ! ieee37_SC_Currents, NEVTestCase/Run_NEV) are all `kind: feeder`. This deck carries the same
-! surface at `kind: micro`, where the band is 1e-9 abs + 1e-6 rel instead of 1e-8 + 1e-6.
+! surface at `kind: micro`, where the per-entry band tightens from the `feeder` tier's
+! 1e-6 abs + 1e-8 rel to 1e-6 abs + 1e-9 rel (and `Isc` from 1e-5 + 1e-7 to 1e-6 + 1e-9)
+! — `harness::tol_for` ("micro") vs ("feeder").
 !
 ! Two properties earn its size — neither is reachable on the vendored decks:
 !  * `line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3` gives `b2` the INSERTION node order [2,1,3], which is

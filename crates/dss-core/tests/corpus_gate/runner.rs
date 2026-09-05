@@ -685,7 +685,14 @@ pub(crate) fn compare_capture(
                     cp.buses.len(),
                     &ctx,
                 );
-                harness::compare_bus_short_circuit(
+                // The count of buses whose full `n x n` matrices were really
+                // value-compared feeds the gate epilogue's fail-on-stale
+                // (`harness::assert_sc_study_compare_ran`, G1.5 audit
+                // settlement T1): `port_ran == oracle_ran` is also true when
+                // NEITHER ran, so without this the whole non-trivial half of
+                // the surface could go quiet and stay green. This is the one
+                // call site that records — the harness' own drives must not.
+                let full = harness::compare_bus_short_circuit(
                     dss,
                     &cp.buses,
                     tol,
@@ -693,6 +700,7 @@ pub(crate) fn compare_capture(
                     v_excluded,
                     &ctx,
                 );
+                harness::record_sc_study_compare(full);
             }
         }
 

@@ -1768,7 +1768,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1211-1217` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1214-1220` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1797,7 +1797,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1211-1217` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1214-1220` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1861,7 +1861,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1211-1217`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1214-1220`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1907,7 +1907,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1211-1217` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1214-1220` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2100,7 +2100,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1211-1217`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1214-1220`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -5114,6 +5114,98 @@ fn interleave(v: &[Complex64]) -> Vec<f64> {
     v.iter().flat_map(|c| [c.re, c.im]).collect()
 }
 
+// ---------------------------------------------------------------------------
+// The GLOBAL guard: was a real short-circuit matrix ever compared? (G1.5 audit
+// settlement, T1)
+// ---------------------------------------------------------------------------
+
+/// Gating short-circuit compares that carried a real matrix — one per
+/// [`compare_bus_short_circuit`] call, made from the corpus gate's runner, that
+/// value-compared at least one full `n x n` `ZscMatrix`/`YscMatrix`.
+static SC_STUDY_WALKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// …and the buses those walks compared a full matrix on.
+static SC_STUDY_BUSES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// What a full-population gate run must reach: `(walks, buses)` over which a
+/// real `n x n` matrix was value-compared, re-derived on every run and asserted
+/// EXACTLY, so the number fails on a drop **and** on a growth.
+///
+/// It is the surface's fail-on-stale, and it exists because the comparator's
+/// own content gate is `assert_eq!(port_ran, oracle_ran)`, which is satisfied
+/// when BOTH sides report "no study": drop `set mode=faultstudy` from a deck
+/// and every remaining assertion — sentinel lengths, `Zsc1`/`Zsc0` = 0, a zero
+/// `Isc` — still passes, leaving the whole non-trivial half of the surface
+/// green over nothing. `population.lock.json` cannot see it either: it
+/// fingerprints the manifest FLAG (`zsc=1`) and `MODES_REQUIRED` the deck
+/// PATH, never that the deck still solves a study.
+///
+/// Five cases carry a matrix, all `engines: "both"`, all one gated step —
+/// `IEEE123Master-SC`, `ieee34Mod2_SC_Case_II`, `ieee37_SC_Currents`,
+/// `NEVTestCase/Run_NEV` and `modes:faultstudy/faultstudy_micro` — so the walk
+/// count is ten, and the bus figure is those five decks' bus counts summed over
+/// both channels. Both halves are MEASURED, not predicted: the live run prints
+/// them on its own `corpus_gate short-circuit:` line, and moving either one is
+/// a deliberate act (2026-09-05, lane `lane-b`, 525/525 green in both lanes).
+const SC_STUDY_POPULATION: (usize, usize) = (10, 646);
+
+/// Record one gating short-circuit compare that carried `buses` full matrices.
+///
+/// The single caller is `corpus_gate/runner.rs`'s `compare_zsc` block — the
+/// gate's one entry point into this comparator. The harness' own unit drives
+/// call [`compare_bus_short_circuit`] directly and are deliberately NOT
+/// counted: they run in the same process as the gate in this test binary, and
+/// counting them would make the exact population above unstable (and green
+/// under exactly the corpus regression it exists to catch).
+pub fn record_sc_study_compare(buses: usize) {
+    if buses > 0 {
+        SC_STUDY_WALKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        SC_STUDY_BUSES.fetch_add(buses, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// What [`record_sc_study_compare`] has counted in this process, as
+/// `(walks, buses)`.
+pub fn sc_study_counters() -> (usize, usize) {
+    (
+        SC_STUDY_WALKS.load(std::sync::atomic::Ordering::Relaxed),
+        SC_STUDY_BUSES.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+/// **Fail-on-stale for the short-circuit surface's non-trivial half**, called
+/// once from the corpus gate's epilogue. Silent under `DSS_GATE_ONLY` — a
+/// filtered run legitimately holds none of the five decks — exactly like its
+/// neighbours [`props_norm::assert_r4133_props_compare_ran`] and
+/// [`lane::assert_reround_cells_are_live`].
+///
+/// [`props_norm::assert_r4133_props_compare_ran`]: props_norm::assert_r4133_props_compare_ran
+/// [`lane::assert_reround_cells_are_live`]: lane::assert_reround_cells_are_live
+pub fn assert_sc_study_compare_ran() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let (walks, buses) = sc_study_counters();
+    check_sc_study_compare_ran(walks, buses);
+}
+
+/// The rule itself, over **injected** counters — split off for the reason
+/// `props_norm::check_r4133_props_compare_ran`'s twin is: the shipped statics
+/// cannot be rewound from a test once the gate has moved them, so both
+/// directions are pinned offline in `corpus_gate.rs`.
+pub fn check_sc_study_compare_ran(walks: usize, buses: usize) {
+    assert_eq!(
+        (walks, buses),
+        SC_STUDY_POPULATION,
+        "the short-circuit surface compared {walks} walk(s) / {buses} bus(es) with a real \
+         n x n matrix, not {SC_STUDY_POPULATION:?}. Fewer means a deck stopped solving its \
+         fault study (or lost a step, or a channel) — which every other assertion in \
+         `compare_bus_short_circuit` survives, because `port_ran == oracle_ran` is also \
+         true when NEITHER ran; more means a new study-running case arrived. Re-derive \
+         the pair from the run's own `corpus_gate short-circuit:` line and move it \
+         deliberately (GOLDEN_REBASE G1.5 audit settlement, T1)."
+    );
+}
+
 /// Compare every bus's captured short-circuit surface against the engine's, in
 /// `BusList` order (GOLDEN_REBASE_PLAN.md G1.5).
 ///
@@ -5152,6 +5244,11 @@ fn interleave(v: &[Complex64]) -> Vec<f64> {
 /// every length. Every suppressed case is printed next to the ledger entry that
 /// caused it by `corpus_gate.rs`' run report
 /// (`LedgerRuntime::bus_array_suppressions`).
+///
+/// Returns the number of buses whose full `n x n` `ZscMatrix`/`YscMatrix` this
+/// call actually value-compared — the surface's non-trivial half, which the
+/// gate's runner feeds to [`record_sc_study_compare`] so the epilogue can fail
+/// on a corpus that quietly stopped running fault studies (T1).
 pub fn compare_bus_short_circuit(
     dss: &Dss,
     exp: &[BusCap],
@@ -5159,7 +5256,8 @@ pub fn compare_bus_short_circuit(
     channel: PropsChannel,
     voltages_excluded: bool,
     ctx: &str,
-) {
+) -> usize {
+    let mut full_matrices = 0usize;
     let views = dss.all_bus_short_circuit();
     assert_eq!(
         views.len(),
@@ -5382,6 +5480,7 @@ pub fn compare_bus_short_circuit(
                 tol.y_abs,
                 &format!("{ctx}: bus {} YscMatrix", e.name),
             );
+            full_matrices += 1;
         }
 
         for (arr, what) in [(&e.isc, "Isc"), (&e.voc, "Voc")] {
@@ -5425,6 +5524,7 @@ pub fn compare_bus_short_circuit(
             &format!("{ctx}: bus {} Voc", e.name),
         );
     }
+    full_matrices
 }
 
 #[cfg(test)]
@@ -5840,11 +5940,34 @@ mod bus_short_circuit_tests {
     ///
     /// `AssertUnwindSafe` because the closure only borrows a `&Dss` the caller
     /// built and never mutates it: nothing observable survives the unwind.
-    fn reds(f: impl FnOnce()) -> String {
-        let hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
+    ///
+    /// The silencing hook is scoped to THIS thread and delegates every other
+    /// panic to the previous hook — `lane::passes`' pattern, for its reason:
+    /// this module compiles into the corpus-gate binary, where libtest runs
+    /// these drives in parallel with `corpus_gate_all_cases_match_engines`, and
+    /// a blanket no-op hook can eat that test's failure report.
+    ///
+    /// Generic in the closure's result so the drives can call
+    /// [`compare_bus_short_circuit`] directly: it returns the count of full
+    /// matrices it compared (for the gate's fail-on-stale, G1.5 audit
+    /// settlement T1) and every drive here discards it — these are negative
+    /// drives, and the harness' own calls are deliberately not counted.
+    fn reds<T: std::fmt::Debug>(f: impl FnOnce() -> T) -> String {
+        thread_local! {
+            static SILENCE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        static HOOK: std::sync::Once = std::sync::Once::new();
+        HOOK.call_once(|| {
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                if !SILENCE.with(std::cell::Cell::get) {
+                    prev(info);
+                }
+            }));
+        });
+        SILENCE.with(|s| s.set(true));
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        std::panic::set_hook(hook);
+        SILENCE.with(|s| s.set(false));
         let msg = out.expect_err("the comparator accepted a corrupted capture");
         msg.downcast_ref::<String>()
             .cloned()
@@ -5969,86 +6092,101 @@ mod bus_short_circuit_tests {
 
     /// Non-vacuity, `ZscMatrix`: 1e-3 ohm on one entry is ~1000x the `micro`
     /// band (`v_abs + v_rel*|Z|` ~ 1e-6 at |Z| ~ 1 ohm).
+    ///
+    /// Driven on **both** channels (G1.5 audit settlement, T6). The value path
+    /// is channel-independent by construction — `channel` selects only
+    /// [`sc_sentinel_len`] — but "by construction" is the claim, so each of
+    /// these drives states it as a measurement instead.
     #[test]
-    #[should_panic(expected = "ZscMatrix: entry")]
     fn a_corrupted_zsc_entry_reds_the_short_circuit_comparator() {
         let mut dss = sc_deck();
         fault_study(&mut dss);
-        let mut exp = capture(&dss, PropsChannel::CapiV0145);
-        bus_mut(&mut exp, "b2").zsc[6] += 1e-3;
-        compare_bus_short_circuit(
-            &dss,
-            &exp,
-            &tol_for("micro"),
-            PropsChannel::CapiV0145,
-            false,
-            "zsc drive",
-        );
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let mut exp = capture(&dss, ch);
+            bus_mut(&mut exp, "b2").zsc[6] += 1e-3;
+            let msg = reds(|| {
+                compare_bus_short_circuit(&dss, &exp, &tol_for("micro"), ch, false, "zsc drive")
+            });
+            assert!(
+                msg.contains("ZscMatrix: entry"),
+                "{}: expected a ZscMatrix entry failure, got {msg:?}",
+                ch.tag()
+            );
+        }
     }
 
     /// Non-vacuity, `YscMatrix` — its own band (`y_*`), its own array: the
-    /// `Zsc` drive above cannot reach it.
+    /// `Zsc` drive above cannot reach it. Both channels (T6).
     #[test]
-    #[should_panic(expected = "YscMatrix: entry")]
     fn a_corrupted_ysc_entry_reds_the_short_circuit_comparator() {
         let mut dss = sc_deck();
         fault_study(&mut dss);
-        let mut exp = capture(&dss, PropsChannel::R4133);
-        bus_mut(&mut exp, "b2").ysc[2] += 1e-3;
-        compare_bus_short_circuit(
-            &dss,
-            &exp,
-            &tol_for("micro"),
-            PropsChannel::R4133,
-            false,
-            "ysc drive",
-        );
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let mut exp = capture(&dss, ch);
+            bus_mut(&mut exp, "b2").ysc[2] += 1e-3;
+            let msg = reds(|| {
+                compare_bus_short_circuit(&dss, &exp, &tol_for("micro"), ch, false, "ysc drive")
+            });
+            assert!(
+                msg.contains("YscMatrix: entry"),
+                "{}: expected a YscMatrix entry failure, got {msg:?}",
+                ch.tag()
+            );
+        }
     }
 
     /// Non-vacuity, `Zsc1` — the averaged sequence impedances are their own
-    /// arm and are compared on every bus, study or not.
+    /// arm and are compared on every bus, study or not. Both channels (T6).
     #[test]
-    #[should_panic(expected = "Zsc1: entry")]
     fn a_corrupted_zsc1_reds_the_short_circuit_comparator() {
         let mut dss = sc_deck();
         fault_study(&mut dss);
-        let mut exp = capture(&dss, PropsChannel::CapiV0145);
-        bus_mut(&mut exp, "b2").zsc1[0] += 1e-3;
-        compare_bus_short_circuit(
-            &dss,
-            &exp,
-            &tol_for("micro"),
-            PropsChannel::CapiV0145,
-            false,
-            "zsc1 drive",
-        );
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let mut exp = capture(&dss, ch);
+            bus_mut(&mut exp, "b2").zsc1[0] += 1e-3;
+            let msg = reds(|| {
+                compare_bus_short_circuit(&dss, &exp, &tol_for("micro"), ch, false, "zsc1 drive")
+            });
+            assert!(
+                msg.contains("Zsc1: entry"),
+                "{}: expected a Zsc1 entry failure, got {msg:?}",
+                ch.tag()
+            );
+        }
     }
 
     /// Non-vacuity, `Isc` (the `i_*` band) and `Voc` (the `v_*` one) — the two
     /// arrays `voltages_excluded` suppresses, proven live when it does not.
+    /// Both channels (T6).
     #[test]
     fn a_corrupted_isc_or_voc_reds_the_short_circuit_comparator() {
         let mut dss = sc_deck();
         fault_study(&mut dss);
-        for (what, mutate) in [("Isc: entry", 0usize), ("Voc: entry", 1usize)] {
-            let mut exp = capture(&dss, PropsChannel::CapiV0145);
-            let b2 = bus_mut(&mut exp, "b2");
-            if mutate == 0 {
-                b2.isc[0] += 1.0;
-            } else {
-                b2.voc[0] += 1.0;
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            for (what, mutate) in [("Isc: entry", 0usize), ("Voc: entry", 1usize)] {
+                let mut exp = capture(&dss, ch);
+                let b2 = bus_mut(&mut exp, "b2");
+                if mutate == 0 {
+                    b2.isc[0] += 1.0;
+                } else {
+                    b2.voc[0] += 1.0;
+                }
+                let msg = reds(|| {
+                    compare_bus_short_circuit(
+                        &dss,
+                        &exp,
+                        &tol_for("micro"),
+                        ch,
+                        false,
+                        "isc/voc drive",
+                    )
+                });
+                assert!(
+                    msg.contains(what),
+                    "{}: expected {what} in {msg:?}",
+                    ch.tag()
+                );
             }
-            let msg = reds(|| {
-                compare_bus_short_circuit(
-                    &dss,
-                    &exp,
-                    &tol_for("micro"),
-                    PropsChannel::CapiV0145,
-                    false,
-                    "isc/voc drive",
-                )
-            });
-            assert!(msg.contains(what), "expected {what} in {msg:?}");
         }
     }
 
@@ -6058,7 +6196,6 @@ mod bus_short_circuit_tests {
     /// the odd `Zsc` diagonal sits at internal index 1 and the permutation
     /// moves it to index 0 — a ~0.6 ohm move, six orders past any band.
     #[test]
-    #[should_panic(expected = "ZscMatrix: entry")]
     fn ascending_node_order_instead_of_the_internal_index_reds_the_short_circuit_comparator() {
         let mut dss = sc_deck();
         fault_study(&mut dss);
@@ -6070,70 +6207,91 @@ mod bus_short_circuit_tests {
         perm.sort_by_key(|&i| b2v.nodes[i]);
         assert_eq!(perm, vec![1, 0, 2]);
 
-        let mut exp = capture(&dss, PropsChannel::CapiV0145);
-        let b2 = bus_mut(&mut exp, "b2");
-        let old = b2.zsc.clone();
-        for (a, &pa) in perm.iter().enumerate() {
-            for (b, &pb) in perm.iter().enumerate() {
-                b2.zsc[2 * (3 * a + b)] = old[2 * (3 * pa + pb)];
-                b2.zsc[2 * (3 * a + b) + 1] = old[2 * (3 * pa + pb) + 1];
+        // Both channels (T6): the permutation is a wiring defect either
+        // transport could ship, and neither sentinel rule can absorb it.
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let mut exp = capture(&dss, ch);
+            let b2 = bus_mut(&mut exp, "b2");
+            let old = b2.zsc.clone();
+            for (a, &pa) in perm.iter().enumerate() {
+                for (b, &pb) in perm.iter().enumerate() {
+                    b2.zsc[2 * (3 * a + b)] = old[2 * (3 * pa + pb)];
+                    b2.zsc[2 * (3 * a + b) + 1] = old[2 * (3 * pa + pb) + 1];
+                }
             }
+            assert_ne!(b2.zsc, old, "the permutation must actually move something");
+            let msg = reds(|| {
+                compare_bus_short_circuit(
+                    &dss,
+                    &exp,
+                    &tol_for("micro"),
+                    ch,
+                    false,
+                    "ordering drive",
+                )
+            });
+            assert!(
+                msg.contains("ZscMatrix: entry"),
+                "{}: expected a ZscMatrix entry failure, got {msg:?}",
+                ch.tag()
+            );
         }
-        assert_ne!(b2.zsc, old, "the permutation must actually move something");
-        compare_bus_short_circuit(
-            &dss,
-            &exp,
-            &tol_for("micro"),
-            PropsChannel::CapiV0145,
-            false,
-            "ordering drive",
-        );
     }
 
     /// The **discrete study bit** is compared before any number, in both
     /// directions: an oracle that ran the study while the port did not (and
-    /// the reverse) reds on the bit, not on an ohm.
+    /// the reverse) reds on the bit, not on an ohm. Both channels (T6) — the
+    /// bit is derived from the payload SHAPE, which is the one thing that IS
+    /// channel-dependent here, so each channel's sentinel must carry it.
     #[test]
     fn the_study_bit_is_compared_before_any_number() {
         let mut dss = sc_deck();
-        let no_study = capture(&dss, PropsChannel::CapiV0145);
+        let no_study: Vec<(PropsChannel, Vec<BusCap>)> =
+            [PropsChannel::CapiV0145, PropsChannel::R4133]
+                .into_iter()
+                .map(|ch| (ch, capture(&dss, ch)))
+                .collect();
         fault_study(&mut dss);
-        let with_study = capture(&dss, PropsChannel::CapiV0145);
 
-        // port ran, oracle did not
-        let msg = reds(|| {
-            compare_bus_short_circuit(
-                &dss,
-                &no_study,
-                &tol_for("micro"),
-                PropsChannel::CapiV0145,
-                false,
-                "study bit drive",
-            )
-        });
-        assert!(
-            msg.contains("the fault-study state differs")
-                && msg.contains("the port has a short-circuit matrix"),
-            "{msg:?}"
-        );
+        for (ch, exp) in &no_study {
+            // port ran, oracle did not
+            let msg = reds(|| {
+                compare_bus_short_circuit(
+                    &dss,
+                    exp,
+                    &tol_for("micro"),
+                    *ch,
+                    false,
+                    "study bit drive",
+                )
+            });
+            assert!(
+                msg.contains("the fault-study state differs")
+                    && msg.contains("the port has a short-circuit matrix"),
+                "{}: {msg:?}",
+                ch.tag()
+            );
 
-        // …and the reverse, on a circuit that never ran one.
-        let fresh = sc_deck();
-        let msg = reds(|| {
-            compare_bus_short_circuit(
-                &fresh,
-                &with_study,
-                &tol_for("micro"),
-                PropsChannel::CapiV0145,
-                false,
-                "study bit drive",
-            )
-        });
-        assert!(
-            msg.contains("the fault-study state differs")
-                && msg.contains("the port has NO short-circuit matrix"),
-            "{msg:?}"
-        );
+            // …and the reverse, on a circuit that never ran one.
+            let fresh = sc_deck();
+            let with_study = capture(&dss, *ch);
+            let msg = reds(|| {
+                compare_bus_short_circuit(
+                    &fresh,
+                    &with_study,
+                    &tol_for("micro"),
+                    *ch,
+                    false,
+                    "study bit drive",
+                )
+            });
+            assert!(
+                msg.contains("the fault-study state differs")
+                    && msg.contains("the port has NO short-circuit matrix"),
+                "{}: {msg:?}",
+                ch.tag()
+            );
+        }
     }
 
     /// The r4133 1-node collision (`2*n*n == 2 == `[`R4133_SC_SENTINEL_LEN`]) is

@@ -153,6 +153,13 @@ fn corpus_gate_all_cases_match_engines() {
             let first = f.reason.lines().next().unwrap_or("<no message>");
             msg.push_str(&format!("  {}\n      {first}\n", f.label));
         }
+        // Printed BEFORE the panic on purpose (G1.5 audit settlement): a panic
+        // message travels through the process-global panic hook, which another
+        // test in this binary may have replaced while it drives an expected
+        // failure (`harness`' own `reds`). The run report is the only diagnosis
+        // a red gate leaves behind — a 2026-09-05 red printed the summary and
+        // the ledger table but no case list at all — so it goes out on its own.
+        eprintln!("{msg}");
         panic!("{msg}");
     }
     // Fail-on-stale (§1.3 runtime rule / §5 R3): every applicable ledger entry
@@ -221,6 +228,21 @@ fn corpus_gate_all_cases_match_engines() {
     // the seam ran (RP4.1 audit settlement) — because a narrowed row can only
     // ever count a divergent cell.
     harness::props_norm::assert_echo_rows_are_live();
+    // And for G1.5's short-circuit surface, for the first reason again: its
+    // content gate is `assert_eq!(port_ran, oracle_ran)`, which is equally
+    // satisfied when NEITHER side ran a study, so a deck that quietly stopped
+    // solving one would leave the whole non-trivial half of the surface
+    // comparing sentinel lengths, `Zsc1`/`Zsc0` = 0 and a zero `Isc` — green
+    // over nothing, and invisible to `population.lock.json` (which fingerprints
+    // the manifest flag) and to `MODES_REQUIRED` (which fingerprints the deck
+    // path). The pair is re-derived on every run and asserted exactly, so it
+    // fails on a drop AND on a growth (G1.5 audit settlement, T1).
+    let (sc_walks, sc_buses) = harness::sc_study_counters();
+    eprintln!(
+        "corpus_gate short-circuit: {sc_walks} walk(s) carrying a real matrix, \
+         {sc_buses} bus(es) compared full"
+    );
+    harness::assert_sc_study_compare_ran();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
@@ -810,6 +832,166 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
         "cross-transport bus capture on asymmetric:line/line_asym.dss: \
          worst |capi − r4133| = {worst:.3e} V"
     );
+}
+
+/// D2's cross-transport validation for the **short-circuit** arms (G1.5 audit
+/// settlement, T4). Its bus-surface sibling above sets `compare_bus` only, so
+/// `build_run_request` ships `"zsc": false` and no `Zsc`/`Ysc`/`Isc`/`Voc`
+/// value was ever compared transport-to-transport in CI. What this catches
+/// that a Rust-vs-oracle red catches more slowly: a wiring defect on ONE
+/// transport — the node arrays permuted into ascending order, a swapped
+/// `Zsc1`/`Zsc0` slot, `Isc` read where `Voc` belongs, an unscaled arm — shows
+/// up here as "the two oracles disagree", which localizes it to the bridge
+/// instead of the engine. A TRANSPOSED matrix read stays invisible to it, as
+/// it is to every value comparison in the suite (`Zsc`/`Ysc` are symmetric to
+/// ≤ 4.66e-10 corpus-wide — the measurement that made spec §4's transpose demo
+/// vacuous); that convention is pinned offline instead, by
+/// `exec::view::bus_sc_tests::flatten_row_major_walks_i_outer_on_an_asymmetric_matrix`.
+///
+/// The deck is `modes:faultstudy/faultstudy_micro.dss` — `engines: "both"`,
+/// `kind: micro`, one step, no ledger entry, and the only corpus case that runs
+/// a fault study at the tightest tier. Its `b2` is reached as `bus2=b2.2.1.3`
+/// with a 1-phase 5 Ω reactor on node `1`, so the `Zsc` diagonal is
+/// position-dependent (`[1][1]` ≈ 1.665+1.662j Ω against ≈ 1.063+2.874j at
+/// `[0][0]`/`[2][2]`): a permuted or transposed read on either transport moves
+/// ~0.6 Ω, six orders past the band.
+///
+/// The band is **twice** the tier's, by the same triangle argument the bus
+/// sibling uses: each transport is within one band of the port (the gate
+/// asserts precisely that, on both channels), so `|A − B| ≤ 2·band`.
+#[test]
+fn the_two_transports_agree_on_the_short_circuit_capture_of_a_gated_both_case() {
+    let mut case = load_family("modes")
+        .into_iter()
+        .find(|c| c.path == "faultstudy/faultstudy_micro.dss")
+        .expect("modes:faultstudy/faultstudy_micro.dss must be in the family manifest");
+    assert_eq!(
+        case.engines, "both",
+        "the cross-transport check needs a case both channels gate"
+    );
+    assert!(
+        case.compare_zsc,
+        "the manifest row must carry compare_zsc: this is the surface's witness deck"
+    );
+    case.compare_bus = true; // scheduler::force_bus; `compare_zsc` implies it
+    let abs = family_file("modes", &case.path);
+    let req = engines::build_run_request(&abs, &case);
+
+    let capi = Oracle::for_spec(None).run_case(&abs, &case);
+    let resp = engines::EpriOneShot::new().call(&req);
+    assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
+    let epri: engines::CaseResult =
+        serde_json::from_value(resp.result.expect("r4133 ok response missing result"))
+            .expect("r4133 malformed CaseResult");
+
+    let tol = harness::tol_for(&case.kind);
+    assert_eq!(
+        capi.checkpoints.len(),
+        epri.checkpoints.len(),
+        "the transports disagree on the step count"
+    );
+    let mut worst: f64 = 0.0;
+    let mut full_matrices = 0usize;
+    for (s, (a, b)) in capi.checkpoints.iter().zip(&epri.checkpoints).enumerate() {
+        assert_eq!(
+            a.buses.len(),
+            b.buses.len(),
+            "step {s}: bus count differs between the transports"
+        );
+        for (ba, bb) in a.buses.iter().zip(&b.buses) {
+            assert!(
+                ba.name.eq_ignore_ascii_case(&bb.name),
+                "step {s}: bus name differs: {} vs {}",
+                ba.name,
+                bb.name
+            );
+            let n = ba.nodes.len();
+            // Every arm, per entry, at twice its own tier band — the same
+            // assignment the comparator makes (`v_*` for the impedances and
+            // `Voc`, `y_*` for `Ysc`, `i_*` for `Isc`).
+            for (what, xa, xb, rel, ab) in [
+                ("Zsc1", &ba.zsc1, &bb.zsc1, tol.v_rel, tol.v_abs),
+                ("Zsc0", &ba.zsc0, &bb.zsc0, tol.v_rel, tol.v_abs),
+                ("ZscMatrix", &ba.zsc, &bb.zsc, tol.v_rel, tol.v_abs),
+                ("YscMatrix", &ba.ysc, &bb.ysc, tol.y_rel, tol.y_abs),
+                ("Isc", &ba.isc, &bb.isc, tol.i_rel, tol.i_abs),
+                ("Voc", &ba.voc, &bb.voc, tol.v_rel, tol.v_abs),
+            ] {
+                assert_eq!(
+                    xa.len(),
+                    xb.len(),
+                    "step {s}: bus {} {what} length differs between the transports",
+                    ba.name
+                );
+                if what == "ZscMatrix" && n >= 2 && xa.len() == 2 * n * n {
+                    full_matrices += 1;
+                }
+                for (k, (x, y)) in xa.iter().zip(xb).enumerate() {
+                    let allowed = 2.0 * (ab + rel * y.abs());
+                    assert!(
+                        (x - y).abs() <= allowed,
+                        "step {s}: bus {} {what} entry {k}: capi {x} vs r4133 {y} \
+                         (|diff| = {:.3e} > allowed {allowed:.3e})",
+                        ba.name,
+                        (x - y).abs()
+                    );
+                    worst = worst.max((x - y).abs());
+                }
+            }
+        }
+    }
+    // Non-vacuity, twice over: this deck runs a study, so the comparison above
+    // must have walked real `n x n` matrices and not two agreeing sentinels…
+    assert!(
+        full_matrices >= 3,
+        "the cross-transport short-circuit check compared {full_matrices} full \
+         matrices; the deck must publish one per bus after its fault study"
+    );
+    // …and the content it walked is position-dependent on BOTH transports, so
+    // a node-order defect on either one is a ~0.6 Ω move against a ~1e-6 band.
+    for (tag, cp) in [
+        ("capi", &capi.checkpoints[0]),
+        ("r4133", &epri.checkpoints[0]),
+    ] {
+        let b2 = cp
+            .buses
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case("b2"))
+            .expect("the deck's b2");
+        assert_eq!(b2.zsc.len(), 2 * 3 * 3, "{tag}: b2 must carry a 3x3 Zsc");
+        let d = |k: usize| Complex64::new(b2.zsc[2 * (3 * k + k)], b2.zsc[2 * (3 * k + k) + 1]);
+        assert!(
+            (d(1) - d(0)).norm() > 0.5,
+            "{tag}: b2's Zsc diagonal must stay position-dependent (the 1-phase \
+             reactor on node 1), got {} vs {}",
+            d(1),
+            d(0)
+        );
+    }
+    eprintln!(
+        "cross-transport short-circuit capture on modes:faultstudy/faultstudy_micro.dss: \
+         {full_matrices} full matrices, worst |capi − r4133| = {worst:.3e}"
+    );
+}
+
+/// The short-circuit surface's fail-on-stale, pinned in **both** directions
+/// offline (G1.5 audit settlement, T1). The shipped statics cannot be rewound
+/// once a gate run has moved them, so the rule is exercised through its
+/// injected-counter form — the same split
+/// `harness::props_norm::check_r4133_props_compare_ran` uses.
+#[test]
+fn the_short_circuit_study_guard_is_silent_on_the_measured_population() {
+    harness::check_sc_study_compare_ran(10, 646);
+}
+
+/// …and fires when the corpus stops running fault studies — the regression
+/// the comparator's own `assert_eq!(port_ran, oracle_ran)` cannot see, because
+/// it is equally satisfied when NEITHER side ran one.
+#[test]
+#[should_panic(expected = "not (10, 646)")]
+fn the_short_circuit_study_guard_fires_when_a_deck_stops_solving_a_study() {
+    // one deck's two channels gone: 10 - 2 walks, 646 - 2*3 buses
+    harness::check_sc_study_compare_ran(8, 640);
 }
 
 /// The text of the function whose signature line contains `head`, up to the
