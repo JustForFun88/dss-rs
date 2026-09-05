@@ -338,16 +338,16 @@ the site comment carries each row's measured cost.
   Consistent with an overlapping-guard snapshot race (cf. the unit test
   `corpus_guard_overlapping_guards_still_sweep`) plus the case-insensitive
   collision `corpus_gate/runner.rs:42-55` (the same file appears both
-  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Seventeen sightings**
+  `Auto3bus_HL_current.txt` and `auto3bus_hl_current.txt`). **Twenty sightings**
   2026-08-29 … 2026-09-05 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3,
-  §RP5.1 ×1, G1.9 ×2, G1.7 ×3 — 26 / 3 / 11 files), varying in size (1 … 36 files)
-  and in case between successive runs of the *same* tree — measured at
+  §RP5.1 ×1, G1.9 ×2, G1.7 ×3 — 26 / 3 / 11 files, G1.8 ×3 — 6 / 18 / 10 files),
+  varying in size (1 … 36 files) and in case between successive runs of the *same* tree — measured at
   §RP3.13 — and once accompanied by an unreproducible `corpus_gate` `137 passed; 1
   failed` whose most likely cause is this race. Every set was removed before the commit
   — by exact name, `git clean -fd` scoped to the deck tree (§RP3.10), or by hand
   (§RP5.1) — and both lanes were green with the files present, no tracked corpus or
   golden byte ever moving, so the leak costs hygiene only. Per-run detail is in the
-  per-WP records (`r4133-props-rp3.md`, `-rp4.md`, `golden-rebase.md`). Seventeen sightings
+  per-WP records (`r4133-props-rp3.md`, `-rp4.md`, `golden-rebase.md`). Twenty sightings
   make it a pattern: whoever picks it up should start with `DSS_GATE_JOBS=1` per G2.2d.
 
 **Carried-forward and residual-floor items — the rows still open.** Full text,
