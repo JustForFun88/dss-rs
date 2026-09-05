@@ -7173,16 +7173,77 @@ pub fn compare_bus_seq_and_vll(
                 e.name
             );
         }
-        let walk = upstream_vll(&nodes, channel == PropsChannel::CapiV0145);
         let ll_base = bus_ll_base_factor(e.kv_base);
-        match &walk {
-            UpstreamVll::FirstLoopHang => panic!(
-                "{ctx}: bus {} (nodes {nodes:?}): the {} oracle answered a VLL read whose \
-                 FIRST `repeat` (`DBus.pas:575-578` == `CAPI_Alt.pas:2507-2510`) cannot \
-                 terminate — the capture and the Pascal disagree",
-                e.name,
-                channel.tag()
+        // Port-internal identities for the L-L arm — the twin of the sequence
+        // arm's above, and like it UNCONDITIONAL: the port's own S-VLL shape,
+        // its `V_a − V_b` values and the `puVLL = VLL / BaseFactor_LL` identity
+        // are asserted on EVERY bus, on both channels, whatever the oracle's
+        // walk did and whether or not values are excluded. They used to run only
+        // inside the `direct` branch below, which left `exec::view`'s accessor
+        // unwitnessed by the live gate on exactly the buses where the two walks
+        // disagree — the buses this sub-step exists for (G1.4c audit-code AC-1).
+        match port_vll_pairs(&nodes) {
+            None => assert!(
+                v.vll.is_none() && v.pu_vll.is_none(),
+                "{ctx}: bus {} (nodes {nodes:?}): the port published a line-to-line \
+                 voltage for a bus with fewer than two phase nodes",
+                e.name
             ),
+            Some(port_pairs) => {
+                let port_vll = v.vll.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "{ctx}: bus {} (nodes {nodes:?}): S-VLL pairs {port_pairs:?} but \
+                         the port published no VLL",
+                        e.name
+                    )
+                });
+                assert_eq!(
+                    *port_vll,
+                    expected_vll(&nodes, &v.node_v, &port_pairs),
+                    "{ctx}: bus {}: the port's VLL is not `V_a − V_b` over its own node_v \
+                     for the pairs {port_pairs:?}",
+                    e.name
+                );
+                let port_pu = v.pu_vll.as_ref().unwrap_or_else(|| {
+                    panic!("{ctx}: bus {}: the port has VLL but no puVLL", e.name)
+                });
+                let scaled: Vec<Complex64> = port_vll.iter().map(|c| *c / ll_base).collect();
+                assert_eq!(
+                    *port_pu, scaled,
+                    "{ctx}: bus {}: the port's puVLL is not its VLL over the line-to-line \
+                     base {ll_base}",
+                    e.name
+                );
+            }
+        }
+        let walk = upstream_vll(&nodes, channel == PropsChannel::CapiV0145);
+        match &walk {
+            UpstreamVll::FirstLoopHang => {
+                // Defensive — no corpus bus reaches it. `dss-epri`'s independent
+                // predicate refuses this shape too (`modes::VLL_HANG_FIRST_LOOP`),
+                // so a *refusal* here is the two transcriptions AGREEING and only
+                // an ANSWER contradicts the Pascal (G1.4c audit-code AC-4). On the
+                // capi channel `vll_declined` is already asserted false above —
+                // that transport carries no guard at all.
+                assert!(
+                    e.vll_declined,
+                    "{ctx}: bus {} (nodes {nodes:?}): the {} oracle ANSWERED a VLL read \
+                     whose FIRST `repeat` (`DBus.pas:575-578` == \
+                     `CAPI_Alt.pas:2507-2510`) cannot terminate — the capture and the \
+                     Pascal disagree",
+                    e.name,
+                    channel.tag()
+                );
+                assert!(
+                    e.vll.is_empty() && e.pu_vll.is_empty(),
+                    "{ctx}: bus {}: the bridge refused the VLL read but published {} / {} \
+                     doubles",
+                    e.name,
+                    e.vll.len(),
+                    e.pu_vll.len()
+                );
+                counts.r4133_vll_hang += 1;
+            }
             UpstreamVll::SecondLoopHang => {
                 assert_eq!(
                     channel,
@@ -7224,12 +7285,7 @@ pub fn compare_bus_seq_and_vll(
                         channel.tag()
                     );
                 }
-                assert!(
-                    v.vll.is_none() && v.pu_vll.is_none(),
-                    "{ctx}: bus {} ({n} nodes): the port published a line-to-line voltage \
-                     for a bus with fewer than two phase nodes",
-                    e.name
-                );
+                // (the port's own `None` here is asserted unconditionally above)
             }
             UpstreamVll::CapiDefault => {
                 assert_eq!(
@@ -7267,44 +7323,13 @@ pub fn compare_bus_seq_and_vll(
                         pairs.len()
                     );
                 }
-                let port_pairs = port_vll_pairs(&nodes);
-                let direct = port_pairs.as_deref() == Some(pairs.as_slice());
-                if direct {
-                    // The port is the witness. Pin its accessor against this
-                    // harness' independent replay first, so "compared against
-                    // the port" cannot mean "compared against a rewritten
-                    // pairing".
-                    let port_vll = v.vll.as_ref().unwrap_or_else(|| {
-                        panic!(
-                            "{ctx}: bus {}: S-VLL pairs {pairs:?} but the port published no VLL",
-                            e.name
-                        )
-                    });
-                    assert_eq!(
-                        *port_vll,
-                        expected_vll(&nodes, &v.node_v, pairs),
-                        "{ctx}: bus {}: the port's VLL is not `V_a - V_b` over its own \
-                         node_v for the pairs {pairs:?}",
-                        e.name
-                    );
-                    let port_pu = v.pu_vll.as_ref().unwrap_or_else(|| {
-                        panic!("{ctx}: bus {}: the port has VLL but no puVLL", e.name)
-                    });
-                    assert_eq!(
-                        port_pu.len(),
-                        pairs.len(),
-                        "{ctx}: bus {} port puVLL has {} entries, not {}",
-                        e.name,
-                        port_pu.len(),
-                        pairs.len()
-                    );
-                    let scaled: Vec<Complex64> = port_vll.iter().map(|c| *c / ll_base).collect();
-                    assert_eq!(
-                        *port_pu, scaled,
-                        "{ctx}: bus {}: the port's puVLL is not its VLL over the line-to-line                          base {ll_base}",
-                        e.name
-                    );
-                } else {
+                // Where upstream's pairing IS the port's, the unconditional
+                // block above has already pinned the port's accessor against
+                // this harness' independent replay, so "compared against the
+                // port" cannot mean "compared against a rewritten pairing";
+                // where it is not, the class is counted and the mechanism
+                // asserted below.
+                if port_vll_pairs(&nodes).as_deref() != Some(pairs.as_slice()) {
                     counts.vll_upstream_pairing_declines += 1;
                 }
                 if !voltages_excluded {
@@ -7347,9 +7372,14 @@ pub fn compare_bus_seq_and_vll(
         }
         counts.buses += 1;
     }
-    // The blindness guard: the classification above is total — every bus left
-    // this loop through exactly one named class, on THIS channel. A bus the
-    // comparator could not name would have panicked, never fallen through.
+    // The blindness guard. What actually makes the classification total is that
+    // every branch of the `match walk` either asserts or panics, plus the two
+    // unconditional port-internal blocks above, which run before it on every
+    // bus: a bus the comparator could not name cannot reach this line. The
+    // count below is the tripwire for the ONE way that could change — a future
+    // `continue` in the loop — and, as its own audit finding records
+    // (G1.4c audit-code AC-7 / audit-tests), it cannot fail at HEAD, so it is
+    // never a second, independent guarantee.
     assert_eq!(
         counts.buses,
         exp.len(),
@@ -7674,7 +7704,15 @@ mod bus_seq_vll_comparator_tests {
                 } else {
                     let vph = [1i32, 2, 3].map(|k| bus_node_voltage(&nodes, &v.node_v, k));
                     let mut v012 = [Complex64::ZERO; 3];
-                    SymComp::precise().phase_to_sym(&vph, &mut v012);
+                    // Each channel's OWN transform: r4133 builds `Ap2s` from the
+                    // truncated `sin 60` and inverts it numerically, so the
+                    // positive control below runs through the `C_012` term
+                    // rather than assuming it (G1.4c audit-tests, `capture`).
+                    let sc = match channel {
+                        PropsChannel::CapiV0145 => SymComp::precise(),
+                        PropsChannel::R4133 => SymComp::official(),
+                    };
+                    sc.phase_to_sym(&vph, &mut v012);
                     (v012.iter().map(|c| c.norm()).collect(), interleave(&v012))
                 };
                 let (vll, pu_vll, vll_declined) =
@@ -7837,6 +7875,46 @@ mod bus_seq_vll_comparator_tests {
             )
         });
         assert!(msg.contains("VLL[2] (nodes 3-4) differs"), "{msg:?}");
+
+        // The same two arms on the OTHER channel, and the `puVLL` arm on both:
+        // before the G1.4c audit settlement no drive anywhere reddened a `puVLL`
+        // cell, and every `VLL` red on record was `[CapiV0145]`, so the §1.1(f)
+        // acceptance was argued rather than measured there (audit-tests).
+        // `puVLL` is the same difference over `BaseFactor_LL`, so the drive is
+        // the same step divided by that base.
+        for channel in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let mut exp = capture(&dss, channel);
+            bus_mut(&mut exp, "b4").vll[4] += step;
+            let msg =
+                reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, channel, false, "vll drive"));
+            assert!(msg.contains("VLL[2] (nodes 3-4) differs"), "{msg:?}");
+
+            let mut exp = capture(&dss, channel);
+            let b = bus_mut(&mut exp, "b4");
+            let ll_base = bus_ll_base_factor(b.kv_base);
+            assert!(ll_base > 1.0, "b4 must carry a line-to-line base");
+            b.pu_vll[4] += step / ll_base;
+            let msg =
+                reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, channel, false, "pu drive"));
+            assert!(msg.contains("puVLL[2] (nodes 3-4) differs"), "{msg:?}");
+        }
+
+        // The GROUND-SUBSTITUTION mechanism assertion: on `bx` = [1,2,10] the
+        // port declines and the expectation is the replay over the fabricated
+        // 0 V phase, so this is the only drive that reds THAT arm.
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        bus_mut(&mut exp, "bx").cplx_seq_voltages[2] += step;
+        let msg = reds(|| {
+            compare_bus_seq_and_vll(
+                &dss,
+                &exp,
+                &tol,
+                PropsChannel::CapiV0145,
+                false,
+                "ground substitution drive",
+            )
+        });
+        assert!(msg.contains("CplxSeqVoltages[1] differs"), "{msg:?}");
     }
 
     /// Non-vacuity, the S-VLL pairing: swapping the walk's wrap order — the

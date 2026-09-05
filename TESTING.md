@@ -458,7 +458,7 @@ bus, in the engine's own `BusList` order: `Nodes`, `kVBase`, `puVoltages`,
 `VMagAngle`, `puVmagAngle`, plus the checkpoint-level `AllBusVmagPu` — the four
 quantities capi 0.14.5 and r4133 compute by byte-identical algorithms. The port
 side is `Dss::all_bus_voltages` / `Dss::all_bus_vmag_pu`
-(`crates/dss-core/src/exec/view.rs:1009`, `:1036`), the comparators are
+(`crates/dss-core/src/exec/view.rs:1023`, `:1050`), the comparators are
 `harness::compare_bus` (`crates/dss-core/tests/harness/mod.rs:4845`) and
 `compare_all_bus_vmag_pu` (`mod.rs:4963`). Four things about it are worth
 knowing:
@@ -523,8 +523,8 @@ force rule and no `population.lock.json` move — the lock fingerprints the
 where the port, capi 0.14.5 and r4133 give **three different answers on the same
 bus**, so the whole surface is about *which* answer is right and how the other
 two are witnessed. Port side: `Dss::all_bus_voltages`
-(`crates/dss-core/src/exec/view.rs:1009`), whose `bus_seq_voltages`
-(`view.rs:306`) and `bus_line_to_line` (`view.rs:332`) publish the port's own
+(`crates/dss-core/src/exec/view.rs:1023`), whose `bus_seq_voltages`
+(`view.rs:317`) and `bus_line_to_line` (`view.rs:346`) publish the port's own
 semantics; comparator: `harness::compare_bus_seq_and_vll`
 (`crates/dss-core/tests/harness/mod.rs:6971`). Five things about it:
 
@@ -536,17 +536,23 @@ semantics; comparator: `harness::compare_bus_seq_and_vll`
   oracles substitute **ground** for a missing phase (`Find(i) = 0` ⇒ `NodeV[0]`,
   `DBus.pas:305` == `CAPI_Alt.pas:2190`). And `VLL` / `puVLL` are the
   line-to-line voltages over the phase nodes the bus actually carries (three
-  pairs, the single pair, or nothing below two phases) — which is what r4133's
-  own report path computes (`Common/ShowResults.pas:193-194` wraps the phase
-  number *before* `FindIdx`), while both API arms poll `FindIdx(jj)` **before**
-  the `jj > 3` ⇒ `jj := 1` wrap (`DBus.pas:575-584` == `CAPI_Alt.pas:2500-2523`)
-  and so pair phase 3 with node 4, or a node with itself. Behaviour contradicts
-  stated intent inside one engine, so per **D4** / **D8** / **D21** the port
-  computes the correct value and reproduces neither walk. The *report* paths keep
-  upstream's conventions (`report/export/seq_voltages.rs`,
-  `report/show/voltages.rs`) because they are byte goldens — the split between
-  the report convention and the API semantics is deliberate, and both halves are
-  pinned.
+  pairs, the single pair, or nothing below two phases) — which is the pairing
+  ORDER r4133's own report path uses (`Common/ShowResults.pas:193-194` wraps the
+  phase number *before* `FindIdx`; that path is not S-VLL on every bus, since it
+  still pairs against ground where a phase is missing), while both API arms poll
+  `FindIdx(jj)` **before** the `jj > 3` ⇒ `jj := 1` wrap (`DBus.pas:575-584` ==
+  `CAPI_Alt.pas:2500-2523`) and so pair phase 3 with node 4, or a node with
+  itself. Behaviour contradicts stated intent inside one engine, so per **D4** /
+  **D8** / **D21** the port computes the correct value and reproduces neither
+  walk. The *report* paths still carry upstream's conventions: `report/show/`'s
+  wrap-first pairing is r4133's own correct order, while the ground substitution
+  in `report/export/seq_voltages.rs` is the defect and is **not** protected by
+  golden bytes (measured 2026-09-05: every voltage-report golden runs
+  `IEEE13Nodeckt.dss`, whose buses carry only node numbers 1-3, so the
+  substituting branch is never reached there). What an export should print
+  instead is a report-semantics decision outside WP-G1, tracked as
+  `ORPHANED_GAPS.md` §1.19; the split between the report convention and the API
+  semantics is deliberate and both halves are pinned.
 * **Nothing is excluded; the oracle's own walk is asserted.** Rather than
   suppressing the divergent buses, the comparator classifies each bus **from its
   node set alone** and closes the divergent classes with a *positive* assertion
@@ -586,7 +592,7 @@ semantics; comparator: `harness::compare_bus_seq_and_vll`
 the *same* per-bus walk `compare_bus` already runs — the flag implies
 `compare_bus` and the implication is asserted three times (the request builder
 and a loud refusal in each transport), never written as an `||`. The port side
-is `Dss::all_bus_short_circuit` (`crates/dss-core/src/exec/view.rs:989`), the
+is `Dss::all_bus_short_circuit` (`crates/dss-core/src/exec/view.rs:1003`), the
 comparator is `harness::compare_bus_short_circuit`
 (`crates/dss-core/tests/harness/mod.rs:5155`). Five things about it are worth
 knowing:
@@ -1523,7 +1529,9 @@ a comment nobody reads
 **State-dependent refusals — served, but not on every bus (G1.4c, 2026-09-05).**
 `Bus` V:11 (`VLL`) and V:12 (`puVLL`) are `Served` modes that answer correctly on
 almost every bus and **never return** on a few: their partner scan is an
-unbounded `repeat` whose probe set is `{jj₀ + 1} ∪ {1, 2, 3, 4}`
+unbounded `repeat` whose probe set is `{jj₀} ∪ {1, 2, 3, 4}`, `jj₀` being the
+node the first loop found **plus one** (the spelling `modes::bus_vll_would_hang`
+uses)
 (`DDLL/DBus.pas:580-584`, `:636-640`), so a bus carrying none of those node
 numbers spins forever — measured on `NEVTestCase` `double-1`
 (`Bus.Nodes = [10, 31, 32, 33, 41, 42, 43]`): **TIMEOUT at 20.011 s**, against
