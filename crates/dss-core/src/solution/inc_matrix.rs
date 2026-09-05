@@ -90,7 +90,11 @@ impl FlatBuilder<'_> {
     /// Pascal's inner bus-search loop: linear-search `BusList` for `bus`
     /// (1-based cursor `ActiveIncCell[1]`), then `Upload2IncMatrix`. On a miss the
     /// cursor ends at `NumBuses + 1` (col `NumBuses - 1`) — reproduced verbatim
-    /// (every element bus exists by construction).
+    /// (r4133 `Common/Solution.pas:3030-3035`). The miss is reachable: a
+    /// 1-terminal Reactor is misclassified "series" by [`add_series_reactors`] and
+    /// its empty bus-2 name matches no bus, so its `-1` lands on the **last** bus
+    /// in `BusList` (measured on `tests/corpus/asymmetric/reactor/reactor_asym.dss`,
+    /// `Reactor.rdel`).
     fn find_col_and_upload(&mut self, bus: &str) {
         let num_buses = self.ckt.buses.len() as i32;
         self.active[1] = 1;
@@ -204,10 +208,33 @@ fn add_series_caps(b: &mut FlatBuilder, classes: &[DssClass]) {
 }
 
 /// Pascal `AddSeriesReac2IncMatrix`: one row per **series** Reactor. A reactor is
-/// series iff its bus-2 name has no `.0` ground-node token. NOTE(upstream-quirk):
-/// the row cursor `ActiveIncCell[0]` is advanced for **every** reactor — even the
-/// skipped shunt ones and disabled ones (the `inc` is outside the `if`, and there
-/// is no `Enabled` test at all), unlike the Line/Xfmr/Cap walks. Reproduced.
+/// series iff its bus-2 name has no `.0` ground-node token.
+///
+/// **Upstream row-cursor defect — NOT reproduced.** In r4133
+/// `Version8/Source/Common/Solution.pas:2994-3042` the `inc(ActiveIncCell[0])`
+/// sits at `:3039`, *outside* the `if BusdotIdx = 0` guard that decides whether a
+/// row was emitted (dss_capi 0.14.5 `Common/Solution.pas:1501` is identical), so a
+/// shunt reactor consumes a matrix row index without appending a name to
+/// `Inc_Mat_Rows`. Every series reactor that follows one then carries a row index
+/// that does not index `Inc_Mat_Rows` — contradicting the surface's own contract
+/// ([`IncMatrixState::rows`] is "the PD-element name per incidence-matrix row",
+/// exported under the header `B2N Incidence Matrix Row Names (PDElements)`) —
+/// while the walk's three siblings all advance only on an emitted row
+/// (`:2885` Lines, `:2938` Transformers, `:2986` series Capacitors). Per CLAUDE.md
+/// ("no upstream bug is reproduced in any lane") the port emits **dense** rows: the
+/// cursor advances inside the guard. The corpus gate asserts upstream's cursor rule
+/// positively rather than excluding the divergence (GOLDEN_REBASE G1.8 settlement
+/// S-INC: the comparator remaps the port's row index through the view's
+/// `upstream_row_index` before comparing).
+///
+/// Two further defects of this same walk stay **reproduced** here — they decide
+/// *which element becomes a row*, not how rows are indexed, so they are registered
+/// (WP-G2 teardown register + `investigations/to_opendss/`) rather than fixed in a
+/// comparison sub-step:
+/// * a 1-terminal reactor's `GetBus(2)` is `''`, so `ansipos('.0', '') = 0`
+///   classifies it "series"; the bus search then misses and
+///   [`FlatBuilder::find_col_and_upload`] falls back to column `NumBuses - 1`.
+/// * there is no `Enabled` test at all (`:3011-3040`), unlike the three siblings.
 fn add_series_reactors(b: &mut FlatBuilder, classes: &[DssClass]) {
     for &r in &b.ckt.reactors {
         let bus2 = {
@@ -228,8 +255,10 @@ fn add_series_reactors(b: &mut FlatBuilder, classes: &[DssClass]) {
                 let bus = elem_bus_stripped(classes, r, term);
                 b.find_col_and_upload(&bus);
             }
+            // The row cursor advances only on an emitted row (r4133 `:3039` moves
+            // it for every reactor — the defect documented above).
+            b.active[0] += 1;
         }
-        b.active[0] += 1;
     }
 }
 
