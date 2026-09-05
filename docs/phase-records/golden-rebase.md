@@ -2874,9 +2874,9 @@ row against the pre-fix lock.
   sentinel (`:772` against `:567`) is the channel-scoped `na_seq_power` fold; the two 012 matrices
   cost the r4133-only `SEQ_C012 = 5.229590094302253e-10` (`Shared/mathutil.pas:302-303`+`:562-564`).
   Detail: plan §G1.3b, TESTING.md, TOLERANCE_NOTES §G1.3b; pins **8** `exec::tests::derived_seq` /
-  **35** `harness::seq_floors` (22 legs) / **7** `ledger::*`. `40a65ffd` + the settlement below;
+  **35** `harness::seq_floors` (22 legs) / **7** `ledger::*`. `40a65ffd` / `3d350ce6`;
   gate **6 547 / 0 / 5** per lane, `lane_diff` PASS max |Δ| = 0.
-- **G1.3b audit settlement** (2026-09-05) — 15 findings: **12 fixed / 3 recorded / 0 refuted**. The
+- **G1.3b audit settlement** (2026-09-05, `3d350ce6`) — 15 findings: **12 fixed / 3 recorded / 0 refuted**. The
   arm census now pins the r4133 `0` exactly and rails the two measured counts at the documented
   `SEQ_ARM_CENSUS_FLOORS` (new leg `the_seq_arm_population_fires_when_the_capi_arm_collapses`);
   registry `every_pin_the_g13b_record_names_exists_and_is_cited` added; the plan's D-b1 population
