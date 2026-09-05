@@ -2861,11 +2861,11 @@ row against the pre-fix lock.
   `*_flat_*` stems go, 20 `*_org_*` stay). Everything else: `TESTING.md` §"The unified corpus gate",
   `tests/TOLERANCE_NOTES.md` §G1.8, the plan's §G1.8 note, and the name registry
   `oracle_parity_cfg_gate::the_g1_8_pins_the_docs_cite_exist_exactly_once`.
-  Commits `2cadc808` (dense rows) + `f3436c77` (surface, lock regen and docs) + `<settle>`. Gate,
+  Commits `2cadc808` (dense rows) + `f3436c77` (surface, lock regen and docs) + `166bae9b`. Gate,
   both lanes: fmt + clippy clean, 523/523 on both channels, ledger 57 / 0 stale, 3 314 compared
   triples / declines (4, 5), `DSS_GATE_DUMP` bit-identical three ways, no golden byte, `lane_diff`
   **PASS** max |Δ| = 0 over 3 220 861 records.
-  *Audit settlement* (`<settle>`): 12 findings — **8 fixed / 4 recorded / 0 refuted**, detail in the
+  *Audit settlement* (`166bae9b`): 12 findings — **8 fixed / 4 recorded / 0 refuted**, detail in the
   commit and in `tests/harness/inc_matrix.rs`'s census doc. The load-bearing fix: the S-INC census
   arms off the manifests (`scheduler::inc_matrix_requested_channels`, per channel), so a deleted or
   one-channel-narrowed comparator call site reds instead of self-silencing; also the capi transport's

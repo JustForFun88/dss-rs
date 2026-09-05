@@ -163,7 +163,7 @@ mode-capability acceptance**; and three `lane-s` surfaces, each 0 ledger entries
 universal; **G1.7** (2026-09-05, `8fc32991` + `898f8a86`), the six order-free
 `Topology` rows on 440 live non-`large` cases (lock +7 `topo=`), stale tree +
 window dedup **asserted, not excluded** (D15/D16, `(16, 135)` / `(8, 96)`);
-**G1.8** (2026-09-05, `2cadc808` + `f3436c77` + `<settle>`), the four flat
+**G1.8** (2026-09-05, `2cadc808` + `f3436c77` + `166bae9b`), the four flat
 incidence/Laplacian quantities on the same 440 (lock +6 `incm=`), the reactor
 row cursor likewise (S-INC, `(4, 5)`; §G3.2c re-scoped). Full record: same file,
 §"GOLDEN_REBASE WP-G1 — records".
