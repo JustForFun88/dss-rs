@@ -15,10 +15,12 @@ use serde_json::json;
 
 use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
-    self, ExportPolicy, RowPolicy, Tolerances, capture_guard, compare_all_properties,
-    compare_ctrlqueue, compare_discrete, compare_element_channels, compare_eventlog,
-    compare_export, compare_fingerprint, compare_injection, compare_meter, compare_monitor,
-    compare_probe, compare_system_y, compare_variables, compare_yprim, lane, tol_for,
+    self, ExportPolicy, RelCalcOutcome, RowPolicy, Tolerances, capture_guard,
+    compare_all_properties, compare_ctrlqueue, compare_discrete, compare_element_channels,
+    compare_element_derived, compare_element_extras, compare_element_phase_losses,
+    compare_eventlog, compare_export, compare_fingerprint, compare_injection, compare_meter,
+    compare_monitor, compare_pd_elements, compare_probe, compare_reliability, compare_system_y,
+    compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -361,6 +363,37 @@ pub(crate) fn compare_capture(
     // a conductor has opened (`harness::topology::compare_topology`).
     let mut topo_step0: Option<harness::topology::IsolationSnapshot> = None;
 
+    // GOLDEN_REBASE G1.6(i) protocol: `RelCalc` is NOT idempotent (a nested or
+    // adjoining zone re-reads the inner meter's `Bus.TotalMiles` as its own
+    // downstream mileage on the second run), so the gate runs it exactly once
+    // per case, on the LAST step, on all three engines. Assert the channel did
+    // the same before comparing anything: exactly one checkpoint may carry the
+    // payload and it must be the last one, and NO checkpoint may carry it when
+    // the flag is off. `require_capture_opt` below then covers the per-case
+    // "the flag is on but this channel sent nothing" hole.
+    {
+        let carriers: Vec<usize> = oc
+            .checkpoints
+            .iter()
+            .enumerate()
+            .filter(|(_, cp)| cp.reliability.is_some())
+            .map(|(i, _)| i)
+            .collect();
+        let expected: Vec<usize> = if c.compare_reliability {
+            vec![n_steps - 1]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(
+            carriers, expected,
+            "{label} [{channel:?}]: reliability payload on checkpoint(s) {carriers:?}, \
+             expected {expected:?} (compare_reliability = {}). The transport must drive \
+             `RelCalc` once, after the LAST solve, and attach the payload to that \
+             checkpoint only.",
+            c.compare_reliability,
+        );
+    }
+
     for (i, cp) in oc.checkpoints.iter().enumerate() {
         dss.command("solve");
         assert_eq!(
@@ -371,6 +404,34 @@ pub(crate) fn compare_capture(
         );
         let rust_global_result = dss.result().to_string();
         let ctx = format!("{label} step {i}");
+
+        // GOLDEN_REBASE G1.6(i): drive the executive `RelCalc` HERE - after the
+        // per-step error assert and the `Text.Result`/`dss.result()` read (the
+        // command overwrites the result), before every comparator of this step,
+        // and only on the last one. Both transports drive it at exactly this
+        // point (`oracle_server.py::run_case`, `dss-epri::capture::run_case`), so
+        // the reliability payload AND the fields the sweep writes into surfaces
+        // that are already gated - `PDElements.{AccumulatedL,Lambda,TotalMiles,
+        // SectionID}`, the `Bus` reliability columns, EnergyMeter properties
+        // #19-23 - are read post-calc on all three engines.
+        //
+        // The abort (errno 52902, a zone with no OCP device) is a compared
+        // observable, not a failure: the port pushes its message onto
+        // `Dss::errors` (`exec/solve.rs::do_relcalc_cmd` ->
+        // `solution/meters/reliability.rs:44-50`, one per failing meter) and
+        // `compare_reliability` asserts boolean+message symmetry against the
+        // channel. Reading the new lines here is also what keeps the next step's
+        // `baseline_errors` assert meaningful - and there is no next step.
+        let mut rust_relcalc = RelCalcOutcome::default();
+        if c.compare_reliability && i + 1 == n_steps {
+            let before = dss.errors().len();
+            dss.command("RelCalc");
+            let new: Vec<String> = dss.errors()[before..]
+                .iter()
+                .map(|e| e.message.clone())
+                .collect();
+            rust_relcalc = RelCalcOutcome::from_new_errors(&new);
+        }
 
         {
             let ckt = dss.circuit().expect("circuit exists");
@@ -576,6 +637,107 @@ pub(crate) fn compare_capture(
             channel.iterations_exact(),
             &ctx,
         );
+        // WP-G1 G1.3a: the per-element **derived** channels — `Enabled` plus
+        // the polar renderings `CurrentsMagAng` / `VoltagesMagAng` / `Residuals`
+        // (r4133 `DDLL/DCktElement.pas:1058`/`:1082`/`:827`). Compared on the
+        // same caps the loop above just used, so a ledger `element` scope that
+        // pins one of the new sub-channels neutralizes it here too, and an
+        // unscoped element is compared against the untouched oracle cap.
+        //
+        // The guard is the flag's own non-vacuity rail: under `derived` BOTH
+        // transports emit `enabled` for every element (present even on the
+        // disabled ones, whose polar channels the capture must skip — r4133
+        // `CktElementV(19)` dereferences a nil `NodeRef` there), so a channel
+        // that ignored the request answers with zero `enabled` fields and the
+        // case fails instead of comparing nothing.
+        if c.compare_derived {
+            capture_guard::require_capture(
+                "compare_derived",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| e.enabled.is_some()).count(),
+                &ctx,
+            );
+            for ec in &cp.elements {
+                match el_rewrites.get(&ec.name.to_lowercase()) {
+                    Some(rw) => compare_element_derived(&snaps, rw, tol, &ctx, channels),
+                    None => compare_element_derived(&snaps, ec, tol, &ctx, channels),
+                }
+            }
+        }
+
+        // WP-G1 G1.3d: the per-element **extras**. Part (i)'s discrete
+        // index/name scalars — `NumTerminals` / `NumConductors` / `NumPhases`
+        // (r4133 `DDLL/DCktElement.pas:139`/`:144`/`:149`), `EnergyMeter`
+        // (`:442`) and `NodeOrder` (`:1032`) — plus part (ii)'s five
+        // control-derived scalars (`:207-262`, over `Common/Utilities.pas:3165`
+        // `GetOCPDeviceType`), all discrete and compared exactly: no tolerance,
+        // no `ElemChannels` selector, no ledger sub-channel.
+        //
+        // Part (ii)'s sixth field, `PhaseLosses` (`:637-659` over
+        // `Common/CktElement.pas:1078`), is numeric and goes through its own
+        // comparator on the powers tier, with the `ElemChannels` selector: it
+        // reaches the same cache-aware `ComputeIterminal` as Powers/Losses and
+        // shares their `newton*` lane exclusion (see `harness::lane`).
+        //
+        // Fed from the same `el_rewrites`-or-raw caps as the two loops above so
+        // the block keeps their shape, which costs nothing and hides nothing: a
+        // ledger rewrite is a full `clone_element_cap` (`ledger.rs:1695-1697`,
+        // `ec.clone()`) with only its six named value channels overwritten
+        // (`rewrite_element_selected`, `:1702`), so the five extras fields it
+        // hands back are always the untouched oracle ones.
+        //
+        // The guard is the flag's own non-vacuity rail, and there are two of
+        // them because the two comparators read disjoint capture fields. Under
+        // `element_extras` BOTH transports emit the nine scalars for every
+        // element, so a channel that ignored the request answers with zero
+        // `n_terms` fields and the case fails instead of comparing nothing; and
+        // both emit `PhaseLosses` for every element too, so a channel that sent
+        // the scalars but not the array is caught by the second rail rather than
+        // by a length assert on the first element. `pl_kw` is skipped when empty
+        // on the wire (a 0-phase `UPFCControl` legitimately has none), so the
+        // rail counts the elements whose array is NON-empty — every live
+        // circuit has at least one such element (the `Vsource`).
+        if c.compare_element_extras {
+            capture_guard::require_capture(
+                "compare_element_extras",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| e.n_terms.is_some()).count(),
+                &ctx,
+            );
+            capture_guard::require_capture(
+                // Its own flag spelling (G1.3d(ii) audit settlement): the two
+                // rails read disjoint capture fields, so a missing `n_terms`
+                // and a missing `pl_kw` must not print the same sentence.
+                "compare_element_extras (PhaseLosses)",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| !e.pl_kw.is_empty()).count(),
+                &ctx,
+            );
+            // The channel travels with the capture for one reason only: the
+            // "no meter" sentinel is spelled per channel and is folded per
+            // channel (`harness::oracle_meter_name`, G1.3d(i) audit settlement).
+            let ch = channel.props_channel();
+            for ec in &cp.elements {
+                // A ledger `element` scope rewrites only the sub-channels it
+                // names (`ledger.rs::rewrite_element_selected`,
+                // `SUBCHANNEL_FIELDS`). The ten discrete extras are on NO
+                // sub-channel, so `compare_element_extras` always sees the
+                // untouched oracle values — a discrete divergence can never be
+                // masked by a scope. `PhaseLosses` IS the seventh sub-channel
+                // (G1.3d(ii)): a scope selecting `phase_losses` overwrites
+                // `pl_kw`/`pl_kvar` with the port's values (x0.001), which is
+                // exactly how the ten measured widenings neutralize it here.
+                let cap = el_rewrites.get(&ec.name.to_lowercase()).unwrap_or(ec);
+                compare_element_extras(&snaps, cap, ch, &ctx);
+                compare_element_phase_losses(&snaps, cap, tol, &ctx, channels);
+                // The gating population's control census — the guard behind
+                // D-ii-1 costing zero ledger rows (`harness::
+                // assert_no_multi_control_element`, checked in the gate's
+                // epilogue). Counted from the ORACLE's `NumControls`, which the
+                // compare above has just held the port to.
+                harness::record_control_census(cap.num_controls, cap.ocp_dev_type);
+            }
+        }
 
         compare_discrete(dss, &cp.transformers, &cp.regcontrols, &cp.capacitors, &ctx);
 
@@ -595,6 +757,35 @@ pub(crate) fn compare_capture(
             if !excluded("meter", Some(&m.name)) {
                 compare_meter(dss, m, tol, &ctx);
             }
+        }
+
+        // The reliability surface (GOLDEN_REBASE G1.6(i)), immediately after the
+        // register/zone compare so the two meter surfaces stay adjacent - the
+        // same slot both transports read it in. Only the last checkpoint carries
+        // it (asserted above); `require_capture_opt` turns "flag on, channel sent
+        // nothing" into a case failure, and a circuit with no enabled meter is a
+        // legitimate `Some` with an empty `meters` list.
+        //
+        // Per-value ledger exclusions are keyed on the lowercased
+        // `<meter>:<field>` pair (`em:saidi`) plus the bare `totals` for the
+        // circuit-level array - the `variables` shape one level up. The counts
+        // (walk length, section count, array lengths) stay unconditional.
+        if c.compare_reliability && i + 1 == n_steps {
+            let rel = capture_guard::require_capture_opt(
+                "compare_reliability",
+                channel_tag(channel),
+                cp.reliability.as_ref(),
+                &ctx,
+            );
+            compare_reliability(
+                dss,
+                rel,
+                &rust_relcalc,
+                channel.props_channel(),
+                &ctx,
+                tol,
+                &|key: &str| excluded("reliability", Some(key)),
+            );
         }
 
         assert_eq!(
@@ -675,6 +866,79 @@ pub(crate) fn compare_capture(
             );
         }
 
+        // The bus voltage surface (GOLDEN_REBASE_PLAN.md G1.4a). Placed here to
+        // mirror the capi transport's capture slot — after `ctrlqueue`, before
+        // the `all_properties` `?` sweep that must stay last
+        // (`tools/oracle/oracle_server.py`). Every bus read is class C
+        // (order-free) under §1.1(a)/D3: both engines read `Solution.NodeV`
+        // directly (`CAPI/CAPI_Alt.pas:2275` == r4133 `DDLL/DBus.pas:423`) and
+        // move only `ActiveBusIndex`, so nothing here can stale a cached
+        // `Iterminal`.
+        //
+        // `voltages_excluded` is the one structural rule this surface needs: the
+        // bus bands are exact images of the node-voltage band over the SAME
+        // `Solution.NodeV` (`harness::compare_bus`), so on a case whose
+        // `voltages` field is already ledger-excluded DECK-WIDE the bus arrays
+        // would re-raise a divergence that is already triaged and pinned — ten
+        // new ledger rows for one cause. It suppresses only the three continuous
+        // arrays; the bus count, the name sequence, `nodes`, `kv_base` and every
+        // array length stay compared on those cases too. A `voltages` scope that
+        // names a node subset (`node_re`) suppresses NOTHING here — it would be
+        // far wider than its cause; see `LedgerView::bus_arrays_suppressed`.
+        if c.compare_bus {
+            capture_guard::require_capture(
+                "compare_bus",
+                channel_tag(channel),
+                cp.buses.len(),
+                &ctx,
+            );
+            let v_excluded = ledger.is_some_and(|v| v.bus_arrays_suppressed(i));
+            harness::compare_bus(dss, &cp.buses, tol, v_excluded, &ctx);
+            harness::compare_all_bus_vmag_pu(dss, &cp.all_bus_vmag_pu, tol, v_excluded, &ctx);
+
+            // The short-circuit half of the SAME per-bus walk
+            // (GOLDEN_REBASE_PLAN.md G1.5): `Bus.Zsc1`/`Zsc0`/`ZscMatrix`/
+            // `YscMatrix`/`Isc`/`Voc`, six arms appended to the one
+            // `SetActiveBus` sweep the block above already paid for. That is
+            // why `compare_zsc` implies `compare_bus` (asserted in
+            // `engines::build_run_request`, where the two flags meet) and why
+            // it is nested here instead of opening a second `if`. Class C
+            // too: every arm reads `Zsc`/`Ysc`/`VBus`/`BusCurrent` off the bus
+            // object and moves only `ActiveBusIndex` (`CAPI/CAPI_Alt.pas:2202-2365`
+            // == r4133 `DDLL/DBus.pas:351-518`), so nothing here can stale a
+            // cached `Iterminal`.
+            //
+            // `v_excluded` is reused NARROWED: `compare_bus_short_circuit`
+            // suppresses only the `Voc`/`Isc` values (a snapshot of the triaged
+            // `Solution.NodeV` and its `Ysc*Voc` image) while `Zsc`/`Ysc`/
+            // `Zsc1`/`Zsc0` — functions of `Y` alone — stay compared, along
+            // with the study bit, the bus identity and every length.
+            if c.compare_zsc {
+                capture_guard::require_capture(
+                    "compare_zsc",
+                    channel_tag(channel),
+                    cp.buses.len(),
+                    &ctx,
+                );
+                // The count of buses whose full `n x n` matrices were really
+                // value-compared feeds the gate epilogue's fail-on-stale
+                // (`harness::assert_sc_study_compare_ran`, G1.5 audit
+                // settlement T1): `port_ran == oracle_ran` is also true when
+                // NEITHER ran, so without this the whole non-trivial half of
+                // the surface could go quiet and stay green. This is the one
+                // call site that records — the harness' own drives must not.
+                let full = harness::compare_bus_short_circuit(
+                    dss,
+                    &cp.buses,
+                    tol,
+                    channel.props_channel(),
+                    v_excluded,
+                    &ctx,
+                );
+                harness::record_sc_study_compare(full);
+            }
+        }
+
         if c.compare_all_properties {
             capture_guard::require_capture(
                 "compare_all_properties",
@@ -720,6 +984,32 @@ pub(crate) fn compare_capture(
                     .collect();
                 compare_all_properties(dss, &rewritten, tol, channel.props_channel(), &ctx);
             }
+        }
+
+        // The PDElements interface walk (GOLDEN_REBASE G1.6b). Late in the
+        // step, next to the other whole-model surfaces (G1.7's topology arm is
+        // the one that must run after it): `Dss::pd_elements` is a
+        // `&self` read over `Circuit.pd_elements` that depends on no active
+        // element and no solve state, so its position among the comparators is
+        // free — unlike the CAPTURE order, which is fixed on both transports
+        // (after the meters, before the probes) because the oracles' own
+        // `ParentPDElement` read hijacks `ActiveCktElement`.
+        //
+        // `require_capture_opt`, not `require_capture`: 96 of the 372 walked
+        // live capi cases hold no PD element at all, so an EMPTY walk is a
+        // legitimate answer the comparator must still match (`[]` against a
+        // non-empty port walk fails on the length assert). What must never
+        // pass is an ABSENT field — a channel that ignored the request — and
+        // the global collapse to zero everywhere, which
+        // `harness::assert_pd_elements_compare_ran` catches in the epilogue.
+        if c.compare_pdelements {
+            let pde = capture_guard::require_capture_opt(
+                "compare_pdelements",
+                channel_tag(channel),
+                cp.pd_elements.as_deref(),
+                &ctx,
+            );
+            compare_pd_elements(dss, pde, channel.props_channel(), &ctx);
         }
 
         // `GOLDEN_REBASE_PLAN.md` G1.7 — the `ITopology` interface, compared
@@ -796,7 +1086,6 @@ pub(crate) fn compare_capture(
             &format!("{label} AutoAddLog"),
         );
     }
-    let _ = n_steps;
 }
 
 /// Assert the oracle step counts, run the Rust engine once, compare against the

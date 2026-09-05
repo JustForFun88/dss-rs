@@ -15,7 +15,16 @@
 //!
 //! Two further modes are *unsafe to call at all* in this DLL revision; they are
 //! held in the [`DO_NOT_CALL`] register and refused by [`check_callable`]
-//! **before** any FFI happens (see the register's own citations).
+//! **before** any FFI happens (see the register's own citations), and
+//! [`crate::dss::Engine::ffi_dispatch`] — the one chokepoint every call path
+//! funnels through, the worker's raw `ffi` command included — consults it too.
+//!
+//! A third hazard is *ordering*, not safety: several `CktElement` getters drive
+//! `GetCurrents` into a scratch buffer and leave the element's `Iterminal`
+//! cache marked fresh but unfilled, so a `Powers`/`Losses` read afterwards
+//! returns a stale current. That partition is recorded per row in
+//! [`ModeEffect`] (`GOLDEN_REBASE_PLAN.md` §1.1(a), coordinator decision D3) and
+//! pinned by `the_capture_order_partition_is_the_one_d3_names`.
 //!
 //! This module performs **no FFI** — it is pure classification plus two static
 //! registers, so it needs no `// SAFETY` invariant of its own; the calling side
@@ -59,6 +68,20 @@ impl ModeKind {
             ModeKind::F => "f",
             ModeKind::S => "s",
             ModeKind::V => "v",
+        }
+    }
+}
+
+impl ModeKind {
+    /// The inverse of [`ModeKind::as_str`]: the shape a [`crate::dss::FfiCall`]
+    /// `kind` tag names, or `None` for a tag no ABI shape uses.
+    pub fn from_tag(tag: &str) -> Option<ModeKind> {
+        match tag {
+            "i" => Some(ModeKind::I),
+            "f" => Some(ModeKind::F),
+            "s" => Some(ModeKind::S),
+            "v" => Some(ModeKind::V),
+            _ => None,
         }
     }
 }
@@ -166,14 +189,18 @@ pub fn v_sentinel_undetectable(family: &str) -> bool {
 
 /// The measured per-family `XxxS` unknown-mode literal. The DDLL spells this
 /// `else` branch differently in almost every unit (seven distinct literals over
-/// the whole surface, five of them in the WP-G1 families), so it is a table and
+/// the whole surface, six of them in the WP-G1 families — `Topology` and
+/// `PDElements` share one), so it is a table and
 /// not a constant. Each row cites the `else` branch it transcribes; every literal
 /// was confirmed live by the G1.0 probe (2026-09-04).
 ///
 /// `CktElement`'s bare `"Error"` is **ambiguous in principle** — a served string
 /// mode returns exactly that when a variable name is unknown
-/// (`DCktElement.pas:462`, inside the served mode 4) — so it is fit for the
-/// probe/diagnostic path only and must never gate a capture.
+/// (`DCktElement.pas:462`, the *default* of the served **mode 6**
+/// `CktElement.ActiveVariableName`) — so it is fit for the probe/diagnostic path
+/// only and must never gate a capture. Mode 6 is not a table row; the one
+/// `CktElementS` row WP-G1 reads is mode 4 (`CktElement.EnergyMeter`), whose own
+/// default is the function default `'0'` (`DCktElement.pas:421`).
 pub const S_SENTINELS: &[(&str, &str)] = &[
     // `DCktElement.pas:483` — bare, ambiguous (see above).
     ("CktElement", "Error"),
@@ -302,18 +329,103 @@ pub fn check_callable(family: &str, kind: ModeKind, mode: i32) -> Option<ModeSta
 /// What calling a mode does to engine state beyond returning its value.
 ///
 /// The DDLL `case` arms are not uniformly pure: several *getters* walk a
-/// `PointerList` or the topology tree and leave its cursor moved, and one
-/// re-totalises the meter registers. A capture that reads such a mode must
-/// re-select its fixture afterwards, so the effect is part of the table rather
-/// than a comment someone has to find.
+/// `PointerList` or the topology tree and leave its cursor moved, one
+/// re-totalises the meter registers, and a whole class of them drives
+/// `GetCurrents` through the element's `Iterminal` cache. A capture that reads
+/// such a mode must re-select its fixture afterwards — and, for the cache
+/// class, must read in the right *order* — so the effect is part of the table
+/// rather than a comment someone has to find.
+///
+/// The three non-`Pure` variants are exactly the A/B/C partition of the
+/// §1.1(a) capture-order rule (`GOLDEN_REBASE_PLAN.md`, coordinator decision
+/// **D3**): [`ReadsIterminalCache`](ModeEffect::ReadsIterminalCache) is group
+/// **A** (read first), [`PoisonsIterminalCache`](ModeEffect::PoisonsIterminalCache)
+/// is group **B** (read after every group-A mode of the same element), and
+/// [`Pure`](ModeEffect::Pure) is group **C** (order-free).
+/// [`Impure`](ModeEffect::Impure) is orthogonal to the order rule: it moves a
+/// cursor or a memoized structure rather than the current cache.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeEffect {
-    /// A pure read: nothing in the engine changes.
+    /// A pure read: nothing in the engine changes (D3 group **C**,
+    /// order-free).
     Pure,
-    /// A read that also mutates engine state. The payload names exactly what
-    /// moves (cursor, memoized cache, …) and cites the Pascal.
+    /// D3 group **A** — a *cache-aware* read: the arm reaches
+    /// `TDSSCktElement.ComputeIterminal` (`Common/CktElement.pas:632-639`),
+    /// which recomputes `Iterminal` **only** when the element's
+    /// `IterminalSolutionCount` differs from `Solution.SolutionCount`.
+    /// Correct on its own; a
+    /// [`PoisonsIterminalCache`](ModeEffect::PoisonsIterminalCache) read of the
+    /// same element *before* it makes it skip that recompute and return a
+    /// stale current, so every group-A mode is read FIRST. The payload names
+    /// the path and cites the Pascal.
+    ReadsIterminalCache(&'static str),
+    /// D3 group **B** — the arm calls `GetCurrents` (directly or through
+    /// `CalcSeqCurrents`) into a **scratch** buffer. On a PC element that lands
+    /// in `TPCElement.GetTerminalCurrents`
+    /// (`PCElements/PCElement.pas:247-266`), which fills the scratch buffer and
+    /// then marks the cache fresh (`set_ITerminalUpdated(TRUE)`,
+    /// `PCElements/PCElement.pas:510-514`) **without filling `Iterminal`**; on a
+    /// PD element it overwrites the element's own `Vterminal`
+    /// (`PDElements/PDElement.pas:224-231`). Neither is "nothing changes", and
+    /// the first is the mechanism behind the upstream harmonics
+    /// `Powers`-after-`Currents` defect this project never reproduces
+    /// (CLAUDE.md §"Known upstream bugs"; `crate::capture` reads Powers first
+    /// for exactly this reason).
+    ///
+    /// Measured on the vendored r4133 DLL + vendored IEEE13, snapshot **and**
+    /// harmonics (G1.0 settlement probe, 2026-09-04): the poisoning is
+    /// *latent* there — `TotalPowers` reads the same value before and after
+    /// `SeqPowers`/`CurrentsMagAng`, because the converged solve already left
+    /// `IterminalSolutionCount` current, so no read refreshes and none is
+    /// starved. The hazard is real but conditional on a stale counter (the
+    /// documented Thevenin-DER harmonics case), which is why the order rule is
+    /// recorded as data instead of being left to a live test that would pass
+    /// vacuously.
+    PoisonsIterminalCache(&'static str),
+    /// A read that also mutates engine state — a `PointerList` cursor, a
+    /// memoized topology tree, the meter registers. The payload names exactly
+    /// what moves and cites the Pascal; a capture must re-select its fixture
+    /// afterwards.
     Impure(&'static str),
 }
+
+impl ModeEffect {
+    /// The §1.1(a)/D3 capture-order group: `'A'` must be read before `'B'`
+    /// on the same element; `'C'` is order-free. [`Impure`](ModeEffect::Impure)
+    /// is order-free too (it moves a cursor, not the current cache) but still
+    /// demands a fixture re-selection.
+    pub fn capture_group(self) -> char {
+        match self {
+            ModeEffect::ReadsIterminalCache(_) => 'A',
+            ModeEffect::PoisonsIterminalCache(_) => 'B',
+            ModeEffect::Pure | ModeEffect::Impure(_) => 'C',
+        }
+    }
+
+    /// The payload of every non-[`Pure`](ModeEffect::Pure) variant.
+    pub fn why(self) -> Option<&'static str> {
+        match self {
+            ModeEffect::Pure => None,
+            ModeEffect::ReadsIterminalCache(w)
+            | ModeEffect::PoisonsIterminalCache(w)
+            | ModeEffect::Impure(w) => Some(w),
+        }
+    }
+}
+
+/// The shared payload of the two `CktElement` group-A rows.
+const READS_ITERMINAL: ModeEffect = ModeEffect::ReadsIterminalCache(
+    "reaches TDSSCktElement.ComputeIterminal (Common/CktElement.pas:632-639) through \
+     GetPhaseLosses/GetPhasePower (Common/CktElement.pas:1049, :1090), which recomputes \
+     Iterminal only when the solution counter is stale",
+);
+
+/// The shared payload of the five `CktElement` group-B rows.
+const POISONS_ITERMINAL: ModeEffect = ModeEffect::PoisonsIterminalCache(
+    "calls GetCurrents into a scratch buffer, which on a PC element advances \
+     ITerminalSolutionCount without filling Iterminal (PCElements/PCElement.pas:247-266, \
+     :510-514) and on a PD element overwrites Vterminal (PDElements/PDElement.pas:224-231)",
+);
 
 /// One mode WP-G1 reads through the r4133 bridge: the DDLL `(family, kind,
 /// mode)` triple plus the `case` arm it transcribes.
@@ -322,9 +434,18 @@ pub enum ModeEffect {
 /// [`crate::dss::Engine`] takes a `&ModeSpec`, so the table can be walked by a
 /// single test and a number can never drift between a table row and its reader.
 ///
-/// **Getters only.** A DDLL `case` arm that *writes* is not a table row: the
-/// generic reader drives a mode with a neutral argument, which for a write arm
-/// would store that argument into the engine (see [`EXCLUDED_WRITE_MODES`]).
+/// **Getters only, with one declared selector.** A DDLL `case` arm that *writes
+/// model data* is not a table row: the generic reader drives a mode with a
+/// neutral argument, which for a write arm would store that argument into the
+/// engine (see [`EXCLUDED_WRITE_MODES`]). The single exception is
+/// [`METERS_SET_ACTIVE_SECTION`] (`MetersI(22)`), a *selector*: it stores no
+/// caller data in the model — it only moves the per-meter section cursor the
+/// eight `MetersI(23..27)` / `MetersF(4..6)` reads answer from — and its
+/// neutral argument is the arm's own documented "deselect"
+/// (`Else pMeter.ActiveSection := 0`, `DMeters.pas:261`), so the generic walk
+/// stays sound. The capture drives it with a real 1-based index through
+/// [`crate::dss::Engine::meters_set_active_section`]. Its mode number lives in
+/// this table like every other, which is the reason it is a row at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModeSpec {
     /// The [`crate::families`] registry name (case-insensitive lookup).
@@ -443,7 +564,10 @@ pub const CKT_ELEMENT_HAS_SWITCH_CONTROL: ModeSpec = ModeSpec::scalar(
     7,
     "CktElement.HasSwitchControl",
     "DCktElement.pas:207",
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCktElement.ControlElementList.First/Next to the first SwtControl or to \
+         exhaustion (DCktElement.pas:209-218), leaving that list's cursor moved",
+    ),
 );
 /// `CktElementI(8)` — 1 when a voltage-regulating control is attached.
 pub const CKT_ELEMENT_HAS_VOLT_CONTROL: ModeSpec = ModeSpec::scalar(
@@ -452,7 +576,10 @@ pub const CKT_ELEMENT_HAS_VOLT_CONTROL: ModeSpec = ModeSpec::scalar(
     8,
     "CktElement.HasVoltControl",
     "DCktElement.pas:222",
-    ModeEffect::Pure,
+    ModeEffect::Impure(
+        "walks ActiveCktElement.ControlElementList.First/Next to the first Cap/RegControl or to \
+         exhaustion (DCktElement.pas:224-233), leaving that list's cursor moved",
+    ),
 );
 /// `CktElementI(9)` — size of the element's `ControlElementList`.
 pub const CKT_ELEMENT_NUM_CONTROLS: ModeSpec = ModeSpec::scalar(
@@ -480,6 +607,35 @@ pub const CKT_ELEMENT_OCP_DEV_TYPE: ModeSpec = ModeSpec::scalar(
     11,
     "CktElement.OCPDevType",
     "DCktElement.pas:259",
+    ModeEffect::Pure,
+);
+/// `CktElementI(12)` — 1 when the active element is `Enabled`, 0 when it is not.
+///
+/// This is the **read** arm; its paired **write** arm `13:`
+/// (`DCktElement.pas:271`, `if arg=1 then … Enabled := BData`) is deliberately
+/// not a row — the generic reader drives a mode with the neutral argument `0`,
+/// which that arm would store as `Enabled := FALSE`. That omission is carried
+/// as a row of [`EXCLUDED_WRITE_MODES`], not as prose (G1.3a audit settlement).
+///
+/// The arm's codomain is exactly `{0, 1}`: it raises the `CktElementI`
+/// pre-`case` default `Result := 0` (`DCktElement.pas:137`) to 1 only when
+/// `Enabled`, so [`crate::dss::Engine::ckt_element_enabled`] decodes strictly
+/// and refuses anything else. A `!= 0` decode would read the family's
+/// unknown-mode sentinel `-1` (`DCktElement.pas:308`) as *enabled*, which is
+/// the one input that routes a capture into `CktElementV(19)`'s unguarded
+/// `NodeRef^[i]` dereference (`DCktElement.pas:1099`; capi guards it at
+/// `CAPI/CAPI_Alt.pas:1081`) and kills the process.
+///
+/// Read for every element by the GOLDEN_REBASE G1.3a derived capture: it is
+/// the safety predicate that enabled-only capture needs, and a fastdss
+/// `_columns` parity surface in its own right (`dss/ICktElement.py` on
+/// `origin/fastdss`).
+pub const CKT_ELEMENT_ENABLED: ModeSpec = ModeSpec::scalar(
+    "CktElement",
+    ModeKind::I,
+    12,
+    "CktElement.Enabled",
+    "DCktElement.pas:263",
     ModeEffect::Pure,
 );
 /// `CktElementI(15)` — 1 when the element has an over-current protection device.
@@ -511,7 +667,7 @@ pub const CKT_ELEMENT_PHASE_LOSSES: ModeSpec = ModeSpec::array(
     "CktElement.PhaseLosses",
     "DCktElement.pas:637",
     3,
-    ModeEffect::Pure,
+    READS_ITERMINAL,
 );
 /// `CktElementV(7)` — symmetrical-component voltage **magnitudes** per terminal
 /// (`myType := 2`, real doubles).
@@ -530,7 +686,7 @@ pub const CKT_ELEMENT_SEQ_CURRENTS: ModeSpec = ModeSpec::array(
     "CktElement.SeqCurrents",
     "DCktElement.pas:700",
     2,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(9)` — sequence powers per terminal, complex `[re, im, …]`.
 pub const CKT_ELEMENT_SEQ_POWERS: ModeSpec = ModeSpec::array(
@@ -539,7 +695,7 @@ pub const CKT_ELEMENT_SEQ_POWERS: ModeSpec = ModeSpec::array(
     "CktElement.SeqPowers",
     "DCktElement.pas:739",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(11)` — residual current per terminal, as `(magnitude, angle°)`.
 pub const CKT_ELEMENT_RESIDUALS: ModeSpec = ModeSpec::array(
@@ -548,7 +704,7 @@ pub const CKT_ELEMENT_RESIDUALS: ModeSpec = ModeSpec::array(
     "CktElement.Residuals",
     "DCktElement.pas:827",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(13)` — complex sequence voltages per terminal.
 pub const CKT_ELEMENT_CPLX_SEQ_VOLTAGES: ModeSpec = ModeSpec::array(
@@ -566,7 +722,7 @@ pub const CKT_ELEMENT_CPLX_SEQ_CURRENTS: ModeSpec = ModeSpec::array(
     "CktElement.CplxSeqCurrents",
     "DCktElement.pas:931",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(17)` — the element's node order (`myType := 1`). The `case`
 /// comment spells it `Nodeorder`.
@@ -585,7 +741,7 @@ pub const CKT_ELEMENT_CURRENTS_MAG_ANG: ModeSpec = ModeSpec::array(
     "CktElement.CurrentsMagAng",
     "DCktElement.pas:1058",
     3,
-    ModeEffect::Pure,
+    POISONS_ITERMINAL,
 );
 /// `CktElementV(19)` — terminal voltages as `(magnitude, angle°)` pairs.
 pub const CKT_ELEMENT_VOLTAGES_MAG_ANG: ModeSpec = ModeSpec::array(
@@ -603,7 +759,7 @@ pub const CKT_ELEMENT_TOTAL_POWERS: ModeSpec = ModeSpec::array(
     "CktElement.TotalPowers",
     "DCktElement.pas:1109",
     3,
-    ModeEffect::Pure,
+    READS_ITERMINAL,
 );
 
 // -- Bus (DBus.pas) ---------------------------------------------------------
@@ -633,6 +789,22 @@ pub const BUS_SEQ_VOLTAGES: ModeSpec = ModeSpec::array(
     3,
     ModeEffect::Pure,
 );
+/// `BUSV(2)` — the bus's node **numbers**, ascending (not the bus's internal
+/// insertion order): the arm runs the
+/// `repeat NodeIdx := FindIdx(jj); inc(jj) until NodeIdx > 0` walk and reports
+/// `GetNum(NodeIdx)` (`DBus.pas:319-345`), the same walk and the same order as
+/// the capi twin `Alt_Bus_Get_Nodes` (`CAPI/CAPI_Alt.pas:2143-2163`) and as
+/// every per-node array of this family (modes 5/13/14). Its `jj` scan is
+/// bounded in practice — each of the `NumNodesThisBus` node numbers is distinct
+/// and >= 1, so the scan finds them all — unlike the `VLL`/`puVLL` pairing loop
+/// (modes 11/12), whose second `repeat` cycles `jj` in `{1,2,3,4}` and can spin
+/// forever (G1.4c).
+///
+/// The surface it serves is fastdss' `IBus._columns` `'Nodes'`
+/// (`origin/fastdss` `dss/IBus.py:19-53`, reached through `save_state`'s
+/// `ActiveBus`, `tests/save_outputs.py:351`).
+pub const BUS_NODES: ModeSpec =
+    ModeSpec::array("Bus", 2, "Bus.Nodes", "DBus.pas:319", 1, ModeEffect::Pure);
 /// `BUSV(3)` — open-circuit voltage `Voc` at the bus (fault study).
 pub const BUS_VOC: ModeSpec =
     ModeSpec::array("Bus", 3, "Bus.Voc", "DBus.pas:351", 3, ModeEffect::Pure);
@@ -783,6 +955,26 @@ pub const CIRCUIT_TOTAL_POWER: ModeSpec = ModeSpec::array(
          ComputeIterminal on every source (Common/CktElement.pas:677-680)",
     ),
 );
+/// `CircuitV(7)` — every bus name, in `BusList` order (`BusList.Get(i+1)` for
+/// `i = 0 .. NumBuses-1`, `DCircuit.pas:439-456`), NUL-separated. The
+/// enumeration the per-bus capture walks; its capi twin is
+/// `Circuit_Get_AllBusNames` (`CAPI/CAPI_Circuit.pas:419-436`,
+/// `BusList.NameOfIndex(i+1)`), same order.
+/// A circuit with no buses writes the single string `'None'`
+/// (`DCircuit.pas:453-454`) where the capi twin writes one empty string
+/// (`DefaultResult`, `CAPI_Circuit.pas:426-430`); either way `SetActiveBus` then
+/// returns `-1`, so the caller's index re-assert fails the case loudly on both
+/// transports instead of capturing nothing. No live corpus case takes that path
+/// (measured G1.4a: 0 of the 520 live cases have an empty bus list, and no bus is
+/// named `none` or empty).
+pub const CIRCUIT_ALL_BUS_NAMES: ModeSpec = ModeSpec::array(
+    "Circuit",
+    7,
+    "Circuit.AllBusNames",
+    "DCircuit.pas:439",
+    4,
+    ModeEffect::Pure,
+);
 /// `CircuitV(8)` — per-element losses, complex, in `AllElementNames` order.
 pub const CIRCUIT_ALL_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
     "Circuit",
@@ -792,8 +984,9 @@ pub const CIRCUIT_ALL_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
     3,
     ModeEffect::Impure(
         "walks ActiveCircuit.CktElements.First/Next to exhaustion (DCircuit.pas:468-473), leaving the \
-         CktElements list cursor at the end, and calls Get_Losses -> ComputeIterminal on EVERY \
-         element (Common/CktElement.pas:743), refreshing the whole circuit's Iterminal caches",
+         CktElements list cursor at the end — Circuit.NextElement resumes from there — and \
+         calls Get_Losses -> ComputeIterminal on EVERY element (Common/CktElement.pas:743), \
+         refreshing the whole circuit's Iterminal caches",
     ),
 );
 /// `CircuitV(9)` — per-unit voltage magnitude of every node.
@@ -843,6 +1036,32 @@ pub const METERS_NUM_SECTIONS: ModeSpec = ModeSpec::scalar(
     "Meters.NumSections",
     "DMeters.pas:244",
     ModeEffect::Pure,
+);
+/// `MetersI(22)` — **select** the feeder section that every `MetersI(23..27)` /
+/// `MetersF(4..6)` read then answers for (GOLDEN_REBASE G1.6(i)).
+///
+/// The one WP-G1 row that consumes its argument: `DMeters.pas:254-264` stores
+/// `pMeter.ActiveSection := arg` for `1 <= arg <= SectionCount` and `0`
+/// otherwise, and assigns no `Result` — the function default `0`
+/// (`DMeters.pas:30`) is the only legal reply, so a `-1` means this DLL does not
+/// serve the selector at all.
+///
+/// `ActiveSection` is a **per-meter** field which the `Meters.First`/`Next` walk
+/// (`DMeters.pas:32-71`) never resets, so a section field read without a
+/// preceding selection answers for whichever section that meter last had (or 0):
+/// selecting before every section block is a correctness requirement of
+/// [`crate::capture::capture_reliability`], not a convention.
+pub const METERS_SET_ACTIVE_SECTION: ModeSpec = ModeSpec::scalar(
+    "Meters",
+    ModeKind::I,
+    22,
+    "Meters.SetActiveSection",
+    "DMeters.pas:254",
+    ModeEffect::Impure(
+        "sets pMeter.ActiveSection (DMeters.pas:254-264) — the per-meter cursor \
+         every MetersI 23-27 / MetersF 4-6 section read answers from; never reset \
+         by Meters.First/Next",
+    ),
 );
 /// `MetersI(23)` — OCP device type of the section selected by
 /// `Meters.SetActiveSection` (`MetersI(22)`); 0 when no section is active.
@@ -1216,6 +1435,32 @@ pub const SOLUTION_LAPLACIAN: ModeSpec = ModeSpec::array(
 
 // -- PDElements (DPDELements.pas) -------------------------------------------
 
+/// `PDElementsI(1)` — advance the walk to the **first enabled** PD element.
+pub const PD_ELEMENTS_FIRST: ModeSpec = ModeSpec::scalar(
+    "PDElements",
+    ModeKind::I,
+    1,
+    "PDElements.First",
+    "DPDELements.pas:27",
+    ModeEffect::Impure(
+        "moves the circuit's PDElements pointer-list cursor to the first *enabled* PD element \
+         and assigns ActiveCktElement from it (DPDELements.pas:27-42); returns 1 when one was \
+         found, 0 when the circuit holds no enabled PD element",
+    ),
+);
+/// `PDElementsI(2)` — advance the walk to the next enabled PD element.
+pub const PD_ELEMENTS_NEXT: ModeSpec = ModeSpec::scalar(
+    "PDElements",
+    ModeKind::I,
+    2,
+    "PDElements.Next",
+    "DPDELements.pas:44",
+    ModeEffect::Impure(
+        "advances the circuit's PDElements pointer-list cursor to the next *enabled* PD element \
+         and assigns ActiveCktElement from it (DPDELements.pas:44-59); returns 0 at the end of \
+         the list, leaving ActiveCktElement wherever the previous arm put it",
+    ),
+);
 /// `PDElementsI(3)` — 1 when the active PD element is a shunt.
 pub const PD_ELEMENTS_IS_SHUNT: ModeSpec = ModeSpec::scalar(
     "PDElements",
@@ -1330,12 +1575,32 @@ pub const PD_ELEMENTS_TOTAL_MILES: ModeSpec = ModeSpec::scalar(
     "DPDELements.pas:201",
     ModeEffect::Pure,
 );
+/// `PDElementsS(0)` — the active PD element's full name,
+/// `Format('%s.%s', [Parentclass.Name, Name])`, or `""` when the active element
+/// is not a `TPDElement` (read; the **write** arm `S:1` is deliberately absent
+/// — [`EXCLUDED_WRITE_MODES`]).
+pub const PD_ELEMENTS_NAME: ModeSpec = ModeSpec::scalar(
+    "PDElements",
+    ModeKind::S,
+    0,
+    "PDElements.Name",
+    "DPDELements.pas:226",
+    ModeEffect::Pure,
+);
 
-/// Every mode WP-G1 reads through the r4133 bridge — 96 rows over the seven
+/// Every mode WP-G1 reads through the r4133 bridge — 103 rows over the seven
 /// families the plan's surface sub-steps touch (`GOLDEN_REBASE_PLAN.md` WP-G1).
 /// The set was measured `Served` on the vendored DLL by the G1.0 probe
 /// (2026-09-04) with zero misses, and the acceptance test
 /// `crates/dss-epri/tests/modes.rs` re-proves that on every run.
+///
+/// G1.4a (2026-09-04) added the two rows its bus capture reads and G1.0 had not
+/// listed — [`CIRCUIT_ALL_BUS_NAMES`] (the walk) and [`BUS_NODES`] (a compared
+/// value) — so that no capture read bypasses [`crate::dss::Engine::read_mode`]'s
+/// `myType` check (96 -> 98 on its own lane; 100 -> 102 merged onto the four
+/// rows G1.9 and G1.6b added in parallel). G1.6(i) (lane `lane-m`, 2026-09-05)
+/// added [`METERS_SET_ACTIVE_SECTION`], the section cursor its reliability
+/// capture drives — 102 -> **103** at that lane's merge.
 ///
 /// Each row also has a typed accessor on [`crate::dss::Engine`] that takes the
 /// row **by reference**, so no mode number is ever written twice.
@@ -1348,6 +1613,7 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &CKT_ELEMENT_NUM_CONTROLS,
     &CKT_ELEMENT_OCP_DEV_INDEX,
     &CKT_ELEMENT_OCP_DEV_TYPE,
+    &CKT_ELEMENT_ENABLED,
     &CKT_ELEMENT_HAS_OCP_DEVICE,
     &CKT_ELEMENT_ENERGY_METER,
     &CKT_ELEMENT_PHASE_LOSSES,
@@ -1363,6 +1629,7 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &CKT_ELEMENT_TOTAL_POWERS,
     &BUS_DISTANCE,
     &BUS_SEQ_VOLTAGES,
+    &BUS_NODES,
     &BUS_VOC,
     &BUS_ISC,
     &BUS_PU_VOLTAGES,
@@ -1381,12 +1648,14 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &CIRCUIT_LINE_LOSSES,
     &CIRCUIT_SUBSTATION_LOSSES,
     &CIRCUIT_TOTAL_POWER,
+    &CIRCUIT_ALL_BUS_NAMES,
     &CIRCUIT_ALL_ELEMENT_LOSSES,
     &CIRCUIT_ALL_BUS_MAG_PU,
     &CIRCUIT_ALL_BUS_DISTANCES,
     &CIRCUIT_ALL_NODE_DISTANCES,
     &METERS_TOTAL_CUSTOMERS,
     &METERS_NUM_SECTIONS,
+    &METERS_SET_ACTIVE_SECTION,
     &METERS_OCP_DEVICE_TYPE,
     &METERS_NUM_SECTION_CUSTOMERS,
     &METERS_NUM_SECTION_BRANCHES,
@@ -1424,6 +1693,8 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &SOLUTION_INC_MATRIX_ROWS,
     &SOLUTION_INC_MATRIX_COLS,
     &SOLUTION_LAPLACIAN,
+    &PD_ELEMENTS_FIRST,
+    &PD_ELEMENTS_NEXT,
     &PD_ELEMENTS_IS_SHUNT,
     &PD_ELEMENTS_NUM_CUSTOMERS,
     &PD_ELEMENTS_TOTAL_CUSTOMERS,
@@ -1436,17 +1707,27 @@ pub const WP_G1_MODES: &[&ModeSpec] = &[
     &PD_ELEMENTS_ACCUMULATED_L,
     &PD_ELEMENTS_REPAIR_TIME,
     &PD_ELEMENTS_TOTAL_MILES,
+    &PD_ELEMENTS_NAME,
 ];
 
 /// DDLL `case` arms a naive reading of WP-G1's mode *ranges* would include but
 /// that this bridge must never drive: they are **write** arms, and the generic
-/// reader supplies a neutral argument, so calling one would store `0.0` into the
-/// active PD element instead of reading anything.
+/// reader supplies a neutral argument, so calling one would mutate the circuit
+/// instead of reading anything — `F:1`/`F:3` store `0.0` into the active PD
+/// element, `S:1` re-selects the active element by name and walks the
+/// `PDElements` cursor to the end of the list.
 ///
 /// `tmp/g10/spec.md` §2.B B4 listed `PDElements F:0..7` as a range; the vendored
 /// r4133 source shows modes 1 and 3 are the setters paired with the readers at 0
-/// and 2, which [`WP_G1_MODES`] carries instead. Recorded here — and enforced by
-/// a unit test — so the omission is a decision, not a gap.
+/// and 2, which [`WP_G1_MODES`] carries instead. G1.6b added the third row when
+/// it took the `S:0` reader ([`PD_ELEMENTS_NAME`]) for the PDElements walk.
+/// Recorded here — and enforced by a unit test — so each omission is a decision,
+/// not a gap.
+///
+/// The register is **not** PDElements-only: G1.3a's `CktElement.Enabled` read
+/// (`I:12`) sits next to the most destructive write arm in the bridge (`I:13`
+/// disables the active element), so that arm is a row here too (G1.3a audit
+/// settlement, 2026-09-04) rather than a sentence in the reader's doc.
 pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
     (
         "PDElements",
@@ -1462,12 +1743,118 @@ pub const EXCLUDED_WRITE_MODES: &[(&str, ModeKind, i32, &str)] = &[
         "PDElements.PctPermanent WRITE — DPDELements.pas:162 assigns ActivePDElement.PctPerm := arg; \
          the reader is F:2",
     ),
+    (
+        "PDElements",
+        ModeKind::S,
+        1,
+        "PDElements.Name WRITE — DPDELements.pas:237-251 re-selects ActiveCktElement by \
+         searching the whole PDElements list for `arg`; driven with the generic reader's neutral \
+         \"\" it matches nothing and leaves the pointer-list cursor past the end of the list, \
+         silently truncating an in-progress walk; the reader is S:0",
+    ),
+    (
+        "CktElement",
+        ModeKind::I,
+        13,
+        "CktElement.Enabled WRITE — DCktElement.pas:271 stores Enabled := (arg = 1) on the \
+         active element, so the generic reader's neutral argument 0 would DISABLE it; the \
+         reader is I:12",
+    ),
 ];
 
 /// The [`WP_G1_MODES`] row called `name` (`"Family.Property"`), or `None`.
 /// Case-sensitive: the names are the table's own spellings.
 pub fn wp_g1_mode(name: &str) -> Option<&'static ModeSpec> {
     WP_G1_MODES.iter().copied().find(|m| m.name == name)
+}
+
+// -- the element reads that predate the table ------------------------------
+//
+// [`WP_G1_MODES`] is the set of modes WP-G1 *adds*, so the three element reads
+// `crate::capture` has always performed (the port of
+// `oracle_server.capture_all_elements`) are not in it. The §1.1(a)/D3 capture
+// order rules them all the same, so they are declared as [`ModeSpec`] rows like
+// every other read — same type, same `ModeEffect`, same Pascal citation —
+// rather than growing a second, competing order table (GOLDEN_REBASE G1.3a spec
+// amendment, 2026-09-04). [`capture_group_of`] resolves a marker against both
+// lists.
+
+/// `CktElementV(3)` — terminal currents, complex `[re, im, …]`. Group **B**:
+/// the arm allocates `cBuffer` and calls `GetCurrents` into it
+/// (`DCktElement.pas:583-584`). Read by
+/// [`crate::dss::Engine::element_currents`].
+pub const CKT_ELEMENT_CURRENTS: ModeSpec = ModeSpec::array(
+    "CktElement",
+    3,
+    "CktElement.Currents",
+    "DCktElement.pas:573",
+    3,
+    POISONS_ITERMINAL,
+);
+/// `CktElementV(4)` — per-conductor powers, kW/kvar. Group **A**:
+/// `GetPhasePower` (`DCktElement.pas:608`) is
+/// `TDSSCktElement.GetPhasePower` (`Common/CktElement.pas:1041`), which calls
+/// `ComputeIterminal` at `:1049`. Read by
+/// [`crate::dss::Engine::element_powers`].
+pub const CKT_ELEMENT_POWERS: ModeSpec = ModeSpec::array(
+    "CktElement",
+    4,
+    "CktElement.Powers",
+    "DCktElement.pas:597",
+    3,
+    READS_ITERMINAL,
+);
+/// `CktElementV(5)` — the element's total losses `[W, var]`. Group **A**: the
+/// `Losses` property is `TDSSCktElement.Get_Losses`
+/// (`Common/CktElement.pas:707`), whose first act on an enabled element is
+/// `ComputeIterminal` (`:743`). Read by
+/// [`crate::dss::Engine::element_losses`].
+pub const CKT_ELEMENT_LOSSES: ModeSpec = ModeSpec::array(
+    "CktElement",
+    5,
+    "CktElement.Losses",
+    "DCktElement.pas:620",
+    3,
+    ModeEffect::ReadsIterminalCache(
+        "the Losses property is TDSSCktElement.Get_Losses (Common/CktElement.pas:707), which          calls ComputeIterminal (:743) before summing V·conj(I) over every conductor",
+    ),
+);
+
+/// The element reads [`crate::capture`] performs outside [`WP_G1_MODES`] — see
+/// the section comment above.
+pub const PRE_G1_ELEMENT_READS: &[&ModeSpec] = &[
+    &CKT_ELEMENT_CURRENTS,
+    &CKT_ELEMENT_POWERS,
+    &CKT_ELEMENT_LOSSES,
+];
+
+/// The §1.1(a)/D3 capture group of the read a `capture-order: <name> (<group>)`
+/// marker names: `'A'` (read first), `'B'` (read after every group-A read of the
+/// same element) or `'C'` (order-free).
+///
+/// This is the **one** home of that mapping. The group always comes from
+/// [`ModeEffect::capture_group`] of the row that transcribes the Pascal `case`
+/// arm, so the capture bodies' markers and the source gate that checks them
+/// (`crates/dss-core/tests/capture_order.rs`) cannot drift from the mode table
+/// — there is no second order table to keep in sync.
+///
+/// `family` is the DDLL family the capture body reads in (`"CktElement"` for
+/// both element captures); a `name` that already carries a `Family.` prefix
+/// overrides it, which is how a marker names a read from another family.
+/// `None` means no row declares that name: a *selector* (`SetActiveElement`,
+/// `AllElementNames`, …) moves a cursor instead of reading a quantity and is
+/// declared by the gate itself, not here.
+pub fn capture_group_of(family: &str, name: &str) -> Option<char> {
+    let full = if name.contains('.') {
+        name.to_string()
+    } else {
+        format!("{family}.{name}")
+    };
+    WP_G1_MODES
+        .iter()
+        .chain(PRE_G1_ELEMENT_READS.iter())
+        .find(|m| m.name == full)
+        .map(|m| m.effect.capture_group())
 }
 
 #[cfg(test)]
@@ -1585,7 +1972,7 @@ mod tests {
     fn the_wp_g1_mode_table_is_internally_consistent() {
         assert_eq!(
             WP_G1_MODES.len(),
-            96,
+            103,
             "WP-G1 mode count changed — update the count, the record and TESTING.md"
         );
         let mut names: Vec<&str> = Vec::new();
@@ -1607,10 +1994,10 @@ mod tests {
                 ),
                 _ => assert_eq!(m.v_type, None, "{m} — only V rows carry a myType tag"),
             }
-            if let ModeEffect::Impure(why) = m.effect {
+            if let Some(why) = m.effect.why() {
                 assert!(
                     why.contains(".pas") || why.contains("TotalizeMeters"),
-                    "{m} — an Impure row must say what moves, with its citation"
+                    "{m} — a non-Pure row must say what moves, with its citation"
                 );
             }
             assert!(!names.contains(&m.name), "duplicate row name {}", m.name);
@@ -1667,13 +2054,150 @@ mod tests {
         }
         // Non-vacuity: the excluded rows really are the neighbours of table rows
         // in the same family and shape, so the check above is not comparing
-        // against an empty or unrelated set.
-        assert_eq!(EXCLUDED_WRITE_MODES.len(), 2);
-        assert!(EXCLUDED_WRITE_MODES.iter().all(|(f, k, ..)| {
-            *f == PD_ELEMENTS_FAULT_RATE.family && *k == PD_ELEMENTS_FAULT_RATE.kind
-        }));
+        // against an empty or unrelated set. (The register is no longer
+        // PDElements-only — G1.3a's `CktElement.Enabled` read brought its write
+        // arm in — so the neighbourhood is asserted both against the table
+        // itself and, row by row, against each excluded arm's named reader.)
+        assert_eq!(EXCLUDED_WRITE_MODES.len(), 4);
+        for (fam, kind, mode, why) in EXCLUDED_WRITE_MODES {
+            assert!(
+                WP_G1_MODES
+                    .iter()
+                    .any(|m| m.kind == *kind && m.family.eq_ignore_ascii_case(fam)),
+                "{fam} {kind:?}:{mode} is excluded but that family/shape drives no \
+                 reader, so the exclusion guards nothing: {why}"
+            );
+        }
+        for (reader, write_mode) in [
+            (&PD_ELEMENTS_FAULT_RATE, 1),
+            (&PD_ELEMENTS_PCT_PERMANENT, 3),
+            (&PD_ELEMENTS_NAME, 1),
+            (&CKT_ELEMENT_ENABLED, 13),
+        ] {
+            assert!(
+                EXCLUDED_WRITE_MODES.iter().any(|(f, k, m, _)| {
+                    *f == reader.family && *k == reader.kind && *m == write_mode
+                }),
+                "{reader}'s write arm is not on the excluded register"
+            );
+        }
         assert_eq!(PD_ELEMENTS_FAULT_RATE.mode, 0);
         assert_eq!(PD_ELEMENTS_PCT_PERMANENT.mode, 2);
+        assert_eq!(PD_ELEMENTS_NAME.mode, 0);
+        // The `CktElement` row's own reader neighbour, named (`I:12` read /
+        // `I:13` write, `DCktElement.pas:263` / `:271`).
+        assert_eq!(
+            (CKT_ELEMENT_ENABLED.kind, CKT_ELEMENT_ENABLED.mode),
+            (ModeKind::I, 12)
+        );
+    }
+
+    /// The §1.1(a) / D3 capture-order partition, pinned as data.
+    ///
+    /// Group **A** (`ReadsIterminalCache`) is read before group **B**
+    /// (`PoisonsIterminalCache`) on the same element; everything else is
+    /// order-free. The membership below was derived from the Pascal by reading
+    /// each `case` arm (G1.0 audit settlement, 2026-09-04): the group-B arms all
+    /// reach `GetCurrents` into a scratch buffer — directly (`SeqPowers`
+    /// `DCktElement.pas:758`, `Residuals` `:837`, `CurrentsMagAng` `:1069`) or
+    /// through `CalcSeqCurrents` (`SeqCurrents` `:717`, `CplxSeqCurrents`
+    /// `:949`) — while the group-A arms reach `ComputeIterminal` through
+    /// `GetPhaseLosses` / `GetPhasePower`.
+    ///
+    /// This is the assertion that makes the register load-bearing: flipping any
+    /// of these seven rows back to `Pure`, or annotating a new row into the
+    /// wrong group, fails here instead of silently telling a capture author that
+    /// the reads commute.
+    #[test]
+    fn the_capture_order_partition_is_the_one_d3_names() {
+        let group = |g: char| {
+            let mut v: Vec<&str> = WP_G1_MODES
+                .iter()
+                .filter(|m| m.effect.capture_group() == g)
+                .map(|m| m.name)
+                .collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(
+            group('A'),
+            vec!["CktElement.PhaseLosses", "CktElement.TotalPowers"],
+            "group A = every table row that reaches ComputeIterminal"
+        );
+        assert_eq!(
+            group('B'),
+            vec![
+                "CktElement.CplxSeqCurrents",
+                "CktElement.CurrentsMagAng",
+                "CktElement.Residuals",
+                "CktElement.SeqCurrents",
+                "CktElement.SeqPowers",
+            ],
+            "group B = every table row that calls GetCurrents into a scratch buffer"
+        );
+        // The two voltage siblings of the group-B rows are genuinely order-free:
+        // `CalcSeqVoltages` reads NodeV, never GetCurrents.
+        assert_eq!(CKT_ELEMENT_SEQ_VOLTAGES.effect.capture_group(), 'C');
+        assert_eq!(CKT_ELEMENT_CPLX_SEQ_VOLTAGES.effect.capture_group(), 'C');
+        // Non-vacuity of `why()`: every A/B row carries its Pascal citation.
+        for m in WP_G1_MODES {
+            if matches!(m.effect.capture_group(), 'A' | 'B') {
+                assert!(
+                    m.effect.why().is_some_and(|w| w.contains(".pas")),
+                    "{m} — an ordered row must cite the Pascal that orders it"
+                );
+            }
+        }
+    }
+
+    /// The capture bodies' `capture-order:` markers resolve through this module
+    /// and nowhere else (GOLDEN_REBASE G1.3a spec amendment): every group comes
+    /// from [`ModeEffect::capture_group`] of a real row, so a marker cannot
+    /// claim an order the Pascal does not support, and the three pre-table
+    /// element reads keep exactly the discipline
+    /// [`the_wp_g1_mode_table_is_internally_consistent`] imposes on
+    /// [`WP_G1_MODES`].
+    #[test]
+    fn every_capture_order_marker_resolves_through_the_mode_table() {
+        // The three reads that predate the table (`Engine::element_pcl`).
+        assert_eq!(capture_group_of("CktElement", "Losses"), Some('A'));
+        assert_eq!(capture_group_of("CktElement", "Powers"), Some('A'));
+        assert_eq!(capture_group_of("CktElement", "Currents"), Some('B'));
+        // G1.3a's four, straight out of `WP_G1_MODES`.
+        assert_eq!(capture_group_of("CktElement", "CurrentsMagAng"), Some('B'));
+        assert_eq!(capture_group_of("CktElement", "Residuals"), Some('B'));
+        assert_eq!(capture_group_of("CktElement", "VoltagesMagAng"), Some('C'));
+        assert_eq!(capture_group_of("CktElement", "Enabled"), Some('C'));
+        // A qualified name overrides the family context...
+        assert_eq!(capture_group_of("CktElement", "Bus.SeqVoltages"), Some('C'));
+        // ...and an unqualified name is resolved in the body's own family, so
+        // the two `SeqVoltages` rows never collide.
+        assert_eq!(capture_group_of("Bus", "SeqVoltages"), Some('C'));
+        // A selector has no row: the gate declares those, this table does not.
+        assert_eq!(capture_group_of("CktElement", "SetActiveElement"), None);
+        assert_eq!(capture_group_of("CktElement", "Nonesuch"), None);
+
+        // The two lists are disjoint, and the pre-table rows carry the same
+        // citation discipline as the table's own.
+        assert_eq!(PRE_G1_ELEMENT_READS.len(), 3);
+        for m in PRE_G1_ELEMENT_READS {
+            assert!(wp_g1_mode(m.name).is_none(), "{m} is in both lists");
+            assert_eq!(m.family, "CktElement");
+            assert_eq!(m.kind, ModeKind::V);
+            assert_eq!(m.v_type, Some(3), "{m} — every arm tags myType := 3");
+            assert!(
+                m.pas.starts_with('D') && m.pas.contains(".pas:"),
+                "{m} — pas must cite the DDLL unit and line"
+            );
+            assert!(
+                m.effect.why().is_some_and(|w| w.contains(".pas")),
+                "{m} — an ordered row must cite the Pascal that orders it"
+            );
+            assert!(
+                matches!(m.effect.capture_group(), 'A' | 'B'),
+                "{m} — every pre-table element read is ordered"
+            );
+        }
     }
 
     #[test]

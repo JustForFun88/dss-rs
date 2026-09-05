@@ -513,6 +513,272 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   newly-opened sub-ulp window; a future defect is ≥2 ulps there or visible in
   the same steps' f64 surfaces (node V / currents / powers / variables), which
   keep full tier floors.
+- **§G1.3a — the derived polar channels** (`harness::compare_element_derived`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3a): `CktElement.CurrentsMagAng`,
+  `VoltagesMagAng` and `Residuals` are *renderings* of quantities the gate
+  already compares, so **no floor is calibrated for them** — each one is the
+  image of an existing, already-calibrated tier band.
+
+  **0. The set they are images OF is a disc, not a rectangle** (written down
+  explicitly because the G1.3a F5 measurement raised the question; coordinator
+  decision D10 asked for a `√2` correction and the code refutes it). Element
+  currents go through `harness::compare_element_channels` →
+  `harness::assert_complex_close_c`, whose three operative lines are
+  `let diff = ((ar - er).powi(2) + (ai - ei).powi(2)).sqrt();`,
+  `let mag = (er * er + ei * ei).sqrt();` and
+  `let allowed = abs_floor + rel * mag;` — it bands the **modulus** of the
+  complex difference, `|Δz| ≤ abs + rel·|z|`. Node voltages reach the same
+  function through `harness::assert_complex_close`
+  (`corpus_gate/runner.rs:505,508`). So the admitted error set is the closed
+  **disc** `D(z, ρ)` with `ρ = abs + rel·|z|`, and derivations 1, 2 and 4 below
+  are images of that disc.
+  *Had* the gate banded `re` and `im` separately at `abs + rel·|component|`, the
+  admitted set would have been an axis-aligned rectangle whose modulus reaches
+  `√2·abs + rel·|z|` at 45° (Minkowski:
+  `√((abs+rel|re|)²+(abs+rel|im|)²) ≤ √2·abs + rel·√(re²+im²)`, attained iff
+  `|re| = |im|`) — up to `√2` looser than the disc. It does not, so **no `√2`
+  enters any band here and no band moves**. Pinned in both directions by
+  `harness::derived_polar_floors::the_inherited_current_band_is_a_disc_not_a_rectangle`
+  and its rejection leg `…::the_rectangles_diagonal_reach_fails_the_disc_band`
+  (feeder tier, 600 A at 45°: disc radius 7e-5 A, the rectangle's diagonal reach
+  7.414213562373095e-5 A = 1.0591733660532994× — admitted by a rectangle,
+  rejected by the gate).
+  The two live angle failures that raised the question are **not** in that gap
+  either way (`asymmetric:indmach/indmach_asym.dss` and
+  `asymmetric:combo/combo_mesh_asym.dss`, both `kind=micro`, `Transformer.tg`
+  `CurrentsMagAng[4]` on the r4133 channel): measured `1.0811686479428317e-7 °`
+  against a band of `8.916392577029153e-8 °` (×1.2125628594777123) at
+  `|I| = 1.7979012350026755e3 A`, and `1.3473783155859564e-7 °` against
+  `9.649498570331597e-8 °` (×1.3963195141855491) at
+  `|I| = 1.4616566273058197e3 A`. A rectangle would have inflated those bands by
+  only `(√2·abs + rel|z|)/(abs + rel|z|)` = ×1.148044383122301 and
+  ×1.1682661821224167 (the micro tier's `abs = 1e-6` is the only term a `√2`
+  touches), i.e. **both would still have failed**. They are genuine divergences
+  on decks whose `element` ledger entry already excludes the `currents` channel
+  they are the polar rendering of — settled by widening those scopes
+  (`tests/corpus/ledger.json`), never by a band.
+
+  The five derivations:
+
+  1. **Magnitude is the exact image of that disc.** `| |a| − |b| | ≤
+     |a − b|` (reverse triangle inequality), so a complex value already inside
+     `abs + rel·|oracle|` is inside the same band in magnitude; the bound is
+     attained at `a = z(1 ± ρ/|z|)`, so the magnitude channel admits neither more
+     nor less than the disc does. `CurrentsMagAng`
+     is the polar rendering of `CktElement.Currents` (`i_rel/i_abs`, gated
+     element-by-element by `compare_element_channels`); `VoltagesMagAng` is the
+     rendering of `NodeV[NodeRef[·]]` (`v_rel/v_abs`, gated node-by-node in
+     `harness::assert_complex_close`,
+     `corpus_gate/runner.rs:505-508`). The two evaluations of `|·|` themselves
+     differ by at most an ulp each (`num_complex::norm` = hypot vs the naive FPC
+     `Cabs`, proven equal on the whole reachable domain by
+     `line_constants::tests::naive_modulus_equals_hypot_until_the_square_overflows`),
+     i.e. ≤ 2·2.2e-16 rel — six orders under the tightest `rel` in the table
+     (micro 1e-9). Nothing widens.
+  2. **Angle = the conservative linearization of that disc's angular image.**
+     `arg` maps `D(z, ρ)` onto exactly `±asin(ρ/|z|)` radians — the tangent from
+     the origin to the error circle, valid while `ρ < |z|` (derivation 3 covers
+     the rest). The band `harness::polar_angle_band` emits is that image's
+     **linearization**, `rad2deg · allowed_mag/|z|` degrees — the same
+     construction as the voltage-scaled power floor and the `compare_monitor`
+     angle companion term above. Because `asin(x) ≥ x` the linearization is never
+     *looser* than the exact image: the angle channel can only be **stricter**
+     than the complex band it renders, never more permissive, so it can produce a
+     false failure but never a false pass. The gap is
+     `asin(x)/x − 1 = x²/6 + O(x⁴)`: at the magnitudes the corpus actually judges
+     it is below one f64 ulp (`x = 1.6841552121877197e-9` on the
+     `combo_mesh_asym` sample above → `x²/6 = 4.727297964565105e-19`; the emitted
+     `9.649498570331597e-8 °` and the exact `9.649498570331596e-8 °` differ only by
+     the ulp of the multiplication order), while at the widest band the live
+     corpus has ever emitted (`37.0083678180735 °`, `x = 0.6459178692144925`) the
+     exact image would be `40.23452908031853 °` — the band is 8.7 % tighter there,
+     with no consequence: the whole `midi_fuse` residual-angle channel measures
+     ≤ 3.9428730418000316e-7 of its band. Pinned by
+     `harness::derived_polar_floors::the_angle_band_is_the_conservative_linearization_of_its_exact_image`.
+     If a future sample ever fails **only** inside that gap, the fix is to emit
+     the exact `asin` image — a re-derivation, not a widened tolerance.
+     The band uses the **full-precision**
+     `57.29577951308232`: a tolerance is not a printed value, so the truncated
+     `57.29577951` of `CDANG` (r4133 `Shared/Ucomplex.pas:118`) belongs only
+     inside the kernel that renders the angle. At healthy magnitudes the image is
+     far *tighter* than any base band — 6.57e-6 ° at 683 A on the feeder tier,
+     and the largest band the whole IEEE13 `VoltagesMagAng` channel ever emits is
+     7.83e-7 °.
+  3. **The near-zero mask, and why the band cannot exceed 57.3 °.** Where
+     `|oracle mag| ≤ allowed_mag` the phasor is indistinguishable from zero at
+     the accepted precision and its argument carries **no** information; the
+     angle is then skipped while the magnitude — never masked — keeps the channel
+     two-sided. Because the mask fires exactly where the image would reach
+     `rad2deg · 1`, the emitted angle band can never exceed `57.29577951308232 °`
+     by construction (pinned by
+     `harness::derived_polar_floors::the_angle_band_never_exceeds_one_radian_in_degrees`;
+     largest band measured on live data: 37.0083678180735 ° on `midi_fuse`
+     residuals, 23.9211430402150 ° on IEEE13 residuals — residuals are a
+     near-cancellation by construction, so their band is the widest). The mask is
+     load-bearing, not cosmetic: the worst *masked* sample disagrees by
+     165.564025012130 ° at |I| = 5.550898829703193e-12 A (`midi_fuse`
+     `CurrentsMagAng`) and 179.999999990328 ° at |res| = 1.1368683772161605e-13 A
+     — angles of numerical zero. Every masked `VoltagesMagAng` sample is an
+     exactly-grounded conductor (`NodeRef = 0`, `NodeV[0] = 0`), where both
+     engines report 0 ° and the mask therefore hides nothing (measured: 29 of
+     134 conductors on IEEE13, 42 of 275 on `midi_fuse`, worst masked Δ = 0 ° in
+     both). For comparison the `CurrentsMagAng` mask fires on 7 of 134 / 10 of
+     275 conductors and the `Residuals` mask on 27 of 58 / 37 of 106 terminals.
+  4. **`Residuals` = a sum of conductor currents, so the band is the sum of their
+     bands.** `|δ(Σ_c I_c)| ≤ Σ_c (i_abs + i_rel·|I_c|) = nconds·i_abs +
+     i_rel·Σ_c|I_c|` (`harness::residual_band`) — the Minkowski sum of the
+     conductors' discs is the disc of the summed radius, so the bound is exact
+     rather than slack (attained when the conductor errors are collinear), and it
+     is exactly the derivation
+     `compare_element_channels` already uses for `Get_Losses` (`losses = Σ_k
+     S_k`), transplanted from powers to currents. No new tolerance class. It
+     matters because the residual is a near-cancellation by construction (≈0 on a
+     balanced terminal): IEEE13 `Line.671680` terminal 1 reads 2.83e-5 A against a
+     band of 3.0e-5 A, i.e. entirely inside the absolute floor, while
+     `Line.650632` carries ~144 A on both terminals. Honesty note: on today's
+     corpus the plain per-sample band `i_abs + i_rel·|res|` would also have
+     passed, so this derivation is not fitted to a failure — it is written down so
+     nobody later "tightens" it into a false failure on a balanced terminal.
+  5. **Angle differences are taken on the circle.** `CDANG` returns
+     `(−180, 180]`, so a phasor astride the negative real axis reads
+     `+179.99999999032846 °` on one engine and `−179.99999999032846 °` on the
+     other for an imaginary part of ±1e-18: the raw difference is
+     `359.9999999806569 °` for a physical difference of
+     `1.9343133317306638e-08 °`. `harness::wrapped_deg` folds the difference into
+     `[−180, 180]` first. This is not a relaxation — it is what "angle" means — and
+     it is bounded: a genuine sign flip still measures a full `180 °`, which is
+     above the 57.3 ° ceiling of derivation 3 and therefore fails in every case
+     (rejection leg:
+     `harness::derived_polar_floors::a_sign_flipped_angle_still_fails_the_band`).
+
+  **Measured headroom** (port vs the pinned `capi_v0145` oracle, `feeder` tier,
+  plain snapshot, worst |Δ|/band over every conductor and terminal of every
+  enabled element — `< 1` means inside the band):
+
+  | deck | cma.mag | cma.ang | vma.mag | vma.ang | res.mag | res.ang |
+  |---|---|---|---|---|---|---|
+  | IEEE13Nodeckt (38 elements) | 0.2509 | 0.04539 | 0.04588 | 0.05124 | 0.01393 | 0.01032 |
+  | controls/fuse/midi_fuse (66) | 9.006e-6 | 1.012e-5 | 3.037e-4 | 3.313e-4 | 1.018e-5 | 3.943e-7 |
+
+  The cross-*oracle* twin of the same measurement (capi_v0145 vs r4133, same
+  decks, same request) sits at the same scale — worst ratio 0.2509 on IEEE13
+  `Line.671692[1]`, `|Δ| = 4.228323e-06 A` against a band of `1.685074e-05 A` —
+  so the band is neither vacuous nor exceeded on either channel.
+
+  *Ledger side (F6′, 2026-09-04 — no band moved).* The full-corpus measurement
+  put **12** of the 442 gated cases over one of these bands, every one of them on
+  a deck whose committed `element` ledger scope already excludes the rectangular
+  channel the polar one renders; the scopes were widened per sub-channel, iterated
+  to a fixpoint (`tests/corpus/ledger.json`,
+  `measured.g13a_polar_first_failure`), plus one genuinely new capi-only entry
+  (`capi-capcontrol-time-bus-is-the-capacitors`, a different bus — not a floor
+  question). Two consequences for the derivations above. (1) The `envelope_element`
+  handler applies **exactly** these two floors, so a ledger envelope is measured on
+  the comparator's own scale. (2) A **masked** angle — magnitude at or under its
+  band, where derivation 3 says the angle carries no information and
+  `polar_close` skips it — is not envelope-checked either: measured on
+  `r4133-combomidi-injection-ulp`, a numerically-zero conductor read
+  `Transformer.t8 cma[9].ang` **139.4 °** from the oracle, so the only envelope
+  that could admit it is ±180 °, i.e. one that bounds nothing. The magnitude is
+  never skipped, so the sample stays two-sided and the entry can still go stale
+  (`ledger::a_masked_polar_angle_is_not_envelope_checked` and its rejecting twin
+  `::an_unmasked_polar_angle_still_hits_the_envelope`).
+
+- **§G1.3d(i) — the per-element discrete extras** (`harness::compare_element_extras`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3d): `CktElement.NumTerminals`,
+  `NumConductors`, `NumPhases`, `NodeOrder` and `EnergyMeter` are **discrete** —
+  three counts, a vector of bus-local node numbers and a name — so they are
+  compared **exactly**, with no `Tolerances` argument, no tier lookup and no
+  band of any kind. **No floor is introduced, and no existing floor moves**:
+  this sub-step neither reads nor writes `Tolerances`/`tol_for`. Two
+  consequences worth stating so a later reader does not look for a band that
+  does not exist. (1) The surface takes no ledger sub-channel either
+  (`SUBCHANNEL_FIELDS` is unchanged), so a divergence here cannot be masked by a
+  committed `element` scope — it is a gate red and a STOP, which is the whole
+  point of gating discrete state. (2) The one normalization it does apply is a
+  **capture-boundary spelling fold, not a tolerance**: "no meter" arrives as
+  `''` from capi (`Result := NIL`, `CAPI/CAPI_CktElement.pas:672-687`) and as
+  `'0'` from r4133 (the `CktElementS` pre-`case` default,
+  `DDLL/DCktElement.pas:421`), and each folds **on its own channel only** before
+  the exact compare — value-preserving in the `PROPS_NORM_R4133` sense. It is not
+  self-detecting: on r4133 a meter literally named `0` reds when the port HAS the
+  name (`element_extras_pins::a_meter_named_zero_reds_instead_of_passing`) but
+  passes when the port LOST it
+  (`element_extras_pins::the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard`),
+  so the corpus census `extras_population::no_corpus_energymeter_is_named_zero` —
+  not the fold — is what keeps that unreachable (G1.3d(i) audit settlement,
+  2026-09-05).
+
+- **§G1.3d(ii) — `PhaseLosses`** (`harness::compare_element_phase_losses`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3d): the one numeric field of the surface, and
+  the **only** new band in it. **No existing floor moves and no new tolerance
+  class is introduced** — the band is derived from `assert_power_close`'s
+  per-conductor policy, which is the floor the gate already applies to every
+  `Powers` cell.
+
+  1. **The derivation.** r4133 `Common/CktElement.pas:1093-1112` forms
+     `PhaseLosses[i] = Σ_{j=0}^{nterms-1} V_k·conj(I_k)` with `k = j·NConds + i`,
+     i.e. one phase's entry is the sum of the *same* per-conductor products the
+     `powers` channel bands one at a time. The admitted error of a sum is the sum
+     of the admitted errors, so
+
+         allowed_kW(i) = Σ_j ( i_abs·max(1, |V_kj|) + i_rel·|S_kj| ),
+         |V_kj| = |P_kW[k]| / |I_A[k]|   (assert_power_close's own recovery)
+
+     — `harness::phase_loss_band`. This is the identical construction
+     `compare_element_channels` already uses for `Get_Losses` (`losses = Σ_k S_k`
+     over **all** conductors) and `residual_band` uses for a terminal's current
+     sum (§G1.3a derivation 4), restricted to the conductors of one phase. It is
+     therefore **strictly tighter** than the whole-element `Get_Losses` band it is
+     a subset of: measured on the `phase_loss_bands::line_pair` fixture the three
+     phase bands are `0.00031648320000000007`, `0.00030929039999999996`,
+     `0.00031360607999999997` kW, summing to `0.00093937968` = the `Get_Losses`
+     band exactly when `NConds == NPhases`, while adding a neutral conductor moves
+     the whole-element band to `0.0009593886185452729` and leaves the phase sum
+     unchanged.
+  2. **Why the rejection leg is expressed in bands, not in "1e-6 rel".** A phase
+     loss is a near-cancellation of two large summands (~863 kVA each on that
+     fixture against a 1.25 kW answer), so the band is `2.53e-4` *relative to the
+     answer* while being tight against the summands that produce it. A relative
+     mutation smaller than that proves nothing: the pins therefore drive the
+     comparator at 0.5 band (passes) and 1.5 bands (fails)
+     (`harness::phase_loss_bands::an_error_inside_the_band_passes_and_one_outside_it_fails`),
+     and the live non-vacuity demo used a 1e-2 relative mutation, which cleared
+     the band by 4–6 orders on every gated case.
+  3. **The oracle-side identity that makes it a derivation, not a guess.**
+     Measured on the real capture path (both transports, three decks): for every
+     element with `NConds == NPhases`, `Σ_i pl_kw[i] == loss_w[0]·1e-3` and
+     `Σ_i pl_kvar[i] == loss_w[1]·1e-3` to better than `1e-9` relative — the
+     oracle's own `PhaseLosses` really is its `Losses` bucketed by phase, so
+     inheriting the `Losses` policy is inheritance, not analogy. The port side of
+     the same identity is pinned in-engine
+     (`exec::tests::element_extras::phase_losses_are_watts_and_sum_to_get_losses`,
+     banded at `1e-13·Σ_k |V_k·conj(I_k)|` — the reassociation bound, ~75× the
+     `n·ε·Σ|terms|` estimate and ~12 orders below the smallest real disagreement;
+     measured gap `7.275958e-12` W).
+  4. **The `Get_Losses` trust guard is deliberately NOT copied.** The
+     whole-element band carries an oracle-self-consistency escape for a *measured*
+     capi015 daily-freeze quirk on a rev this gate does not run
+     (`docs/upgrade/DIVERGENCES.md` §"capi015 daily `CktElement.Losses`
+     staleness"). An untriggered twin
+     here could only mask, so `compare_element_phase_losses` has none; the
+     identity is asserted positively instead (3 above).
+  5. **Cross-channel headroom** (capi_v0145 vs r4133 on the same request, three
+     control decks): the worst absolute gap is `1.672560756560415e-09` kW on
+     `vsource.source.pl_kw[2]` of `Test/indmachtest/Master.DSS` (capi
+     `-8039.588751957046`, r4133 `-8039.5887519553735`, `2.08e-13` relative), and
+     the worst *relative* gap `1.4966018598108593e-11` on
+     `vsource.source.pl_kvar[1]` of `controls/relay/relay_oc_sym.dss` — orders
+     under the band on both channels, so it is neither vacuous nor exceeded by the
+     transports themselves.
+  6. **Where the band is deliberately not consulted at all.** On the two `newton*`
+     decks `PhaseLosses` joins `LANE_SKIP_ELEM_POWERS` (both lanes) for the same
+     stale-`Iterminal` reason as `Powers`/`Losses`; that is a lane exclusion, not a
+     floor, and it was measured first — 55.5× / 34.4× the band on `Vsource.source`
+     phase 0. Ten committed `element` ledger scopes were widened onto the new
+     `phase_losses` sub-channel, again by measurement; a ledger envelope there is
+     evaluated with this same band, so no scope can admit more than the floor
+     plus its own pinned envelope.
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
@@ -785,6 +1051,488 @@ scalars"); monitors/meters are compared live
 only for cases that sample them in deterministic modes (`check_meters_monitors` in
 `solvable_now.json`) — an unsampled monitor returns a phantom channel from the
 pinned oracle, an artifact, not an engine gap.
+
+## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
+
+`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:7584`)
+compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
+and takes no `Tolerances` argument at all. That is a derivation, not an
+optimism: on every gated case today each compared value is one of
+
+* a **class default** the constructor stores verbatim (r4133 line numbers) —
+  `Capacitor` / `Reactor` `FaultRate` 0.0005, `PctPerm` 100.0, `HrsToRepair` 3.0
+  (`Capacitor.pas:555-557`, `Reactor.pas:601-603`), `Line` 0.1 / 20.0 / 3.0
+  (`Line.pas:839-841`), `Transformer` 0.007 / 0.0 / 0.0 (`Transformer.pas:959`
+  sets only `FaultRate`; the other two keep Pascal's zero-initialized 0.0);
+* a **deck literal** parsed independently by both engines — FPC `Val` and Rust
+  `str::parse::<f64>` are both correctly-rounded decimal→binary64, so the two
+  bit patterns are identical, not merely close;
+* an **untouched `0.0`** (the four `RelCalc`-dependent fields, below);
+* or a **discrete** integer / bool / name string.
+
+**No arithmetic is performed on either side of this surface**, so there is no
+rounding to absorb and any difference at all is a bug, not a floor. The one
+divergence the corpus does measure is not numeric drift but an uninitialized read
+in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
+(`crates/dss-core/tests/harness/mod.rs:7398`) and pinned — an envelope over a
+value that changes every process would not be a fact. See TESTING.md
+§"The `PDElements` walk".
+
+**Standing obligation for G1.6(i) — discharged (micro-part F2s, 2026-09-04).**
+G1.6(i) drives the executive `RelCalc`, so `Lambda`, `AccumulatedL` and
+`TotalMiles` are live accumulated sums over the zone walk
+(`PDElement.pas:106-110`) and summation order is observable. **All three stay in
+the exact set**, and the re-derivation is a measurement, not an argument. The
+live gate first reported twelve `PDElements` cells (`accumulated_l`,
+`total_miles`) as 1-ULP Rust↔oracle gaps on BOTH channels. They are not gaps:
+the raw JSON number token each oracle puts on the wire was read for every one of
+them — and for the three reliability cells below — and **15/15 round-trip to the
+port's own f64 bit for bit**, on the capi (`tools/oracle/oracle_server.py`) and
+r4133 (`epri-worker`) transports alike. What lost the last bit was the gate's own
+decoder: `serde_json` without the `float_roundtrip` feature decodes a
+17-significant-digit token as `significand as f64` followed by one divide by a
+power of ten — two roundings — landing 1 ULP away (measured directly against
+`str::parse`: 9 of 9 tokens misparsed, each to exactly the value the gate printed
+as `oracle`). That is the defect coordinator decision **D11** fixes
+workspace-wide (`serde_json` + `float_roundtrip`); **D18** landed the same
+hunk on this branch, so the gate decodes every oracle float exactly. With the
+feature on, the five reliability-flagged cases are green in both lanes
+(measured). `SectionID` is discrete and untouched. Both numbers are pinned by
+`exec::tests::reliability::reliability_accumulators_are_correctly_rounded_f64_sums`
+(`0.24000000000000002` vs the decoded `0.24`; `0.9469696969696969` vs
+`0.9469696969696968`). **No floor is added to this surface**, and
+`compare_pd_elements` keeps its no-`Tolerances` signature.
+
+## The `Meters` reliability surface (G1.6(i)) — exact, with one energy-tier exception
+
+`harness::compare_reliability` compares the `RelCalc` payload with
+**`rel = abs = 0`** on every reliability value, discrete and continuous alike.
+The justification is measured twice over:
+
+* the two independent oracle engines return **bit-identical** doubles for every
+  reliability number on `modes:time/midi_duty_ctrl.dss` (`SAIFI
+  0.05600000000000001`, `SAIDI 0.16799999999999998`, `CustInterrupts
+  0.11200000000000002`, `SumBranchFltRates 0.0031360000000000008`,
+  `AvgRepairTime 2.999999999999999`, `FaultRateXRepairHrs 0.009408`) — the
+  arithmetic is sums over integer customer counts and deck literals in a fixed
+  zone-walk order, and the walk order itself was measured bit-identical to both
+  oracles on all five flagged cases;
+* every cell where the port looked 1 ULP off was traced to the wire and found
+  bit-identical (the `PDElements` paragraph above; the reliability cells are
+  `cust_interrupts`, `saifikw` and a section's `sum_branch_flt_rates`).
+
+So a Rust gap on this surface is an **order bug**, never a floor.
+
+**The one exception is `Meters.Totals`** (coordinator decision **D17a**), which
+is compared at the existing energy-accumulation tier `tol.energy_rel` /
+`tol.energy_abs` (both `1e-4`). It is not a reliability quantity at all:
+`TotalizeMeters` (r4133 `Common/Circuit.pas:2520-2538`, capi `:2347-2360`) is
+`Σ_meters Registers[i] · TotalsMask[i]` over the circuit's meter list, i.e. a
+masked sum of the very energy registers `compare_meter` already compares at that
+tier (PORTING_PLAN §4). A sum of quantities that are not exact cannot itself be
+exact, so it **inherits** the summands' floor — this is an existing band applied
+to the same physical quantity, not a new one. Measured on
+`controls:energymeter/midi_energymeter.dss` (the only live two-meter deck): 64
+non-zero slots over the two channels, worst relative deviation
+**7.450981e-10** (slot 24, r4133: `3263.4261264650568` vs `3263.4261288966295`),
+five orders of magnitude inside the tier. The structural identity behind the
+inheritance — masked sum, every meter, creation order — is pinned by
+`exec::tests::reliability::meter_totals_is_the_masked_register_sum`.
+
+**What that tier does NOT guard, stated plainly** (G1.6(i) audit settlement,
+finding AT-2): `1e-4` rel / `1e-4` abs against a measured spread of
+`7.450981e-10` means a `Totals` regression below `1e-4` relative — and, below
+`|value| ≈ 0.111`, below `1e-4` absolute — passes here. The 67 slots are
+therefore **not** covered by this surface's exactness headline; the real guard
+on their shape is the in-engine identity pin named above (masked sum, every
+meter, creation order, all 67 slots asserted against the registers), and each
+summand is separately compared by `compare_meter` at the same tier. Tightening
+the band would be a change to the ENERGY tier itself — a PORTING_PLAN §4
+decision, not a reliability one — so it is not made here.
+
+### The unguarded `AverageRepairTime` division — NaN and ±inf agree, NaN vs a number does not
+
+`AverageRepairTime := SumFltRatesXRepairHrs / SumBranchFltRates` is written
+without a zero test on **all three** engines: r4133
+`Version8/Source/Meters/EnergyMeter.pas:2563`, capi 0.14.5
+`src/Meters/EnergyMeter.pas:2518`, port `average_repair_time`
+(`crates/dss-core/src/solution/meters/reliability.rs:293`). A feeder section whose
+branches all carry `faultrate=0` therefore evaluates `0.0 / 0.0` and yields
+`NaN` — identically everywhere, since IEEE-754 fixes that result and the port
+performs the same single division on the same two f64 accumulators.
+
+`harness::rel_num_eq` treats two `NaN`s as **agreement** and `±inf` as agreement
+only with the same sign; `NaN` against any finite number is a **failure**, as is
+`+inf` against `-inf`. That is not a tolerance and not a mask: it is the only
+equality relation under which "both engines computed `0/0` here" is expressible,
+and it is strictly narrower than dropping the cell (which is what a skip row
+would do). The regime does not occur in today's flagged population — every
+section measured has `SumBranchFltRates > 0` — so the arm is proved by a harness
+unit test that drives the comparator with `NaN` on both sides (passes) and `NaN`
+against `0.0` (fails):
+`harness::reliability_tests::nan_agrees_with_nan_and_never_with_a_number`. The
+same rule is applied to `Meters.Totals` on top of its energy band.
+
+### `Meters.CalcCurrent` / `Meters.AllocFactors` — the current tier, and where they are not defined at all
+
+These two per-phase arrays are the only cells of this surface that are **not**
+deck-literal arithmetic, so they are the only ones that do not ride the
+exactness rule above. `TMeterElement.CalcAllocationFactors` (r4133
+`Version8/Source/Meters/MeterElement.pas:54-72`) writes
+
+```
+CalculatedCurrent[i] := <the metered element's terminal current>
+PhsAllocationFactor[i] := SensorCurrent[i] / Cabs(CalculatedCurrent[i])   { else 1.0 }
+```
+
+so `CalcCurrent` is literally `|GetCurrents|` of the metered element — the same
+quantity `harness::compare_element` already gates — and `AllocFactors` is that
+quantity in a denominator.
+
+**`calc_current` takes the current tier verbatim**: `i_abs + i_rel·|oracle|`
+(`harness::reliability_array_band`). No new band; the same numbers
+`compare_element` uses.
+
+**`alloc_factors` takes the *image* of that band under `f = S / |I|`**, not a
+band of its own. With `S` fixed (a deck literal, parsed identically on both
+sides) and `|I|` admitted to move by `δ = i_abs + i_rel·|I|`, the induced
+first-order motion of `f` is
+
+```
+|Δf| = |f| · δ / |I| = |f| · (i_rel + i_abs / |I|)
+```
+
+which is what the harness computes, with `|I| = max(|I_port|, |I_oracle|)` as
+the denominator (the larger of the two, so a near-zero port current cannot
+inflate the band) and an **exact** compare when both currents are zero — which
+is exactly the Pascal's `ELSE PhsAllocationFactor^[i] := 1.0` branch
+(`MeterElement.pas:68`), where no division happened on either side.
+
+**The denominator is band-limited from below, and that bound is enforced.**
+The expression above is a band only while `|I|` is distinguishable from zero:
+once `|I| < i_abs` the term `i_abs/|I|` exceeds 1 and the "band" admits the
+whole value, so the cell would stop being compared with no counter and no
+message. `harness::reliability_array_band` therefore returns **no band** for
+`0 < |I| < i_abs` (and for a non-finite current), and `compare_reliability`
+turns that into a **loud triage failure** rather than a pass; `|I| == 0` on
+both sides stays the exact arm. This is the same lower bound the
+band-limited-denominator rule for the `SeqCurrents %I…` columns calls
+load-bearing (`0 < |I1| < 1e-6 A`, `ColTol::gate` above) — a ratio inherits its
+numerator's band divided by a denominator that is never allowed to vanish, and
+before the G1.6(i) audit settlement (finding A/4) only the sentence said so:
+the code admitted `|f|·1e3` at `|I| = 1e-9 A`. The three regimes are unit-tested
+by `harness::reliability_tests::the_alloc_factors_band_is_band_limited_from_below`.
+
+Measured on `controls:energymeter/midi_relcalc.dss`, the only corpus deck that
+runs `AllocateLoads` (G1.6(i) part F3; port, capi 0.14.5 and EPRI r4133 all read
+through the transports the live gate uses):
+
+| k | port | capi 0.14.5 | EPRI r4133 | capi↔r4133 rel | port↔worst-oracle rel |
+|---|---|---|---|---|---|
+| `calc_current[0]` | `115.69585353499207` | `115.69585353499478` | `115.69585353499097` | 3.29e-14 | 2.34e-14 (capi) |
+| `calc_current[1]` | `84.8661220964024` | `84.86612209639719` | `84.86612209639911` | 2.26e-14 | **6.14e-14** (capi) |
+| `calc_current[2]` | `85.38036092989663` | `85.38036092989765` | `85.38036092989825` | 6.99e-15 | 1.90e-14 (r4133) |
+| `alloc_factors[0]` | `1.0372022534386347` | `1.0372022534386103` | `1.0372022534386445` | 3.30e-14 | 2.35e-14 (capi) |
+| `alloc_factors[1]` | `1.1783264927129167` | `1.178326492712989` | `1.1783264927129624` | 2.26e-14 | **6.14e-14** (capi) |
+| `alloc_factors[2]` | `1.0541065769667621` | `1.0541065769667495` | `1.0541065769667421` | 6.95e-15 | 1.90e-14 (r4133) |
+
+The two **independent oracle engines**, both KLU-based, already disagree with
+each other by up to `3.30e-14` relative here while agreeing bit-for-bit on every
+scalar, every section field and all 67 `Meters.Totals` slots of the same
+payload — that is the proof these two arrays alone are solve-derived. The port's
+worst gap against either of them is `6.14e-14` = `1.9×` the spread the two
+oracles leave between themselves, i.e. faer-vs-KLU on the same footing as
+KLU-vs-KLU. The micro tier (`i_rel = 1e-9`, `i_abs = 1e-6`) leaves four to five
+orders of headroom; the concrete bands the shipped comparator computes on this
+deck are `1.116e-6` for `calc_current[0]` (`1e-6 + 1e-9·115.7`) and `1.000e-8`
+for `alloc_factors[0]` (`1.0372·(1e-9 + 1e-6/115.7)`) — the propagated band is
+~100× *tighter* than applying `i_abs + i_rel·|f|` to a dimensionless ~1.0
+quantity would have been. Both are shown non-vacuous by perturbing the port's
+arrays by 1e-6 relative in a scratch copy, which reds the case on both channels
+(G1.6(i) part F3), and the identity itself is pinned with all three engines'
+numbers by
+`tests/reliability_pins.rs::meter_allocation_factors_are_the_peak_current_over_the_metered_current`.
+
+**Everywhere else the two fields are excluded, and that is not a floor.** Until a
+deck runs the executive `AllocateLoads`, both oracles read the arrays out of
+**uninitialized memory**: `TMeterElement.AllocateSensorArrays` `ReallocMem`s
+`CalculatedCurrent` and `PhsAllocationFactor` without zeroing them (r4133
+`Version8/Source/Meters/MeterElement.pas:45-52`), only
+`CalcAllocationFactors` (`:54-72`) ever writes them, and its sole driver is
+`TExecHelper.DoAllocateLoadsCmd` (r4133
+`Version8/Source/Executive/ExecHelper.pas:2624-2683`). Measured on
+`controls:combo/combo_protection.dss` with three fresh `epri-worker` processes
+(G1.6(i) part R): `Meters.AllocFactors` =
+`[2.806806272625585e-309, 2.121995791e-314, 2.37e-322]` in run 1 and
+`[…, …, 2.4e-322]` in runs 2-3 — denormal garbage whose third slot **changes
+between processes**. A value that changes every run cannot be enveloped, so
+there is no band to derive and no `tests/corpus/ledger.json` row to write
+(coordinator decision D4, the `PD_SKIP_FIELDS` precedent): the cells are dropped
+field-by-field by `harness::RELIABILITY_SKIP_FIELDS`, whose predicate is the
+**port's own** regime (both arrays still exactly zero) so it evaporates on the
+one deck that allocates, and the port's side is pinned by
+`tests/reliability_pins.rs::meter_alloc_factors_are_zero_until_allocateloads_runs`.
+
+### Two notes that keep this section true
+
+**The zone lists are compared in order, not as sets.** The exactness argument
+above rests on both engines accumulating in the same zone-walk order, so since
+G1.6(i) part F4 `compare_reliability` asserts the sequence of
+`AllBranchesInZone` / `AllEndElements` / `ZonePCE` element by element and not
+merely their membership (`compare_meter`'s deliberate order-independence is
+untouched — this surface layers the stronger contract on top). Measured
+bit-identical, port vs both oracles, on every flagged case.
+
+**A corpus deck that makes `SAIFIkW` solve-derived would break this section.**
+`SAIFIkW = Σ kWBase·RelWeighting·Bus_Num_Interrupt / Σ kWBase` (r4133
+`Version8/Source/Meters/EnergyMeter.pas:2605,2632`), so it is deck-literal
+arithmetic only while the zone's loads carry a literal `kW`. An early draft of
+`midi_relcalc.dss` used `xfkva=`/`allocationfactor=` loads, whose `kWBase` is
+recomputed from the solve: `SAIFIkW` then measured `0.18812283916834857` on capi
+against `0.18812283916834877` on r4133 (1.06e-15 relative) while every other
+scalar stayed bit-identical. The shipped deck uses kW-spec loads for exactly
+this reason (recorded in its header and manifest note); a future reliability
+deck must do the same, or `SAIFIkW` leaves the exact set and needs its own
+derivation here.
+
+That choice costs no coverage of `AllocateLoads` itself: the kW-rewriting
+branch of `Set_AllocationFactor` — the one this deck deliberately avoids — is
+oracle-pinned in-engine by `exec::tests::allocation::allocateloads_kwh_spec_loads`
+(kWh/`cfactor` spec) and `::allocateloads_single_phase_per_phase_factor`
+(`xfkva`/`allocationfactor` spec), both asserting the rewritten `Loads.kW`,
+plus the data-driven `tests/golden_allocation.rs`. What the corpus deck adds is
+the LIVE half — `Meters.CalcCurrent`/`AllocFactors` defined on both oracle
+channels — and that is all it is asked to add (G1.6(i) audit settlement,
+finding AT-5).
+
+## Bus voltage surface (GOLDEN_REBASE G1.4a, `harness::compare_bus`)
+
+`compare_bus` / `compare_all_bus_vmag_pu` gate the bus flavours of the solved
+node voltages — `Bus.puVoltages`, `Bus.VMagAngle`, `Bus.puVMagAngle` and
+`Circuit.AllBusVmagPu`. **The surface adds no tolerance constant.** Every band is
+the *exact image* of the already-calibrated node-voltage band
+`eps = v_abs + v_rel*|V|` (the `assert_complex_close` in `corpus_gate/runner.rs`,
+over the very same `Solution.NodeV` these quantities are read from) under a
+transformation both engines run identically. Derivations, in the order the
+comparator applies them:
+
+1. **`kv_base`, `nodes`, the bus-name sequence — exact, no band.** `kVBase` is
+   `NearestBasekV/SQRT3` off the deck's own legal-base list (`Solution.pas:1103`
+   == r4133 `:2541`), `Nodes` and `BusList` are discrete. A disagreement is a
+   finding, not a floor. (Lane note: the base *search* scale is a Stage-F row,
+   `compat::kv_base_search_scale` — truncated `0.001732` in the parity lane vs
+   `SQRT3/1000` in the default lane — which can only select a different legal
+   base when the estimate lands within 2.93e-5 of a tie between two adjacent
+   bases; a lane-dependent failure here is that knife edge, never a band to
+   widen.)
+2. **`puVoltages`, `puVMagAngle`.mag, `AllBusVmagPu`** — the quantity is
+   `NodeV / BaseFactor` with `BaseFactor = 1000*kVBase` (or `1.0`, 11 480 corpus
+   buses) an *exact, engine-identical* constant by (1), so
+   `|dV|/BF <= v_abs/BF + v_rel*|V/BF|`:
+
+   > `allowed = v_abs / BaseFactor + v_rel * |expected|`
+
+   The scaled absolute term is the point: the raw `v_abs` applied to a per-unit
+   number would be an 8e-6 pu band on a 0.12 kV bus and 7e-12 pu on a 138 kV
+   bus, while the image means the same thing everywhere. `AllBusVmagPu` takes
+   the `BaseFactor` of the bus each entry belongs to (convention 2 — bus-list
+   order x internal node index), rebuilt from the port's own bus list, whose
+   per-bus `kv_base` (1) pins exactly.
+3. **`VMagAngle`.mag** — `| |V_a| - |V_e| | <= |V_a - V_e|` (reverse triangle),
+   so the node-voltage band carries over unchanged: `allowed = v_abs +
+   v_rel*|expected|`.
+4. **The two angle channels** — the *exact* angular image, compared wrap-aware.
+   Phasors within `eps` of `V` subtend a half-angle `asin(eps/|V|)` about
+   `arg V` while `eps < |V|`, and the whole circle once `eps >= |V|`:
+
+   > `allowed_deg = if eps >= |V| { 180 } else { degrees(asin(eps / |V|)) }`,
+   > with `|V|` the **same sample's magnitude in volts** (the pu channel
+   > multiplies its per-unit magnitude back by `BaseFactor`, so both polar
+   > flavours share one physical band).
+
+   `f64::to_degrees` is `180/PI = 57.29577951308232` — the same full-precision
+   constant §monitor-f32-floor's polar-ANGLE band uses. That band is this one
+   *linearized* (`asin x ~ x`); the two agree to <2e-3 relative while
+   `eps/|V| <= 0.1` (the whole healthy regime) but the linearization
+   *under*-estimates the image as `eps/|V| -> 1`, and bus magnitudes legitimately
+   reach the absolute floor (unenergized buses; the `NEVTestCase` neutral-earth
+   buses sit at ~2 V on a 7.6 kV base). Saturating at 180 deg is not a free pass:
+   the magnitude channel still pins `|V|` itself inside `eps` on its own row, so
+   an unconstrained angle is exactly a bus whose voltage is at or below the floor
+   in **both** engines. The compare folds the difference into `(-180, 180]`
+   because `ctopolardeg` returns that range and a phasor on the seam flips sign
+   between engines on a 1-ulp difference.
+
+**Measured headroom** (2026-09-04, lane `lane-b`; port vs each case's *gating*
+channel(s), all live, 24 356 bus-step comparisons; every case was additionally
+run against its NON-gating channel, which is how `4Bus-YYD/YYD-Master` shows a
+153x capi divergence — precisely why it is r4133-gated). The number is
+`worst |diff| / allowed`; 1.0 would be a failure:
+
+| case (kind) | gating | puVoltages | VMagAngle mag / ang | puVMagAngle mag / ang | AllBusVmagPu |
+|---|---|---|---|---|---|
+| `IEEE13_CDPSM` (large) | both | **0.658** | 0.494 / 0.435 | 0.494 / 0.435 | 0.494 |
+| `Master_ckt5` (large) | both | 0.397 | 0.356 / 0.176 | 0.356 / 0.176 | 0.356 |
+| `4Bus-YYD/YYD-Master` (large) | r4133 | 0.355 | 0.310 / 0.300 | 0.310 / 0.300 | 0.310 |
+| `Auto3bus` (large_near_ideal_source) | both | 0.291 | 0.026 / 0.290 | 0.026 / 0.290 | 0.026 |
+| `TestDDRegulator` (large_floating_zeroseq) | both | 0.268 | 0.256 / 0.262 | 0.256 / 0.262 | 0.256 |
+| `IEEE13Nodeckt` (feeder, 24 steps) | both | 0.266 | 0.149 / 0.221 | 0.149 / 0.221 | 0.149 |
+| `GFM_IEEE123 GFMSnap` (large_floating_delta) | both | 0.112 | 0.108 / 0.108 | 0.108 / 0.108 | 0.108 |
+| `IEEE123Master` (large, 24 steps) | both | 0.080 | 0.070 / 0.078 | 0.070 / 0.078 | 0.070 |
+| `LVTestCaseNorthAmerican` (large_floating_zeroseq) | both | 0.076 | 0.070 / 0.076 | 0.070 / 0.076 | 0.070 |
+| `NEVMASTER` (feeder, 55 `>3`-node buses) | both | 0.053 | 0.053 / 0.049 | 0.053 / 0.049 | 0.053 |
+| `8500-Node/Master` (large, 4 876 buses) | both | 2.60e-4 | 2.60e-4 / 1.32e-4 | 2.60e-4 / 1.32e-4 | 2.60e-4 |
+| `indmachtest/Master` (feeder) | both | 1.32e-7 | 1.35e-7 / 5.0e-8 | 1.35e-7 / 5.0e-8 | 1.35e-7 |
+
+`kv_base`, `nodes` and the bus-name sequence matched **exactly on every one of
+those buses, on both channels** (0 mismatches in all 24 390 bus-steps measured,
+the non-gating and ledger-excluded runs included).
+
+The worst ratio (0.658, `IEEE13_CDPSM` bus `650.4` at 59.86 V) is *identically*
+the ratio the node-voltage channel already runs at on that node — algebraically
+so for `puVoltages`, since `|dV|/BF / (v_abs/BF + v_rel*|V|/BF) = |dV| / (v_abs +
+v_rel*|V|)`. That is the point of the construction: **`compare_bus` cannot red
+where `voltages` is green**, so it introduces no new numeric risk and its whole
+gating value is the discrete content — the three ordering conventions, the bus
+identity/`BusList` order, the node sets and the voltage bases.
+
+**The converse, and why `voltages_excluded` exists.** Because the bands are exact
+images, a case whose node voltages are ledger-*excluded* diverges on the bus
+surface by the same factor. Measured on the eight such cases, then carrying ten
+`{"field": "voltages"}` scopes in `tests/corpus/ledger.json` (**eight** since the
+same sub-step's D12/D14 flip moved the two GIC decks to the r4133 channel alone —
+the same eight cases): `gic_midi` **1.8e5x** over band on both channels,
+`makeposseq_shunt` **7.5e5x** (capi), `windgen_daily` **3.3e6x** (r4133).
+Re-comparing them would demand one ledger row per case/channel — ten as measured,
+at the §1.1(f) kill threshold — for a cause already triaged and pinned. So `compare_bus`/`compare_all_bus_vmag_pu` take a
+`voltages_excluded` flag that suppresses **only** the three continuous arrays;
+the bus count, name sequence, `nodes`, `kv_base` and every array length stay
+compared, so nothing the bus surface uniquely witnesses is dropped. One
+structural rule, no ledger rows, and the negative drive
+`the_voltage_exclusion_still_pins_kv_base` proves the suppression is not a mask.
+
+## Short-circuit surface (GOLDEN_REBASE G1.5, `harness::compare_bus_short_circuit`)
+
+`compare_bus_short_circuit` gates the six short-circuit arms of the same `IBus`
+facade the section above gates the voltage arms of — `Bus.Zsc1`, `Bus.Zsc0`,
+`Bus.ZscMatrix`, `Bus.YscMatrix`, `Bus.Isc`, `Bus.Voc` — read by the SAME
+per-bus walk (six reads appended after the five voltage ones, on both
+transports). **This surface adds no tolerance constant either**: every band is
+an existing tier number applied to the quantity whose derivation already covers
+it, and no tier constant moves. In the order the comparator applies them:
+
+1. **Two discrete rows come first, and they are shapes, not numbers.** `Zsc`/`Ysc`
+   do not exist until `AllocateAllSCParms` runs inside the FaultStudy solve
+   (`Common/SolutionAlgs.pas:773-781`), and the two channels publish DIFFERENT
+   not-run sentinels: capi 0.14.5 one double (`DefaultResult`,
+   `CAPI/CAPI_Utils.pas:212-221`), r4133 two (the `CZero` prelude,
+   `DDLL/DBus.pas:433-434`) — and, at a 0-node bus, capi ZERO doubles for
+   `Isc`/`Voc` (`AllocMem(0)` is non-nil, `Common/Bus.pas:250-256`) against
+   r4133's two (`Reallocmem(VBus, 0)` frees the pointer, `:246-260`). The
+   comparator compares the per-circuit "study ran" bit first and normalizes both
+   sentinel shapes to "no matrix" / "no nodes" (coordinator decision D4: a
+   sentinel-SHAPE difference is a comparator-level normalization plus a pin,
+   never a ledger row and never a tolerance). Both numbers are pinned by
+   `the_two_channels_publish_different_zsc_sentinels`. Nothing here is a floor.
+2. **`ZscMatrix` is a SOLVE, not an assembly — so it takes the VOLTAGE band.**
+   Column `i` of `Zsc` is the node-voltage answer to `Y*V = e_i` on the same
+   factored `Y` the power flow uses, restricted to the bus (`ComputeYsc`,
+   `Common/SolutionAlgs.pas:800-832` ==
+   `solution/solution/fault_study.rs::compute_ysc`); the injection is exactly
+   `1 + 0j` A (`Common/SolutionAlgs.pas:812-819`), so the node-voltage band maps onto it numerically
+   unchanged — `v_abs` re-read as ohms, `v_rel` being scale-invariant:
+
+   > `allowed = v_abs + v_rel * |expected|`, in ohms.
+
+   `y_abs`/`y_rel` is an *assembly* floor (the stamped `Yprim` sum) and is the
+   wrong tier for a solved quantity; it is deliberately not used for `Zsc`.
+3. **`Voc` is a copy of `NodeV`** (`UpdateVBus`, `Common/Solution.pas:4070-4083`
+   == `solution::ymatrix::update_vbus`), so it takes the node-voltage band
+   unchanged — the identity image, not merely a bound. It is live on far more
+   than the fault-study decks: `BuildYMatrix` refreshes `VBus` whenever
+   `PreserveNodeVoltages` is on (`Common/Ymatrix.pas:170`), i.e. on every
+   harmonics/dynamics deck, and it is exactly zero (on all three engines)
+   everywhere else.
+4. **`Zsc1`/`Zsc0` are averages of `Zsc` entries** — `Zs -/+ Zm` over the
+   averaged diagonal and upper-triangle off-diagonal (`Shared/Ucmatrix.pas:356-383`
+   == `support/cmatrix::avg_diagonal` / `avg_off_diagonal`), so the same band is
+   applied to them. The bound is not free: `Zsc1 = Zs - Zm` is a DIFFERENCE, and
+   on a floating-zero-sequence bus the two summands share a huge common mode, so
+   an entrywise band on `Zsc` does not formally imply one on `Zsc1`. The
+   measurement settles it, and settles it the *good* way — the error cancels
+   with the common mode: at the corpus's extreme buses (`ieee37_SC_Currents:775`,
+   `IEEE123Master-SC:610`, `Run_NEV:tertiary`) `Zsc0`, the arm that KEEPS the
+   common mode, runs at 0.415 / 0.362 / 0.047 of its band while `Zsc1`, the
+   differential arm, runs at 1.3e-5 / 1.0e-3 / 4.6e-4 — two to four orders
+   TIGHTER. The table below is the standing evidence; growth of the `Zsc1`
+   column relative to the `Zsc0` one is a finding, not a band to widen.
+   (`AvgOffDiagonal` divides only `If Ntimes > 0`, so `Zm = 0` on a 1-node bus
+   and `Zsc1 == Zsc0 == Zsc[0][0]` there — a shape fact, not a tolerance fact;
+   pinned by `zsc1_collapses_to_the_single_entry_on_a_one_node_bus`.)
+5. **`YscMatrix` and `Isc` carry an inversion cancellation that the tier's
+   ABSOLUTE term already covers.** `Ysc = Zsc^-1` through the Gauss-Jordan
+   no-exchange kernel all three engines share
+   (`Common/SolutionAlgs.pas:828-829`, `support/cmatrix::invert` ==
+   `compat::invert_gj_no_exchange_impl`), and `Isc = Ysc * Voc` (`ComputeIsc`,
+   `:785-796`). On a floating-zero-sequence bus `Zsc` is a huge common mode — the
+   reciprocal of the anti-float `Y_PPM` adder — plus a tiny differential part, so
+   the inversion loses `log10 K` digits with `K = ||Zsc||_inf * ||Ysc||_inf`.
+   Measured (G1.5 part R) over the three decks surveyed there: `K` is 1..12 on
+   every bus except `IEEE123Master-SC:610` (`K = 1.10e8`; common mode
+   `+j1.536e6` ohm over a ~0.017 ohm differential) and `Run_NEV:tertiary`
+   (`K = 9.52e6`, `+j3.227e6` ohm over ~0.053 ohm), where the predicted floor
+   `K * u * ||Ysc||_inf` is `5.847e-7` S and `2.081e-9` S respectively
+   (re-derived from each bus's own `||Zsc||_inf`/`||Ysc||_inf` in the F5
+   instrumented run; the spec's single 2.9e-7 estimate predated the
+   measurement). The live run adds a fourth deck with the same signature —
+   `ieee37_SC_Currents` bus `775`, a 1.38e6 ohm common mode against a ~34 S
+   `Ysc` entry — and it is the worst of this conditioning family (the worst over
+   all six arms is item 6's `Voc`). What admits all
+   of them is the tier's ABSOLUTE term: the worst `|dYsc|` anywhere is 1.37e-7 S
+   against `y_abs = 1e-6` (0.117 of band), and `Isc` inherits the statement at
+   `i_abs` (worst 0.065). **No relative band is widened, no tier constant moves,
+   and no `Ysc`/`Isc` entry is excluded anywhere** — the R1 decision tree of the
+   sub-step spec lands in branch (i).
+6. **Measured headroom** (2026-09-05, lane `lane-b`; the live corpus gate over
+   the whole forced population — the 442 cases x their gating channel(s), every
+   (case, step, channel) short-circuit comparison green). The number is
+   `worst |diff| / allowed`; 1.0 would be a failure. `Zsc`/`Ysc`/`Isc` are
+   non-trivial on the four vendored decks that run a fault study (the fourth
+   spells it `solve mode=f`, `ieee37_SC_Currents.dss:111`), listed per channel
+   below, and on the `micro`-band `faultstudy_micro` deck (worst 1.9e-6, `Voc`);
+   the rest compares sentinel shapes, exact zeros and a live `Voc`:
+
+   | case (`feeder`) | channel | Zsc1 | Zsc0 | ZscMatrix | YscMatrix | Isc | Voc |
+   |---|---|---|---|---|---|---|---|
+   | `ieee37_SC_Currents` | capi | 1.34e-5 | **0.4155** | **0.4154** | **0.1167** | 0.0409 | 0.4422 |
+   | `ieee37_SC_Currents` | r4133 | 8.33e-6 | 0.4155 | 0.4154 | 0.0872 | 0.0348 | 0.4422 |
+   | `IEEE123Master-SC` | capi | 1.04e-3 | 0.3620 | 0.3619 | 0.0858 | 0.0544 | **0.6098** |
+   | `IEEE123Master-SC` | r4133 | 1.04e-3 | 0.3620 | 0.3619 | 0.0935 | **0.0650** | 0.6098 |
+   | `NEVTestCase/Run_NEV` | capi | 4.59e-4 | 0.0469 | 0.0469 | 1.12e-4 | 2.26e-3 | 5.64e-6 |
+   | `NEVTestCase/Run_NEV` | r4133 | 4.59e-4 | 0.0469 | 0.0469 | 1.40e-4 | 2.96e-3 | 5.63e-6 |
+   | `ieee34Mod2_SC_Case_II` | capi | 2.59e-4 | 2.59e-4 | 2.63e-4 | 8.21e-7 | 3.51e-5 | 7.32e-4 |
+   | `ieee34Mod2_SC_Case_II` | r4133 | 2.56e-4 | 3.32e-4 | 3.29e-4 | 1.06e-6 | 4.32e-5 | 9.34e-4 |
+
+   Worst `Voc` on a deck that never ran a study: `fuse/indmach_r4133/indmach_dyn`
+   0.110 (r4133), `Test/Dynamic_Kundur` / `Dynamic_KundurDynExp` 0.0445 (r4133),
+   `FreqScan/Run_Scan` 3.80e-3 (capi) — the same node-voltage floor those decks
+   already run at on the `voltages` channel.
+
+   The population worst over all six arms is 0.61 (`Voc` at `IEEE123Master-SC`
+   bus `610`, `|V| = 277 V`), i.e. the surface has ~1.6x headroom at its tightest
+   point and cannot red where `voltages` is green — the same statement, and for
+   the same algebraic reason, as the bus voltage surface above.
+
+**The narrowed `voltages_excluded`.** The bus voltage surface suppresses its
+three continuous arrays on a case whose `voltages` field is ledger-excluded
+deck-wide (D11(2), section above). This surface reuses the SAME flag but narrows
+it to `Voc` and `Isc` alone: `Voc` is a snapshot of the very `Solution.NodeV`
+that was triaged and `Isc = Ysc * Voc` is its image, while `Zsc`, `Ysc`, `Zsc1`
+and `Zsc0` are functions of `Y` alone — independent of the solution vector — and
+therefore stay fully compared on those cases, as do the study bit, the bus
+identity and every array length. The negative drives
+`the_voltage_exclusion_still_pins_zsc_ysc_and_the_lengths` and
+`the_voltage_exclusion_drops_only_the_voc_and_isc_values` prove both halves.
 
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 
@@ -1360,12 +2108,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:3330`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:6175`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, each row's gap measured as `display_rel` (`props_norm.rs:783-792`) | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:923-932` and `:940-949` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1115-1124` and `:1104-1113` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:2521` (asserted as `i_abs / floor`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1087-1096` and `:1104-1113` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1279-1288` and `:1268-1277` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:5067` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and

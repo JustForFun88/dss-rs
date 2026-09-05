@@ -3,9 +3,11 @@
 //! Split out of `exec/mod.rs`.
 
 use super::*;
+use crate::circuit::controls::{ControlCategory, control_category};
 use crate::report::export::json::{
     JsonOpts, build as json_build, circuit as json_circuit, serialize as json_serialize,
 };
+use crate::support::complexutil::{Polar, c_to_polar_deg};
 
 /// A monitor's recorded buffer for the golden/test harness (dss-python
 /// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
@@ -71,29 +73,224 @@ pub struct ElementSnapshot {
     /// `CktElement.Losses` surface): `Σ NodeV[ref]·conj(Iterminal)` over all
     /// conductors, ×3 under positive sequence.
     pub loss_w: (f64, f64),
+    /// `CktElement.CurrentsMagAng`: `ctopolardeg` of every terminal current,
+    /// conductor-minor inside terminal-major — the polar rendering of
+    /// [`currents`](Self::currents), same length (`yorder`). Pascal r4133
+    /// `DDLL/DCktElement.pas:1058` (mode `18`), capi `CAPI/CAPI_Alt.pas:1043`
+    /// (`Alt_CE_Get_CurrentsMagAng`); a fastdss `_columns` surface
+    /// (`dss/ICktElement.py:64` on `origin/fastdss`).
+    pub currents_mag_ang: Vec<Polar>,
+    /// `CktElement.VoltagesMagAng`: `ctopolardeg(NodeV[NodeRef[i]])` over the
+    /// same conductor layout — the element's own view of the node voltages,
+    /// i.e. a live check of its `NodeRef` mapping. Pascal r4133
+    /// `DDLL/DCktElement.pas:1082` (mode `19`), capi `CAPI/CAPI_Alt.pas:1072`;
+    /// fastdss `dss/ICktElement.py:58`.
+    ///
+    /// **Empty** when `node_ref` is empty — a never-energized element, whose
+    /// `NodeRef` upstream is still `NIL`: capi returns its one-element
+    /// `DefaultResult` `[0.0]` there (`CAPI_Alt.pas:1081` guards on
+    /// `elem.NodeRef = NIL`) and r4133, which has no such guard, dereferences
+    /// the nil pointer at `DCktElement.pas:1099` and takes the process down.
+    /// Both sentinel shapes are a capture-boundary concern; the engine reports
+    /// "no mapping yet" as the empty vector.
+    pub voltages_mag_ang: Vec<Polar>,
+    /// `CktElement.Residuals`: `ctopolardeg(Σ_c I[t·nconds + c])` per terminal
+    /// (length `nterms`), each terminal summing **its own** conductors —
+    /// Pascal r4133 `DDLL/DCktElement.pas:827` (mode `11`, the
+    /// `k := (i-1)*Nconds` offset at `:842`), capi
+    /// `CAPI/CAPI_CktElement.pas:541`; fastdss `dss/ICktElement.py:67`.
+    /// Both API paths carry the offset — the missing-offset defect of
+    /// CLAUDE.md upstream bug 1 is confined to the `Export SeqCurrents`
+    /// report path and is not on this surface (pinned by
+    /// `exec::tests::derived_polar::residuals_sum_the_rows_own_terminal`).
+    pub residuals: Vec<Polar>,
+    /// `CktElement.NumTerminals` — `NTerms`. Pascal r4133
+    /// `DDLL/DCktElement.pas:139` (`CktElementI` mode `0`), capi
+    /// `CAPI/CAPI_CktElement.pas:202`; fastdss `dss/ICktElement.py` `_columns`.
+    pub n_terms: usize,
+    /// `CktElement.NumConductors` — `NConds`. Pascal r4133
+    /// `DDLL/DCktElement.pas:144` (mode `1`), capi `CAPI/CAPI_CktElement.pas:182`.
+    pub n_conds: usize,
+    /// `CktElement.NumPhases` — `NPhases`. Pascal r4133
+    /// `DDLL/DCktElement.pas:149` (mode `2`), capi `CAPI/CAPI_CktElement.pas:192`.
+    ///
+    /// Not derivable from the other two: `NConds` is `NPhases` plus the neutral
+    /// conductors, so this is the only channel that sees the phase count itself.
+    pub n_phases: usize,
+    /// `CktElement.NodeOrder`: the bus-local node number of every conductor
+    /// slot, conductor-minor inside terminal-major (length
+    /// `n_terms · n_conds = yorder`), ground = `0`. Pascal r4133
+    /// `DDLL/DCktElement.pas:1032` (`CktElementV` mode `17`, the
+    /// `GetNodeNum(NodeRef^[j])` map at `:1048` over `Common/Utilities.pas:1718`),
+    /// capi `CAPI/CAPI_Alt.pas:953` (`Alt_CE_Get_NodeOrder`, the same
+    /// allocation at `:968` and double loop at `:970-977`). The same mapping the `Export NodeOrder` report
+    /// renders (`report/export/node_order.rs:35-38`) — read here from the
+    /// element's own `NodeRef` so the two paths cannot drift (pinned by
+    /// `exec::tests::element_extras::node_order_matches_the_export_nodeorder_row`).
+    ///
+    /// **Empty** when the element has no `NodeRef` yet (never energized — the
+    /// state where capi raises 15013 at `CAPI_CktElement.pas:900-906` and r4133
+    /// dereferences nil at `DCktElement.pas:1048`) or when it has no terminals
+    /// at all (`UPFCControl`, r4133 `Controls/UPFCControl.pas:230-246`). A
+    /// `NodeRef` shorter than `yorder` — reachable on a *disabled* element that
+    /// grew phases, since only `set_node_ref` resizes it
+    /// (`elements/ckt.rs:382`) and `reprocess_bus_defs` re-runs it for enabled
+    /// elements only — reads the missing slots as ground, the same safe-`.get()`
+    /// discipline [`voltages_mag_ang`](Self::voltages_mag_ang) uses.
+    pub node_order: Vec<i32>,
+    /// `CktElement.EnergyMeter`: the **bare** name of the EnergyMeter metering
+    /// this element, or `None` when none does. Pascal r4133
+    /// `DDLL/DCktElement.pas:442` (`CktElementS` mode `4`: `MeterObj.Name` only
+    /// under `HasEnergyMeter`, else the family default `'0'` from `:421`), capi
+    /// `CAPI/CAPI_CktElement.pas:672` (`Result := NIL` unless
+    /// `Flg.HasEnergyMeter in elem.Flags`).
+    ///
+    /// The flag marks exactly the elements a meter *meters*, not the whole
+    /// zone: `SetHasMeterFlag` clears it on every PD element and sets it on
+    /// each enabled meter's `MeteredElement` (r4133
+    /// `Meters/EnergyMeter.pas:1712-1719`, ported in
+    /// `solution/meters/zones/flags.rs::set_has_meter_flag`), while
+    /// `MakeMeterZoneLists` is what assigns that element's `MeterObj := Self`
+    /// (`:1777`/`:1782`) — which is why upstream's unconditional
+    /// `pPDElem.MeterObj.Name` dereference is nil-safe. The port asserts both
+    /// halves (`HAS_ENERGY_METER` **and** a resolvable `meter_obj`) instead of
+    /// assuming the second. The name is stored lowercase by the shared
+    /// constructor (`elements/ckt.rs:258`), exactly as both oracles store it
+    /// (r4133 `Meters/EnergyMeter.pas:921` `Name := LowerCase(...)`, capi
+    /// `src/Meters/EnergyMeter.pas:952` `AnsiLowerCase`), so the channel is
+    /// compared with no case folding. The two oracles' "no meter" sentinels
+    /// (`''` on capi, `'0'` on r4133) are a capture-boundary shape normalized
+    /// in the harness comparator; the engine's answer is simply `None`.
+    pub energy_meter: Option<String>,
+    /// `CktElement.PhaseLosses`: the complex losses of each **phase** (length
+    /// `n_phases`), `Σ_terminals NodeV[NodeRef[k]]·conj(Iterminal[k])` at
+    /// `k = j·NConds + i`, neutral conductors ignored —
+    /// [`CktElement::phase_losses`](crate::elements::traits::CktElement::phase_losses),
+    /// the port of r4133 `Common/CktElement.pas:1078-1120`
+    /// (`TDSSCktElement.GetPhaseLosses`).
+    ///
+    /// **W/var here**, like [`loss_w`](Self::loss_w): both oracle surfaces scale
+    /// by `0.001` at the API boundary — r4133 `DDLL/DCktElement.pas:637-659`
+    /// (`CktElementV` mode `6`), capi `CAPI/CAPI_Alt.pas:449-467`
+    /// (`Alt_CE_Get_PhaseLosses`, facade `CAPI/CAPI_CktElement.pas:327-338`) —
+    /// so the kW/kvar rendering is a capture-boundary encoding and lives in the
+    /// harness comparator, exactly as the interleaved re/im array does. A
+    /// fastdss `ICktElement._columns` surface
+    /// (`git -C .inputs/DSS-Python show origin/fastdss:dss/ICktElement.py`).
+    ///
+    /// This is a **cache-aware** quantity (`ComputeIterminal`,
+    /// `Common/CktElement.pas:1090`) like `Powers`/`Losses`, so it is read from
+    /// the one fresh terminal current this snapshot computes and it shares their
+    /// `newton*` lane exclusion (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`).
+    pub phase_losses: Vec<num_complex::Complex64>,
+    /// `CktElement.NumControls` — `ControlElementList.ListSize`, with **no**
+    /// `Enabled` filter on either channel: r4133 `DDLL/DCktElement.pas:237-241`
+    /// (`CktElementI` mode `9`), capi `CAPI/CAPI_CktElement.pas:939-948`.
+    /// A fastdss `ICktElement._columns` surface.
+    ///
+    /// Derived, with the four scalars below, from
+    /// [`crate::circuit::controls::derive_control_lists`] — the port stores only
+    /// the forward control → element reference.
+    pub num_controls: usize,
+    /// `CktElement.OCPDevIndex` — the **1-based** position in
+    /// `ControlElementList` of the first Fuse/Recloser/Relay, `0` when there is
+    /// none: r4133 `DDLL/DCktElement.pas:242-258` (mode `10`), capi
+    /// `CAPI/CAPI_CktElement.pas:951-976` (the identical
+    /// `repeat … until (i > listSize) or (Result > 0)`).
+    pub ocp_dev_index: usize,
+    /// `CktElement.OCPDevType` — `GetOCPDeviceType`'s code for that same first
+    /// OCP member: `1` Fuse, `2` Recloser, `3` Relay, `0` none. r4133
+    /// `Common/Utilities.pas:3165-3184` (reached from `DDLL/DCktElement.pas:259-262`,
+    /// mode `11`), capi `CAPI/CAPI_CktElement.pas:978-988`.
+    ///
+    /// Recomputed from the list on every read, never latched: upstream's scan
+    /// has no `Enabled` test, so a **disabled** OCP control still occupies its
+    /// slot and still wins (measured on both channels; pinned by
+    /// `exec::tests::element_extras::a_disabled_ocp_control_still_wins_the_ocp_scan`).
+    /// The reliability sweep's `CktElementData::ocp_device_type` is a different,
+    /// registration-time latch and is deliberately not read here.
+    pub ocp_dev_type: i32,
+    /// `CktElement.HasVoltControl` — "any member of `ControlElementList` is a
+    /// `CAP_CONTROL` or a `REG_CONTROL`": r4133 `DDLL/DCktElement.pas:222-236`
+    /// (mode `8`; its `else Result := 0` is re-evaluated per member but the loop
+    /// `Exit`s on a hit, so it is still "any"), capi
+    /// `CAPI/CAPI_CktElement.pas:689-710`.
+    pub has_volt_control: bool,
+    /// `CktElement.HasSwitchControl` — "any member is a `SWT_CONTROL`": r4133
+    /// `DDLL/DCktElement.pas:207-221` (mode `7`), capi
+    /// `CAPI/CAPI_CktElement.pas:713-734`.
+    pub has_switch_control: bool,
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
 /// coordinates, returned by [`Dss::system_y_csc`].
 pub type SystemYCsc = (usize, Vec<(usize, usize, num_complex::Complex64)>);
 
-/// A bus's short-circuit results after a FaultStudy solve — the dss-python
-/// `Bus.Zsc1`/`Zsc0`/`Isc` surface (`TDSSBus`). `isc`/`vbus` are empty until a
-/// FaultStudy has allocated the bus quantities.
+/// A bus's short-circuit results — the dss-python / COM `Bus.Zsc1`, `Zsc0`,
+/// `ZscMatrix`, `YscMatrix`, `Isc` and `Voc` surface. The fastdss harness dumps
+/// all six with the rest of `IBus._columns` (`dss/IBus.py:30`/`:39`/`:41-44`,
+/// walked from `tests/save_outputs.py:350` on `origin/fastdss`).
+///
+/// Pascal, per field — r4133 `Version8/Source/DDLL/DBus.pas`, `BUSV` modes
+/// 3 `Voc` (`:351-372`), 4 `Isc` (`:374-397`), 6 `ZscMatrix` (`:431-459`),
+/// 7 `Zsc1` (`:461-475`), 8 `Zsc0` (`:476-490`), 9 `YscMatrix` (`:491-518`);
+/// capi `src/CAPI/CAPI_Alt.pas`, `Alt_Bus_Get_Voc` (`:2227-2249`), `_Isc`
+/// (`:2202-2224`), `_ZscMatrix` (`:2305-2334`), `_Zsc1` (`:2294-2303`),
+/// `_Zsc0` (`:2283-2292`), `_YscMatrix` (`:2336-2365`). `Zsc1`/`Zsc0` are
+/// `TDSSBus.Get_Zsc1` = `Zs − Zm` and `Get_Zsc0` = `Zs + 2·Zm` over `Zsc`'s
+/// averaged diagonal/off-diagonal (`Common/Bus.pas:222-229` / `:215-220`,
+/// capi identical).
+///
+/// **Ordering — convention 2, not convention 1.** Every array here is indexed
+/// by the bus's *internal* node index: the oracles read `GetRef(i)` /
+/// `Zsc.GetElement(i, j)` straight off `TDSSBus`, so the index is
+/// `TDSSBus.Nodes`' **insertion** order — the order [`Self::nodes`] reports.
+/// [`BusVoltageView`]'s arrays are ordered by ascending node *number* instead
+/// (convention 1, the `repeat FindIdx(jj)` walk of `CAPI_Alt.pas:2270-2275` ==
+/// `DBus.pas:415-421`, which is also what `Bus.Nodes` itself publishes —
+/// `Alt_Bus_Get_Nodes`, `CAPI_Alt.pas:2143-2163`), and `YNodeOrder` is a third
+/// permutation. The three must never be mixed. Measured, not assumed: on
+/// `line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3` with a single 1-phase shunt on node 1,
+/// both oracles put the odd `Zsc` diagonal at index **1** — node 1's insertion
+/// slot — and not at index 0 (pinned by
+/// `the_short_circuit_arrays_are_indexed_by_internal_node_index`).
+///
+/// `zsc`/`ysc` stay `None` until a FaultStudy solve (or `ZscRefresh`) runs
+/// `AllocateBusQuantities`; both oracles publish a one-entry `CZero`/default
+/// sentinel in that state, so "no matrix" is a *shape*, never a zero matrix.
+/// `isc`/`vbus` are different: `ReProcessBusDefs` allocates and zeroes them for
+/// every bus (`Common/Circuit.pas:2407-2408` == `circuit::Circuit::reprocess_bus_defs`), so
+/// after the first `BuildYMatrix` they are always `NumNodesThisBus` long.
 #[derive(Debug, Clone)]
 pub struct BusScView {
-    /// User node numbers on the bus (`Nodes`).
+    /// The bus's (lowercased) name, `Circuit.AllBusNames` spelling.
+    pub name: String,
+    /// User node numbers on the bus (`Nodes`), **insertion** order — the index
+    /// every other field of this view is in. (`Bus.Nodes` on both oracles is
+    /// the same set sorted ascending; the harness sorts before comparing.)
     pub nodes: Vec<i32>,
     /// `Zsc1`: positive-sequence short-circuit impedance.
     pub zsc1: num_complex::Complex64,
     /// `Zsc0`: zero-sequence short-circuit impedance.
     pub zsc0: num_complex::Complex64,
+    /// `ZscMatrix`: the node-frame short-circuit impedance matrix, flattened
+    /// **row-major** (`i` outer, `j` inner) — see [`flatten_row_major`].
+    /// `None` until a FaultStudy allocates it.
+    pub zsc: Option<Vec<num_complex::Complex64>>,
+    /// `YscMatrix` = `Zsc⁻¹`: `Ysc.CopyFrom(Zsc); Ysc.invert`
+    /// (`Common/SolutionAlgs.pas:828-829`, inside `ComputeYsc` `:800-832` ==
+    /// `solution/solution/fault_study.rs::compute_ysc`). Same row-major
+    /// flattening and the same `None` rule as [`Self::zsc`].
+    pub ysc: Option<Vec<num_complex::Complex64>>,
     /// `Isc` / `BusCurrent`: per-node short-circuit current (= `Ysc · VBus`).
     pub isc: Vec<num_complex::Complex64>,
-    /// The bus's stored `VBus` — the open-circuit (Voc) voltage captured by
-    /// `UpdateVBus` during the study. Note this is **not** dss-python
-    /// `Bus.Voltages`, which returns the live `NodeV` (after a FaultStudy that is
-    /// the last `ComputeYsc` unit-injection residual, not the Voc).
+    /// The bus's stored `VBus` — `Bus.Voc`, the open-circuit voltage captured by
+    /// `UpdateVBus`. Note this is **not** dss-python `Bus.Voltages`, which
+    /// returns the live `NodeV` (after a FaultStudy that is the last
+    /// `ComputeYsc` unit-injection residual, not the Voc). `UpdateVBus` also
+    /// runs from `BuildYMatrix` under `PreserveNodeVoltages`
+    /// (`Common/Ymatrix.pas:170` == `solution::ymatrix::update_vbus`), so `vbus` is
+    /// live on harmonics/dynamics decks that never ran a study.
     pub vbus: Vec<num_complex::Complex64>,
 }
 
@@ -405,6 +602,242 @@ fn sum_list_losses(
     total
 }
 
+/// One row of the `PDElements` walk — the dss-python `ActiveCircuit.PDElements`
+/// surface the fastdss harness compares wholesale
+/// (`DSS-Python@origin/fastdss:dss/IPDElements.py:26-40` `_columns`, archived by
+/// `tests/save_outputs.py:365`). Thirteen oracle fields plus [`Self::parent_name`],
+/// which is ours: the oracle's `ParentPDElement` returns only a per-class
+/// `ClassIndex`, so the parent's identity is not observable from it alone.
+///
+/// Oracle sources per field: capi `CAPI/CAPI_PDElements.pas:119-313`, r4133
+/// `Version8/Source/DDLL/DPDELements.pas` (`PDElementsI` :13-124, `PDElementsF`
+/// :125-216, `PDElementsS` :217-258). Membership is the circuit's `PDElements`
+/// list — Line / Transformer / AutoTrans / Capacitor / Reactor / GICTransformer;
+/// `Fault` is `NON_PCPD_ELEM` and never appears (`PDElements/Fault.pas:114`).
+///
+/// **The values are the *stored* `TPDElement` fields, never `CalcFltRate`'s
+/// product.** [`Self::lambda`] is `BranchFltRate` and [`Self::accumulated_l`] is
+/// `AccumulatedBrFltRate` — both 0 until the EnergyMeter reliability sweep
+/// (`RelCalc`) writes them — while [`Self::fault_rate`] / [`Self::pct_permanent`]
+/// are that sweep's *inputs*. Reading
+/// [`crate::elements::traits::ReliabilityData::branch_flt_rate`] here instead
+/// would report a value no oracle ever returns.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PdElementView {
+    /// `PDElements.Name`: the `Class.name` FullName (capi `:183-191`,
+    /// r4133 `PDElementsS:0` `:226-236`).
+    pub name: String,
+    /// `AccumulatedL` = `AccumulatedBrFltRate` (capi `:215-223`, r4133 `F:5`).
+    pub accumulated_l: f64,
+    /// `FromTerminal`, **1-based** as the oracle reports it; `0` when unset.
+    /// Pascal's default is `FromTerminal := 1`
+    /// (r4133 `PDElements/PDElement.pas:194`), i.e. `Some(0)` on the port.
+    pub from_terminal: i32,
+    /// `IsShunt` (capi `:145-153`, r4133 `I:3`, which encodes it 0/1).
+    pub is_shunt: bool,
+    /// `Numcustomers` = `BranchNumCustomers` (capi `:235-243`, r4133 `I:4`).
+    pub num_customers: i32,
+    /// `SectionID` = `BranchSectionID` (capi `:305-313`, r4133 `I:8`).
+    pub section_id: i32,
+    /// `FaultRate` — the stored `TPDElement.FaultRate` (capi `:119-127`,
+    /// r4133 `F:0`).
+    pub fault_rate: f64,
+    /// `RepairTime` = `HrsToRepair` (capi `:259-267`, r4133 `F:6`).
+    pub repair_time: f64,
+    /// `TotalMiles` = `AccumulatedMilesDownStream` (capi `:294-303`, r4133
+    /// `F:7`) — a different quantity from `Bus.TotalMiles`.
+    pub total_miles: f64,
+    /// `Totalcustomers` = `BranchTotalCustomers` (capi `:269-282`, r4133 `I:5`).
+    pub total_customers: i32,
+    /// `pctPermanent` — the stored `TPDElement.PctPerm` (capi `:155-163`,
+    /// r4133 `F:2`).
+    pub pct_permanent: f64,
+    /// `Lambda` = `BranchFltRate` (capi `:225-233`, r4133 `F:4`).
+    pub lambda: f64,
+    /// `ParentPDElement`: the parent's `ClassIndex` — a **1-based, per-class**
+    /// creation index (`General/DSSObject.pas:43`, written by
+    /// `AddObjectToList`), `0` when the branch has no upline parent. Note both
+    /// oracles reassign `ActiveCktElement` to the parent while answering this
+    /// and never restore it (capi `:245-257`, r4133 `I:6` `:88-100`), so it must be
+    /// read last of the walk's fields.
+    pub parent_class_index: i32,
+    /// The parent's FullName, `""` when [`Self::parent_class_index`] is 0. Not
+    /// an oracle field of its own: on both channels it is the name of whatever
+    /// element the `ParentPDElement` read left active.
+    pub parent_name: String,
+    /// `MeterObj <> nil`: this PD element sits in some EnergyMeter's zone. Not
+    /// an oracle column either — no `PDElements` arm reports it — and never
+    /// compared; it is the port-side half of the predicate that scopes
+    /// `harness::PD_SKIP_FIELDS` to the elements the oracles' zone build
+    /// actually corrupts. Together with [`Self::is_shunt`] it names exactly the
+    /// PD elements `MakeMeterZoneLists` files on the **PC** adjacency list
+    /// (`Version8/Source/Shared/CktTree.pas:664-666`) and then writes
+    /// `MeterObj`/`SensorObj` into through a `TPCElement` cursor
+    /// (r4133 `Meters/EnergyMeter.pas:1868-1869`); port side, that write is
+    /// `solution/meters/zones/build.rs:284`.
+    pub in_meter_zone: bool,
+}
+
+/// A bus's solved voltages in the three flavours both oracles publish — the
+/// dss-python / COM `Bus.puVoltages`, `Bus.VMagAngle` and `Bus.puVMagAngle`
+/// surface (the fastdss harness dumps the whole `IBus` `_columns` set for the
+/// active bus, `tests/save_outputs.py:351` on `origin/fastdss`).
+///
+/// The two oracles run the *same* arithmetic on these three: capi
+/// `Alt_Bus_Get_puVoltages` / `Alt_Bus_Get_VMagAngle` /
+/// `Alt_Bus_Get_puVMagAngle` (`CAPI/CAPI_Alt.pas:2251`, `:2573`, `:2540`)
+/// and r4133 `BUSV` modes 5 / 13 / 14
+/// (`Version8/Source/DDLL/DBus.pas:399`, `:659`, `:690`).
+///
+/// **Ordering.** `pu_voltages`, `vmag_angle` and `pu_vmag_angle` are ordered by
+/// ascending node *number* — the `repeat NodeIdx := FindIdx(jj); inc(jj) until
+/// NodeIdx > 0` walk both engines run (`CAPI_Alt.pas:2270-2275` ==
+/// `DBus.pas:415-421`) — while [`BusVoltageView::nodes`] keeps `TDSSBus.Nodes`'
+/// insertion order. A bus declared `.2.1.3` therefore reports
+/// `nodes = [2, 1, 3]` next to voltages ordered `1, 2, 3`. That is neither the
+/// `YNodeOrder` permutation nor the bus × internal-node-index order of
+/// [`Dss::all_bus_vmag_pu`]; the three conventions must never be mixed.
+///
+/// `VLL` / `puVLL` are deliberately absent: the fastdss harness drops them in
+/// this configuration (`save_outputs.py:205-209`, `COM_VLL_BROKEN`), and the
+/// r4133 pairing loop has a state-dependent hang there — they land with the
+/// sequence quantities in GOLDEN_REBASE G1.4c.
+#[derive(Debug, Clone)]
+pub struct BusVoltageView {
+    /// The bus's (lowercased) name, `Circuit.AllBusNames` spelling.
+    pub name: String,
+    /// `TDSSBus.kVBase`, line-to-neutral kV; `0.0` = not set.
+    pub kv_base: f64,
+    /// User node numbers on the bus (`Nodes`), **insertion** order.
+    pub nodes: Vec<i32>,
+    /// `Bus.puVoltages`: `NodeV / BaseFactor`, ascending node number.
+    pub pu_voltages: Vec<num_complex::Complex64>,
+    /// `Bus.VMagAngle`: `(|V| volts, angle°)`, ascending node number.
+    pub vmag_angle: Vec<(f64, f64)>,
+    /// `Bus.puVMagAngle`: `(|V|/BaseFactor, angle°)`, ascending node number.
+    pub pu_vmag_angle: Vec<(f64, f64)>,
+}
+
+/// The `BaseFactor` both engines divide the per-unit bus quantities by:
+/// `1000 · kVBase`, or `1.0` when the bus has no base
+/// (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414` == `CAPI_Circuit.pas:538-541`
+/// == `DCircuit.pas:493`). The `1.0` arm is live, not dead: 11 480 of the
+/// corpus's 209 211 buses have `kVBase <= 0` (measured for GOLDEN_REBASE G1.4a).
+fn bus_base_factor(bus: &crate::circuit::bus::Bus) -> f64 {
+    if bus.kv_base > 0.0 {
+        1000.0 * bus.kv_base
+    } else {
+        1.0
+    }
+}
+
+/// The bus's local node indices in ascending node-**number** order — the
+/// `repeat NodeIdx := FindIdx(jj); inc(jj) until NodeIdx > 0` walk of
+/// `CAPI_Alt.pas:2270-2275` == `DBus.pas:415-421`, whose comment reads *"this
+/// code so nodes come out in order from smallest to larges"*.
+///
+/// A stable sort by node number is exactly that walk: `Circuit::add_bus` never
+/// pushes node 0 (ground short-circuits to `ref_no = 0` before the
+/// `nodes.push`, `circuit/circuit.rs:599-603`), so every entry of `Bus::nodes`
+/// is a distinct number `>= 1` and the engines' `jj = 1, 2, 3, …` scan finds
+/// them in sorted order.
+fn ascending_node_indices(bus: &crate::circuit::bus::Bus) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..bus.num_nodes_this_bus()).collect();
+    order.sort_by_key(|&i| bus.get_num(i));
+    order
+}
+
+/// `Solution.NodeV[node_ref]`, the way both engines index it (slot 0 = ground);
+/// total here because `node_v` is empty before the first allocation.
+fn node_voltage(ckt: &Circuit, node_ref: usize) -> num_complex::Complex64 {
+    ckt.solution
+        .node_v
+        .get(node_ref)
+        .copied()
+        .unwrap_or_default()
+}
+
+/// Build one [`BusVoltageView`] over bus `bus_idx` (`BusList` index).
+fn bus_voltage_view(ckt: &Circuit, bus_idx: usize) -> BusVoltageView {
+    use crate::support::complexutil::c_to_polar_deg;
+
+    let bus = &ckt.buses[bus_idx];
+    let base_factor = bus_base_factor(bus);
+    let n = bus.num_nodes_this_bus();
+
+    let mut pu_voltages = Vec::with_capacity(n);
+    let mut vmag_angle = Vec::with_capacity(n);
+    let mut pu_vmag_angle = Vec::with_capacity(n);
+    for i in ascending_node_indices(bus) {
+        let v = node_voltage(ckt, bus.get_ref(i));
+        // capi divides the two components (`CAPI_Alt.pas:2277-2280`), r4133
+        // calls `cdivreal` (`DBus.pas:423`) — the same componentwise divide.
+        pu_voltages.push(num_complex::Complex64::new(
+            v.re / base_factor,
+            v.im / base_factor,
+        ));
+        // Pascal `ctopolardeg` on the same `NodeV` entry; only the magnitude is
+        // scaled, and only for the pu flavour (`CAPI_Alt.pas:2566-2569` ==
+        // `DBus.pas:713-716`).
+        let p = c_to_polar_deg(v);
+        vmag_angle.push((p.mag, p.ang));
+        pu_vmag_angle.push((p.mag / base_factor, p.ang));
+    }
+
+    BusVoltageView {
+        name: bus.name.clone(),
+        kv_base: bus.kv_base,
+        nodes: bus.nodes.clone(),
+        pu_voltages,
+        vmag_angle,
+        pu_vmag_angle,
+    }
+}
+
+/// Flatten a bus short-circuit matrix the way both oracles publish it —
+/// `for i := 1 to Nelements do for j := 1 to Nelements do … GetElement(i, j)`
+/// (r4133 `DBus.pas:445-450` == capi `CAPI_Alt.pas:2318-2330`), i.e.
+/// **row-major**, `i` outer.
+///
+/// This has to stay an explicit `(i, j)` walk: `CMatrix` stores column-major
+/// (`support/cmatrix/mod.rs:45-47`), so handing out the backing store would
+/// publish the transpose. `Zsc` and `Ysc` are symmetric only to solver noise —
+/// each `Zsc` column is a separate `Y·V = e_i` solve, and the measured
+/// `|Z_ij − Z_ji|` reaches 4.66e-10 (IEEE123Master-SC bus `610`) with *no*
+/// off-diagonal pair bit-equal on any of the three decks measured (of four) —
+/// so a transposed flatten would be a silent, band-invisible error on the
+/// corpus, not a caught one. The convention is therefore held by this
+/// citation, by [`BusScView`]'s ordering block and by the offline pin
+/// `bus_sc_tests::flatten_row_major_walks_i_outer_on_an_asymmetric_matrix`
+/// (G1.5 audit settlement AC-4) — never by an oracle value comparison.
+fn flatten_row_major(m: &crate::support::cmatrix::CMatrix) -> Vec<num_complex::Complex64> {
+    let n = m.order();
+    let mut out = Vec::with_capacity(n * n);
+    for i in 0..n {
+        for j in 0..n {
+            out.push(m.get(i, j));
+        }
+    }
+    out
+}
+
+/// Build one [`BusScView`] over bus `bus_idx` (`BusList` index). Pure reads off
+/// `TDSSBus`: no `ComputeIterminal`, no active-element state, nothing cached —
+/// the same "group C, order-free" property the oracles' own `BUSV` arms have.
+fn bus_sc_view(ckt: &Circuit, bus_idx: usize) -> BusScView {
+    let b = &ckt.buses[bus_idx];
+    BusScView {
+        name: b.name.clone(),
+        nodes: b.nodes.clone(),
+        zsc1: b.get_zsc1(),
+        zsc0: b.get_zsc0(),
+        zsc: b.zsc.as_ref().map(flatten_row_major),
+        ysc: b.ysc.as_ref().map(flatten_row_major),
+        isc: b.bus_current.clone(),
+        vbus: b.vbus.clone(),
+    }
+}
+
 impl Dss {
     /// Snapshot every circuit element's terminal powers and currents in
     /// creation order (the oracle's `First/Next` order). Pascal
@@ -455,6 +888,33 @@ impl Dss {
         // (an order-dependent, stale-Iterminal engine bug we do NOT reproduce;
         // full analysis + IEEE-1459 proof live in the git-ignored
         // investigations/oracle-powers-currents-harmonic/).
+        // `EnergyMeter` (`ElementSnapshot::energy_meter`) reports the *bare*
+        // meter name, so every `meter_obj` back-pointer has to be resolved
+        // against the EnergyMeter arena. That resolution happens once, here,
+        // before the element loop takes its own mutable borrow of `classes`.
+        let meter_names: std::collections::HashMap<ElemId, String> = ckt
+            .energy_meters
+            .iter()
+            .map(|&m| {
+                (
+                    m,
+                    classes[m.class_ord()]
+                        .arena
+                        .obj(m.index())
+                        .data()
+                        .name()
+                        .to_string(),
+                )
+            })
+            .collect();
+        // Pascal gives every element its own `ControlElementList`
+        // (`Common/CktElement.pas:100`, `:223`); the port stores only the
+        // forward control → element reference, so the five control-derived
+        // scalars read a map derived once here — before the element loop takes
+        // its own mutable borrow of `classes` — from the circuit-wide attach
+        // order. Same helper `Show Controlled` uses, so the report and this
+        // reader cannot drift.
+        let control_lists = crate::circuit::controls::derive_control_lists(classes, ckt);
         let mut out = Vec::with_capacity(ckt.ckt_elements.len());
         for &r in &ckt.ckt_elements {
             let class_name = classes[r.class_ord()].props.class_name();
@@ -536,6 +996,15 @@ impl Dss {
             // (`refresh_iterminal` stamps it for this `SolutionCount`), i.e.
             // Powers and Losses are one and the same current by construction.
             let loss = elem.losses(&sys, &node_v);
+            // `PhaseLosses` — the same cache-aware `ComputeIterminal`
+            // (r4133 `Common/CktElement.pas:1090`), so it reads the one current
+            // Powers and Losses just used: the `refresh_iterminal` above stamped
+            // it for this `SolutionCount`. Read here, before the Currents
+            // refresh below, so this element's three cache-aware quantities are
+            // one and the same current — the port-side twin of the capture-order
+            // rule the two oracle transports obey (§1.1(a): group A before
+            // group B).
+            let phase_losses = elem.phase_losses(&sys, &node_v);
             // Currents: fresh recompute from the converged `NodeV` (oracle
             // `GetCurrents`), overwriting the `Iterminal` cache after Powers/Losses.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
@@ -545,6 +1014,152 @@ impl Dss {
             }
             let cd = elem.cd();
             let bus_names = (1..=cd.nterms).map(|i| cd.get_bus(i).to_string()).collect();
+            // The three polar surfaces (`CurrentsMagAng`, `Residuals`,
+            // `VoltagesMagAng`) are *renderings* of state this loop has already
+            // produced, so they are formed here from the one current computed
+            // above rather than by a second read path: upstream allocates a
+            // scratch buffer and calls `GetCurrents` again for each of them
+            // (r4133 `DDLL/DCktElement.pas:1068`/`:837`), which is the same
+            // current whenever the cache is invalid and, after a Newton solve,
+            // the *fresh* one this snapshot already uses (CLAUDE.md upstream
+            // bug 5 / `GOLDEN_REBASE_PLAN.md` G2.3 — see the block comment
+            // above). Doing it here also keeps `report/export/*` untouched.
+            //
+            // `c_to_polar_deg` is the port of `CtoPOLARdeg`
+            // (`Shared/Ucomplex.pas:131` in r4133 == `DSSUcomplex.pas` in capi):
+            // `Cabs` for the magnitude and the truncated-constant `CDANG`
+            // (`57.29577951`, `Ucomplex.pas:118`) for the angle in
+            // `(-180, 180]`. Both gating oracles carry that same truncation, so
+            // no new compat site is created here — the existing one is
+            // compat-tagged on the constants themselves (`support::complexutil`).
+            let currents_mag_ang: Vec<Polar> =
+                currents.iter().copied().map(c_to_polar_deg).collect();
+            // Residual per terminal: the sum of *that terminal's own*
+            // conductors, `k := (i-1)*Nconds` (r4133 `DCktElement.pas:842`,
+            // capi `CAPI_CktElement.pas:562`) — accumulated in conductor order
+            // so the floating-point summation matches `Caccum`'s. The offset
+            // that `Export SeqCurrents` drops (CLAUDE.md upstream bug 1) is
+            // present on both API paths and is honoured here.
+            //
+            // Read through a per-terminal chunk, never a flat offset: the
+            // terminal-major offset arithmetic lives only in the `elements::ckt`
+            // accessors (`elements/ckt.rs:415-419`). `chunks` refuses a zero
+            // width, so a conductor-less element (`nconds = 0`, hence
+            // `yorder = 0` and an empty `currents`) takes the width `1` — the
+            // iterator is empty either way and every terminal's residual is the
+            // empty sum, exactly what the flat form produced.
+            let mut terminal_currents = currents.chunks(cd.nconds.max(1));
+            let residuals: Vec<Polar> = (0..cd.nterms)
+                .map(|_| {
+                    let mut resid = num_complex::Complex64::ZERO;
+                    for &i in terminal_currents.next().unwrap_or(&[]) {
+                        resid += i;
+                    }
+                    c_to_polar_deg(resid)
+                })
+                .collect();
+            // `VoltagesMagAng` reads `NodeV` through the element's own
+            // `NodeRef` (r4133 `DCktElement.pas:1096-1100`), so it is the one
+            // surface that exposes the per-element node mapping rather than the
+            // node vector itself. `NodeRef[i] = 0` is the ground node and
+            // `NodeV[0]` is zero (`solution::ymatrix`, Pascal's `// ok if =0`).
+            // A `NodeRef` left over from before a topology change can outrun the
+            // present `NodeV`, and `Yorder` can outrun the `NodeRef` itself —
+            // both only on a disabled element, which no oracle channel compares
+            // here (upstream would read freed memory). `set_nterms`/`set_nconds`
+            // grow `yorder` and reallocate the terminal buffers, but only
+            // `set_node_ref` resizes `node_ref` (`elements/ckt.rs:326`,
+            // `:334-346`, `:382`) and `reprocess_bus_defs` re-runs it for
+            // **enabled** elements only (`circuit/circuit.rs:735`), so a
+            // disabled element that grows phases keeps a short `node_ref`.
+            // Both stale slots read as ground instead of panicking — the
+            // safe-`.get()` discipline `solution::meters::reliability` uses,
+            // applied to the length as well as to the value. Pinned by
+            // `exec::tests::derived_polar::a_stale_node_ref_shorter_than_yorder_reads_as_ground`.
+            let voltages_mag_ang: Vec<Polar> = if cd.node_ref.is_empty() {
+                Vec::new()
+            } else {
+                (0..yorder)
+                    .map(|i| {
+                        let n = cd.node_ref.get(i).copied().unwrap_or(0);
+                        c_to_polar_deg(
+                            node_v
+                                .get(n)
+                                .copied()
+                                .unwrap_or(num_complex::Complex64::ZERO),
+                        )
+                    })
+                    .collect()
+            };
+            // `NodeOrder`: the same `GetNodeNum(NodeRef^[j])` walk the
+            // `Export NodeOrder` renderer performs
+            // (`report/export/node_order.rs:35-38`, Pascal `WriteNodeList`),
+            // read here from the element's own `NodeRef` rather than by calling
+            // that renderer — the export path is a frozen golden and must not be
+            // touched (`GOLDEN_REBASE_PLAN.md` WP-G1: no golden byte moves).
+            // `yorder == nterms · nconds` by construction (`elements/ckt.rs:326`),
+            // which is the length both oracles allocate
+            // (r4133 `DCktElement.pas:1043`, capi `CAPI_CktElement.pas:908`).
+            //
+            // Both engines answer this from `NodeRef` alone, with no `Enabled`
+            // guard, so the empty answer here means exactly "no mapping yet":
+            // it is the state where capi warns 15013 and returns its
+            // `DefaultResult` (`CAPI_CktElement.pas:900-906`) and r4133, which has no
+            // guard, dereferences the nil pointer at `:1048`. A `NodeRef`
+            // shorter than `yorder` (a disabled element that grew phases —
+            // see the `voltages_mag_ang` note above) reads its missing slots as
+            // ground, the `GetNodeNum(0) = 0` answer
+            // (r4133 `Common/Utilities.pas:1718`).
+            let node_order: Vec<i32> = if cd.node_ref.is_empty() || cd.nterms == 0 {
+                Vec::new()
+            } else {
+                (0..yorder)
+                    .map(|i| {
+                        let n = cd.node_ref.get(i).copied().unwrap_or(0);
+                        ckt.map_node_to_bus.get(n).map_or(0, |m| m.node_num)
+                    })
+                    .collect()
+            };
+            // `EnergyMeter`: the metering meter's bare name, under upstream's
+            // own `HasEnergyMeter` predicate (r4133 `DCktElement.pas:442-449`,
+            // capi `CAPI_CktElement.pas:682-685`), with the `MeterObj`
+            // back-pointer resolved through the pre-pass above instead of
+            // dereferenced blind.
+            let energy_meter = if cd
+                .flags
+                .contains(crate::elements::ckt::ElemFlags::HAS_ENERGY_METER)
+            {
+                cd.meter_obj.and_then(|m| meter_names.get(&m).cloned())
+            } else {
+                None
+            };
+            // The five control-derived scalars, all read off this element's
+            // `ControlElementList` (derived above) with no `Enabled` filter
+            // anywhere — neither oracle has one: r4133
+            // `DDLL/DCktElement.pas:207-262` (`CktElementI` modes `7`-`11`) and
+            // `Common/Utilities.pas:3165-3184`, capi
+            // `CAPI/CAPI_CktElement.pas:689-988`. An element with no control has
+            // no map entry (Pascal's empty list): `0`/`0`/`0`/false/false.
+            let controls: &[ElemId] = control_lists.get(&r).map_or(&[], Vec::as_slice);
+            let num_controls = controls.len();
+            let has_switch_control = controls
+                .iter()
+                .any(|&c| control_category(c) == ControlCategory::Swt);
+            let has_volt_control = controls.iter().any(|&c| {
+                matches!(
+                    control_category(c),
+                    ControlCategory::Cap | ControlCategory::Reg
+                )
+            });
+            // One scan serves both OCP scalars — upstream runs the same
+            // "stop at the first Fuse/Recloser/Relay" loop twice, once returning
+            // the 1-based position (`OCPDevIndex`) and once the class code
+            // (`OCPDevType`), so they can only ever be zero together.
+            let ocp = controls
+                .iter()
+                .position(|&c| control_category(c).is_ocp())
+                .map(|p| (p + 1, control_category(controls[p]).ocp_code()));
+            let (ocp_dev_index, ocp_dev_type) = ocp.unwrap_or((0, 0));
             out.push(ElementSnapshot {
                 name,
                 enabled: cd.enabled,
@@ -552,6 +1167,20 @@ impl Dss {
                 powers,
                 currents,
                 loss_w: (loss.re, loss.im),
+                currents_mag_ang,
+                voltages_mag_ang,
+                residuals,
+                n_terms: cd.nterms,
+                n_conds: cd.nconds,
+                n_phases: cd.nphases,
+                node_order,
+                energy_meter,
+                phase_losses,
+                num_controls,
+                ocp_dev_index,
+                ocp_dev_type,
+                has_volt_control,
+                has_switch_control,
             });
         }
         // NCIM needs **no** reporting override here any more (RP3.13). Two used
@@ -890,20 +1519,82 @@ impl Dss {
         ))
     }
 
-    /// Read a bus's short-circuit results after a FaultStudy solve — the
-    /// dss-python `Bus.Zsc1`/`Zsc0`/`Isc` surface. `name` is the bus name
-    /// (case-insensitive). `None` if no such bus exists.
+    /// Read one bus's short-circuit results — the dss-python `Bus.Zsc1` /
+    /// `Zsc0` / `ZscMatrix` / `YscMatrix` / `Isc` / `Voc` surface (see
+    /// [`BusScView`] for the ordering contract and the Pascal citations).
+    /// `name` is the bus name (case-insensitive, like `SetActiveBus`); `None`
+    /// if no such bus exists.
     pub fn bus_short_circuit(&self, name: &str) -> Option<BusScView> {
         let ckt = self.circuit.as_ref()?;
         let idx = ckt.bus_list.find(name)?;
-        let b = &ckt.buses[idx];
-        Some(BusScView {
-            nodes: b.nodes.clone(),
-            zsc1: b.get_zsc1(),
-            zsc0: b.get_zsc0(),
-            isc: b.bus_current.clone(),
-            vbus: b.vbus.clone(),
-        })
+        Some(bus_sc_view(ckt, idx))
+    }
+
+    /// Every bus's [`BusScView`] in `BusList` order — the order
+    /// `Circuit.AllBusNames` reports and the order [`Dss::all_bus_voltages`]
+    /// walks, so the two views pair up index for index (which is what lets the
+    /// harness capture both surfaces in a single `SetActiveBus` sweep). Empty
+    /// when no circuit exists.
+    pub fn all_bus_short_circuit(&self) -> Vec<BusScView> {
+        match self.circuit.as_ref() {
+            Some(ckt) => (0..ckt.buses.len()).map(|i| bus_sc_view(ckt, i)).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Read one bus's solved voltages — the dss-python `Bus.puVoltages` /
+    /// `Bus.VMagAngle` / `Bus.puVMagAngle` surface (see [`BusVoltageView`] for
+    /// the ordering contract and the Pascal citations). `name` is the bus name
+    /// (case-insensitive); `None` if no such bus exists.
+    pub fn bus_voltages(&self, name: &str) -> Option<BusVoltageView> {
+        let ckt = self.circuit.as_ref()?;
+        let idx = ckt.bus_list.find(name)?;
+        Some(bus_voltage_view(ckt, idx))
+    }
+
+    /// Every bus's [`BusVoltageView`] in `BusList` order — the order
+    /// `Circuit.AllBusNames` reports (`CAPI_Circuit.pas` /
+    /// `DCircuit.pas:439`). Empty when no circuit exists.
+    pub fn all_bus_voltages(&self) -> Vec<BusVoltageView> {
+        match self.circuit.as_ref() {
+            Some(ckt) => (0..ckt.buses.len())
+                .map(|i| bus_voltage_view(ckt, i))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// `Circuit.AllBusVmagPu`: `|NodeV| / BaseFactor` for every node, walked as
+    /// **bus × internal node index** — `for i := 1 to NumBuses do for j := 1 to
+    /// Buses[i].NumNodesThisBus do … GetRef(j)`
+    /// (`CAPI_Circuit.pas:521-548` == `DCircuit.pas:481-500`, r4133 mode 9;
+    /// fastdss dumps it with the rest of `ICircuit._columns`,
+    /// `tests/save_outputs.py:348`). Length = `NumNodes`.
+    ///
+    /// This is the *second* of the three bus orderings and is neither
+    /// [`BusVoltageView`]'s ascending-node-number order nor `YNodeOrder`: a bus
+    /// that gains a node after a later bus was created holds node refs that are
+    /// not contiguous, so the walk visits `NodeV` out of ref order.
+    ///
+    /// capi guards the read with a `MissingSolution` early-out
+    /// (`CAPI_Circuit.pas:528-532`) that r4133 does not have and that cannot
+    /// fire post-solve; under the r4133-authority policy it is not reproduced.
+    pub fn all_bus_vmag_pu(&self) -> Vec<f64> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(ckt.num_nodes);
+        for bus in &ckt.buses {
+            let base_factor = bus_base_factor(bus);
+            for j in 0..bus.num_nodes_this_bus() {
+                // Pascal `Cabs`: the naive modulus, proven bit-identical to
+                // `f64::hypot`/`Complex::norm` on every reachable operand
+                // (`support/line_constants/tests.rs`,
+                // `naive_modulus_equals_hypot_until_the_square_overflows`).
+                out.push(node_voltage(ckt, bus.get_ref(j)).norm() / base_factor);
+            }
+        }
+        out
     }
 
     /// Read a monitor's recorded data — the dss-python `Monitors.Header` /
@@ -994,6 +1685,75 @@ impl Dss {
             }
         }
         None
+    }
+
+    /// The circuit's `PDElements` walk — the oracle's
+    /// `PDElements.First`/`Next` iteration over `Circuit.PDElements`, one
+    /// [`PdElementView`] per **enabled** PD element (both oracles skip
+    /// `not Enabled`: capi `CAPI/CAPI_Utils.pas:718-759`
+    /// `Generic_CktElement_Get_First/Next`, r4133 `DPDELements.pas:27-59`).
+    ///
+    /// Order is `Circuit.pd_elements` — the `AddCktElement` creation order that
+    /// both oracles' pointer lists carry (`Common/Circuit.pas:2242-2248`;
+    /// port side `circuit/circuit.rs:488-561`). Read-only: unlike the oracles,
+    /// which leave `ActiveCktElement` pointing at the last-read *parent*
+    /// (see [`PdElementView::parent_class_index`]), this touches no engine state.
+    pub fn pd_elements(&self) -> Vec<PdElementView> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let full_name = |r: ElemId| -> String {
+            format!(
+                "{}.{}",
+                self.classes[r.class_ord()].props.class_name(),
+                self.classes[r.class_ord()].arena[r.index()].data().name()
+            )
+        };
+        let mut out = Vec::with_capacity(ckt.pd_elements.len());
+        for &r in &ckt.pd_elements {
+            // Every id in `Circuit.pd_elements` was pushed by `AddCktElement`
+            // for a PD class, so the slot always holds a circuit element; the
+            // `else` is unreachable and stays total rather than panicking in a
+            // read-only accessor (a dropped row would red the comparator's
+            // length assert first).
+            let slot = self.classes[r.class_ord()].arena.try_ckt_elem(r.index());
+            debug_assert!(
+                slot.is_some(),
+                "Circuit.pd_elements holds a non-ckt slot at class {} index {}",
+                r.class_ord(),
+                r.index()
+            );
+            let Some(elem) = slot else {
+                continue;
+            };
+            let cd = elem.cd();
+            if !cd.enabled {
+                continue;
+            }
+            // `fault_rate` / `pct_perm` / `hrs_to_repair` are the STORED
+            // `TPDElement` inputs (`ReliabilityData`); the accumulators below
+            // come from `CktElementData`, never from `branch_flt_rate`, which
+            // is `CalcFltRate`'s product rather than the reported field.
+            let rel = elem.reliability_data();
+            out.push(PdElementView {
+                name: full_name(r),
+                accumulated_l: cd.accumulated_br_flt_rate,
+                from_terminal: cd.from_terminal.map_or(0, |t| t as i32 + 1),
+                is_shunt: elem.is_shunt(),
+                num_customers: cd.branch_num_customers,
+                section_id: cd.branch_section_id,
+                fault_rate: rel.fault_rate,
+                repair_time: rel.hrs_to_repair,
+                total_miles: cd.accumulated_miles_downstream,
+                total_customers: cd.branch_total_customers,
+                pct_permanent: rel.pct_perm,
+                lambda: cd.branch_flt_rate,
+                parent_class_index: cd.parent_pd.map_or(0, |p| p.index() as i32 + 1),
+                parent_name: cd.parent_pd.map_or(String::new(), full_name),
+                in_meter_zone: cd.meter_obj.is_some(),
+            });
+        }
+        out
     }
 
     /// A load's `(kWbase, FAllocationFactor)` by name — the oracle's
@@ -1679,5 +2439,958 @@ impl Dss {
             upstream_row_index,
             new_errors,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.6(i): the `Meters` reliability surface.
+//
+// The half of the dss-python `IMeters` facade the live gate has never read —
+// the indices `CalcReliabilityIndices` writes, the per-section block behind
+// `SetActiveSection`, the two load-allocation arrays and the class-wide
+// register totals. `DSS-Python@origin/fastdss:tests/save_outputs.py:283-291`
+// archives the same fields (it reads section 1 only; this reads every
+// section) and `:330-332` records the `Totals` read-order trap below.
+//
+// Everything here is a read of already-solved state: none of these accessors
+// runs the reliability sweep and nothing in `solution/meters/reliability.rs`
+// is touched. Both oracles answer the same fields only *after* the executive
+// `RelCalc` command has run; before that every number is the Pascal zero-init.
+// ---------------------------------------------------------------------------
+
+/// One feeder section of an EnergyMeter — the oracle's *active-section* block,
+/// read as `Meters.SetActiveSection(idx)` followed by the eight per-section
+/// getters (capi `CAPI/CAPI_Meters.pas:729-740` + `:742-852`, r4133
+/// `Version8/Source/DDLL/DMeters.pas` `MetersI` 22-27 `:254-307` and `MetersF`
+/// 4-6 `:369-393`).
+///
+/// Section indices are **1-based**: slot 0 of Pascal's `FeederSections` is the
+/// span above the first OCP device and neither oracle will report it — capi
+/// refuses it in `InvalidActiveSection` (`CAPI_Meters.pas:122-134`, error
+/// 5055) and r4133 guards every getter with `If ActiveSection > 0` — so it
+/// never appears here either.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeederSectionView {
+    /// The 1-based index this row was read at (the `SetActiveSection`
+    /// argument), running `1..=`[`MeterReliabilityView::num_sections`].
+    pub idx: i32,
+    /// `Meters.OCPDeviceType` — 1=Fuse, 2=Recloser, 3=Relay (0 = none).
+    pub ocp_device_type: i32,
+    /// `Meters.NumSectionCustomers` = `FeederSections[idx].NCustomers`.
+    pub num_section_customers: i32,
+    /// `Meters.NumSectionBranches` = `NBranches`.
+    pub num_section_branches: i32,
+    /// `Meters.SectSeqIdx` = `SeqIndex` — the 1-based `SequenceList` position
+    /// of the PD element that carries this section's OCP device.
+    pub sect_seq_idx: i32,
+    /// `Meters.SectTotalCust` = `TotalCustomers`.
+    pub sect_total_cust: i32,
+    /// `Meters.SumBranchFltRates`.
+    pub sum_branch_flt_rates: f64,
+    /// `Meters.AvgRepairTime` = `AverageRepairTime` = `SumFltRatesXRepairHrs /
+    /// SumBranchFltRates` — an **unguarded** division on all three engines
+    /// (port `solution/meters/reliability.rs:259`; r4133
+    /// `Version8/Source/Meters/EnergyMeter.pas` `AverageRepairTime`), so a
+    /// section whose branches all have `faultrate=0` evaluates to `NaN`
+    /// identically everywhere.
+    pub avg_repair_time: f64,
+    /// `Meters.FaultRateXRepairHrs` = `SumFltRatesXRepairHrs`.
+    pub fault_rate_x_repair_hrs: f64,
+}
+
+/// One row of the `Meters` reliability walk — the fields the oracles expose per
+/// meter once `RelCalc` has run, in the order the capture reads them.
+///
+/// Oracle sources: capi `CAPI/CAPI_Meters.pas` (`Meters_Get_TotalCustomers`
+/// `:685-694` → `CAPI/CAPI_Alt.pas:1683-1696`, `SAIFI` `:617-626`, `SAIFIKW`
+/// `:652-661`, `SAIDI` `:696-705`, `CustInterrupts` `:707-716`, `NumSections`
+/// `:718-727`, `CalcCurrent` `:335-350`, `AllocFactors` `:379-391`); r4133
+/// `Version8/Source/DDLL/DMeters.pas` (`MetersI` 20/21 `:232-253`, `MetersF`
+/// 0-3 `:329-368`, `MetersV` 6/8 `:609-624` / `:645-661`, the zone lists
+/// `MetersV` 10-12 `:662-758`).
+///
+/// The walk that produces these rows is `Meters.First`/`Next`, which **skips
+/// disabled meters** on both channels (r4133 `DMeters.pas:32-71` loops on
+/// `If pMeter.Enabled`; capi routes through `Generic_CktElement_Get_First` /
+/// `_Next`, `CAPI/CAPI_Utils.pas:718-759`), so [`Dss::meter_reliability`]
+/// skips them too.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeterReliabilityView {
+    /// `Meters.Name` — the bare object name, as both oracles report it.
+    pub name: String,
+    /// `Meters.TotalCustomers` = `BusTotalNumCustomers` of the bus at the
+    /// `FromTerminal` of `SequenceList[1]` — the zone head's upstream bus, not
+    /// a field of the meter. `0` when the zone was never built (empty
+    /// `SequenceList`), which is what both oracles return there as well.
+    pub total_customers: i32,
+    /// `Meters.SAIFI`.
+    pub saifi: f64,
+    /// `Meters.SAIFIKW`.
+    pub saifi_kw: f64,
+    /// `Meters.SAIDI`.
+    pub saidi: f64,
+    /// `Meters.CustInterrupts`.
+    pub cust_interrupts: f64,
+    /// `CAIDI` = `SAIDI / SAIFI`. **Not an oracle API field** — neither
+    /// channel has a `CAIDI` mode — so no capture carries it and the
+    /// comparator never reads it from one; it reaches the live gate as
+    /// EnergyMeter property `CAIDI`, which `compare_all_properties` already
+    /// compares on both channels. It is carried here so the pin that names the
+    /// arithmetic can read it.
+    pub caidi: f64,
+    /// `Meters.CalcCurrent` — `|CalculatedCurrent[k]|` for `k` in
+    /// `0..NPhases`. The oracles read the array from its **start**, with no
+    /// `(MeteredTerminal-1)·NConds` offset (capi `:346-349`, r4133
+    /// `:622-623`), while `TMeterElement.CalcAllocationFactors` *writes* it at
+    /// exactly that offset (r4133
+    /// `Version8/Source/Meters/MeterElement.pas:54-72`); the API's indexing is
+    /// what both channels report, so it is what this returns. All-zero until an
+    /// `AllocateLoads` runs — on the oracles it is uninitialised heap there,
+    /// since `AllocateSensorArrays` `ReallocMem`s the array without zeroing
+    /// (`MeterElement.pas:45-52`).
+    pub calc_current: Vec<f64>,
+    /// `Meters.AllocFactors` = `PhsAllocationFactor[0..NPhases]`; same
+    /// uninitialised-until-`AllocateLoads` caveat as [`Self::calc_current`].
+    pub alloc_factors: Vec<f64>,
+    /// `Meters.AllBranchesInZone`, in `SequenceList` order.
+    pub branches: Vec<String>,
+    /// `Meters.AllEndElements`, in `ZoneEndsList` order.
+    pub ends: Vec<String>,
+    /// `Meters.ZonePCE`, in zone-walk order.
+    pub pce: Vec<String>,
+    /// `Meters.NumSections` = `SectionCount`.
+    pub num_sections: i32,
+    /// The sections `1..=`[`Self::num_sections`], read in ascending order.
+    pub sections: Vec<FeederSectionView>,
+}
+
+impl Dss {
+    /// The `Meters` reliability walk — one [`MeterReliabilityView`] per
+    /// **enabled** EnergyMeter, in the circuit's `EnergyMeters` pointer-list
+    /// (creation) order, which is the order `Meters.First`/`Next` visits on
+    /// both oracle channels.
+    ///
+    /// Read-only: it neither runs `CalcReliabilityIndices` nor moves an
+    /// active-object cursor, so unlike the oracle walk it can be called at any
+    /// point without perturbing anything.
+    pub fn meter_reliability(&self) -> Vec<MeterReliabilityView> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(ckt.energy_meters.len());
+        for &r in &ckt.energy_meters {
+            let Some(em) = self.classes[r.class_ord()]
+                .arena
+                .get::<energymeter::EnergyMeter>(r.index())
+            else {
+                continue;
+            };
+            if !em.enabled() {
+                continue;
+            }
+            let name = em.data().name().to_string();
+
+            // `Buses^[Terminals^[FromTerminal].BusRef].BusTotalNumCustomers` of
+            // `SequenceList.Get(1)` (r4133 `DMeters.pas:232-243`, capi
+            // `CAPI_Alt.pas:1683-1696`). Every step is fallible on a zone that
+            // was never built, and both oracles answer 0 there rather than
+            // failing (capi's `checkSequenceList` guard, r4133's
+            // `If Assigned(PD_Element)`).
+            let total_customers = em
+                .sequence_list()
+                .first()
+                .and_then(|&head| {
+                    self.classes[head.class_ord()]
+                        .arena
+                        .try_ckt_elem(head.index())
+                })
+                .and_then(|head| {
+                    let cd = head.cd();
+                    cd.from_terminal.and_then(|t| cd.terminals.get(t))
+                })
+                .and_then(|term| term.bus_ref)
+                .and_then(|bus| ckt.buses.get(bus))
+                .map_or(0, |bus| bus.bus_total_num_customers);
+
+            // The three ordered zone lists come from `meter_zone`, so the
+            // ordered assertion this surface adds and the existing
+            // set-compare (`harness::compare_meter`) are looking at one list
+            // rather than at two resolutions of it.
+            let zone = self.meter_zone(&name);
+
+            let nphases = em.med.cd.nphases;
+            let calc_current = (0..nphases)
+                .map(|k| em.med.calculated_current.get(k).map_or(0.0, |c| c.norm()))
+                .collect();
+            let alloc_factors = (0..nphases)
+                .map(|k| em.med.phs_allocation_factor.get(k).copied().unwrap_or(0.0))
+                .collect();
+
+            let num_sections = em.section_count();
+            let sections = (1..=num_sections.max(0))
+                .filter_map(|idx| {
+                    // `FeederSections` keeps its previous length after an
+                    // aborted `RelCalc` (only a successful sweep reallocates
+                    // it), so the slot is fetched, never assumed. A short
+                    // array would silently shorten the row, which the
+                    // comparator would then read as a length divergence, so
+                    // the mismatch is caught here in debug builds too.
+                    let slot = em.feeder_sections().get(idx as usize);
+                    debug_assert!(
+                        slot.is_some(),
+                        "EnergyMeter {name}: SectionCount {num_sections} exceeds the \
+                         FeederSections array ({} slots)",
+                        em.feeder_sections().len()
+                    );
+                    let s = slot?;
+                    Some(FeederSectionView {
+                        idx,
+                        ocp_device_type: s.ocp_device_type.ordinal(),
+                        num_section_customers: s.n_customers,
+                        num_section_branches: s.n_branches,
+                        sect_seq_idx: s.seq_index as i32,
+                        sect_total_cust: s.total_customers,
+                        sum_branch_flt_rates: s.sum_branch_flt_rates,
+                        avg_repair_time: s.average_repair_time,
+                        fault_rate_x_repair_hrs: s.sum_flt_rates_x_repair_hrs,
+                    })
+                })
+                .collect();
+
+            out.push(MeterReliabilityView {
+                name,
+                total_customers,
+                saifi: em.saifi(),
+                saifi_kw: em.saifi_kw(),
+                saidi: em.saidi(),
+                cust_interrupts: em.cust_interrupts(),
+                caidi: em.caidi(),
+                calc_current,
+                alloc_factors,
+                branches: zone
+                    .as_ref()
+                    .map(|z| z.all_branches_in_zone.clone())
+                    .unwrap_or_default(),
+                ends: zone
+                    .as_ref()
+                    .map(|z| z.all_end_elements.clone())
+                    .unwrap_or_default(),
+                pce: zone.map(|z| z.zone_pce).unwrap_or_default(),
+                num_sections,
+                sections,
+            });
+        }
+        out
+    }
+
+    /// `Meters.Totals` — Pascal `TDSSCircuit.TotalizeMeters` (r4133
+    /// `Version8/Source/Common/Circuit.pas:2520-2538`, reached through capi
+    /// `Meters_Get_Totals` `CAPI/CAPI_Meters.pas:279-290` and r4133
+    /// `MetersV(3)` `DDLL/DMeters.pas:558-573`): `RegisterTotals[i] =
+    /// Σ_meters Registers[i] · TotalsMask[i]`, length
+    /// [`energymeter::NUM_EM_REGISTERS`].
+    ///
+    /// Two details are load-bearing and both follow the Pascal literally: the
+    /// sum runs over **every** meter in the circuit's `EnergyMeters` list —
+    /// there is no `Enabled` filter, unlike the `Meters.First`/`Next` walk of
+    /// [`Self::meter_reliability`] — and it runs in that list's creation order,
+    /// which is observable in the last bits of a float sum.
+    ///
+    /// On the oracles this read is **destructive to the meter cursor**:
+    /// `TotalizeMeters` walks `EnergyMeters.First`/`Next` itself, so a capture
+    /// that reads `Totals` mid-walk loses every meter after the current one
+    /// (`DSS-Python@origin/fastdss:tests/save_outputs.py:330-332`, "This breaks
+    /// the iteration"). Here it is a pure read, but the capture transports must
+    /// still read it last — the harness asserts that order.
+    pub fn meter_totals(&self) -> Vec<f64> {
+        let mut totals = vec![0.0; energymeter::NUM_EM_REGISTERS];
+        let Some(ckt) = self.circuit.as_ref() else {
+            return totals;
+        };
+        for &r in &ckt.energy_meters {
+            let Some(em) = self.classes[r.class_ord()]
+                .arena
+                .get::<energymeter::EnergyMeter>(r.index())
+            else {
+                continue;
+            };
+            for (total, (reg, mask)) in totals
+                .iter_mut()
+                .zip(em.registers().iter().zip(em.totals_mask()))
+            {
+                *total += reg * mask;
+            }
+        }
+        totals
+    }
+}
+
+#[cfg(test)]
+mod bus_voltage_tests {
+    use super::*;
+    use crate::support::complexutil::c_to_polar_deg;
+    use num_complex::Complex64;
+
+    /// One deck that exercises all three orderings at once.
+    ///
+    /// * `b3` is declared `.2.1.3`, so its **insertion** order differs from the
+    ///   ascending node-number order the oracles publish (convention 1).
+    /// * `b1` is first seen with node 1 only and gains nodes 2 and 3 *after*
+    ///   `b2` was handed its node ref, so the bus × node-index walk of
+    ///   [`Dss::all_bus_vmag_pu`] (convention 2) is a different permutation
+    ///   from `YNodeOrder`.
+    fn bus_deck() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.busview basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+        dss.command("New Line.l1 bus1=sourcebus.1 bus2=b1.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1");
+        dss.command("New Line.l2 bus1=b1.1 bus2=b2.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1");
+        dss.command(
+            "New Line.l3 bus1=sourcebus.2.3 bus2=b1.2.3 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command(
+            "New Line.l4 bus1=sourcebus.1.2.3 bus2=b3.2.1.3 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command("New Load.ld bus1=b1.1 phases=1 kv=7.2 kw=500 pf=0.95");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    fn solved_with_bases() -> Dss {
+        let mut dss = bus_deck();
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Convention 1: `puVoltages`/`VMagAngle`/`puVMagAngle` come out ordered by
+    /// ascending node **number** (`CAPI_Alt.pas:2270-2275` == `DBus.pas:415-421`),
+    /// while `nodes` keeps `TDSSBus.Nodes`' insertion order. Pinned on a bus
+    /// declared `.2.1.3`; 140 corpus cases carry such non-prefix node sets.
+    #[test]
+    fn bus_pu_voltages_come_out_in_ascending_node_number_order() {
+        let dss = solved_with_bases();
+        let ckt = dss.circuit().expect("circuit");
+        let ib = ckt.bus_list.find("b3").expect("bus b3");
+        let bus = &ckt.buses[ib];
+        assert_eq!(bus.nodes, vec![2, 1, 3], "declared .2.1.3");
+
+        // Bus lookup is case-insensitive, like `SetActiveBus`.
+        let v = dss.bus_voltages("B3").expect("bus b3");
+        assert_eq!(v.name, "b3");
+        assert_eq!(v.nodes, vec![2, 1, 3], "the view keeps insertion order");
+        assert_eq!(v.kv_base, bus.kv_base);
+
+        let bf = 1000.0 * bus.kv_base;
+        assert!(bf > 0.0);
+        for (k, node) in [1i32, 2, 3].into_iter().enumerate() {
+            let raw = ckt.solution.node_v[bus.find(node)];
+            assert_eq!(
+                v.pu_voltages[k],
+                Complex64::new(raw.re / bf, raw.im / bf),
+                "slot {k} must be node {node}"
+            );
+            let p = c_to_polar_deg(raw);
+            assert_eq!(v.vmag_angle[k], (p.mag, p.ang));
+            assert_eq!(v.pu_vmag_angle[k], (p.mag / bf, p.ang));
+        }
+
+        // The two orders are observably different, not just nominally.
+        // `Line.l4` maps source phase 1 -> b3 node 2, phase 2 -> node 1,
+        // phase 3 -> node 3, so ascending node order (1, 2, 3) carries the
+        // source angles (-120, 0, +120) while the insertion order (2, 1, 3)
+        // would carry (0, -120, +120): the first two slots swap.
+        assert!(
+            (v.vmag_angle[0].1 + 120.0).abs() < 15.0,
+            "slot 0 = node 1 = source phase 2 near -120 deg, got {}",
+            v.vmag_angle[0].1
+        );
+        assert!(
+            v.vmag_angle[1].1.abs() < 15.0,
+            "slot 1 = node 2 = source phase 1 near 0 deg, got {}",
+            v.vmag_angle[1].1
+        );
+        assert!(
+            (v.vmag_angle[2].1 - 120.0).abs() < 15.0,
+            "slot 2 = node 3 = source phase 3 near +120 deg, got {}",
+            v.vmag_angle[2].1
+        );
+    }
+
+    /// `BaseFactor` is `1000 * kVBase`, falling back to `1.0` when the bus has
+    /// no base (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414`). Both arms are
+    /// pinned: 11 480 of the corpus's 209 211 buses take the `1.0` arm, and the
+    /// `1000*` factor (not a bare `kVBase`) is what makes the pu magnitude ~ 1.
+    #[test]
+    fn bus_pu_voltages_use_a_unit_base_when_kv_base_is_not_set() {
+        // No `CalcVoltageBases`: every bus keeps `TDSSBus.Create`'s kVBase = 0.
+        let mut dss = bus_deck();
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        let v = dss.bus_voltages("b3").expect("bus b3");
+        assert_eq!(v.kv_base, 0.0, "no CalcVoltageBases means kVBase unset");
+        let ckt = dss.circuit().expect("circuit");
+        let bus = &ckt.buses[ckt.bus_list.find("b3").expect("bus b3")];
+        for (k, node) in [1i32, 2, 3].into_iter().enumerate() {
+            let raw = ckt.solution.node_v[bus.find(node)];
+            assert_eq!(v.pu_voltages[k], raw, "BaseFactor = 1.0 gives raw volts");
+            assert_eq!(v.pu_vmag_angle[k], v.vmag_angle[k]);
+        }
+        assert!(
+            v.pu_vmag_angle[0].0 > 1000.0,
+            "unit base gives volts, got {}",
+            v.pu_vmag_angle[0].0
+        );
+
+        // The other arm, on the same deck with bases calculated.
+        let dss = solved_with_bases();
+        let v = dss.bus_voltages("b3").expect("bus b3");
+        let bf = 1000.0 * v.kv_base;
+        assert_eq!(v.kv_base, 12.47 / crate::util::sqrt3());
+        assert_eq!(v.pu_vmag_angle[0].0, v.vmag_angle[0].0 / bf);
+        assert!(
+            (0.5..1.5).contains(&v.pu_vmag_angle[0].0),
+            "per-unit, not per-kV: {}",
+            v.pu_vmag_angle[0].0
+        );
+    }
+
+    /// Convention 2: `AllBusVmagPu` walks buses x internal node index
+    /// (`CAPI_Circuit.pas:535-546` == `DCircuit.pas:490-498`), which on this
+    /// deck is a different permutation from `YNodeOrder` (node-ref order) *and*
+    /// from the ascending-node-number order of [`Dss::bus_voltages`].
+    #[test]
+    fn all_bus_vmag_pu_walks_buses_times_internal_node_index() {
+        let dss = solved_with_bases();
+        let ckt = dss.circuit().expect("circuit");
+        let all = dss.all_bus_vmag_pu();
+        assert_eq!(all.len(), ckt.num_nodes);
+
+        // The node refs this walk visits, in order - b1 gained nodes 2 and 3
+        // after b2's node ref was handed out, so the sequence is not 1..=n.
+        let mut refs = Vec::new();
+        for bus in &ckt.buses {
+            for j in 0..bus.num_nodes_this_bus() {
+                refs.push(bus.get_ref(j));
+            }
+        }
+        assert_eq!(
+            refs,
+            vec![1, 2, 3, 4, 6, 7, 5, 8, 9, 10],
+            "bus x node-index order, NOT YNodeOrder (1..=NumNodes)"
+        );
+        for (k, &r) in refs.iter().enumerate() {
+            let bus = &ckt.buses[ckt.map_node_to_bus[r].bus_ref];
+            let bf = if bus.kv_base > 0.0 {
+                1000.0 * bus.kv_base
+            } else {
+                1.0
+            };
+            assert_eq!(all[k], ckt.solution.node_v[r].norm() / bf);
+        }
+
+        // Contrast with convention 1 on the `.2.1.3` bus: the last three slots
+        // are that bus in insertion order (2, 1, 3), while `bus_voltages`
+        // reports 1, 2, 3.
+        let v = dss.bus_voltages("b3").expect("bus b3");
+        let tail = &all[all.len() - 3..];
+        assert_eq!(tail[0], v.pu_vmag_angle[1].0, "slot 0 = node 2");
+        assert_eq!(tail[1], v.pu_vmag_angle[0].0, "slot 1 = node 1");
+        assert_eq!(tail[2], v.pu_vmag_angle[2].0, "slot 2 = node 3");
+
+        // `all_bus_voltages` is the same bus sequence as `AllBusNames`.
+        let views = dss.all_bus_voltages();
+        assert_eq!(views.len(), ckt.buses.len());
+        let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, vec!["sourcebus", "b1", "b2", "b3"]);
+    }
+}
+
+#[cfg(test)]
+mod bus_sc_tests {
+    use super::*;
+    use num_complex::Complex64;
+
+    /// `micro`-tier band, the harness' own numbers for this kind of case
+    /// (`tests/harness/mod.rs::tol_for`: `v`/`y`/`i` = `1e-6` abs + `1e-9`
+    /// rel — the abs/rel pair the corpus gate applies to this very deck, and
+    /// the pair `harness::tol_for` is pinned to by
+    /// `the_short_circuit_surface_adds_no_tolerance_constant`).
+    /// Every oracle literal below is a live reading of the *same* deck on both
+    /// channels — dss-python 0.15.7 / capi 0.14.5 and the EPRI r4133 DLL — which
+    /// agree with each other to ~1e-15 relative and with the port to ~1e-12 abs.
+    ///
+    /// **Driving matters for `Voc`/`Isc`, and the literals are the deck driven
+    /// as written.** `SolveFaultStudy` sets `LoadModel := ADMITTANCE` and takes
+    /// its open-circuit voltages from a `SolveDirect`
+    /// (`Common/SolutionAlgs.pas:884-892`), so a *second* fault study starts
+    /// from the first one's unit-injection residual and lands ~1.2e-4 relative
+    /// away: on this deck `Voc[0]` is `6933.784990446535 + 971.5021007848138j`
+    /// after `solve; solve mode=faultstudy` but `6934.538221643409 +
+    /// 971.9391266606829j` when a bare `solve` is appended (measured on both
+    /// channels — `tmp/g15/f1/voc_micro{,_r4133}.json`). `Zsc`/`Ysc` are
+    /// identical either way, being functions of `Y` alone.
+    ///
+    /// **Measured worsts on this deck** (port vs capi / port vs r4133, as the
+    /// baseline a later tightening would start from): `Zsc` 3.39e-15 / 4.99e-15
+    /// abs (1.44e-15 / 2.12e-15 rel), `Ysc` 7.73e-16 abs (1.64e-15 rel), `Isc`
+    /// 2.09e-12 / 1.85e-12 abs (6.4e-16 rel), `Voc` 1.22e-11 / 1.15e-11 abs
+    /// (2.28e-15 rel) — the same order as the two oracles' own disagreement
+    /// (capi vs r4133: `Zsc` 2.89e-15, `Voc` 1.15e-11), i.e. the faer-vs-KLU
+    /// last-ulp floor. The band stays the `micro` tier's rather than these
+    /// numbers on purpose: it is the band the corpus gate applies to this very
+    /// deck, and the errors these pins exist to catch (a transposed or
+    /// ascending-sorted index, an absent matrix) are 0.6 ohm / 800 V wide.
+    fn close(got: Complex64, want: Complex64, what: &str) {
+        let allowed = 1e-6 + 1e-9 * want.norm();
+        assert!(
+            (got - want).norm() <= allowed,
+            "{what}: {got} vs oracle {want} (|diff| = {:.6e} > allowed {allowed:.3e})",
+            (got - want).norm()
+        );
+    }
+
+    /// **The row-major convention, driven** (GOLDEN_REBASE G1.5 audit
+    /// settlement, AC-4). Spec §4's non-vacuity demo 1 — transpose the flatten
+    /// and watch the live gate red — was measured VACUOUS and dropped: `Zsc`
+    /// and `Ysc` are symmetric to ≤ 4.66e-10 on every bus of every corpus deck
+    /// that runs a study, six orders inside the band, so no oracle comparison
+    /// anywhere can tell `m.get(i, j)` from `m.get(j, i)`. That left
+    /// [`flatten_row_major`]'s convention — the one both oracles publish
+    /// (`For i … For j … Zsc.GetElement(i, j)`, r4133 `DDLL/DBus.pas:445-450`
+    /// == capi `CAPI/CAPI_Alt.pas:2318-2330`) — carried by a citation alone.
+    ///
+    /// This pins it where symmetry cannot hide it: a deliberately ASYMMETRIC
+    /// matrix whose `(i, j)` entry is `10·i + j`, so the row-major flatten is
+    /// `[00, 01, 02, 10, …]` while the transposed walk would be
+    /// `[00, 10, 20, 01, …]` — different in all six off-diagonal slots. The
+    /// same literals also separate it from `CMatrix`'s COLUMN-major backing
+    /// store (`support/cmatrix/mod.rs:45-47`), which is the transpose here, so
+    /// the day someone "optimizes" the loop into a `values().to_vec()` this
+    /// test reds instead of the surface silently publishing `Zscᵀ`.
+    #[test]
+    fn flatten_row_major_walks_i_outer_on_an_asymmetric_matrix() {
+        let mut m = crate::support::cmatrix::CMatrix::new(3);
+        for i in 0..3 {
+            for j in 0..3 {
+                m.set(i, j, Complex64::new((10 * i + j) as f64, 0.0));
+            }
+        }
+        let got: Vec<f64> = flatten_row_major(&m).iter().map(|c| c.re).collect();
+        assert_eq!(
+            got,
+            vec![0.0, 1.0, 2.0, 10.0, 11.0, 12.0, 20.0, 21.0, 22.0],
+            "flatten_row_major must walk `i` outer / `j` inner, the read order of \
+             both oracles' `BUSV` matrix arms"
+        );
+        let stored: Vec<f64> = m.values().iter().map(|c| c.re).collect();
+        assert_eq!(
+            stored,
+            vec![0.0, 10.0, 20.0, 1.0, 11.0, 21.0, 2.0, 12.0, 22.0],
+            "CMatrix stores column-major — the premise of the explicit walk"
+        );
+        assert_ne!(
+            got, stored,
+            "on an asymmetric matrix the row-major flatten and the backing store \
+             must differ, or this pin proves nothing"
+        );
+    }
+
+    /// The GOLDEN_REBASE G1.5 micro deck, byte-for-byte the circuit that
+    /// `tests/corpus/modes/faultstudy/faultstudy_micro.dss` carries into the
+    /// corpus gate. Two properties make it worth its size:
+    ///
+    /// * `line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3` gives `b2` the insertion order
+    ///   `[2, 1, 3]`, which is *not* its ascending node order `[1, 2, 3]`;
+    /// * `reactor.rsh bus1=b2.1 R=5` puts a 5 ohm shunt on node 1 alone, so the
+    ///   `Zsc`/`Ysc` diagonal is position-dependent and the two orders are
+    ///   observably different rather than merely nominally so.
+    ///
+    /// Returned solved but *before* the fault study, so each test drives the
+    /// study itself.
+    fn sc_micro() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("Set DefaultBaseFrequency=60");
+        dss.command(
+            "new circuit.scmicro basekv=12.47 pu=1.0 phases=3 bus1=sourcebus \
+             r1=0.5 x1=1.5 r0=1.0 x0=3.0",
+        );
+        dss.command("new linecode.lc3 nphases=3 r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0 units=km");
+        dss.command("new linecode.lc1 nphases=1 r1=0.4 x1=1.2 c1=0 units=km");
+        dss.command("new line.l1 bus1=sourcebus bus2=b1 linecode=lc3 length=1 units=km");
+        dss.command("new line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3 linecode=lc3 length=1 units=km");
+        dss.command("new reactor.rsh bus1=b2.1 phases=1 R=5 X=0");
+        dss.command("new load.ld1 bus1=b2.2.1.3 phases=3 conn=wye kv=12.47 kw=100 pf=0.95 model=1");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "snap solve: {:?}", dss.errors());
+        dss
+    }
+
+    fn fault_study(dss: &mut Dss) {
+        dss.command("solve mode=faultstudy");
+        assert!(dss.errors().is_empty(), "faultstudy: {:?}", dss.errors());
+    }
+
+    /// `zsc`/`ysc` are a **shape**, not a zero matrix: `TDSSBus.Zsc` stays
+    /// unassigned until `AllocateBusQuantities` runs inside the FaultStudy
+    /// solve (`Common/SolutionAlgs.pas:773-781` == `fault_study.rs:57`), and
+    /// `Get_Zsc1`/`Get_Zsc0` return `cZERO` in that state
+    /// (`Common/Bus.pas:215-229`). Both oracles publish a one-entry
+    /// `CZero`/default sentinel there, which is why the harness compares the
+    /// "study ran" bit before any number.
+    ///
+    /// `isc`/`vbus` are the contrast: `ReProcessBusDefs` allocates and zeroes
+    /// them for every bus (`Common/Circuit.pas:2407-2408`), so they are already
+    /// `NumNodesThisBus` long — and exactly zero — before the study.
+    #[test]
+    fn zsc_is_absent_until_a_fault_study_runs() {
+        let mut dss = sc_micro();
+
+        let before = dss.all_bus_short_circuit();
+        assert_eq!(before.len(), 3, "sourcebus, b1, b2");
+        for v in &before {
+            assert!(v.zsc.is_none(), "bus {}: Zsc before the study", v.name);
+            assert!(v.ysc.is_none(), "bus {}: Ysc before the study", v.name);
+            assert_eq!(v.zsc1, Complex64::ZERO, "bus {}: Zsc1 cZERO arm", v.name);
+            assert_eq!(v.zsc0, Complex64::ZERO, "bus {}: Zsc0 cZERO arm", v.name);
+            assert_eq!(v.isc.len(), v.nodes.len(), "bus {}: Isc length", v.name);
+            assert_eq!(v.vbus.len(), v.nodes.len(), "bus {}: Voc length", v.name);
+            assert!(
+                v.isc.iter().all(|c| *c == Complex64::ZERO),
+                "bus {}: Isc is allocated but untouched before the study",
+                v.name
+            );
+        }
+
+        fault_study(&mut dss);
+
+        for v in &dss.all_bus_short_circuit() {
+            let n = v.nodes.len();
+            assert_eq!(
+                v.zsc.as_ref().map(Vec::len),
+                Some(n * n),
+                "bus {}: Zsc is n*n after the study",
+                v.name
+            );
+            assert_eq!(
+                v.ysc.as_ref().map(Vec::len),
+                Some(n * n),
+                "bus {}: Ysc is n*n after the study",
+                v.name
+            );
+            assert_ne!(v.zsc1, Complex64::ZERO, "bus {}: Zsc1 is live", v.name);
+            assert_ne!(v.zsc0, Complex64::ZERO, "bus {}: Zsc0 is live", v.name);
+        }
+    }
+
+    /// **Convention 2.** `ZscMatrix`, `YscMatrix`, `Isc` and `Voc` are indexed
+    /// by the bus's *internal* node index — the oracles walk `GetRef(i)` /
+    /// `Zsc.GetElement(i, j)` directly (r4133 `DBus.pas:431-459`/`:491-518` ==
+    /// capi `CAPI_Alt.pas:2305-2334`/`:2336-2365`) with no `FindIdx` sort — so
+    /// the slot order is `TDSSBus.Nodes`' insertion order, not the ascending
+    /// node order `Bus.Nodes` itself publishes (`CAPI_Alt.pas:2143-2163`).
+    ///
+    /// On `b2` (declared `.2.1.3`, insertion `[2, 1, 3]`) the 5 ohm shunt sits
+    /// on node **1**, i.e. internal index **1**. Both oracles put the odd
+    /// diagonal there: `Zsc[1][1] = 1.665278843631496 + 1.662460471266969j`
+    /// against `Zsc[0][0] = 1.0633872484998361 + 2.873778548090103j`. Ascending
+    /// order would have put it at index 0, and the gap is 0.6 ohm — six orders
+    /// above any band. `Ysc` says the same thing in closed form: the shunt is
+    /// `1/5 = 0.2 S` and `Ysc[1][1] - Ysc[0][0] = 0.2 + 0j`.
+    #[test]
+    fn the_short_circuit_arrays_are_indexed_by_internal_node_index() {
+        let mut dss = sc_micro();
+        fault_study(&mut dss);
+
+        let v = dss.bus_short_circuit("B2").expect("bus b2");
+        assert_eq!(v.name, "b2", "case-insensitive lookup, BusList spelling");
+        assert_eq!(v.nodes, vec![2, 1, 3], "declared bus2=b2.2.1.3");
+
+        let z = v.zsc.as_ref().expect("study ran");
+        let y = v.ysc.as_ref().expect("study ran");
+        assert_eq!(z.len(), 9);
+        assert_eq!(y.len(), 9);
+
+        // Row-major: entry (i, j) is z[i * 3 + j].
+        close(
+            z[0],
+            Complex64::new(1.0633872484998361, 2.873778548090103),
+            "Zsc[0][0]",
+        );
+        close(
+            z[4],
+            Complex64::new(1.665278843631496, 1.662460471266969),
+            "Zsc[1][1]",
+        );
+        close(
+            z[8],
+            Complex64::new(1.0633872484998352, 2.8737785480901032),
+            "Zsc[2][2]",
+        );
+        close(
+            z[1],
+            Complex64::new(0.4998250387875434, 0.4970654339231112),
+            "Zsc[0][1]",
+        );
+        close(
+            z[2],
+            Complex64::new(0.36149275755946514, 0.7764976346466627),
+            "Zsc[0][2]",
+        );
+
+        // The ordering claim as an inequality no band can absorb: the odd
+        // diagonal sits at the insertion slot of node 1, not at slot 0.
+        assert_eq!(
+            v.nodes[1], 1,
+            "internal index 1 is node 1, the shunt's node"
+        );
+        assert!(
+            (z[4] - z[0]).norm() > 0.5,
+            "Zsc[1][1] {} must differ from Zsc[0][0] {} by the shunt, not by noise",
+            z[4],
+            z[0]
+        );
+
+        // `Ysc`: the 5 ohm shunt is exactly 0.2 S on its own diagonal slot.
+        close(
+            y[0],
+            Complex64::new(0.11671451166612462, -0.3484256569058215),
+            "Ysc[0][0]",
+        );
+        close(
+            y[4],
+            Complex64::new(0.3167145116661245, -0.3484256569058213),
+            "Ysc[1][1]",
+        );
+        close(
+            y[8],
+            Complex64::new(0.11671451166612454, -0.34842565690582167),
+            "Ysc[2][2]",
+        );
+        close(
+            y[4] - y[0],
+            Complex64::new(0.2, 0.0),
+            "Ysc[1][1] - Ysc[0][0] = 1/R",
+        );
+
+        // `Voc` carries the same index: the sag is at slot 1. capi values;
+        // r4133 agrees to 1.1e-11 abs (6933.784990446525 + 971.5021007848129j,
+        // -4473.628028729489 - 2952.8238120661385j, -3849.24186153543 +
+        // 7214.584823013563j).
+        assert_eq!(v.vbus.len(), 3);
+        close(
+            v.vbus[0],
+            Complex64::new(6933.784990446535, 971.5021007848138),
+            "Voc[0]",
+        );
+        close(
+            v.vbus[1],
+            Complex64::new(-4473.628028729488, -2952.8238120661385),
+            "Voc[1]",
+        );
+        close(
+            v.vbus[2],
+            Complex64::new(-3849.2418615354186, 7214.584823013565),
+            "Voc[2]",
+        );
+        assert!(
+            v.vbus[1].norm() < v.vbus[0].norm(),
+            "the shunted node sags, and it is slot 1"
+        );
+
+        // `Isc = Ysc * Voc`, length n on the same index. capi values; r4133
+        // agrees to 8e-13 abs.
+        assert_eq!(v.isc.len(), 3);
+        close(
+            v.isc[0],
+            Complex64::new(1028.2406633473126, -3085.47655441101),
+            "Isc[0]",
+        );
+        close(
+            v.isc[1],
+            Complex64::new(-3186.134740270875, 652.1195203877785),
+            "Isc[1]",
+        );
+        close(
+            v.isc[2],
+            Complex64::new(2157.80036243219, 2433.9836703768838),
+            "Isc[2]",
+        );
+    }
+
+    /// `AvgOffDiagonal` divides only when it summed something
+    /// (`Shared/Ucmatrix.pas:369-383` == `support/cmatrix/mod.rs:273-282`), so a
+    /// one-node bus has `Zm = 0` and `Zsc1 = Zs - 0`, `Zsc0 = Zs + 2*0` collapse
+    /// onto the single entry — bit-exactly, not within a band.
+    ///
+    /// Oracle witness for the same identity: IEEE123Master-SC carries **57**
+    /// one-node buses, and on bus `2` both channels report
+    /// `Zsc1 = Zsc0 = Zsc[0][0]` = `0.12160973905653437 + 0.4051399884521036j`
+    /// (capi) and `0.12160973905653336 + 0.40513998845210436j` (r4133) — the
+    /// same three numbers each time.
+    #[test]
+    fn zsc1_collapses_to_the_single_entry_on_a_one_node_bus() {
+        let mut dss = Dss::new();
+        dss.command("Set DefaultBaseFrequency=60");
+        dss.command(
+            "New Circuit.sc1 basekv=12.47 phases=3 bus1=sourcebus pu=1.0 \
+             R1=0.5 X1=1.5 R0=1.0 X0=3.0",
+        );
+        dss.command(
+            "New Line.spur bus1=sourcebus.1 bus2=b3.1 phases=1 r1=0.4 x1=1.2 c1=0 length=1",
+        );
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("calcv");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        fault_study(&mut dss);
+
+        let v = dss.bus_short_circuit("b3").expect("bus b3");
+        assert_eq!(v.nodes, vec![1], "a one-node bus");
+        let z = v.zsc.as_ref().expect("study ran");
+        assert_eq!(z.len(), 1, "1x1");
+        assert_eq!(v.zsc1, z[0], "Zsc1 = Zs - Zm with Zm = 0");
+        assert_eq!(v.zsc0, z[0], "Zsc0 = Zs + 2*Zm with Zm = 0");
+
+        // A three-node bus in the same circuit does not collapse, so the
+        // identity above is the degeneracy and not a tautology of the code.
+        let src = dss.bus_short_circuit("sourcebus").expect("sourcebus");
+        assert_eq!(src.nodes.len(), 3);
+        assert_ne!(src.zsc1, src.zsc0, "Zm != 0 on a 3-node bus");
+    }
+
+    /// Nothing between solves clears `Zsc`/`Ysc`: they are dropped only by a
+    /// bus-list rebuild (`RestoreBusInfo` restores `VBus` but not the matrices
+    /// — `circuit::Circuit::reprocess_bus_defs`), so a later solve in another mode leaves the
+    /// study's matrices standing, entry for entry. That is the state
+    /// `NEVTestCase/Run_NEV.dss` gates on: `set mode=Faultstudy; solve` followed
+    /// by `solve mode=harmonics`, with the 13-node `tertiary` bus still
+    /// reporting a 13x13 `Zsc` afterwards.
+    #[test]
+    fn zsc_survives_a_later_non_faultstudy_solve() {
+        let mut dss = sc_micro();
+        fault_study(&mut dss);
+        let before = dss.bus_short_circuit("b2").expect("bus b2");
+        let z0 = before.zsc.clone().expect("study ran");
+        let y0 = before.ysc.clone().expect("study ran");
+        let (zsc1, zsc0) = (before.zsc1, before.zsc0);
+
+        dss.command("solve mode=harmonics");
+        assert!(dss.errors().is_empty(), "harmonics: {:?}", dss.errors());
+
+        let after = dss.bus_short_circuit("b2").expect("bus b2");
+        assert_eq!(after.zsc.as_deref(), Some(&z0[..]), "Zsc untouched");
+        assert_eq!(after.ysc.as_deref(), Some(&y0[..]), "Ysc untouched");
+        assert_eq!(after.zsc1, zsc1);
+        assert_eq!(after.zsc0, zsc0);
+        assert_eq!(after.nodes, vec![2, 1, 3], "and still on the same index");
+    }
+
+    /// `all_bus_short_circuit` walks `BusList` — the same sequence
+    /// `all_bus_voltages` and `Circuit.AllBusNames` use — so the harness can
+    /// capture both bus surfaces in one `SetActiveBus` sweep and pair them by
+    /// index.
+    #[test]
+    fn all_bus_short_circuit_is_the_bus_list_order() {
+        let mut dss = sc_micro();
+        fault_study(&mut dss);
+
+        let sc = dss.all_bus_short_circuit();
+        let v = dss.all_bus_voltages();
+        assert_eq!(sc.len(), v.len());
+        let names: Vec<&str> = sc.iter().map(|b| b.name.as_str()).collect();
+        assert_eq!(names, vec!["sourcebus", "b1", "b2"]);
+        for (a, b) in sc.iter().zip(&v) {
+            assert_eq!(a.name, b.name, "paired by index");
+            assert_eq!(a.nodes, b.nodes, "both views keep insertion order");
+        }
+        // The by-name accessor is the same builder.
+        for a in &sc {
+            let one = dss.bus_short_circuit(&a.name).expect("by name");
+            assert_eq!(one.zsc, a.zsc);
+            assert_eq!(one.ysc, a.ysc);
+            assert_eq!(one.isc, a.isc);
+            assert_eq!(one.vbus, a.vbus);
+        }
+    }
+
+    /// The fault study is **not** the only writer of `Voc`: `BuildYMatrix`
+    /// brackets the rebuild with `UpdateVBus` / `RestoreNodeVfromVbus` whenever
+    /// `Solution.PreserveNodeVoltages` is set (r4133
+    /// `Common/YMatrix.pas:170`/`:282` == `solution::ymatrix::build_y_matrix`),
+    /// and that flag is set entering Harmonic/HarmonicT and Dynamic mode. So a
+    /// harmonics deck publishes a live `Voc` (and an `Isc` derived from it)
+    /// while `Zsc`/`Ysc` stay `None` — which is exactly why the harness
+    /// compares the discrete "study ran" bit and the `Voc` values as two
+    /// independent facts instead of gating one on the other.
+    ///
+    /// Oracle witness for the same shape, both channels
+    /// (`tmp/g15/voc_exposure.json`): `modes/harmonics/harmonict` reports no
+    /// `Zsc` on any of its 3 buses with `max |Voc| = 64.49615498313288` V (its
+    /// three harmonics siblings 59.10 / 97.55 / 90.13 V), against
+    /// `max |Voc| = 0` on all ten `modes/reduce/*` decks, which never set the
+    /// flag. On this deck the port's own maximum is 12.329071484855646 V.
+    #[test]
+    fn voc_is_refreshed_by_preserve_node_voltages_not_only_by_the_fault_study() {
+        let mut dss = sc_micro();
+        for b in dss.all_bus_short_circuit() {
+            assert!(b.zsc.is_none(), "{}: no study has run", b.name);
+            assert!(
+                b.vbus.iter().all(|v| *v == Complex64::new(0.0, 0.0)),
+                "{}: VBus is the allocation zero after a plain solve, {:?}",
+                b.name,
+                b.vbus
+            );
+        }
+
+        dss.command("solve mode=harmonics");
+        assert!(dss.errors().is_empty(), "harmonics: {:?}", dss.errors());
+
+        let after = dss.all_bus_short_circuit();
+        for b in &after {
+            assert!(
+                b.zsc.is_none() && b.ysc.is_none(),
+                "{}: a harmonics solve must not fabricate a short-circuit matrix",
+                b.name
+            );
+        }
+        let worst = after
+            .iter()
+            .flat_map(|b| b.vbus.iter())
+            .map(|v| v.norm())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            worst > 1.0,
+            "PreserveNodeVoltages must have refreshed VBus, got max |Voc| = {worst}"
+        );
+
+        // The values themselves, on the bus whose insertion order is [2, 1, 3]
+        // — so the refresh lands on this surface's own index, not the ascending
+        // one. (`close` is the `micro` band; these are the port's readings.)
+        let b2 = after.iter().find(|b| b.name == "b2").expect("bus b2");
+        assert_eq!(b2.nodes, vec![2, 1, 3]);
+        close(
+            b2.vbus[0],
+            Complex64::new(11.97308377213697, -2.941303905425441),
+            "Voc[0] after harmonics",
+        );
+        close(
+            b2.vbus[1],
+            Complex64::new(2.1154414072085364, -0.45083050936453944),
+            "Voc[1] after harmonics",
+        );
+        close(
+            b2.vbus[2],
+            Complex64::new(-0.44918965561215307, 11.369826732190017),
+            "Voc[2] after harmonics",
+        );
+        close(
+            Complex64::new(worst, 0.0),
+            Complex64::new(12.329071484855646, 0.0),
+            "max |Voc| after harmonics",
+        );
     }
 }

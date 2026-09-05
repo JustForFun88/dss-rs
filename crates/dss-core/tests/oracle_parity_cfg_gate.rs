@@ -2163,12 +2163,14 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     (
         "GIC_TRANSFORMER_G2_SCALES_OFF_PCT_R1",
         Kind::WholeCase,
-        // One key per (case, channel); the other three
-        // (`…-gictransformer-r4133`, `…-midi-capi`, `…-midi-r4133`, plus the
-        // two exact-pair property entries) live beside it in the same file and
-        // are held by the ledger's own fail-on-stale accounting. The row names
-        // the deck-and-channel pair whose loss is largest.
-        Evidence::Ledger("gic-pct-r2-honoured-gictransformer-capi"),
+        // One key per (case, channel); the twin `…-midi-r4133` (plus the two
+        // exact-pair property entries) lives beside it in the same file and is
+        // held by the ledger's own fail-on-stale accounting. The capi twins went
+        // when GOLDEN_REBASE G1.4a moved every GICTransformer deck onto the
+        // r4133 channel alone (coordinator decisions D12/D14 — capi 0.14.5 is
+        // nondeterministic on them; `docs/upgrade/DIVERGENCES.md`), so the row
+        // now names the surviving deck-and-channel pair whose loss is largest.
+        Evidence::Ledger("gic-pct-r2-honoured-gictransformer-r4133"),
         Some((
             "crates/dss-core/src/exec/tests/compat_quirks.rs",
             "gic_transformer_pct_r2_drives_winding_two",
@@ -3973,6 +3975,95 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
     );
 }
 
+/// Every test the GOLDEN_REBASE **G1.0** record and `TESTING.md` name as a pin
+/// still exists, in the file they say it lives in (G1.0 audit settlement T3).
+///
+/// The repo's own precedent is an explicit registry
+/// (`props_r4133_replay.rs::every_rp311_serialization_pin_exists_and_is_cited`):
+/// without one, renaming or deleting a pin leaves the prose claiming a
+/// guarantee that no longer exists, with a green suite —
+/// [`operational_docs_line_citations_point_at_the_line_they_name`] cannot
+/// help, because it only resolves the citations that carry a `:LINE` suffix and
+/// `docs/phase-records/` is deliberately outside [`LINE_CITED_DOCS`].
+///
+/// Each row must also still be *named* by the prose, so the table cannot
+/// outlive the claim it backs either.
+#[test]
+fn every_pin_the_g10_record_names_exists_and_is_cited() {
+    const G10_PINS: &[(&str, &str)] = &[
+        // Half B — the r4133 bridge rails.
+        (
+            "r4133_mode_capability_is_complete_for_wp_g1",
+            "crates/dss-epri/tests/modes.rs",
+        ),
+        (
+            "cmath_lib_f_takes_two_doubles",
+            "crates/dss-epri/tests/protocol.rs",
+        ),
+        (
+            "the_raw_ffi_command_refuses_the_do_not_call_modes",
+            "crates/dss-epri/tests/protocol.rs",
+        ),
+        (
+            "do_not_call_refuses_the_two_unsafe_modes_without_touching_the_dll",
+            "crates/dss-epri/src/modes.rs",
+        ),
+        (
+            "the_capture_order_partition_is_the_one_d3_names",
+            "crates/dss-epri/src/modes.rs",
+        ),
+        // Half A — the lock, ledger and capture-presence rails.
+        (
+            "no_unwired_g1_surface_flag_is_set_in_any_manifest",
+            "crates/dss-core/tests/corpus_gate/manifest.rs",
+        ),
+        (
+            "every_manifest_compare_flag_has_a_rigor_token",
+            "crates/dss-core/tests/population_lock.rs",
+        ),
+        (
+            "the_drift_guard_scanners_see_every_visibility_and_every_flag_row",
+            "crates/dss-core/tests/population_lock.rs",
+        ),
+        (
+            "a_scope_that_misuses_channels_is_refused_at_load",
+            "crates/dss-core/tests/corpus_gate/ledger.rs",
+        ),
+        (
+            "an_empty_capture_fails",
+            "crates/dss-core/tests/harness/capture_guard.rs",
+        ),
+    ];
+    let root = repo_root();
+    let prose: String = ["TESTING.md", "docs/phase-records/golden-rebase.md"]
+        .iter()
+        .map(|d| std::fs::read_to_string(root.join(d)).unwrap_or_else(|e| panic!("read {d}: {e}")))
+        .collect();
+    let mut bad = Vec::new();
+    for (pin, file) in G10_PINS {
+        let src =
+            std::fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("read {file}: {e}"));
+        let decl = format!("fn {pin}(");
+        if src.matches(&decl).count() != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `{decl}` in {file}, found {}",
+                src.matches(&decl).count()
+            ));
+        }
+        if !prose.contains(pin) {
+            bad.push(format!(
+                "{pin}: no longer named by TESTING.md or the phase record — a pin nothing \
+                 claims is not a pin"
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "G1.0 pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
+}
+
 // ---------------------------------------------------------------------------
 // GOLDEN_REBASE G1.9 — the pin names the operational docs cite must exist.
 // ---------------------------------------------------------------------------
@@ -4054,6 +4145,492 @@ fn the_g1_9_pins_the_docs_cite_exist_exactly_once() {
             G1_9_PIN_DOCS.join(" / ")
         );
     }
+}
+
+/// Every test the GOLDEN_REBASE **G1.3a** record, `TESTING.md`,
+/// `tests/TOLERANCE_NOTES.md` and a live `tests/corpus/ledger.json` entry name
+/// as a pin still exists, in the file they say it lives in — the G1.0
+/// settlement's registry rule
+/// ([`every_pin_the_g10_record_names_exists_and_is_cited`]) applied to the first
+/// surface sub-step (G1.3a audit settlement, 2026-09-04).
+///
+/// Sharpest case: `capi-capcontrol-time-bus-is-the-capacitors` is the sub-step's
+/// only new exclusion and its whole justification is one pin, named in the
+/// entry's own `cause` text — renaming that pin would leave a live ledger row
+/// claiming a guarantee that no longer resolves, with a green suite.
+///
+/// The prose also claims these pins by GROUP and by COUNT ("the 15
+/// `harness::derived_polar_floors::*`"), so the group names and their sizes are
+/// checked against the modules themselves — a pin deleted from a group the
+/// prose only counts would otherwise be invisible here.
+#[test]
+fn every_pin_the_g13a_record_names_exists_and_is_cited() {
+    const G13A_PINS: &[(&str, &str)] = &[
+        // Engine — the expected-value pins (`crate::exec::tests::derived_polar`).
+        (
+            "residuals_sum_the_rows_own_terminal",
+            "crates/dss-core/src/exec/tests/derived_polar.rs",
+        ),
+        (
+            "currents_mag_ang_is_the_truncated_ctopolardeg_of_currents",
+            "crates/dss-core/src/exec/tests/derived_polar.rs",
+        ),
+        (
+            "voltages_mag_ang_follows_node_ref_and_grounds_to_zero",
+            "crates/dss-core/src/exec/tests/derived_polar.rs",
+        ),
+        (
+            "a_never_enabled_element_has_no_polar_payload",
+            "crates/dss-core/src/exec/tests/derived_polar.rs",
+        ),
+        (
+            "capcontrol_time_voltages_follow_the_monitored_elements_terminal",
+            "crates/dss-core/src/exec/tests/derived_polar.rs",
+        ),
+        (
+            "a_stale_node_ref_shorter_than_yorder_reads_as_ground",
+            "crates/dss-core/src/exec/tests/derived_polar.rs",
+        ),
+        // Comparator floors (`harness::derived_polar_floors`).
+        (
+            "the_angle_comparison_is_wrap_aware",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_sign_flipped_angle_still_fails_the_band",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_angle_band_never_exceeds_one_radian_in_degrees",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_residual_floor_is_the_sum_of_the_conductor_bands",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_residual_above_the_conductor_sum_band_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_inherited_current_band_is_a_disc_not_a_rectangle",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_rectangles_diagonal_reach_fails_the_disc_band",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_angle_band_is_the_conservative_linearization_of_its_exact_image",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_zero_terminal_element_is_accepted_when_both_sides_are_empty",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_zero_terminal_element_with_an_oracle_payload_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_capi_default_result_sentinel_reads_as_no_payload",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_sentinel_shaped_but_non_zero_oracle_payload_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_zero_terminal_element_with_a_port_payload_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "conductor_slots_without_terminals_still_fail_the_shape_assert",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "terminals_without_conductor_slots_still_fail_the_length_asserts",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        // Ledger and scheduler.
+        (
+            "a_masked_polar_angle_is_not_envelope_checked",
+            "crates/dss-core/tests/corpus_gate/ledger.rs",
+        ),
+        (
+            "an_unmasked_polar_angle_still_hits_the_envelope",
+            "crates/dss-core/tests/corpus_gate/ledger.rs",
+        ),
+        (
+            "a_widened_sub_channel_that_masks_nothing_is_reported_stale",
+            "crates/dss-core/tests/corpus_gate/ledger.rs",
+        ),
+        (
+            "the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins",
+            "crates/dss-core/tests/corpus_gate/scheduler.rs",
+        ),
+    ];
+    // `(module path as the prose spells it, file, expected member count)`.
+    const G13A_PIN_GROUPS: &[(&str, &str, usize)] = &[
+        (
+            "exec::tests::derived_polar",
+            "crates/dss-core/src/exec/tests/derived_polar.rs",
+            6,
+        ),
+        (
+            "harness::derived_polar_floors",
+            "crates/dss-core/tests/harness/mod.rs",
+            15,
+        ),
+    ];
+    let root = repo_root();
+    let prose: String = [
+        "TESTING.md",
+        "docs/phase-records/golden-rebase.md",
+        "tests/TOLERANCE_NOTES.md",
+        "tests/corpus/ledger.json",
+    ]
+    .iter()
+    .map(|d| std::fs::read_to_string(root.join(d)).unwrap_or_else(|e| panic!("read {d}: {e}")))
+    .collect();
+    let read = |file: &str| {
+        std::fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("read {file}: {e}"))
+    };
+    let mut bad = Vec::new();
+    let mut cited = 0usize;
+    for (pin, file) in G13A_PINS {
+        let src = read(file);
+        let decl = format!("fn {pin}(");
+        if src.matches(&decl).count() != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `{decl}` in {file}, found {}",
+                src.matches(&decl).count()
+            ));
+        }
+        if prose.contains(*pin) {
+            cited += 1;
+        }
+    }
+    // The prose names some pins one by one and the rest only by group; both
+    // claims have to stay true, so the group names and sizes are resolved
+    // against the modules.
+    for (group, file, want) in G13A_PIN_GROUPS {
+        if !prose.contains(*group) {
+            bad.push(format!(
+                "{group}: no longer named by TESTING.md, the phase record, \
+                 TOLERANCE_NOTES or the ledger — a pin group nothing claims is not a group"
+            ));
+        }
+        let src = read(file);
+        // The module's own span: from its `mod NAME {` line to the first
+        // column-0 `}` after it (every item inside is indented). A file-level
+        // group (no such `mod`) is its own span.
+        let member = group.rsplit("::").next().unwrap_or(group);
+        let body = match src.split_once(&format!("mod {member} {{")) {
+            Some((_, rest)) => rest.split("\n}").next().unwrap_or(rest).to_string(),
+            None => src.clone(),
+        };
+        let got = body.matches("#[test]").count();
+        if got != *want {
+            bad.push(format!(
+                "{group}: the prose claims {want} pins, the module carries {got} — \
+                 re-count the record and this table in the same commit"
+            ));
+        }
+        let rows = G13A_PINS.iter().filter(|(_, f)| f == file).count();
+        if rows < *want {
+            bad.push(format!(
+                "{group}: {rows} registry rows for {file} against {want} claimed pins"
+            ));
+        }
+    }
+    assert!(
+        cited >= 4,
+        "the prose no longer names ANY G1.3a pin individually ({cited} found) — \
+         either the record was rewritten or this registry drifted off the sub-step"
+    );
+    assert!(
+        bad.is_empty(),
+        "G1.3a pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
+}
+
+/// Every test the GOLDEN_REBASE **G1.3d(i)** record, `TESTING.md` and
+/// `tests/TOLERANCE_NOTES.md` name as a pin still exists, in the file they say
+/// it lives in — the G1.0 settlement's registry rule
+/// ([`every_pin_the_g10_record_names_exists_and_is_cited`]) applied to the
+/// discrete-extras sub-step, exactly as
+/// [`every_pin_the_g13a_record_names_exists_and_is_cited`] applies it to G1.3a.
+///
+/// G1.3d(i) adds no ledger entry, so no `cause` text depends on a pin name here;
+/// what does depend on them is the record's own claim that a *discrete*
+/// divergence is unmaskable, which is only true while these pins exist. The
+/// prose names four of them one by one and the rest by GROUP and COUNT
+/// ("`harness::element_extras_pins::*` (18 …)"), so the group sizes are resolved
+/// against the modules themselves — a pin deleted from a counted group would
+/// otherwise be invisible here.
+#[test]
+fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
+    const G13D1_PINS: &[(&str, &str)] = &[
+        // Engine — the expected-value pins (`crate::exec::tests::element_extras`).
+        (
+            "node_order_is_the_bus_local_node_number_per_conductor",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        (
+            "node_order_matches_the_export_nodeorder_row",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        (
+            "energy_meter_is_the_bare_lowercased_meter_name",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        (
+            "a_never_enabled_element_has_no_node_order",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        (
+            "a_zero_terminal_element_has_no_node_order",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        (
+            "a_disabled_element_keeps_the_node_order_it_was_given",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        (
+            "a_stale_node_ref_reads_the_missing_slots_as_ground",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        (
+            "num_phases_terminals_conductors_follow_the_element_data",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+        ),
+        // Comparator rules (`harness::element_extras_pins`).
+        (
+            "the_measured_fixture_element_compares_clean",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_no_meter_sentinel_is_normalized_on_both_channels",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_meter_named_zero_reds_instead_of_passing",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_meter_name_is_compared_without_case_folding",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_port_that_lost_the_meter_name_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_extras_comparator_requires_the_capture_to_carry_them",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_counts_are_compared_exactly",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_counts_must_explain_the_oracle_currents_length",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "the_node_order_is_compared_slot_by_slot",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_short_oracle_node_order_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_short_port_node_order_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_zero_terminal_element_has_no_node_order_on_either_side",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_zero_terminal_element_with_an_oracle_node_order_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_zero_terminal_element_with_a_port_node_order_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_disabled_element_keeps_its_port_node_order_while_the_oracle_stays_silent",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "a_disabled_element_with_an_oracle_node_order_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "enabled_is_compared_by_this_comparator_too",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        (
+            "an_element_missing_from_the_snapshot_fails",
+            "crates/dss-core/tests/harness/mod.rs",
+        ),
+        // The corpus census behind the no-meter sentinel normalization.
+        (
+            "no_corpus_energymeter_is_named_zero",
+            "crates/dss-core/tests/corpus_manifest.rs",
+        ),
+        (
+            "the_census_parser_reads_definitions_only",
+            "crates/dss-core/tests/corpus_manifest.rs",
+        ),
+        (
+            "the_census_root_is_the_vendored_corpus",
+            "crates/dss-core/tests/corpus_manifest.rs",
+        ),
+        // Forcing rule and capture order.
+        (
+            "the_element_extras_forcing_rule_is_every_live_non_large_case",
+            "crates/dss-core/tests/corpus_gate/scheduler.rs",
+        ),
+        (
+            "a_group_c_read_may_sit_between_a_group_a_and_a_group_b_read",
+            "crates/dss-core/tests/capture_order.rs",
+        ),
+    ];
+    // `(module path as the prose spells it, file, the count THIS sub-step's prose
+    // claims for its own pins)`.
+    //
+    // The member count is asserted as a FLOOR, not an equality, and the reason is
+    // structural rather than a relaxation: `exec::tests::element_extras` and
+    // `harness::element_extras_pins` are shared modules that later sub-steps add
+    // to (G1.3d(ii) took them to 19 and 23), so an exact count here would make a
+    // historical record fail every time a successor lands. The module's exact
+    // total is owned by the NEWEST sub-step's registry — today
+    // [`every_pin_the_g13d2_record_names_exists_and_is_cited`], which asserts
+    // `== 19` / `== 23` — while this table keeps the guarantee that matters to
+    // G1.3d(i): every pin it named still exists, and the module never SHRANK
+    // below the count its record claims.
+    const G13D1_PIN_GROUPS: &[(&str, &str, usize)] = &[
+        (
+            "exec::tests::element_extras",
+            "crates/dss-core/src/exec/tests/element_extras.rs",
+            8,
+        ),
+        (
+            "harness::element_extras_pins",
+            "crates/dss-core/tests/harness/mod.rs",
+            19,
+        ),
+        (
+            "corpus_manifest::extras_population",
+            "crates/dss-core/tests/corpus_manifest.rs",
+            3,
+        ),
+    ];
+    let root = repo_root();
+    let prose: String = [
+        "TESTING.md",
+        "docs/phase-records/golden-rebase.md",
+        "tests/TOLERANCE_NOTES.md",
+        "tests/corpus/ledger.json",
+    ]
+    .iter()
+    .map(|d| std::fs::read_to_string(root.join(d)).unwrap_or_else(|e| panic!("read {d}: {e}")))
+    .collect();
+    let read = |file: &str| {
+        std::fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("read {file}: {e}"))
+    };
+    let mut bad = Vec::new();
+    let mut cited = 0usize;
+    for (pin, file) in G13D1_PINS {
+        let src = read(file);
+        let decl = format!("fn {pin}(");
+        if src.matches(&decl).count() != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `{decl}` in {file}, found {}",
+                src.matches(&decl).count()
+            ));
+        }
+        if prose.contains(*pin) {
+            cited += 1;
+        }
+    }
+    // The G1.3d(ii) registry below re-asserts these two modules' member counts
+    // EXACTLY (it is the newer sub-step writing into them), which is why the
+    // check here is a floor. Every OTHER group keeps its exact lock right here —
+    // otherwise `corpus_manifest::extras_population`'s count would be owned by
+    // nobody (G1.3d(ii) audit settlement, 2026-09-05).
+    const OWNED_BY_G13D2: &[&str] = &[
+        "exec::tests::element_extras",
+        "harness::element_extras_pins",
+    ];
+    for (group, file, want) in G13D1_PIN_GROUPS {
+        if !prose.contains(*group) {
+            bad.push(format!(
+                "{group}: no longer named by TESTING.md, the phase record, \
+                 TOLERANCE_NOTES or the ledger — a pin group nothing claims is not a group"
+            ));
+        }
+        let src = read(file);
+        // The module's own span, the [`every_pin_the_g13a_record_names_exists_and_is_cited`]
+        // rule: from `mod NAME {` to the first column-0 `}`. A file that IS the
+        // module (`exec/tests/element_extras.rs`) is its own span.
+        let member = group.rsplit("::").next().unwrap_or(group);
+        let body = match src.split_once(&format!("mod {member} {{")) {
+            Some((_, rest)) => rest
+                .split(
+                    "
+}",
+                )
+                .next()
+                .unwrap_or(rest)
+                .to_string(),
+            None => src.clone(),
+        };
+        let got = body.matches("#[test]").count();
+        let exact = !OWNED_BY_G13D2.contains(group);
+        if got < *want || (exact && got != *want) {
+            bad.push(format!(
+                "{group}: the G1.3d(i) record claims {want} pins, the module carries \
+                 {got} — a pin this sub-step named was deleted, or the record and this \
+                 table disagree ({})",
+                if exact {
+                    "exact: no later registry owns this module's total"
+                } else {
+                    "a floor: the exact total is owned by the G1.3d(ii) registry"
+                }
+            ));
+        }
+        let rows = G13D1_PINS.iter().filter(|(_, f)| f == file).count();
+        if rows < *want {
+            bad.push(format!(
+                "{group}: {rows} registry rows for {file} against {want} claimed pins"
+            ));
+        }
+    }
+    assert!(
+        cited >= 4,
+        "the prose no longer names ANY G1.3d(i) pin individually ({cited} found) — \
+         either the record was rewritten or this registry drifted off the sub-step"
+    );
+    assert!(
+        bad.is_empty(),
+        "G1.3d(i) pin registry is stale (rename/delete the pin AND its prose in one commit):
+  {}",
+        bad.join(
+            "
+  "
+        )
+    );
 }
 
 /// The G1.7 (topology surface) names the operational docs and the phase record
@@ -4270,4 +4847,210 @@ fn the_g1_8_pins_the_docs_cite_exist_exactly_once() {
             G1_8_PIN_DOCS.join(" / ")
         );
     }
+}
+
+/// Every test the GOLDEN_REBASE **G1.3d(ii)** record, `TESTING.md` and
+/// `tests/TOLERANCE_NOTES.md` name as a pin still exists, in the file they say
+/// it lives in — G1.0's registry rule
+/// ([`every_pin_the_g10_record_names_exists_and_is_cited`]) applied to the
+/// sub-step that finished the per-element extras surface.
+///
+/// Two things make this registry load-bearing rather than ceremonial. (1)
+/// G1.3d(ii) adds **no** new ledger entry: the only thing standing between a
+/// deleted pin and a silently unproven claim — r4133's per-edit control
+/// re-attach, the disabled-OCP scan, the derived `PhaseLosses` band and the A-1
+/// live `GetOCPDeviceType` fix — is the pin itself. (2) It owns the EXACT member
+/// counts of the two modules G1.3d(i) also writes into
+/// ([`every_pin_the_g13d1_record_names_exists_and_is_cited`] asserts a floor on
+/// them, for the reason stated there), so a pin dropped from a counted group is
+/// visible here even when no name in this table mentions it.
+#[test]
+fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
+    const ENGINE: &str = "crates/dss-core/src/exec/tests/element_extras.rs";
+    const HARNESS: &str = "crates/dss-core/tests/harness/mod.rs";
+    const LEDGER: &str = "crates/dss-core/tests/corpus_gate/ledger.rs";
+    const G13D2_PINS: &[(&str, &str)] = &[
+        // Engine — `PhaseLosses` (`crate::exec::tests::element_extras`).
+        ("phase_losses_are_watts_and_sum_to_get_losses", ENGINE),
+        (
+            "phase_losses_of_a_disabled_element_are_zeros_not_empty",
+            ENGINE,
+        ),
+        ("phase_losses_of_a_zero_phase_element_are_empty", ENGINE),
+        (
+            "phase_losses_scale_by_three_under_positive_sequence",
+            ENGINE,
+        ),
+        // Engine — the derived `ControlElementList` and the five scalars.
+        ("num_controls_counts_disabled_controls_too", ENGINE),
+        ("a_disabled_ocp_control_still_wins_the_ocp_scan", ENGINE),
+        ("ocp_dev_type_follows_the_last_attach_order", ENGINE),
+        ("makeposseq_does_not_reattach_controls", ENGINE),
+        (
+            "ocp_dev_index_is_one_based_and_zero_when_there_is_none",
+            ENGINE,
+        ),
+        (
+            "has_volt_control_is_capcontrol_or_regcontrol_and_has_switch_control_is_swtcontrol",
+            ENGINE,
+        ),
+        (
+            "only_six_control_classes_join_an_elements_control_list",
+            ENGINE,
+        ),
+        (
+            "the_control_sampling_order_is_not_reordered_by_a_re_edit",
+            ENGINE,
+        ),
+        // Comparator — the five discrete scalars (`harness::element_extras_pins`).
+        ("the_measured_controlled_element_compares_clean", HARNESS),
+        ("the_control_extras_are_compared_exactly", HARNESS),
+        ("the_oracle_ocp_index_and_type_are_zero_together", HARNESS),
+        // …and the population guard behind D-ii-1's zero ledger rows.
+        (
+            "the_control_census_passes_on_the_measured_population",
+            HARNESS,
+        ),
+        (
+            "the_control_census_fires_on_a_new_multi_control_element",
+            HARNESS,
+        ),
+        ("the_control_census_fires_when_nothing_was_counted", HARNESS),
+        (
+            "the_oracle_ocp_index_cannot_exceed_the_control_count",
+            HARNESS,
+        ),
+        // Comparator — the derived band (`harness::phase_loss_bands`).
+        (
+            "the_measured_line_compares_clean_at_the_derived_band",
+            HARNESS,
+        ),
+        (
+            "the_phase_bands_sum_to_at_most_the_get_losses_band",
+            HARNESS,
+        ),
+        (
+            "an_error_inside_the_band_passes_and_one_outside_it_fails",
+            HARNESS,
+        ),
+        ("each_phase_is_compared_separately", HARNESS),
+        (
+            "the_lane_exclusion_drops_the_value_but_never_the_shape",
+            HARNESS,
+        ),
+        ("both_sides_must_carry_numphases_samples", HARNESS),
+        ("a_zero_phase_element_is_empty_on_both_sides", HARNESS),
+        (
+            "an_element_missing_from_the_snapshot_fails_the_phase_loss_compare",
+            HARNESS,
+        ),
+        (
+            "the_comparator_requires_the_capture_to_carry_numphases",
+            HARNESS,
+        ),
+        ("the_band_requires_a_consistent_conductor_layout", HARNESS),
+        // The `phase_losses` ledger sub-channel (rewrite + envelope + staleness).
+        (
+            "the_phase_loss_envelope_bands_the_sample_and_attributes_the_exceed",
+            LEDGER,
+        ),
+        (
+            "the_phase_loss_envelope_still_fails_outside_the_committed_bound",
+            LEDGER,
+        ),
+        ("a_phase_losses_scope_rewrites_the_capture_in_kw", LEDGER),
+        // Capture order (group A, ahead of every scratch-`GetCurrents` read).
+        (
+            "the_gate_fires_when_phase_losses_moves_after_the_currents_read",
+            "crates/dss-core/tests/capture_order.rs",
+        ),
+        // Adjacent defect A-1 — the reliability sweep's live OCP scan.
+        (
+            "section_device_type_is_the_live_ocp_scan_not_the_registration_latch",
+            "crates/dss-core/src/exec/tests/reliability.rs",
+        ),
+    ];
+    // `(module path as the prose spells it, file, EXACT member count, rows this
+    // registry must carry for that file)`. The exact count is this registry's to
+    // own: it is the newest sub-step writing into these modules.
+    const G13D2_PIN_GROUPS: &[(&str, &str, usize, usize)] = &[
+        ("exec::tests::element_extras", ENGINE, 20, 12),
+        ("harness::element_extras_pins", HARNESS, 26, 7),
+        ("harness::phase_loss_bands", HARNESS, 10, 10),
+    ];
+    let root = repo_root();
+    let prose: String = [
+        "TESTING.md",
+        "docs/phase-records/golden-rebase.md",
+        "tests/TOLERANCE_NOTES.md",
+        "tests/corpus/ledger.json",
+    ]
+    .iter()
+    .map(|d| std::fs::read_to_string(root.join(d)).unwrap_or_else(|e| panic!("read {d}: {e}")))
+    .collect();
+    let read = |file: &str| {
+        std::fs::read_to_string(root.join(file)).unwrap_or_else(|e| panic!("read {file}: {e}"))
+    };
+    let mut bad = Vec::new();
+    let mut cited = 0usize;
+    for (pin, file) in G13D2_PINS {
+        let src = read(file);
+        let decl = format!("fn {pin}(");
+        if src.matches(&decl).count() != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `{decl}` in {file}, found {}",
+                src.matches(&decl).count()
+            ));
+        }
+        if prose.contains(*pin) {
+            cited += 1;
+        }
+    }
+    for (group, file, want, own) in G13D2_PIN_GROUPS {
+        if !prose.contains(*group) {
+            bad.push(format!(
+                "{group}: no longer named by TESTING.md, the phase record, \
+                 TOLERANCE_NOTES or the ledger — a pin group nothing claims is not a group"
+            ));
+        }
+        let src = read(file);
+        // The module's own span, the G1.3a rule: from `mod NAME {` to the first
+        // column-0 `}`. A file that IS the module is its own span.
+        let member = group.rsplit("::").next().unwrap_or(group);
+        let body = match src.split_once(&format!("mod {member} {{")) {
+            Some((_, rest)) => rest.split("\n}").next().unwrap_or(rest).to_string(),
+            None => src.clone(),
+        };
+        let got = body.matches("#[test]").count();
+        if got != *want {
+            bad.push(format!(
+                "{group}: the prose claims {want} pins, the module carries {got} — \
+                 re-count the record and this table in the same commit"
+            ));
+        }
+        // Per GROUP, not per file (G1.3d(ii) audit settlement, 2026-09-05):
+        // counting every row for `file` let the two HARNESS groups both pass
+        // against the same 14 rows, so neither `own` could ever bind. A row
+        // belongs to this group iff its `fn NAME(` is inside the module body.
+        let rows = G13D2_PINS
+            .iter()
+            .filter(|(p, f)| f == file && body.contains(&format!("fn {p}(")))
+            .count();
+        if rows < *own {
+            bad.push(format!(
+                "{group}: {rows} registry rows inside that module against {own} \
+                 pins this sub-step claims there"
+            ));
+        }
+    }
+    assert!(
+        cited >= 5,
+        "the prose no longer names ANY G1.3d(ii) pin individually ({cited} found) — \
+         either the record was rewritten or this registry drifted off the sub-step"
+    );
+    assert!(
+        bad.is_empty(),
+        "G1.3d(ii) pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
 }

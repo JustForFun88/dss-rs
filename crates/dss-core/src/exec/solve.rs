@@ -512,8 +512,13 @@ impl Dss {
         }
     }
 
-    /// Pascal `ExecCommands.pas` `ord(Cmd.MakeBusList)`: `with ActiveCircuit do
-    /// if BusNameRedefined then ReprocessBusDefs` — nothing else.
+    /// Pascal `ExecCommands.pas` `ord(Cmd.MakeBusList)` (capi `:541-544`): `with
+    /// ActiveCircuit do if BusNameRedefined then ReprocessBusDefs` — nothing
+    /// else. `ReprocessBusDefs` rebuilds the meter zones itself in its tail
+    /// (`Circuit.pas:2411` / capi `:2246`), which is what makes this verb safe
+    /// to issue after an EnergyMeter is defined; before GOLDEN_REBASE G1.6b/D9
+    /// the port hoisted that reset into `build_y_matrix`, so `MakeBusList`
+    /// consumed `bus_name_redefined` and every meter kept an empty zone.
     pub(super) fn do_make_bus_list_cmd(&mut self) {
         let Dss {
             classes,

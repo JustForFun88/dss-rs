@@ -1135,16 +1135,18 @@ const RP3_ROUTING: &[(&str, &str, usize, usize, &str)] = &[
          element by `the_rp34_census_decomposition_is_read_off_the_corpus`: 2 cells, all 2 in \
          scope, 1 + 1 over the 2 %R decks (asymmetric:gic/gic_midi.dss tg5, \
          asymmetric:gic/gictransformer_gic.dss tg3), each `%R1=0.2 %R2=0.15 kvll1=345 kvll2=138 \
-         mva=300 type=Auto` over 1 step on engines=both, so ours is ZBase2*%R2/100 = \
+         mva=300 type=Auto` over 1 step on engines=r4133, so ours is ZBase2*%R2/100 = \
          63.48*0.15/100 = '0.09522' against ZBase2*%R1/100 = '0.12696' (rel 2.50e-01, \
          tests/corpus/props_r4133/bins.tsv:230). 2 in-scope cells over exactly 2 cases, hence \
          exactly two drafted entries and no more. The corpus's other 20 GICTransformers — 15 in \
-         GIC_Example.dss, tg1/tg2 here, tg1/tg3 on the ring, gt on makeposseq_shunt — are all \
-         ohms-specified and take the untouched else arm, 19 of them on r4133-gating cases, and \
+         GIC_Example.dss, tg1/tg2 here, tg1/tg3 on the ring, gt on makeposseq_gic — are all \
+         ohms-specified and take the untouched else arm, 20 of them on r4133-gating cases, and \
          produce ZERO cells: the measurement that the %R path is the whole divergence class. \
          Independently of that arithmetic, the class-wide pairs gictransformer.enabled and \
-         gictransformer.pctperm record 22 cells / 21 in scope, i.e. sum(declared) x steps over \
-         the same population and its r4133-gating subtotal. Report: \
+         gictransformer.pctperm record 22 cells / 22 in scope, i.e. sum(declared) x steps over \
+         the same population and its r4133-gating subtotal (the frozen 2026-08-08 census \
+         recorded 21 in scope; GOLDEN_REBASE G1.4a moved the corpus's last capi-only \
+         GICTransformer onto the r4133 channel, RP34_IN_SCOPE_MOVED_BY_G14A). Report: \
          investigations/to_opendss/07-gictransformer-g2-uses-pctr1.md (local), already written \
          against r4133 — a twin of a reported bug owes no new report.",
     ),
@@ -1627,7 +1629,7 @@ const RP34_GIC_ELEMENTS: &[GicDecl] = &[
     GicDecl::ohms(GIC_MICRO, "tg1", "0.12", ""),
     GicDecl::ohms(GIC_MICRO, "tg2", "0.2", "0.1"),
     GicDecl::pct(GIC_MICRO, "tg3", "0.2", "0.15", "138", "300"),
-    GicDecl::ohms("modes:makeposseq/makeposseq_shunt.dss", "gt", "0.1", ""),
+    GicDecl::ohms("modes:makeposseq/makeposseq_gic.dss", "gt", "0.1", ""),
     GicDecl::ohms(GIC_EXAMPLE, "t1", "0.1", ""),
     GicDecl::ohms(GIC_EXAMPLE, "t2", "0.2", "0.1"),
     GicDecl::ohms(GIC_EXAMPLE, "t3", "0.1", ""),
@@ -1747,6 +1749,23 @@ const RP34_CLASS_WIDE_PAIRS: &[(&str, usize, usize)] = &[
     ("gictransformer.enabled", 22, 21),
     ("gictransformer.pctperm", 22, 21),
 ];
+
+/// **The one deliberate drift from that frozen split** — GOLDEN_REBASE G1.4a
+/// (2026-09-04, coordinator decisions D12/D14).
+///
+/// `bins.tsv`'s `cells_in_scope` above is a 2026-08-08 data lock, taken while
+/// the corpus's twenty-second GICTransformer — `gt` — sat on the capi-only
+/// `modes:makeposseq/makeposseq_shunt.dss`, i.e. on no r4133-gating case. G1.4a
+/// moved that one element into its own `engines: "r4133"` deck
+/// (`modes:makeposseq/makeposseq_gic.dss`) because the pinned dss_capi 0.14.5
+/// oracle is **nondeterministic across processes** on any deck that holds a
+/// GICTransformer (7 bad runs of 60; `DIVERGENCES.md` — the D12/D14 section),
+/// so the live derivation now counts one more in-scope declaration than the
+/// census recorded. The frozen extracts under `tests/corpus/props_r4133/` are a
+/// data lock and are never edited; the delta is named here instead, which
+/// leaves the cross-check discriminating — any OTHER population move lands on
+/// top of this one and reds.
+const RP34_IN_SCOPE_MOVED_BY_G14A: usize = 1;
 
 /// The manifest that holds [`RP32_WINDGEN_SKIPPED_DECKS`] out of the population,
 /// repo-root-relative.
@@ -8097,10 +8116,10 @@ fn the_rp34_census_decomposition_is_read_off_the_corpus() {
         );
         assert_eq!(
             (declared_steps, declared_steps_in_scope),
-            (*want_cells, *want_in_scope),
+            (*want_cells, *want_in_scope + RP34_IN_SCOPE_MOVED_BY_G14A),
             "{pair} is answered by every GICTransformer on every step, so its census split must \
              be the derived sum(declared x steps) over the whole corpus and over the r4133-gating \
-             cases — a mismatch means the population moved under RP3.4's two-cell conclusion"
+             cases, plus the one documented G1.4a channel move — a mismatch means the population moved under RP3.4's two-cell conclusion"
         );
     }
 

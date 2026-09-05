@@ -145,7 +145,26 @@ pub struct Circuit {
     /// scans every enabled UPFC).
     pub upfcs: Vec<ElemId>,
     /// Control elements (RegControl/CapControl/...): no Yprim, not PD/PC.
+    ///
+    /// Pascal `ActiveCircuit.Controls`, in creation order — the order the
+    /// control loop *samples* in (`Sample_DoControlActions`). It is NOT the
+    /// order of any element's `ControlElementList`; see
+    /// [`Self::control_attach_order`].
     pub controls: Vec<ElemId>,
+    /// The circuit-wide chronological *attach* order of the controls, i.e. the
+    /// one list from which every element's Pascal `ControlElementList` is
+    /// derived ([`crate::circuit::controls::derive_control_lists`]).
+    ///
+    /// `TControlElem.Set_ControlledElement` (r4133
+    /// `Controls/ControlElem.pas:113-131`) removes the control from its previous
+    /// target's list and **appends** it to the new target's, and r4133 re-runs
+    /// that pair on every `RecalcElementData` — so a re-edited control moves to
+    /// the END of its element's list. [`Self::reattach_control`] is that
+    /// remove-then-append, kept once here instead of per element.
+    ///
+    /// Deliberately separate from [`Self::controls`]: reordering the sampling
+    /// list would change `DoControlActions`' order and therefore the event log.
+    pub control_attach_order: Vec<ElemId>,
     /// Monitor elements (Phase 6): no Yprim, not PD/PC; device list + own list.
     pub monitors: Vec<ElemId>,
     /// EnergyMeter elements (Phase 6): no Yprim, not PD/PC; device list + own
@@ -374,6 +393,7 @@ impl Circuit {
             ind_machines: Vec::new(),
             upfcs: Vec::new(),
             controls: Vec::new(),
+            control_attach_order: Vec::new(),
             monitors: Vec::new(),
             energy_meters: Vec::new(),
             sensors: Vec::new(),
@@ -571,6 +591,31 @@ impl Circuit {
         elem.cd_mut().handle = Some(self.ckt_elements.len() as u32);
     }
 
+    /// Pascal `TControlElem.Set_ControlledElement`
+    /// (r4133 `Controls/ControlElem.pas:113-131`): drop control `r` from the
+    /// list it currently sits in, then append it to its new target's — expressed
+    /// once on the circuit-wide [`Self::control_attach_order`], from which every
+    /// element's `ControlElementList` is projected
+    /// ([`crate::circuit::controls::derive_control_lists`]).
+    ///
+    /// `attached` is `Assigned(Value)`: a control whose element reference did
+    /// not resolve (`ControlledElement := nil`, r4133 `Controls/Relay.pas:983`)
+    /// is removed and not re-appended. Called from the port's
+    /// `RecalcElementData` moment — the tail of every control edit
+    /// (`exec/command.rs::apply_edit_signal_tail`) — because upstream re-assigns
+    /// `ControlledElement` there on *every* edit, not only when the element-ref
+    /// property is written (capi 0.14.5 differs; `DIVERGENCES.md`, r4133 is the
+    /// authority). Pinned by
+    /// `exec::tests::element_extras::ocp_dev_type_follows_the_last_attach_order`.
+    ///
+    /// [`Self::controls`] — the sampling order — is deliberately untouched.
+    pub fn reattach_control(&mut self, r: ElemId, attached: bool) {
+        self.control_attach_order.retain(|&c| c != r);
+        if attached {
+            self.control_attach_order.push(r);
+        }
+    }
+
     /// Pascal `AddBus`: find-or-create the bus, then allocate global node
     /// references for `node_buffer[..n_nodes]`, replacing the user node
     /// numbers in the buffer with the global references ("Caution: Magic").
@@ -762,6 +807,18 @@ impl Circuit {
             }
         }
         // < RestoreBusInfo
+
+        // Pascal `ReprocessBusDefs` tail (r4133 `Common/Circuit.pas:2411`
+        // `DoResetMeterZones(ActorID);  // Fix up meter zones to correspond`,
+        // capi `Common/Circuit.pas:2246`): the meter zones are rebuilt HERE,
+        // inside the reprocess, before the flag is cleared — every caller of
+        // `ReprocessBusDefs` therefore gets fresh zones, not just the
+        // `BuildYMatrix` one. Hoisting it into the callers left `MakeBusList`
+        // (`ExecCommands.pas` → `exec/solve.rs::do_make_bus_list_cmd`) consuming
+        // `bus_name_redefined` without ever resetting the zones, so a deck that
+        // issues `MakeBusList` after defining an EnergyMeter kept an empty zone
+        // (GOLDEN_REBASE G1.6b/D9).
+        crate::solution::meters::do_reset_meter_zones(self, store);
 
         self.bus_name_redefined = false;
     }

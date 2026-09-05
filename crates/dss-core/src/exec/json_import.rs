@@ -16,7 +16,7 @@
 use crate::report::export::json::{Json, parse_json};
 use crate::report::save::dump::commands::PASCAL_CLASS_ORDER;
 
-use super::command::apply_edit_signal_tail;
+use super::command::{apply_edit_signal_tail, reattach_edited_control};
 use super::*;
 
 /// √3 — Pascal `SQRT3` (`busFromJSON` divides `kVLL` by it).
@@ -262,6 +262,10 @@ impl Dss {
         // errors/abort, bus-name-redefined + Yprim signal propagation,
         // ref-actions) needs the full registry.
         apply_edit_signal_tail(classes, circuit, errors, ci, oi);
+        // A JSON member write IS an edit (`end_edit` above is the
+        // `RecalcElementData`), so a control re-attaches exactly as it does on
+        // the command path (`command::reattach_edited_control`).
+        reattach_edited_control(classes, circuit, ci, oi);
     }
 
     /// Pascal `busFromJSON` (`CAPI_Obj.pas:2865`): apply one `Bus` array entry's

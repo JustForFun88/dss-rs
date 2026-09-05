@@ -19,7 +19,7 @@ thiserror = "2"
 # crates carry structured `Diagnostic` data with default features off.
 miette = { version = "7", default-features = false }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 # Test-only: the `dss-epri` bridge crate loads the official EPRI OpenDSSDirect.dll
 # (the r4133 live-oracle channel) via `libloading`. Product crates never depend on
 # this — `dss-epri` is `publish = false` and the sole `#![forbid(unsafe_code)]`
