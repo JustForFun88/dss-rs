@@ -149,28 +149,29 @@ the six CLAUDE.md §"Known upstream bugs" reproduced in any lane. Full record:
 WP-G0 / WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened
-2026-08-08). Landed: **G1.1** (killed; satisfied by `R4133_PROPS_PLAN.md`
-RP4.1, 2026-09-03, unblocking **G3.4**/**G3.5**), **G1.2** (ESPVLControl
-deck, 2026-08-29), **G1.0** (rails D1/D2/D3, 2026-09-04, `c4b67a6e`, whose
-mode probe **also discharges the G1.11 mode-capability acceptance for the
-whole WP**) and **G1.4a** (2026-09-04/05, lane `lane-b`, D7; `6b0dbd32` +
-`be01e413`, audits settled in `10417d99`) — the bus surface's divergence-free
-half on both channels for every live non-`large*` case, after a spec-time STOP
-that **D8** settled by moving the sequence quantities and `VLL`/`puVLL` (an
-r4133 hang) into a new **G1.4c**. G1.4a's exact `kv_base` compare bought the
-workspace `serde_json` `float_roundtrip` (**D11(1)**) and caught two
-oracle-side faults: capi 0.14.5 disagrees with itself on `GICTransformer`
-decks, so those four now gate on `r4133` alone with `makeposseq_shunt` split
-(**D12**/**D14**; ledger 57 → 53, corpus 523 → 524), and the r4133 worker no
-longer leaks `DefaultBaseFreq` through the Windows registry (**D13**, rule in
-`TESTING.md`). No golden byte moved; **4 835 / 0 / 5** per lane, `lane_diff`
-PASS max |Δ| = 0. G1.3a–d, G1.4b/c, G1.5–G1.11c, WP-G3–G5 remain.
+2026-08-08). Landed: **G1.1** (killed; satisfied by `R4133_PROPS_PLAN.md` RP4.1,
+2026-09-03, unblocking **G3.4**/**G3.5**), **G1.2** (ESPVLControl deck,
+2026-08-29), **G1.0** (rails D1/D2/D3, 2026-09-04, `c4b67a6e`, whose mode probe
+**also discharges the G1.11 mode-capability acceptance for the whole WP**),
+**G1.4a** (2026-09-04/05, lane `lane-b`, D7; `6b0dbd32` + `be01e413` +
+`10417d99`) — the bus surface's divergence-free half, **D8** moving the sequence
+quantities and `VLL`/`puVLL` to a new **G1.4c**, plus the workspace `serde_json`
+`float_roundtrip` (**D11(1)**) and two oracle-side faults caught (**D12**/**D14**
+GICTransformer nondeterminism, ledger 57 → 53; **D13** the worker's registry
+leak) — and **G1.5** (2026-09-05, same lane): the short-circuit surface whole on
+both channels, `Zsc*`/`Ysc*`/`Isc`/`Voc` per bus as **precomputed state** (the
+gate never runs a study), row-major over the internal node index, both channels'
+sentinels normalized per channel (**D4**), D11(2) narrowed to `Voc`/`Isc`, a port
+gap closed in-step (`ReduceAlgs` skipped `Solution.UpdateVBus`) and the corpus's
+only `micro`-band short-circuit deck (524 → **525** cases / 521 live). Both: **0**
+new ledger entries and **0** golden bytes; **5 130 / 0 / 5** per lane, `lane_diff`
+PASS max |Δ| = 0 in both. G1.3a–d, G1.4b/c, G1.6–G1.11c, WP-G3–G5 remain.
 
-**Next.** Bus lane (`lane-b`): **G1.5** (short-circuit
-`Zsc*`/`Ysc*`/`Isc`/`Voc` on G1.4a's per-bus capture), then **G1.4c** (D8)
-and **G1.4b**; in parallel element lane G1.3a–d, PD/meter lane G1.6b→G1.6,
-singles G1.9/G1.7/G1.8/G1.10a–c, `update` taking one lane sub-step at a time
-by a merge agent (D7). Then G1.11a–c, WP-G3–G5 and the lines parked below.
+**Next.** Bus lane (`lane-b`): **G1.4c** (D8 — the sequence quantities and
+`VLL`/`puVLL` behind the r4133 hang guard), then **G1.4b**; in parallel element
+lane G1.3a–d, PD/meter lane G1.6b→G1.6, singles G1.9/G1.7/G1.8/G1.10a–c, `update`
+taking one lane sub-step at a time by a merge agent (D7). Then G1.11a–c,
+WP-G3–G5 and the lines parked below.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children,
 needs MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the
@@ -231,7 +232,7 @@ the site comment carries each row's measured cost.
   arm, so node V, the RHS, the elements, Y and YPrim are compared again with no
   ledger entry. Not built inside the settlement because two new manifest cases
   are a measured population change (the lock's anti-shrink accounting, the
-  523-case count in `CLAUDE.md`, `TESTING.md` and `corpus_gate/scheduler.rs`),
+  525-case count in `CLAUDE.md`, `TESTING.md` and `corpus_gate/scheduler.rs`),
   i.e. its own sub-step with its own audit pair, owing the usual live measurement
   that the new decks compare clean on every channel. Full text: the §RP3.10
   record.
@@ -267,11 +268,11 @@ the site comment carries each row's measured cost.
 - **54 `kind=large*` `engines: both` cases have no property compare on EITHER
   channel — DECIDED at RP5.2 (2026-09-04): accepted permanently** (raised by the
   R4133_PROPS RP4.1 audit settlement, 2026-09-03). `scheduler::force_properties`
-  keeps the plan's §1.3 cost guard (`!kind.starts_with("large")`), so of the 364
-  `both` cases **310** compare their property table; the same guard also leaves
+  keeps the plan's §1.3 cost guard (`!kind.starts_with("large")`), so of the 365
+  `both` cases **311** compare their property table; the same guard also leaves
   14 r4133-only and 11 capi-only `large` decks out, but those two never had one.
-  The forced population is pinned (`FORCED_PROPS_POPULATION` = (441, 310, 87,
-  44) since G1.4a's D12/D14 flip — the gap itself unchanged at 54 — asserted by
+  The forced population is pinned (`FORCED_PROPS_POPULATION` = (442, 311, 87,
+  44) since G1.5's micro deck — the gap itself unchanged at 54 — asserted by
   `the_property_forcing_rule_is_every_live_non_large_case`), so it is measured,
   bounded and locked. Pricing a `large`-deck property sweep stays available to
   GOLDEN_REBASE, owed by nothing: `r4133-props-rp5.md` §RP5.2.

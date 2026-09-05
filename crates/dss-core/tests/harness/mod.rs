@@ -1768,7 +1768,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1092-1098` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:1211-1217` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -1797,7 +1797,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1092-1098` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:1211-1217` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -1861,7 +1861,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1092-1098`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1211-1217`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -1907,7 +1907,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1092-1098` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1211-1217` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -2100,7 +2100,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1092-1098`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1211-1217`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -4638,6 +4638,14 @@ pub fn compare_meter(dss: &Dss, exp: &MeterCap, tol: &Tolerances, ctx: &str) {
 /// ONE ordering convention: **ascending node number** (see the module block
 /// above). `nodes` is ascending too, on both channels.
 ///
+/// The six short-circuit arrays below (G1.5, `#[serde(default)]` so a G1.4a
+/// capture still deserializes) are the OTHER convention: they are indexed by
+/// the bus's **internal (insertion) node index**, because both engines read
+/// `GetRef(i)` / `Zsc.GetElement(i, j)` straight off `TDSSBus`
+/// (`CAPI_Alt.pas:2202-2365` == `DBus.pas:351-518`). They are compared by
+/// [`compare_bus_short_circuit`], which therefore must NOT sort — see its doc
+/// block for how that order is itself pinned.
+///
 /// The divergent bus quantities (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`)
 /// are G1.4c's and are deliberately absent (coordinator decision D8); they
 /// arrive as further `#[serde(default)]` fields, so an older capture stays
@@ -4660,6 +4668,33 @@ pub struct BusCap {
     /// magnitude is divided by `BaseFactor`
     /// (`CAPI_Alt.pas:2540-2571` == r4133 `DBus.pas:690-723`).
     pub pu_vmag_angle: Vec<f64>,
+    /// `Bus.Zsc1` = `Zs − Zm`, ONE complex = 2 doubles, always — both engines
+    /// write the 1-element array unconditionally (`CAPI_Alt.pas:2294-2303` ==
+    /// r4133 `DBus.pas:461-474`), `cZERO` while `Zsc` is unassigned
+    /// (`Common/Bus.pas:222-229`). G1.5.
+    #[serde(default)]
+    pub zsc1: Vec<f64>,
+    /// `Bus.Zsc0` = `Zs + 2·Zm`, same shape and guard
+    /// (`CAPI_Alt.pas:2283-2292` == `DBus.pas:476-489`, `Common/Bus.pas:215-220`).
+    #[serde(default)]
+    pub zsc0: Vec<f64>,
+    /// `Bus.ZscMatrix` — `2*n*n` doubles, **row-major** (`i` outer, `j` inner:
+    /// `CAPI_Alt.pas:2316-2330` == `DBus.pas:445-450`), or this channel's own
+    /// not-run sentinel ([`sc_sentinel_len`]).
+    #[serde(default)]
+    pub zsc: Vec<f64>,
+    /// `Bus.YscMatrix` = `Zsc⁻¹`, same shape and sentinel
+    /// (`CAPI_Alt.pas:2336-2365` == `DBus.pas:491-518`).
+    #[serde(default)]
+    pub ysc: Vec<f64>,
+    /// `Bus.Isc` — `BusCurrent`, `2*n` doubles
+    /// (`CAPI_Alt.pas:2202-2224` == `DBus.pas:374-397`).
+    #[serde(default)]
+    pub isc: Vec<f64>,
+    /// `Bus.Voc` — `VBus`, `2*n` doubles
+    /// (`CAPI_Alt.pas:2227-2249` == `DBus.pas:351-372`).
+    #[serde(default)]
+    pub voc: Vec<f64>,
 }
 
 /// The `BaseFactor` both engines divide the per-unit bus quantities by:
@@ -4946,6 +4981,452 @@ pub fn compare_all_bus_vmag_pu(
     }
 }
 
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE_PLAN.md WP-G1 sub-step G1.5: the per-bus SHORT-CIRCUIT surface.
+//
+// `Bus.Zsc1`, `Bus.Zsc0`, `Bus.ZscMatrix`, `Bus.YscMatrix`, `Bus.Isc` and
+// `Bus.Voc` — the `IBus._columns` entries the fastdss harness dumps
+// (`origin/fastdss` `dss/IBus.py:30`/`:39`/`:41-44`, walked from
+// `tests/save_outputs.py:350`) that neither G1.4a nor G1.4c owns. Captured by
+// the SAME per-bus walk `compare_bus` rides — `oracle_server.py`'s
+// `capture_all_buses(ckt, want_sc)` and `dss-epri`'s
+// `capture_all_buses(engine, want_sc)`, six reads appended after the five
+// voltage ones — and read back from the engine through
+// `Dss::all_bus_short_circuit` (`crates/dss-core/src/exec/view.rs`).
+//
+// **Two things make this surface different from G1.4a's.**
+//
+// 1. *Ordering.* Every array here is indexed by the bus's INTERNAL (insertion)
+//    node index, because both engines read `GetRef(i)` / `Zsc.GetElement(i, j)`
+//    straight off `TDSSBus` (`CAPI/CAPI_Alt.pas:2202-2365` == r4133
+//    `Version8/Source/DDLL/DBus.pas:351-518`) — never the `repeat FindIdx(jj)`
+//    ascending-node walk `BusCap`'s three voltage arrays use. So this
+//    comparator must NOT sort, and `compare_bus`'s sort must not leak in here.
+//    That the port's insertion order IS the oracles' internal order is pinned
+//    from both ends: `compare_all_bus_vmag_pu` (G1.4a) gates
+//    `Circuit.AllBusVmagPu`, which is exactly bus-list order x internal node
+//    index, and `exec::view::bus_sc_tests::`
+//    `the_short_circuit_arrays_are_indexed_by_internal_node_index` pins the
+//    ohms on a `b2.2.1.3` bus whose 1-phase shunt makes the two orders
+//    observably different.
+// 2. *`Zsc`/`Ysc` are a shape, not a value.* `TDSSBus.Zsc` stays unassigned
+//    until `AllocateAllSCParms` runs inside the FaultStudy solve
+//    (`Common/SolutionAlgs.pas:773-781`), and the two channels publish
+//    DIFFERENT not-run sentinels ([`CAPI_SC_SENTINEL_LEN`] vs
+//    [`R4133_SC_SENTINEL_LEN`]). The comparator therefore compares the discrete
+//    "study ran" bit first and normalizes the two sentinel shapes to "no
+//    matrix" — a comparator-level normalization plus a pin, per coordinator
+//    decision D4, never a ledger row.
+//
+// **Tolerances: this surface adds no new constant either.** `Zsc`'s columns are
+// node-voltage solves of `Y*V = e_i` at exactly 1+0j A, so the node-voltage band
+// carries over numerically unchanged (as ohms); `Ysc = Zsc^-1` takes the
+// admittance band and `Isc = Ysc*Voc` the current one. Derivations:
+// tests/TOLERANCE_NOTES.md §"Short-circuit surface (GOLDEN_REBASE G1.5)".
+// ---------------------------------------------------------------------------
+
+/// What the **capi 0.14.5** channel publishes for `Bus.ZscMatrix` /
+/// `Bus.YscMatrix` while the bus has no short-circuit matrix (`pBus.Zsc = NIL`):
+/// `DefaultResult`'s single `0.0` — ONE double
+/// (`CAPI/CAPI_Utils.pas:212-221`, the `DSS_CAPI_COM_DEFAULTS` branch, which is
+/// on in the pinned 0.15.7 build).
+const CAPI_SC_SENTINEL_LEN: usize = 1;
+
+/// What the **r4133** channel publishes in that state: the
+/// `setlength(myCmplxArray, 1); myCmplxArray[0] := CZero` prelude every `BUSV`
+/// arm opens with and the `If Assigned(Zsc)` guard then leaves in place — TWO
+/// doubles (`DDLL/DBus.pas:433-434` for `Zsc`, `:493-494` for `Ysc`).
+///
+/// The same two also arrive for `Isc`/`Voc` at a **0-node** bus, where r4133's
+/// `Reallocmem(VBus, 0)` frees the pointer (`Common/Bus.pas:246-260`) and the
+/// `If VBus <> nil` guard at `DBus.pas:353`/`:376` fails, while capi's
+/// `AllocMem(0)` block is non-nil (`Common/Bus.pas:250-256`) so capi walks the
+/// normal path and writes ZERO doubles. Measured on the corpus's only two
+/// 0-node buses (`loadbus2` of `Test/REACTORTest.DSS` and of
+/// `Test/Source012Test.dss`): capi `(isc, voc) = (0, 0)`, r4133 `(2, 2)`.
+const R4133_SC_SENTINEL_LEN: usize = 2;
+
+/// The not-run sentinel length of one oracle channel — the ONE cross-channel
+/// normalization this surface needs (coordinator decision D4: a sentinel-SHAPE
+/// difference is a comparator-level normalization plus a pin, never a ledger
+/// row). Both numbers are pinned literally by
+/// `the_two_channels_publish_different_zsc_sentinels`.
+fn sc_sentinel_len(channel: PropsChannel) -> usize {
+    match channel {
+        PropsChannel::CapiV0145 => CAPI_SC_SENTINEL_LEN,
+        PropsChannel::R4133 => R4133_SC_SENTINEL_LEN,
+    }
+}
+
+/// Which shape an oracle's `ZscMatrix`/`YscMatrix` payload arrived in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScMatrix {
+    /// `2*n*n` doubles — the study ran and the matrix is on the wire.
+    Full,
+    /// This channel's not-run sentinel — the bus has no matrix.
+    Sentinel,
+    /// `2*n*n == SENTINEL_LEN`: the **r4133** channel at a **1-node** bus,
+    /// where a real 1x1 matrix and the `CZero` prelude are both 2 doubles.
+    /// Resolved from the port's own `Option` — which the circuit-level study
+    /// bit has already pinned against this oracle on a bus with `n >= 2` — and,
+    /// when the port has no matrix, closed positively by asserting the oracle's
+    /// two doubles ARE `CZero` (a real `Zsc[0][0]` is never exactly zero).
+    Ambiguous,
+}
+
+/// Classify one oracle matrix payload; panics on a length that is neither
+/// shape, which is a transport/shape defect rather than a value divergence.
+fn sc_matrix_shape(
+    len: usize,
+    n: usize,
+    sentinel: usize,
+    what: &str,
+    bus: &str,
+    channel: PropsChannel,
+    ctx: &str,
+) -> ScMatrix {
+    let full = 2 * n * n;
+    if full == sentinel {
+        assert_eq!(
+            len,
+            full,
+            "{ctx}: bus {bus} {what} length {len} is neither 2*{n}*{n} = {full} nor the \
+             {} not-run sentinel {sentinel} (the two coincide at this bus)",
+            channel.tag()
+        );
+        return ScMatrix::Ambiguous;
+    }
+    if len == full {
+        ScMatrix::Full
+    } else if len == sentinel {
+        ScMatrix::Sentinel
+    } else {
+        panic!(
+            "{ctx}: bus {bus} {what} length {len} is neither 2*{n}*{n} = {full} nor the \
+             {} not-run sentinel {sentinel}",
+            channel.tag()
+        )
+    }
+}
+
+/// Interleave a complex slice into the oracle's re/im wire shape.
+fn interleave(v: &[Complex64]) -> Vec<f64> {
+    v.iter().flat_map(|c| [c.re, c.im]).collect()
+}
+
+/// Compare every bus's captured short-circuit surface against the engine's, in
+/// `BusList` order (GOLDEN_REBASE_PLAN.md G1.5).
+///
+/// Structure, **discrete first, numbers second**:
+/// * the per-circuit **"study ran" bit** — `any(zsc.is_some())` on the port
+///   against the oracle's payload SHAPE at the first bus with `n >= 2` (where
+///   `2*n*n` and the sentinel cannot coincide). A port that silently forgot to
+///   allocate `Zsc`, or allocated it without a study, reds here before a single
+///   ohm is compared;
+/// * per bus, by index: the name (case-insensitively) and the node COUNT — the
+///   node set itself is `compare_bus`'s row, and this surface's own vector is
+///   the insertion-order one, which no oracle publishes;
+/// * every array LENGTH, against that channel's own Pascal shape — including
+///   under `voltages_excluded`;
+/// * the values, per entry, at `abs + rel*|expected|` bands taken unchanged
+///   from the existing tier constants: `v_*` for `Zsc1`/`Zsc0`/`ZscMatrix`
+///   (a `Y*V = e_i` solve at 1 A, read as ohms) and for `Voc` (a copy of
+///   `NodeV`), `y_*` for `YscMatrix` (`= Zsc^-1`), `i_*` for `Isc`
+///   (`= Ysc*Voc`). No new constant, nothing widened; see
+///   tests/TOLERANCE_NOTES.md §"Short-circuit surface".
+///
+/// `channel` selects the not-run sentinel shape ([`sc_sentinel_len`]) and
+/// nothing else: the two oracles run the same algorithm on this surface, so no
+/// VALUE here is channel-dependent. It travels as [`PropsChannel`] — despite
+/// the name, the harness' only channel type (`corpus_gate`'s `EngineChannel` is
+/// `pub(crate)` to one test binary while `harness/` compiles into ~20; the
+/// runner already maps it for every non-property surface's capture guard).
+///
+/// `voltages_excluded` is the caller's D11(2) flag, **narrowed** for this
+/// surface: it suppresses only the `Voc` and `Isc` values. `Voc` is a snapshot
+/// of the very `Solution.NodeV` the ledger already triaged
+/// (`Common/Solution.pas:4070-4083` `UpdateVBus`) and `Isc = Ysc*Voc` is its
+/// image, so re-comparing them re-raises a pinned cause; `Zsc`, `Ysc`, `Zsc1`
+/// and `Zsc0` are functions of `Y` alone, independent of the solution vector,
+/// and stay fully compared there — as do the study bit, the bus identity and
+/// every length. Every suppressed case is printed next to the ledger entry that
+/// caused it by `corpus_gate.rs`' run report
+/// (`LedgerRuntime::bus_array_suppressions`).
+pub fn compare_bus_short_circuit(
+    dss: &Dss,
+    exp: &[BusCap],
+    tol: &Tolerances,
+    channel: PropsChannel,
+    voltages_excluded: bool,
+    ctx: &str,
+) {
+    let views = dss.all_bus_short_circuit();
+    assert_eq!(
+        views.len(),
+        exp.len(),
+        "{ctx}: bus count differs ({} vs {})",
+        views.len(),
+        exp.len()
+    );
+    let sentinel = sc_sentinel_len(channel);
+
+    // (1) The discrete study bit, per circuit, before any number. Derived from
+    // a bus with `n >= 2` on purpose: there `2*n*n >= 8` can never collide with
+    // either channel's sentinel, so the shape is unambiguous. A circuit with no
+    // such bus falls through to the per-bus rules below, where the r4133
+    // 1-node collision is closed by the `Ambiguous` arm's `CZero` assertion.
+    let port_ran = views.iter().any(|v| v.zsc.is_some());
+    if let Some(e) = exp.iter().find(|e| e.nodes.len() >= 2) {
+        let n = e.nodes.len();
+        let full = 2 * n * n;
+        let oracle_ran = match e.zsc.len() {
+            l if l == full => true,
+            l if l == sentinel => false,
+            l => panic!(
+                "{ctx}: bus {} ZscMatrix length {l} is neither 2*{n}*{n} = {full} nor the \
+                 {} not-run sentinel {sentinel}",
+                e.name,
+                channel.tag()
+            ),
+        };
+        assert_eq!(
+            port_ran,
+            oracle_ran,
+            "{ctx}: the fault-study state differs — the port has {} short-circuit matrix, \
+             the {} oracle has {} (witness bus {}, {n} nodes, ZscMatrix length {})",
+            if port_ran { "a" } else { "NO" },
+            channel.tag(),
+            if oracle_ran { "one" } else { "none" },
+            e.name,
+            e.zsc.len()
+        );
+    }
+
+    for (i, (v, e)) in views.iter().zip(exp).enumerate() {
+        assert!(
+            v.name.eq_ignore_ascii_case(&e.name),
+            "{ctx}: bus {i} name differs: {} vs {}",
+            v.name,
+            e.name
+        );
+        let n = e.nodes.len();
+        assert_eq!(
+            v.nodes.len(),
+            n,
+            "{ctx}: bus {} node count differs ({} vs {n})",
+            e.name,
+            v.nodes.len()
+        );
+
+        // `Zsc1`/`Zsc0` are not node-indexed: ONE complex, always, on both
+        // channels (`CAPI_Alt.pas:2283-2303` == `DBus.pas:461-489` write the
+        // 1-element array unconditionally), `cZERO` while `Zsc` is unassigned
+        // (`Common/Bus.pas:215-229`). Compared on every bus, study or not.
+        for (arr, what) in [(&e.zsc1, "Zsc1"), (&e.zsc0, "Zsc0")] {
+            assert_eq!(
+                arr.len(),
+                2,
+                "{ctx}: bus {} {what} length {} is not 2 (one complex)",
+                e.name,
+                arr.len()
+            );
+        }
+        assert_complex_close(
+            &interleave(&[v.zsc1]),
+            &e.zsc1,
+            tol.v_rel,
+            tol.v_abs,
+            &format!("{ctx}: bus {} Zsc1", e.name),
+        );
+        assert_complex_close(
+            &interleave(&[v.zsc0]),
+            &e.zsc0,
+            tol.v_rel,
+            tol.v_abs,
+            &format!("{ctx}: bus {} Zsc0", e.name),
+        );
+
+        if n == 0 {
+            // A 0-node bus indexes nothing, and the two channels legitimately
+            // publish different empty shapes (see [`R4133_SC_SENTINEL_LEN`]).
+            // Shapes only — normalized, not compared as values (D4).
+            for (arr, what) in [
+                (&e.zsc, "ZscMatrix"),
+                (&e.ysc, "YscMatrix"),
+                (&e.isc, "Isc"),
+                (&e.voc, "Voc"),
+            ] {
+                assert!(
+                    arr.is_empty() || arr.len() == sentinel,
+                    "{ctx}: bus {} (0 nodes) {what} length {} is neither empty nor the \
+                     {} sentinel {sentinel}",
+                    e.name,
+                    arr.len(),
+                    channel.tag()
+                );
+            }
+            if let Some(z) = &v.zsc {
+                assert!(
+                    z.is_empty(),
+                    "{ctx}: bus {} (0 nodes) port ZscMatrix has {} entries",
+                    e.name,
+                    z.len()
+                );
+            }
+            if let Some(y) = &v.ysc {
+                assert!(
+                    y.is_empty(),
+                    "{ctx}: bus {} (0 nodes) port YscMatrix has {} entries",
+                    e.name,
+                    y.len()
+                );
+            }
+            assert!(
+                v.isc.is_empty() && v.vbus.is_empty(),
+                "{ctx}: bus {} (0 nodes) port Isc/Voc are not empty ({} / {})",
+                e.name,
+                v.isc.len(),
+                v.vbus.len()
+            );
+            continue;
+        }
+
+        let zsc_shape =
+            sc_matrix_shape(e.zsc.len(), n, sentinel, "ZscMatrix", &e.name, channel, ctx);
+        let ysc_shape =
+            sc_matrix_shape(e.ysc.len(), n, sentinel, "YscMatrix", &e.name, channel, ctx);
+        assert_eq!(
+            zsc_shape, ysc_shape,
+            "{ctx}: bus {}: ZscMatrix and YscMatrix disagree on whether the bus has a \
+             matrix ({zsc_shape:?} vs {ysc_shape:?}) — `ComputeYsc` writes both or neither \
+             (`Common/SolutionAlgs.pas:800-832`)",
+            e.name
+        );
+        let port_present = v.zsc.is_some();
+        assert_eq!(
+            v.ysc.is_some(),
+            port_present,
+            "{ctx}: bus {}: the port has one of Zsc/Ysc and not the other",
+            e.name
+        );
+        match zsc_shape {
+            ScMatrix::Full => assert!(
+                port_present,
+                "{ctx}: bus {}: the {} oracle published a full {n}x{n} ZscMatrix, the port \
+                 has none",
+                e.name,
+                channel.tag()
+            ),
+            ScMatrix::Sentinel => assert!(
+                !port_present,
+                "{ctx}: bus {}: the {} oracle published the not-run sentinel, the port has \
+                 a {n}x{n} ZscMatrix",
+                e.name,
+                channel.tag()
+            ),
+            ScMatrix::Ambiguous if !port_present => {
+                // r4133 at a 1-node bus with no matrix on the port side: the
+                // oracle's two doubles are then either the `CZero` prelude
+                // (agreement) or a real 1x1 `Zsc`, which is never exactly zero
+                // on a solved network — so this is a positive assertion of
+                // agreement, not a skip.
+                assert_eq!(
+                    e.zsc,
+                    vec![0.0, 0.0],
+                    "{ctx}: bus {}: the port has no ZscMatrix while the {} oracle published \
+                     a non-`CZero` 1x1 one",
+                    e.name,
+                    channel.tag()
+                );
+                assert_eq!(
+                    e.ysc,
+                    vec![0.0, 0.0],
+                    "{ctx}: bus {}: the port has no YscMatrix while the {} oracle published \
+                     a non-`CZero` 1x1 one",
+                    e.name,
+                    channel.tag()
+                );
+            }
+            ScMatrix::Ambiguous => {}
+        }
+        if let (Some(z), Some(y)) = (&v.zsc, &v.ysc) {
+            assert_eq!(
+                z.len(),
+                n * n,
+                "{ctx}: bus {} port ZscMatrix has {} entries, not {n}*{n}",
+                e.name,
+                z.len()
+            );
+            assert_eq!(
+                y.len(),
+                n * n,
+                "{ctx}: bus {} port YscMatrix has {} entries, not {n}*{n}",
+                e.name,
+                y.len()
+            );
+            // Row-major (`i` outer, `j` inner) on all three engines — the port
+            // flattens in the oracles' read order
+            // (`exec::view::flatten_row_major`), NOT in `CMatrix`'s
+            // column-major storage order.
+            assert_complex_close(
+                &interleave(z),
+                &e.zsc,
+                tol.v_rel,
+                tol.v_abs,
+                &format!("{ctx}: bus {} ZscMatrix", e.name),
+            );
+            assert_complex_close(
+                &interleave(y),
+                &e.ysc,
+                tol.y_rel,
+                tol.y_abs,
+                &format!("{ctx}: bus {} YscMatrix", e.name),
+            );
+        }
+
+        for (arr, what) in [(&e.isc, "Isc"), (&e.voc, "Voc")] {
+            assert_eq!(
+                arr.len(),
+                2 * n,
+                "{ctx}: bus {} {what} length {} is not 2*{n}",
+                e.name,
+                arr.len()
+            );
+        }
+        assert_eq!(
+            v.isc.len(),
+            n,
+            "{ctx}: bus {} port Isc has {} entries, not {n}",
+            e.name,
+            v.isc.len()
+        );
+        assert_eq!(
+            v.vbus.len(),
+            n,
+            "{ctx}: bus {} port Voc has {} entries, not {n}",
+            e.name,
+            v.vbus.len()
+        );
+        if voltages_excluded {
+            continue;
+        }
+        assert_complex_close(
+            &interleave(&v.isc),
+            &e.isc,
+            tol.i_rel,
+            tol.i_abs,
+            &format!("{ctx}: bus {} Isc", e.name),
+        );
+        assert_complex_close(
+            &interleave(&v.vbus),
+            &e.voc,
+            tol.v_rel,
+            tol.v_abs,
+            &format!("{ctx}: bus {} Voc", e.name),
+        );
+    }
+}
+
 #[cfg(test)]
 mod bus_comparator_tests {
     use super::{
@@ -4993,6 +5474,16 @@ mod bus_comparator_tests {
                     pu_voltages: v.pu_voltages.iter().flat_map(|c| [c.re, c.im]).collect(),
                     vmag_angle: v.vmag_angle.iter().flat_map(|p| [p.0, p.1]).collect(),
                     pu_vmag_angle: v.pu_vmag_angle.iter().flat_map(|p| [p.0, p.1]).collect(),
+                    // A G1.4a capture carries no G1.5 short-circuit arrays:
+                    // the six fields are `#[serde(default)]`, so a pre-G1.5
+                    // wire payload still deserializes. The short-circuit tests
+                    // build their own capture.
+                    zsc1: Vec::new(),
+                    zsc0: Vec::new(),
+                    zsc: Vec::new(),
+                    ysc: Vec::new(),
+                    isc: Vec::new(),
+                    voc: Vec::new(),
                 }
             })
             .collect()
@@ -5079,6 +5570,12 @@ mod bus_comparator_tests {
                         .enumerate()
                         .map(|(i, x)| if i % 2 == 0 { x + pu_step } else { *x })
                         .collect(),
+                    zsc1: Vec::new(),
+                    zsc0: Vec::new(),
+                    zsc: Vec::new(),
+                    ysc: Vec::new(),
+                    isc: Vec::new(),
+                    voc: Vec::new(),
                 }
             })
             .collect();
@@ -5212,6 +5709,581 @@ mod bus_comparator_tests {
         let mut exp = dss.all_bus_vmag_pu();
         exp.pop();
         compare_all_bus_vmag_pu(&dss, &exp, &tol_for("feeder"), true, "exclusion drive");
+    }
+}
+
+#[cfg(test)]
+mod bus_short_circuit_tests {
+    use super::{
+        BusCap, CAPI_SC_SENTINEL_LEN, PropsChannel, R4133_SC_SENTINEL_LEN, Tolerances,
+        compare_bus_short_circuit, sc_sentinel_len, tol_for,
+    };
+    use dss_core::exec::Dss;
+    use num_complex::Complex64;
+
+    /// The G1.5 short-circuit deck, the circuit
+    /// `exec::view::bus_sc_tests::sc_micro` drives plus two structural buses
+    /// this comparator needs and that one does not:
+    ///
+    /// * `b2` is reached as `bus2=b2.2.1.3`, so its INSERTION order `[2, 1, 3]`
+    ///   is not its ascending node order `[1, 2, 3]`, and the 1-phase
+    ///   `reactor.rsh` on `b2.1` makes the two observably different (a
+    ///   position-dependent `Zsc` diagonal) rather than merely nominally so;
+    /// * `b3` is a **1-node** spur — the bus where r4133's `2*n*n = 2` collides
+    ///   with its own not-run sentinel ([`R4133_SC_SENTINEL_LEN`]);
+    /// * `b0` is a **0-node** bus (`bus2=b0.0.0.0`, every conductor grounded —
+    ///   the `Test/REACTORTest.DSS:31` shape), where the two channels publish
+    ///   different empty shapes for `Isc`/`Voc`.
+    ///
+    /// Returned solved but *before* the fault study, so each test drives the
+    /// study itself.
+    fn sc_deck() -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "Set DefaultBaseFrequency=60",
+            "new circuit.scharness basekv=12.47 pu=1.0 phases=3 bus1=sourcebus \
+             r1=0.5 x1=1.5 r0=1.0 x0=3.0",
+            "new linecode.lc3 nphases=3 r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0 units=km",
+            "new linecode.lc1 nphases=1 r1=0.4 x1=1.2 c1=0 units=km",
+            "new line.l1 bus1=sourcebus bus2=b1 linecode=lc3 length=1 units=km",
+            "new line.l2 bus1=b1.1.2.3 bus2=b2.2.1.3 linecode=lc3 length=1 units=km",
+            "new line.l3 bus1=b2.1 bus2=b3.1 linecode=lc1 length=1 units=km",
+            "new reactor.rsh bus1=b2.1 phases=1 R=5 X=0",
+            "new reactor.rgnd bus1=b1.1.2.3 bus2=b0.0.0.0 phases=3 R=1000 X=0",
+            "new load.ld1 bus1=b2.2.1.3 phases=3 conn=wye kv=12.47 kw=100 pf=0.95 model=1",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        // The three structural buses the drives below rely on.
+        let views = dss.all_bus_short_circuit();
+        let n_of = |name: &str| {
+            views
+                .iter()
+                .find(|v| v.name == name)
+                .unwrap_or_else(|| panic!("bus {name} missing"))
+                .nodes
+                .len()
+        };
+        assert_eq!(n_of("b2"), 3, "b2 must carry three nodes");
+        assert_eq!(n_of("b3"), 1, "b3 must be the 1-node spur");
+        assert_eq!(n_of("b0"), 0, "b0 must be the 0-node bus");
+        dss
+    }
+
+    fn fault_study(dss: &mut Dss) {
+        dss.command("solve mode=faultstudy");
+        assert!(dss.errors().is_empty(), "faultstudy: {:?}", dss.errors());
+    }
+
+    /// Build the capture THAT channel's transport would send for this circuit
+    /// out of the port's own view — the positive control every drive below
+    /// perturbs. It reproduces each transport's Pascal shape rule exactly (the
+    /// same rules `tools/oracle/oracle_server.py::capture_all_buses` and
+    /// `dss-epri::capture::capture_all_buses` assert against live payloads):
+    /// a matrix is `2*n*n` doubles or the channel's not-run sentinel, and at a
+    /// 0-node bus `Isc`/`Voc` are empty on capi but the 2-double `CZero`
+    /// prelude on r4133.
+    ///
+    /// The four `compare_bus` fields are left empty: they are that
+    /// comparator's rows, and nothing here reads them.
+    fn capture(dss: &Dss, channel: PropsChannel) -> Vec<BusCap> {
+        let sentinel = sc_sentinel_len(channel);
+        dss.all_bus_short_circuit()
+            .iter()
+            .map(|v| {
+                let n = v.nodes.len();
+                let mut nodes = v.nodes.clone();
+                nodes.sort_unstable();
+                let mat = |m: &Option<Vec<Complex64>>| -> Vec<f64> {
+                    match m {
+                        Some(x) => x.iter().flat_map(|c| [c.re, c.im]).collect(),
+                        None => vec![0.0; sentinel],
+                    }
+                };
+                let node_arr = |a: &[Complex64]| -> Vec<f64> {
+                    if n == 0 && channel == PropsChannel::R4133 {
+                        vec![0.0; R4133_SC_SENTINEL_LEN]
+                    } else {
+                        a.iter().flat_map(|c| [c.re, c.im]).collect()
+                    }
+                };
+                BusCap {
+                    name: v.name.clone(),
+                    kv_base: 0.0,
+                    nodes,
+                    pu_voltages: Vec::new(),
+                    vmag_angle: Vec::new(),
+                    pu_vmag_angle: Vec::new(),
+                    zsc1: vec![v.zsc1.re, v.zsc1.im],
+                    zsc0: vec![v.zsc0.re, v.zsc0.im],
+                    zsc: mat(&v.zsc),
+                    ysc: mat(&v.ysc),
+                    isc: node_arr(&v.isc),
+                    voc: node_arr(&v.vbus),
+                }
+            })
+            .collect()
+    }
+
+    fn bus_mut<'a>(exp: &'a mut [BusCap], name: &str) -> &'a mut BusCap {
+        exp.iter_mut()
+            .find(|b| b.name == name)
+            .unwrap_or_else(|| panic!("bus {name} missing from the capture"))
+    }
+
+    /// Run a compare that is expected to fail and return the panic message.
+    ///
+    /// `AssertUnwindSafe` because the closure only borrows a `&Dss` the caller
+    /// built and never mutates it: nothing observable survives the unwind.
+    fn reds(f: impl FnOnce()) -> String {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        std::panic::set_hook(hook);
+        let msg = out.expect_err("the comparator accepted a corrupted capture");
+        msg.downcast_ref::<String>()
+            .cloned()
+            .or_else(|| msg.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default()
+    }
+
+    /// **The one cross-channel normalization of this surface** (coordinator
+    /// decision D4), pinned with both numbers: while a bus has no
+    /// short-circuit matrix, capi 0.14.5 publishes `DefaultResult`'s **1**
+    /// double (`CAPI/CAPI_Utils.pas:212-221`) and r4133 the `CZero` prelude's
+    /// **2** (`DDLL/DBus.pas:433-434`); at a 0-node bus the same split hits
+    /// `Isc`/`Voc`, where capi writes **0** doubles (`AllocMem(0)` is non-nil,
+    /// `Common/Bus.pas:250-256`) and r4133 **2** (`Reallocmem(VBus, 0)` frees
+    /// the pointer, `Common/Bus.pas:246-260`). The comparator normalizes both
+    /// shapes to "no matrix"/"no nodes" — and the last arm proves the
+    /// normalization is per channel and not a blanket "any short array is a
+    /// sentinel": r4133's 2-double payload offered to the capi channel reds.
+    #[test]
+    fn the_two_channels_publish_different_zsc_sentinels() {
+        assert_eq!(CAPI_SC_SENTINEL_LEN, 1);
+        assert_eq!(R4133_SC_SENTINEL_LEN, 2);
+        assert_eq!(sc_sentinel_len(PropsChannel::CapiV0145), 1);
+        assert_eq!(sc_sentinel_len(PropsChannel::R4133), 2);
+
+        let dss = sc_deck(); // no fault study: every bus is in the sentinel state
+        let tol = tol_for("micro");
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let exp = capture(&dss, ch);
+            assert_eq!(exp.len(), 5, "sourcebus, b1, b2, b3, b0");
+            let b2 = exp.iter().find(|b| b.name == "b2").expect("b2");
+            assert_eq!(b2.zsc.len(), sc_sentinel_len(ch));
+            assert_eq!(b2.zsc1, vec![0.0, 0.0], "cZERO while Zsc is unassigned");
+            let b0 = exp.iter().find(|b| b.name == "b0").expect("b0");
+            assert_eq!(
+                b0.voc.len(),
+                if ch == PropsChannel::R4133 { 2 } else { 0 },
+                "0-node `Voc` shape on {}",
+                ch.tag()
+            );
+            compare_bus_short_circuit(&dss, &exp, &tol, ch, false, "sentinel control");
+        }
+
+        // Per channel, not blanket: r4133's 2-double sentinel is not a shape
+        // the capi channel may publish at a 3-node bus (2*3*3 = 18, sentinel 1).
+        let r4133_shaped = capture(&dss, PropsChannel::R4133);
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &dss,
+                &r4133_shaped,
+                &tol_for("micro"),
+                PropsChannel::CapiV0145,
+                false,
+                "cross-channel drive",
+            )
+        });
+        assert!(
+            msg.contains("not-run sentinel 1"),
+            "expected the capi sentinel length in the failure; got {msg:?}"
+        );
+    }
+
+    /// Positive control on both channels, before and after the study, and the
+    /// bands are not zero-width: every value nudged by 90% of its own allowed
+    /// band is still accepted.
+    #[test]
+    fn compare_bus_short_circuit_accepts_the_engines_own_surface_and_its_band() {
+        let mut dss = sc_deck();
+        let tol = tol_for("micro");
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            compare_bus_short_circuit(&dss, &capture(&dss, ch), &tol, ch, false, "before");
+        }
+        fault_study(&mut dss);
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let exp = capture(&dss, ch);
+            let b2 = exp.iter().find(|b| b.name == "b2").expect("b2");
+            assert_eq!(b2.zsc.len(), 2 * 3 * 3, "the study allocated a 3x3 Zsc");
+            compare_bus_short_circuit(&dss, &exp, &tol, ch, false, "after");
+
+            // 90% of `abs + rel*|expected|`, split over re/im so the modulus of
+            // the nudge is exactly that fraction of the band.
+            let nudged: Vec<BusCap> = exp
+                .iter()
+                .map(|e| {
+                    let bump = |arr: &[f64], abs: f64, rel: f64| -> Vec<f64> {
+                        arr.chunks_exact(2)
+                            .flat_map(|c| {
+                                let step = 0.9 * (abs + rel * Complex64::new(c[0], c[1]).norm())
+                                    / std::f64::consts::SQRT_2;
+                                [c[0] + step, c[1] + step]
+                            })
+                            .collect()
+                    };
+                    BusCap {
+                        name: e.name.clone(),
+                        kv_base: e.kv_base,
+                        nodes: e.nodes.clone(),
+                        pu_voltages: Vec::new(),
+                        vmag_angle: Vec::new(),
+                        pu_vmag_angle: Vec::new(),
+                        zsc1: bump(&e.zsc1, tol.v_abs, tol.v_rel),
+                        zsc0: bump(&e.zsc0, tol.v_abs, tol.v_rel),
+                        // The sentinel arrays are odd-length: leave them alone.
+                        zsc: if e.zsc.len() % 2 == 0 {
+                            bump(&e.zsc, tol.v_abs, tol.v_rel)
+                        } else {
+                            e.zsc.clone()
+                        },
+                        ysc: if e.ysc.len() % 2 == 0 {
+                            bump(&e.ysc, tol.y_abs, tol.y_rel)
+                        } else {
+                            e.ysc.clone()
+                        },
+                        isc: bump(&e.isc, tol.i_abs, tol.i_rel),
+                        voc: bump(&e.voc, tol.v_abs, tol.v_rel),
+                    }
+                })
+                .collect();
+            compare_bus_short_circuit(&dss, &nudged, &tol, ch, false, "band drive");
+        }
+    }
+
+    /// Non-vacuity, `ZscMatrix`: 1e-3 ohm on one entry is ~1000x the `micro`
+    /// band (`v_abs + v_rel*|Z|` ~ 1e-6 at |Z| ~ 1 ohm).
+    #[test]
+    #[should_panic(expected = "ZscMatrix: entry")]
+    fn a_corrupted_zsc_entry_reds_the_short_circuit_comparator() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        bus_mut(&mut exp, "b2").zsc[6] += 1e-3;
+        compare_bus_short_circuit(
+            &dss,
+            &exp,
+            &tol_for("micro"),
+            PropsChannel::CapiV0145,
+            false,
+            "zsc drive",
+        );
+    }
+
+    /// Non-vacuity, `YscMatrix` — its own band (`y_*`), its own array: the
+    /// `Zsc` drive above cannot reach it.
+    #[test]
+    #[should_panic(expected = "YscMatrix: entry")]
+    fn a_corrupted_ysc_entry_reds_the_short_circuit_comparator() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        let mut exp = capture(&dss, PropsChannel::R4133);
+        bus_mut(&mut exp, "b2").ysc[2] += 1e-3;
+        compare_bus_short_circuit(
+            &dss,
+            &exp,
+            &tol_for("micro"),
+            PropsChannel::R4133,
+            false,
+            "ysc drive",
+        );
+    }
+
+    /// Non-vacuity, `Zsc1` — the averaged sequence impedances are their own
+    /// arm and are compared on every bus, study or not.
+    #[test]
+    #[should_panic(expected = "Zsc1: entry")]
+    fn a_corrupted_zsc1_reds_the_short_circuit_comparator() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        bus_mut(&mut exp, "b2").zsc1[0] += 1e-3;
+        compare_bus_short_circuit(
+            &dss,
+            &exp,
+            &tol_for("micro"),
+            PropsChannel::CapiV0145,
+            false,
+            "zsc1 drive",
+        );
+    }
+
+    /// Non-vacuity, `Isc` (the `i_*` band) and `Voc` (the `v_*` one) — the two
+    /// arrays `voltages_excluded` suppresses, proven live when it does not.
+    #[test]
+    fn a_corrupted_isc_or_voc_reds_the_short_circuit_comparator() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        for (what, mutate) in [("Isc: entry", 0usize), ("Voc: entry", 1usize)] {
+            let mut exp = capture(&dss, PropsChannel::CapiV0145);
+            let b2 = bus_mut(&mut exp, "b2");
+            if mutate == 0 {
+                b2.isc[0] += 1.0;
+            } else {
+                b2.voc[0] += 1.0;
+            }
+            let msg = reds(|| {
+                compare_bus_short_circuit(
+                    &dss,
+                    &exp,
+                    &tol_for("micro"),
+                    PropsChannel::CapiV0145,
+                    false,
+                    "isc/voc drive",
+                )
+            });
+            assert!(msg.contains(what), "expected {what} in {msg:?}");
+        }
+    }
+
+    /// **The ordering convention, driven** (spec §4 demo 2): the same six
+    /// numbers delivered in ascending node order instead of the bus's internal
+    /// (insertion) index. `b2` is `.2.1.3` with the 5 ohm shunt on node 1, so
+    /// the odd `Zsc` diagonal sits at internal index 1 and the permutation
+    /// moves it to index 0 — a ~0.6 ohm move, six orders past any band.
+    #[test]
+    #[should_panic(expected = "ZscMatrix: entry")]
+    fn ascending_node_order_instead_of_the_internal_index_reds_the_short_circuit_comparator() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        let views = dss.all_bus_short_circuit();
+        let b2v = views.iter().find(|v| v.name == "b2").expect("b2");
+        assert_eq!(b2v.nodes, vec![2, 1, 3], "b2 is declared .2.1.3");
+        // ascending slot k <- internal slot perm[k]
+        let mut perm: Vec<usize> = (0..3).collect();
+        perm.sort_by_key(|&i| b2v.nodes[i]);
+        assert_eq!(perm, vec![1, 0, 2]);
+
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        let b2 = bus_mut(&mut exp, "b2");
+        let old = b2.zsc.clone();
+        for (a, &pa) in perm.iter().enumerate() {
+            for (b, &pb) in perm.iter().enumerate() {
+                b2.zsc[2 * (3 * a + b)] = old[2 * (3 * pa + pb)];
+                b2.zsc[2 * (3 * a + b) + 1] = old[2 * (3 * pa + pb) + 1];
+            }
+        }
+        assert_ne!(b2.zsc, old, "the permutation must actually move something");
+        compare_bus_short_circuit(
+            &dss,
+            &exp,
+            &tol_for("micro"),
+            PropsChannel::CapiV0145,
+            false,
+            "ordering drive",
+        );
+    }
+
+    /// The **discrete study bit** is compared before any number, in both
+    /// directions: an oracle that ran the study while the port did not (and
+    /// the reverse) reds on the bit, not on an ohm.
+    #[test]
+    fn the_study_bit_is_compared_before_any_number() {
+        let mut dss = sc_deck();
+        let no_study = capture(&dss, PropsChannel::CapiV0145);
+        fault_study(&mut dss);
+        let with_study = capture(&dss, PropsChannel::CapiV0145);
+
+        // port ran, oracle did not
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &dss,
+                &no_study,
+                &tol_for("micro"),
+                PropsChannel::CapiV0145,
+                false,
+                "study bit drive",
+            )
+        });
+        assert!(
+            msg.contains("the fault-study state differs")
+                && msg.contains("the port has a short-circuit matrix"),
+            "{msg:?}"
+        );
+
+        // …and the reverse, on a circuit that never ran one.
+        let fresh = sc_deck();
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &fresh,
+                &with_study,
+                &tol_for("micro"),
+                PropsChannel::CapiV0145,
+                false,
+                "study bit drive",
+            )
+        });
+        assert!(
+            msg.contains("the fault-study state differs")
+                && msg.contains("the port has NO short-circuit matrix"),
+            "{msg:?}"
+        );
+    }
+
+    /// The r4133 1-node collision (`2*n*n == 2 == `[`R4133_SC_SENTINEL_LEN`]) is
+    /// closed **positively**, not skipped: with no matrix on the port side the
+    /// oracle's two doubles must BE `CZero`, so a real 1x1 `Zsc` there reds.
+    #[test]
+    fn the_r4133_one_node_ambiguity_is_closed_by_a_czero_assertion() {
+        let dss = sc_deck(); // no study: the port has no matrix anywhere
+        let mut exp = capture(&dss, PropsChannel::R4133);
+        let b3 = bus_mut(&mut exp, "b3");
+        assert_eq!(b3.zsc.len(), 2, "1-node bus: sentinel and 2*1*1 coincide");
+        b3.zsc = vec![0.75, 2.5]; // a plausible 1x1 Zsc instead of CZero
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &dss,
+                &exp,
+                &tol_for("micro"),
+                PropsChannel::R4133,
+                false,
+                "ambiguity drive",
+            )
+        });
+        assert!(
+            msg.contains("non-`CZero` 1x1"),
+            "expected the CZero assertion; got {msg:?}"
+        );
+    }
+
+    /// `voltages_excluded` (coordinator decision D11(2), **narrowed** for this
+    /// surface) drops the `Voc`/`Isc` VALUES and nothing else: the same capture
+    /// that reds without it is accepted with it…
+    #[test]
+    fn the_voltage_exclusion_drops_only_the_voc_and_isc_values() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        {
+            let b2 = bus_mut(&mut exp, "b2");
+            b2.voc[0] += 1e3;
+            b2.isc[1] += 1e3;
+        }
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &dss,
+                &exp,
+                &tol_for("micro"),
+                PropsChannel::CapiV0145,
+                false,
+                "not excluded",
+            )
+        });
+        assert!(
+            msg.contains("Isc: entry") || msg.contains("Voc: entry"),
+            "{msg:?}"
+        );
+        compare_bus_short_circuit(
+            &dss,
+            &exp,
+            &tol_for("micro"),
+            PropsChannel::CapiV0145,
+            true,
+            "excluded",
+        );
+    }
+
+    /// …while `Zsc`/`Ysc` — functions of `Y` alone, independent of the
+    /// solution vector the ledger triaged — stay fully compared under it, as do
+    /// the study bit and every length. Three drives, one per claim.
+    #[test]
+    fn the_voltage_exclusion_still_pins_zsc_ysc_and_the_lengths() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        let base = || capture(&dss, PropsChannel::CapiV0145);
+
+        let mut exp = base();
+        bus_mut(&mut exp, "b2").zsc[6] += 1e-3;
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &dss,
+                &exp,
+                &tol_for("micro"),
+                PropsChannel::CapiV0145,
+                true,
+                "excluded zsc drive",
+            )
+        });
+        assert!(msg.contains("ZscMatrix: entry"), "{msg:?}");
+
+        let mut exp = base();
+        bus_mut(&mut exp, "b2").ysc[2] += 1e-3;
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &dss,
+                &exp,
+                &tol_for("micro"),
+                PropsChannel::CapiV0145,
+                true,
+                "excluded ysc drive",
+            )
+        });
+        assert!(msg.contains("YscMatrix: entry"), "{msg:?}");
+
+        let mut exp = base();
+        bus_mut(&mut exp, "b2").voc.pop();
+        let msg = reds(|| {
+            compare_bus_short_circuit(
+                &dss,
+                &exp,
+                &tol_for("micro"),
+                PropsChannel::CapiV0145,
+                true,
+                "excluded length drive",
+            )
+        });
+        assert!(msg.contains("Voc length 5 is not 2*3"), "{msg:?}");
+    }
+
+    /// A shape neither full nor sentinel is a transport defect and fails
+    /// loudly, never "compares" as a short array.
+    #[test]
+    #[should_panic(expected = "is neither 2*3*3 = 18 nor the")]
+    fn an_unrecognized_matrix_length_fails_loudly() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        bus_mut(&mut exp, "b2").zsc.truncate(8);
+        compare_bus_short_circuit(
+            &dss,
+            &exp,
+            &tol_for("micro"),
+            PropsChannel::CapiV0145,
+            false,
+            "shape drive",
+        );
+    }
+
+    /// The `micro`/`feeder` bands this surface reuses are the existing tier
+    /// constants, unchanged — the derivation lives in
+    /// `tests/TOLERANCE_NOTES.md` §"Short-circuit surface". Pinned here so a
+    /// silent widening of the tier moves a test in this file too.
+    #[test]
+    fn the_short_circuit_surface_adds_no_tolerance_constant() {
+        let m: Tolerances = tol_for("micro");
+        assert_eq!((m.v_abs, m.v_rel), (1e-6, 1e-9));
+        assert_eq!((m.y_abs, m.y_rel), (1e-6, 1e-9));
+        assert_eq!((m.i_abs, m.i_rel), (1e-6, 1e-9));
+        let f: Tolerances = tol_for("feeder");
+        assert_eq!((f.v_abs, f.v_rel), (1e-6, 1e-8));
+        assert_eq!((f.y_abs, f.y_rel), (1e-6, 1e-8));
+        assert_eq!((f.i_abs, f.i_rel), (1e-5, 1e-7));
     }
 }
 

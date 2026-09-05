@@ -249,10 +249,27 @@ def capture_all_meters(ckt) -> list:
     return out
 
 
-def capture_all_buses(ckt) -> list:
-    """Every bus's node set, kV base and the three per-node voltage surfaces.
+#: The six G1.5 short-circuit arms, in the order [`capture_all_buses`] reads
+#: them — the same order the r4133 transport uses
+#: (`crates/dss-epri/src/capture.rs::capture_all_buses`). Always present in the
+#: wire shape, empty when the request did not ask for them.
+_SC_KEYS = ("zsc1", "zsc0", "zsc", "ysc", "isc", "voc")
 
-    GOLDEN_REBASE_PLAN.md WP-G1 G1.4a (the `compare_bus` surface). Walked in
+#: What THIS transport publishes for `Bus.ZscMatrix`/`Bus.YscMatrix` when the
+#: bus has no short-circuit matrix (`pBus.Zsc = NIL`): `DefaultResult`'s single
+#: `0.0` (`CAPI/CAPI_Utils.pas:212-221`, the `DSS_CAPI_COM_DEFAULTS` branch —
+#: on in the pinned 0.15.7 build). r4133's arm publishes one `CZero` instead,
+#: i.e. 2 doubles (`DDLL/DBus.pas:433-434`); the two sentinels are normalized to
+#: "no matrix" by the comparator, never compared as values.
+_CAPI_SC_SENTINEL_LEN = 1
+
+
+def capture_all_buses(ckt, want_sc: bool) -> list:
+    """Every bus's node set, kV base, the three per-node voltage surfaces and —
+    when `want_sc` — the six short-circuit arms.
+
+    GOLDEN_REBASE_PLAN.md WP-G1 G1.4a (the `compare_bus` surface) + G1.5 (the
+    `compare_zsc` surface, appended to this same walk). Walked in
     `ckt.AllBusNames` order — the engine's own `BusList` order, which
     `SetActiveBus`'s returned 0-based index re-asserts per bus (a failed lookup
     leaves the previous bus active, which would otherwise silently attribute one
@@ -283,6 +300,46 @@ def capture_all_buses(ckt) -> list:
     (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`) belong to G1.4c and are
     deliberately NOT read here — `VLL`/`puVLL` additionally hang the r4133
     channel on the NEV decks (coordinator decision D8).
+
+    G1.5's six short-circuit arms are appended to THIS walk (never a second
+    `SetActiveBus` pass), in the fixed order `zsc1, zsc0, zsc, ysc, isc, voc`,
+    and only when `want_sc`; the keys are always emitted, empty when it is off,
+    so the wire shape does not depend on the request:
+
+    * `zsc1` / `zsc0` — `Bus.Zsc1` = `Zs - Zm` / `Bus.Zsc0` = `Zs + 2*Zm`, one
+      complex each, ALWAYS 2 doubles (`CAPI_Alt.pas:2294-2303` / `:2283-2292`
+      write `2` unconditionally; the `Zsc = NIL` case is `cZERO` from
+      capi `Common/Bus.pas:216-232` == r4133 `Bus.pas:215-229`). `AvgOffDiagonal`
+      divides only `If Ntimes > 0` (capi `Shared/Ucmatrix.pas:372-387` ==
+      r4133 `:369-383`), so on a 1-node bus `Zm = 0` and
+      `Zsc1 == Zsc0 == Zsc[0,0]`.
+    * `zsc` / `ysc` — `Bus.ZscMatrix` / `Bus.YscMatrix`, row-major (`i` outer,
+      `j` inner) `2*n*n` doubles (`CAPI_Alt.pas:2305-2334` / `:2336-2365` ==
+      r4133 `DBus.pas:431-459` / `:491-518`). Both matrices exist only after a
+      fault study / `ZscRefresh` built them (`SolveFaultStudy`, capi
+      `SolutionAlgs.pas:852-894` == r4133 `SolutionAlgs.pas:875-912`); until
+      then this transport publishes its `DefaultResult` SENTINEL of
+      `_CAPI_SC_SENTINEL_LEN` double(s) (`CAPI_Utils.pas:212-221` with
+      `DSS_CAPI_COM_DEFAULTS` on in the pinned build) while r4133 publishes one
+      `CZero`, i.e. 2 — a shape difference the comparator normalizes.
+    * `isc` / `voc` — `Bus.Isc` (`BusCurrent`) / `Bus.Voc` (`VBus`), `2*n`
+      doubles (`CAPI_Alt.pas:2202-2224` / `:2227-2249`). `VBus`/`BusCurrent`
+      are never NIL on THIS transport: `TDSSBus.AllocateBusState`
+      (`Common/Bus.pas:250-256`) uses `AllocMem`, which returns a non-nil block
+      even at `FNumNodesThisBus = 0`, so the corpus's two 0-node buses report
+      `2*0 = 0` doubles here — where r4133's `Reallocmem(VBus, 0)`
+      (`Bus.pas:246-260`) frees the pointer and its arm falls back to the
+      2-double `CZero` sentinel. Measured on `Test/REACTORTest.DSS` and
+      `Test/Source012Test.dss` (`loadbus2`).
+
+    Every SC array is indexed by the bus's INTERNAL (insertion) node index, not
+    by ascending node number: `Zsc`/`Ysc` are built column by column over
+    the bus's internal index (`pBus.RefNo[i]` in capi `ComputeYsc`,
+    `SolutionAlgs.pas:788-816`; `GetRef(i)` in r4133 `:800-832`) and `VBus`/`BusCurrent` are stored per internal
+    index — unlike the three voltage surfaces above, whose `FindIdx` walk sorts
+    ascending. Measured on a `bus2=b2.2.1.3` deck: the odd `Zsc` diagonal sits
+    at index 1 (the node the 1-phase shunt is on), which ascending order would
+    have put at index 0.
 
     Capture-order class: **group C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
     coordinator decision D3). Every read goes straight to `Solution.NodeV`
@@ -323,6 +380,29 @@ def capture_all_buses(ckt) -> list:
                     f"bus capture: {name}.{key} returned {len(cap[key])} values, "
                     f"expected 2*{len(nodes)} for nodes {nodes}"
                 )
+        cap.update({k: [] for k in _SC_KEYS})
+        if want_sc:
+            cap["zsc1"] = [float(x) for x in b.Zsc1]
+            cap["zsc0"] = [float(x) for x in b.Zsc0]
+            cap["zsc"] = [float(x) for x in b.ZscMatrix]
+            cap["ysc"] = [float(x) for x in b.YscMatrix]
+            cap["isc"] = [float(x) for x in b.Isc]
+            cap["voc"] = [float(x) for x in b.Voc]
+            n = len(nodes)
+            for key, want in (
+                ("zsc1", (2,)),
+                ("zsc0", (2,)),
+                ("zsc", (_CAPI_SC_SENTINEL_LEN, 2 * n * n)),
+                ("ysc", (_CAPI_SC_SENTINEL_LEN, 2 * n * n)),
+                ("isc", (2 * n,)),
+                ("voc", (2 * n,)),
+            ):
+                if len(cap[key]) not in want:
+                    raise RuntimeError(
+                        f"bus capture: {name}.{key} returned {len(cap[key])} values, "
+                        f"expected one of {want} for nodes {nodes} (see "
+                        "capture_all_buses' docstring for each arm's Pascal shape)"
+                    )
         out.append(cap)
     return out
 
@@ -439,6 +519,19 @@ def run_case(d, req: dict) -> dict:
     # circuit-level `AllBusVmagPu`. Opt-in — cheap (41 ms for the 4 876-bus
     # 8500-Node deck) but it doubles a large deck's JSON payload.
     want_buses = bool(req.get("buses", False))
+    # G1.5 bus short-circuit surface (`compare_zsc`): the six `Zsc1`/`Zsc0`/
+    # `ZscMatrix`/`YscMatrix`/`Isc`/`Voc` arms, appended to the SAME per-bus walk
+    # `buses` drives — so `zsc` without `buses` would silently ship nothing.
+    # The gate expresses the implication in the request builder
+    # (`corpus_gate::engines::build_run_request`); this transport refuses the
+    # malformed request loudly rather than returning an empty surface.
+    want_zsc = bool(req.get("zsc", False))
+    if want_zsc and not want_buses:
+        raise RuntimeError(
+            "request asks for the bus short-circuit surface (zsc) without the "
+            "bus surface it is appended to — the six SC arms share the one "
+            "per-bus walk (GOLDEN_REBASE_PLAN.md WP-G1 G1.5 §2.a)"
+        )
     # WPG.5 (AutoAdd): `DSS.GlobalResult` after each solve (the winner + figure)
     # and the `<CircuitName_>AutoAddLog.csv` the search writes. `Text.Result` is
     # captured IMMEDIATELY after `solve`, before any `?`-query capture overwrites
@@ -557,11 +650,13 @@ def run_case(d, req: dict) -> dict:
                         "variables": capture_variables(ckt, variables),
                         "eventlog": (capture_eventlog(d, ckt) if want_eventlog else []),
                         "ctrlqueue": capture_ctrlqueue(ckt) if want_ctrlqueue else [],
-                        # G1.4a: order-free (group C) bus reads — they move only
-                        # `ActiveBusIndex`, so their slot is free; kept here, ahead
-                        # of the property sweep, so the `?` queries below stay the
-                        # last reads of the step.
-                        "buses": capture_all_buses(ckt) if want_buses else [],
+                        # G1.4a + G1.5: order-free (group C) bus reads — they move
+                        # only `ActiveBusIndex`, so their slot is free; kept here,
+                        # ahead of the property sweep, so the `?` queries below stay
+                        # the last reads of the step.
+                        "buses": (
+                            capture_all_buses(ckt, want_zsc) if want_buses else []
+                        ),
                         "all_bus_vmag_pu": (
                             capture_all_bus_vmag_pu(ckt) if want_buses else []
                         ),
