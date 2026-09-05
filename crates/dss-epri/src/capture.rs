@@ -52,8 +52,10 @@ pub struct RunRequest {
     /// Manifest flag `compare_derived` (GOLDEN_REBASE G1.3a): capture
     /// `CktElement.Enabled` for every element and the three polar channels
     /// `CurrentsMagAng` / `Residuals` / `VoltagesMagAng` for the **enabled**
-    /// ones. Absent or `false` ⇒ none of the seven keys is emitted and the
-    /// reply is byte-identical to a pre-G1.3a one.
+    /// ones, and (GOLDEN_REBASE G1.3b) the three sequence channels
+    /// `SeqPowers` / `SeqCurrents` / `SeqVoltages` for the enabled ones too.
+    /// Absent or `false` ⇒ none of the eleven keys is emitted and the reply is
+    /// byte-identical to a pre-G1.3a one.
     #[serde(default)]
     pub derived: bool,
     /// Manifest flag `compare_element_extras` (GOLDEN_REBASE G1.3d): capture
@@ -234,6 +236,26 @@ struct ElementCap {
     has_volt_control: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     has_switch_control: Option<bool>,
+    // The GOLDEN_REBASE G1.3b sequence channels, emitted under the SAME
+    // `RunRequest::derived` flag as the polar three above and skipped when
+    // empty, so an off-flag reply keeps the byte-for-byte shape it had before
+    // G1.3b (`oracle_server.capture_all_elements` emits exactly the same keys).
+    // All four are enabled-only, like the polar block: `CktElementV(9)` guards
+    // neither `Enabled` nor `NodeRef` (see [`crate::dss::Engine::element_seq`]).
+    /// `SeqCurrents` — 012 current magnitudes (A), `3 * NTerms` of them; and
+    /// `SeqVoltages` — 012 voltage magnitudes (V), same length. Magnitudes on
+    /// both engines (`Cabs`), so neither is de-interleaved.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    seq_i: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    seq_v: Vec<f64>,
+    /// `SeqPowers`, de-interleaved into kW and kvar the way `p_kw`/`p_kvar`
+    /// already are. `3 * NTerms` each; the `0.003` 3-phase kVA scaling is the
+    /// engines' own, applied inside the arm, so the wire unit IS kW/kvar.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    seq_p_kw: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    seq_p_kvar: Vec<f64>,
 }
 
 #[derive(Serialize)]
@@ -569,6 +591,16 @@ fn capture_injection(flat: &[f64]) -> Injection {
 /// `element_polar`), while `enabled` itself is captured for every element so the
 /// skip cannot hide one.
 ///
+/// The same flag carries the three sequence channels [`Engine::element_seq`]
+/// reads (GOLDEN_REBASE G1.3b), under the same enabled-only rule — which there
+/// is load-bearing rather than shape-normalizing: `CktElementV(9)`
+/// (`SeqPowers`) guards neither `Enabled` nor `NodeRef` and dereferences
+/// `NodeRef^[k+1]` at `DDLL/DCktElement.pas:765`, and capi's own read is no
+/// safer (`CAPI/CAPI_Alt.pas:604` skips the `Enabled` test, `:607` resizes the
+/// buffer before the helper's guard at `:544` exits). `SeqPowers` is
+/// de-interleaved into kW/kvar the way `p_kw`/`p_kvar` are; the two magnitude
+/// channels are flat.
+///
 /// Under `extras` (manifest flag `compare_element_extras`, GOLDEN_REBASE
 /// G1.3d) each element also reports `Enabled`, `PhaseLosses` and the nine
 /// discrete scalars [`Engine::element_extras`] reads, plus `NodeOrder`
@@ -654,6 +686,10 @@ fn capture_all_elements(
             ocp_dev_type: None,
             has_volt_control: None,
             has_switch_control: None,
+            seq_i: Vec::new(),
+            seq_v: Vec::new(),
+            seq_p_kw: Vec::new(),
+            seq_p_kvar: Vec::new(),
         };
         if derived && enabled == Some(true) {
             // capture-order: CurrentsMagAng (B), Residuals (B), VoltagesMagAng (C)
@@ -662,6 +698,12 @@ fn capture_all_elements(
             (cap.cma_mag, cap.cma_ang) = deinterleave(&cma);
             (cap.res_mag, cap.res_ang) = deinterleave(&res);
             (cap.vma_mag, cap.vma_ang) = deinterleave(&vma);
+            // capture-order: SeqPowers (B), SeqCurrents (B), SeqVoltages (C)
+            let (seq_p, seq_i, seq_v) =
+                engine.element_seq(warn, &format!("element {} sequence", cap.name))?;
+            (cap.seq_p_kw, cap.seq_p_kvar) = deinterleave(&seq_p);
+            cap.seq_i = seq_i;
+            cap.seq_v = seq_v;
         }
         if extras {
             // capture-order: NumTerminals (C), NumConductors (C), NumPhases (C), EnergyMeter (C)

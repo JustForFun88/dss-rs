@@ -99,8 +99,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               ESPVLControl corpus deck, the last zero-coverage
                               class) landed 2026-08-29 on `r4133-props`; G1.0
                               (rails) and G1.3a (the first surface sub-step)
-                              landed 2026-09-04; G1.3b-d + G1.4-G1.11c remain;
-                              WP-G3–G5 queued.
+                              landed 2026-09-04, G1.3d(i)/G1.3d(ii)/G1.3b
+                              2026-09-05 on lane `lane-e`; G1.3c + G1.4-G1.11c
+                              remain; WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
  5b. R4133_PROPS_PLAN.md      **COMPLETE 2026-09-04** (authored + opened
      (docs/plans-archive/)    2026-08-22; moved to `docs/plans-archive/` by its

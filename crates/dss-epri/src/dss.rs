@@ -55,6 +55,13 @@ pub type Pcl = (Vec<f64>, Vec<f64>, Vec<f64>);
 /// G1.3a derived capture ([`Engine::element_polar`]).
 pub type Polar3 = (Vec<f64>, Vec<f64>, Vec<f64>);
 
+/// `SeqPowers` (flat complex `[re, im, …]`, kW + j·kvar), `SeqCurrents` and
+/// `SeqVoltages` (magnitudes only, A and V) for one **enabled** element — the
+/// GOLDEN_REBASE G1.3b sequence capture ([`Engine::element_seq`]), in that
+/// read order. All three are `3 * NTerms` values long (the powers therefore
+/// `6 * NTerms` doubles on the wire), or `0` for a 0-terminal element.
+pub type Seq3 = (Vec<f64>, Vec<f64>, Vec<f64>);
+
 /// The nine unconditional discrete per-element scalars of the GOLDEN_REBASE
 /// G1.3d capture ([`Engine::element_extras`]): the four shape/name reads of
 /// part (i) and the five control-derived reads of part (ii). A named struct
@@ -615,6 +622,64 @@ impl Engine {
             let (errno, desc) = self.poll_error();
             if errno == 0 {
                 return Ok((cma, res, vma));
+            }
+            if warn && USER_MODEL.contains(&errno) && attempt == 0 {
+                continue; // priming read fired + cleared the warning; retry once
+            }
+            return Err(EngineError::Dss {
+                errno,
+                desc,
+                ctx: ctx.to_string(),
+            });
+        }
+        unreachable!()
+    }
+
+    /// Read `SeqPowers`, `SeqCurrents` and `SeqVoltages` on the active element
+    /// — the GOLDEN_REBASE G1.3b sequence capture, in D3 order (`SeqPowers`
+    /// and `SeqCurrents` both call `GetCurrents` into a scratch buffer and are
+    /// group **B** — [`modes::CKT_ELEMENT_SEQ_POWERS`] `:739`,
+    /// [`modes::CKT_ELEMENT_SEQ_CURRENTS`] `:700`; `SeqVoltages` reads
+    /// `Solution.NodeV` only and is group **C**,
+    /// [`modes::CKT_ELEMENT_SEQ_VOLTAGES`] `:660`) and with the same single
+    /// user-model retry as [`Engine::element_polar`], so an errno is
+    /// attributed to its own element.
+    ///
+    /// The two magnitude reads return `Cabs` of the 012 components
+    /// (`DCktElement.pas:719` / `:680`, capi `CAPI/CAPI_Alt.pas:490` / `:620`);
+    /// `SeqPowers` is complex `[re, im, …]` in **kW/kvar**, both engines
+    /// scaling by `0.003` inside the arm (`:767` and `:788`, capi `:561` and
+    /// `:588-589`) — a fixed 3-phase kVA conversion, not the
+    /// `PositiveSequence` ×3 that `Powers` applies.
+    ///
+    /// **Only ever called on an `Enabled` element**
+    /// ([`Engine::ckt_element_enabled`], checked at the one call site
+    /// `crate::capture::capture_all_elements`), and here the rule is
+    /// load-bearing rather than merely shape-normalizing: `CktElementV(9)` has
+    /// neither an `Enabled` nor a `NodeRef` guard (`DCktElement.pas:739-797`)
+    /// and dereferences `NodeRef^[k+1]` at `:765` on a never-enabled element,
+    /// where the two magnitude modes do guard (`If Enabled` at `:711` / `:671`).
+    /// capi is no safer on that read: `Alt_CE_Get_SeqPowers` skips the
+    /// `Enabled` test (`CAPI/CAPI_Alt.pas:604`, commented out) and resizes the
+    /// result to `3 * NTerms` complex slots at `:607` before its helper exits
+    /// on `(not Enabled) or (NodeRef = NIL)` at `:544`, returning
+    /// uninitialized memory.
+    ///
+    /// A 0-terminal element (`UPFCControl` never assigns `Nterms` —
+    /// `Controls/UPFCControl.pas:230-246`) is legitimate and answers `[]` on
+    /// all three modes here, where capi returns its 1-element `DefaultResult`
+    /// for `SeqVoltages` and `SeqPowers`; that shape difference is the
+    /// comparator's business, not the capture's.
+    pub fn element_seq(&self, warn: bool, ctx: &str) -> Result<Seq3, EngineError> {
+        for attempt in 0..2 {
+            let seq_p = self.ckt_element_seq_powers()?; // capture-order: SeqPowers (B)
+            // capture-order: SeqCurrents (B)
+            let seq_i = self.ckt_element_seq_currents()?;
+            // capture-order: SeqVoltages (C)
+            let seq_v = self.ckt_element_seq_voltages()?;
+            let (errno, desc) = self.poll_error();
+            if errno == 0 {
+                return Ok((seq_p, seq_i, seq_v));
             }
             if warn && USER_MODEL.contains(&errno) && attempt == 0 {
                 continue; // priming read fired + cleared the warning; retry once
