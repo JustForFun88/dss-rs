@@ -36,17 +36,12 @@ the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
-**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1** on **`update`**, its sub-step chains
-running since 2026-09-04 in parallel `lane-*` worktree branches that a merge agent lands
-one at a time, regenerating `population.lock.json` on the merged tree and unioning
-`ledger.json` (**D7**); that lock, `ledger.json` and `golden.lock.json` stay
-fail-on-stale. **`R4133_PROPS_PLAN.md` is COMPLETE** (2026-09-04, §RP5.2) — all six WPs
-gate-green in both lanes over 26 sub-steps / **67** RP-titled commits (64 through RP5.1's
-`64474762`, plus RP5.2's `5a110653`, its settlement `bc16430b` and this record), plan
-archived to `docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b COMPLETE with the final
-counters, record in [`era-summaries.md`](docs/phase-records/era-summaries.md) §1a,
-**G1.1 handed back satisfied**. Close-out 2026-09-04: `update` fast-forwarded to
-`r4133-props` @ `2724a139` (32 commits, the branch then deleted) and pushed to
+**In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1** on **`update`**, its sub-step chains running since 2026-09-04 in parallel `lane-*` worktree branches that a
+merge agent lands one at a time, regenerating `population.lock.json` on the merged tree and unioning `ledger.json` (**D7**); that lock, `ledger.json` and
+`golden.lock.json` stay fail-on-stale. **`R4133_PROPS_PLAN.md` is COMPLETE** (2026-09-04, §RP5.2) — all six WPs gate-green in both lanes over 26 sub-steps /
+**67** RP-titled commits (64 through RP5.1's `64474762`, plus RP5.2's `5a110653`, its settlement `bc16430b` and this record), plan archived to
+`docs/plans-archive/`, `PLAN_SEQUENCE.md` row 5b COMPLETE with the final counters, record in [`era-summaries.md`](docs/phase-records/era-summaries.md) §1a,
+**G1.1 handed back satisfied**. Close-out 2026-09-04: `update` fast-forwarded to `r4133-props` @ `2724a139` (32 commits, the branch then deleted) and pushed to
 `origin/update`.
 
 **Record placement (from 2026-09-03).** Every sub-step's **full** record is appended to
@@ -134,7 +129,7 @@ WP-G2 — condensed records" (full session records precede it there).
 
 **GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04 its chains run in parallel **lanes**, D7, merged one sub-step
 at a time). Landed: **G1.1**, killed and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck)
-2026-08-29; and, 2026-09-04/06, the rails plus thirteen surfaces, each with its full record in [`golden-rebase.md`](docs/phase-records/golden-rebase.md) —
+2026-08-29; and, 2026-09-04/06, the rails plus fourteen surfaces, each with its full record in [`golden-rebase.md`](docs/phase-records/golden-rebase.md) —
 **G1.0** (`c4b67a6e` + `42454b64`), the flag vocabulary, exclusion `channels`, the capture guard and the r4133 bridge, whose mode probe **discharges G1.11**;
 **G1.9** (`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`), the
 `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` + `588e0bfe` + `9f9c723d`), `Enabled` + the three polar channels (**1** new entry,
@@ -165,13 +160,17 @@ is refused per bus (**D2**; `DIVERGENCES.md` §G1.4c, `to_opendss/` 64-66) — *
 fail-on-stale with D9's `MakeBusList` fix pinned live — **D26** split its at-bus half into a NEW **G1.4d** (**a plan amendment the user has not seen**) and
 **D29** refused its own step 1 (r4133's `MergeWith` renames a line without updating `DeviceList`, `to_opendss/68`), so `modes:reduce/midi_reduce.dss` stays
 capi-gated behind the new **`distance`** ledger field (**+1** entry); the two lanes' 012-matrix term was deduped here to one `SEQ_C012` (**D21**, the tight row
-sum). The lanes' micro decks met here: corpus **526** cases / 522 live, `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87,
-44) and `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111**, ledger **56** / 32 causes; G1.3c,
-**G1.4d**, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+sum); and **G1.3c** (2026-09-06, `lane-e`, `548bc7b8` + `a15e2ae3` + `6d0cde8e`/`7cefa8d0`), per-element `CplxSeqCurrents`/`CplxSeqVoltages`/`TotalPowers` —
+**the element chain closes here**, `compare_derived` at **thirteen** sub-channels: **0** new entries, **25** widenings on 9 `element` scopes (31 on the lane;
+D12/D14 had deleted two capi GIC entries), `TotalPowers` the fourth `LANE_SKIP_ELEM_POWERS` channel on the two `newton*` decks while `CplxSeq*` stays compared
+there, and D31's widening measured `seq_powers`-only (modes 13/14 slot correctly). The lanes' micro decks met here: corpus **526** cases / 522 live,
+`FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87, 44) and `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden
+byte, |Δ| = 0 throughout; `WP_G1_MODES` **111**, ledger **56** / 32 causes; **G1.4d**, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
-**Next.** `lane-e` **G1.3c** (running); `lane-s` **G1.10a** (running, after G1.8); `lane-b` **G1.4d** (running, unsynced — the at-bus lists, criterion S4,
-**D26**); `lane-m` idle, its chain closed with G1.6(ii) (the AT-1 zone-boundary decision it hands on is owned by `ORPHANED_GAPS.md` §1.20); then G1.11a–c and
-WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** `lane-s` **G1.10a** (running, its P14 fix `48af5a74` committed); `lane-b` **G1.4d** (running, unsynced — the at-bus lists, criterion S4, **D26**);
+`lane-e` idle after its **G3.0** pre-flight (**D36**/**D37**), its element chain closed with G1.3c; `lane-m` idle, its chain closed with G1.6(ii) (the AT-1
+zone-boundary decision it hands on is owned by `ORPHANED_GAPS.md` §1.20); then G1.10b/c, G1.11a–c + the **G1.11′** docs close-out (**D37**) and WP-G3–G5;
+queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape

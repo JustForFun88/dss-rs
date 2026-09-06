@@ -124,23 +124,31 @@ pub const ITER_SLACK: i32 = 1;
 ///
 /// **What still gates them**: the element name set, terminal **currents**, node
 /// voltages, the system Y, discrete state, the ten discrete per-element extras
-/// and the iteration count — everything except the three `S = V·conj(I)`
-/// channels (`Powers`, `Losses` and, since G1.3d(ii), `PhaseLosses` — the same
-/// products bucketed by phase, reached through the same cache-aware
-/// `ComputeIterminal`; `harness::compare_element_phase_losses` still asserts its
-/// array shapes there). Those are pinned by
+/// and the iteration count — everything except the four `S = V·conj(I)`
+/// channels: `Powers`, `Losses`, since G1.3d(ii) `PhaseLosses` (the same
+/// products bucketed by phase) and, since G1.3c, `TotalPowers` (the same
+/// products summed per terminal). All four are reached through the cache-aware
+/// `ComputeIterminal`, and only their *values* are dropped —
+/// `harness::compare_element_phase_losses` and
+/// `harness::compare_element_total_powers` still assert their array shapes
+/// there. Those are pinned by
 /// `dss_core::exec::tests::newton::newton_powers_match_the_normal_algorithm`,
 /// which asserts the Newton powers equal the *normal* algorithm's on the same
 /// deck to 1e-8 kVA (upstream's stale read differs by ≥ 1e-1 kVA) — and the
 /// normal algorithm's powers are oracle-gated on ~500 other corpus cases, which
-/// closes the loop transitively.
+/// closes the loop transitively. `newton_total_powers_match_the_normal_algorithm`
+/// carries the terminal sums the same way: the port's own Newton-vs-normal gap
+/// is 3.320142298909114e-11 kVA, against the 4.5155082046702575e-4 /
+/// 5.213217790400988e-3 kVA the two oracle channels report stale in the gate's
+/// own state — ~20x their band on every channel ([`elem_channels_for`]'s G1.3c
+/// section carries the four measurements).
 const LANE_SKIP_ELEM_POWERS: &[&str] =
     &["modes:newton/newton.dss", "modes:newton/newton_feeder.dss"];
 
 // LANE-EXCLUSION(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the two decks' powers,
-// losses and per-phase losses are dropped from the oracle compare in **both**
-// lanes — no oracle channel reports them at the converged `NodeV`, so there is
-// no lane in which comparing them would be right.
+// losses, per-phase losses and per-terminal totals are dropped from the oracle
+// compare in **both** lanes — no oracle channel reports them at the converged
+// `NodeV`, so there is no lane in which comparing them would be right.
 /// Which element sub-channels the corpus gate oracle-compares for the case
 /// `label` — [`ElemChannels::ALL`] everywhere except [`LANE_SKIP_ELEM_POWERS`],
 /// in either lane.
@@ -190,6 +198,49 @@ const LANE_SKIP_ELEM_POWERS: &[&str] =
 /// `ComputeIterminal` path**, so all three stay `true` in
 /// [`ElemChannels::CURRENTS_ONLY`] and the two `newton*` decks gain three more
 /// oracle-compared channels rather than a fourth exclusion.
+///
+/// # G1.3c: `CplxSeq*` do NOT join it, `TotalPowers` DOES
+///
+/// The two complex sequence channels (`GOLDEN_REBASE_PLAN.md` G1.3c) are the
+/// same reads as `SeqCurrents`/`SeqVoltages` minus the `Cabs` — r4133 modes
+/// `13`/`14` (`DDLL/DCktElement.pas:885-928`/`:931-975`) call the very
+/// `CalcSeqVoltages`/`CalcSeqCurrents` helpers modes `7`/`8` call, and capi's
+/// `Alt_CE_Get_ComplexSeq*` (`CAPI/CAPI_Alt.pas:872-895`/`:898-925`) likewise —
+/// so they stay `true` in [`ElemChannels::CURRENTS_ONLY`] and the two decks gain
+/// two more compared channels, this time complex.
+///
+/// `TotalPowers` is the one G1.3c surface on the other side of the line: it is
+/// the per-terminal sum of `GetPhasePower`, whose first act is the cache-aware
+/// `ComputeIterminal` (r4133 `Common/CktElement.pas:1049`, reached from mode
+/// `20` at `DDLL/DCktElement.pas:1120`; capi `CAPI/CAPI_Alt.pas:1127`), so no
+/// oracle channel reports it at the converged `NodeV` here either. Measured by
+/// the **live corpus gate**, on BOTH gating channels, with the bit forced ON
+/// (G1.3c F5, 2026-09-06; step 0, `Vsource.source` terminal 0; the two decks
+/// flipped to `engines: "r4133"` in a scratch manifest for their second channel,
+/// since a case aborts on its first failing channel):
+///
+/// * `modes/newton/newton.dss` — port `(-1339.5781272745278,
+///   -548.8069881927757)` kW/kvar vs capi `(-1339.5777198832018,
+///   -548.8067934353601)`, |d| **4.5155082046702575e-4** > allowed
+///   2.2953166227444328e-5; vs r4133 `(-1339.577719883203, -548.8067934353802)`,
+///   |d| 4.5155081076231536e-4 > allowed 2.2953166227444412e-5.
+/// * `modes/newton/newton_feeder.dss` — port `(-9745.942809960561,
+///   -8273.745474220133)` vs capi `(-9745.938445807476, -8273.742622587692)`,
+///   |d| **5.213217790400988e-3** > allowed 2.1128110294679937e-4; vs r4133
+///   `(-9745.938445807791, -8273.742622587679)`, |d| 5.213217533932785e-3 >
+///   allowed 2.1128110294680455e-4.
+///
+/// — ~19.7x and ~24.7x the band, on both channels, which is what clears the
+/// bit. How far the stale cache is behind depends on how far the deck has
+/// re-converged, and the gate solves once more after the compile
+/// (`tools/oracle/oracle_server.py:612-632`): read after `compile` ALONE the
+/// same capi channel is 0.6831564014868734 kVA (`newton.dss`, `Line.l1`) /
+/// 2.1850404626011652 kVA (`newton_feeder.dss`, `Vsource.source`) off a
+/// freshly-recomputed terminal sum, and the identical probe under the gate's own
+/// protocol reads 0.000451550541865182 / 0.005213217527607856 kVA — the gap the
+/// gate measures above, to three digits. Against a per-conductor `Powers`
+/// staleness of 0.53 / 0.75 kVA in the compile state, summing a terminal grows
+/// the gap instead of cancelling it.
 pub fn elem_channels_for(label: &str) -> ElemChannels {
     if LANE_SKIP_ELEM_POWERS.contains(&label) {
         ElemChannels::CURRENTS_ONLY
