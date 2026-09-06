@@ -934,3 +934,97 @@ fn the_worker_never_writes_the_opendss_registry_key() {
          (key restored to {before:?})"
     );
 }
+
+// ---------------------------------------------------------------------------
+// D25 — the bridge must not fire the OS editor on `Show`/`Dump`
+// ---------------------------------------------------------------------------
+
+/// The editor the bridge installs at init (`Engine::new`). Kept here so the test
+/// below and the init sequence cannot drift apart silently.
+const BRIDGE_EDITOR: &str = "rundll32.exe";
+
+/// Two program names no machine resolves. `A` poisons `HKCU\Software\OpenDSS`
+/// so the init override has something to override; `B` is issued *inside* the
+/// worker, so a worker that persisted its editor on exit would leave `B` where
+/// `A` is expected. Both are deliberately harmless: if a crash ever leaves one
+/// behind, r4133's `FireOffEditor` takes the `ERROR_FILE_NOT_FOUND` branch
+/// (`Common/Utilities.pas:310`, message 702) and spawns nothing — strictly safer
+/// than the `Notepad.exe` default it replaces.
+const EDITOR_SENTINEL_A: &str = "DssRsEditorSentinelA.exe";
+const EDITOR_SENTINEL_B: &str = "DssRsEditorSentinelB.exe";
+
+/// D25: **a fresh session must not inherit the registry's OS editor, and must
+/// not write its own back.**
+///
+/// r4133 keeps `AutoDisplayShowReport := TRUE` (`Common/DSSGlobals.pas:2052`)
+/// and every `Show` writer ends with
+/// `If AutoDisplayShowReport Then FireOffEditor(FileNm)`
+/// (`Common/ShowResults.pas:403`, `:717`, `:1116` … `:2904`;
+/// `Common/ControlQueue.pas:482`; `Common/Solution.pas:3543`), while `Dump`
+/// (`Executive/ExecHelper.pas:1357`), the hash-list dumps (`:1223`, `:1232`,
+/// `:1241`, `:1249`), `VDIFF` (`:3373`) and `Show autoadded`
+/// (`Executive/ShowOptions.pas:208`) call it unconditionally — `DoShowCmd`
+/// (`Executive/ShowOptions.pas:156`) has no `NoFormsAllowed` guard, so
+/// `DSSI(8, 0)` does not reach it. On Windows `FireOffEditor` is a
+/// `ShellExecute` of `DefaultEditor` (`Common/Utilities.pas:304`), i.e. one OS
+/// process per report; `DefaultEditor` is read from the machine key at DLL load
+/// with the default `'Notepad.exe'` (`Common/DSSGlobals.pas:990`), which is how
+/// ~900 orphaned notepads accumulated across the lanes before D25.
+///
+/// That read happens before the bridge gets control, so `Engine::new` overwrites
+/// the variable instead (`Set Editor=`, served with no circuit active by
+/// `DoSetCmd_NoCircuit`, `Executive/ExecOptions.pas:570`), *after*
+/// `Set RegistryUpdate=No` — because `WriteDSS_Registry` persists
+/// `DefaultEditor` next to `BaseFrequency` (`Common/DSSGlobals.pas:1017`, under
+/// the `UpdateRegistry` test at `:1015`, from `TExecutive.Destroy` → the unit
+/// `Finalization`), and leaving `rundll32.exe` as the machine-wide OpenDSS
+/// editor would be state escaping the worker.
+///
+/// One test, three assertions, so nothing races on the same registry value:
+/// with the init command removed the first read returns
+/// [`EDITOR_SENTINEL_A`]; the liveness control proves `Get Editor` tracks
+/// `DefaultEditor` rather than replying a constant; and the post-exit read
+/// returns `A`, not the `B` the worker itself last held. `Get Editor` (option
+/// 15, `Executive/ExecOptions.pas:1206`) is served only by `DoGetCmd`, which
+/// needs an active circuit — hence the `new circuit.…`. The key is put back on
+/// every exit path ([`reg_restore`] — rewritten, or DELETED when the machine had
+/// none) before any assertion can unwind.
+#[test]
+fn init_overrides_the_os_editor_and_never_writes_it_back() {
+    let before = reg_read("Editor");
+    reg_write("Editor", EDITOR_SENTINEL_A);
+
+    let mut w = WorkerProc::spawn();
+    w.exec("new circuit.d25init basekv=12.47 phases=3 bus1=b1");
+    let got = w.exec("Get Editor")["reply"].clone();
+    // Liveness control + the write-back probe: this is what the worker would
+    // persist at exit if `Set RegistryUpdate=No` were missing or too late.
+    w.exec(&format!("Set Editor={EDITOR_SENTINEL_B}"));
+    let moved = w.exec("Get Editor")["reply"].clone();
+    w.quit();
+
+    let after = reg_read("Editor");
+    reg_restore("Editor", before.as_deref());
+
+    assert_eq!(
+        got,
+        json!(BRIDGE_EDITOR),
+        "a fresh worker inherited Editor={EDITOR_SENTINEL_A:?} from {REG_KEY}: \
+         `Set Editor={BRIDGE_EDITOR}` is missing from Engine::new — every \
+         `Show`/`Dump` would ShellExecute the machine's editor \
+         (key restored to {before:?})"
+    );
+    assert_eq!(
+        moved,
+        json!(EDITOR_SENTINEL_B),
+        "`Get Editor` did not follow a later `Set Editor`, so the value above is \
+         not a live read of DefaultEditor (key restored to {before:?})"
+    );
+    assert_eq!(
+        after.as_deref(),
+        Some(EDITOR_SENTINEL_A),
+        "the worker rewrote Editor under {REG_KEY} (found {after:?}): \
+         `Set RegistryUpdate=No` no longer precedes `Set Editor={BRIDGE_EDITOR}` \
+         in Engine::new (key restored to {before:?})"
+    );
+}

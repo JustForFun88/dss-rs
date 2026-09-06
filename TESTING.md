@@ -2620,6 +2620,39 @@ each other's value; the `Engine::new` reset makes that harmless (each worker pin
 regardless of what it read), which is exactly why the reset, not the restore, is the
 load-bearing fix.
 
+**The bridge suppresses the OS editor** (GOLDEN_REBASE G1.10a F0, coordinator decision
+D25, 2026-09-05). r4133 keeps `AutoDisplayShowReport := TRUE`
+(`Common/DSSGlobals.pas:2052`) and every `Show` writer ends with
+`If AutoDisplayShowReport Then FireOffEditor(FileNm)` (`Common/ShowResults.pas:403`,
+`:717`, `:1116` … `:2904`; `Common/ControlQueue.pas:482`; `Common/Solution.pas:3543`),
+while `Dump` (`Executive/ExecHelper.pas:1357`), the hash-list dumps (`:1223`-`:1249`),
+`VDIFF` (`:3373`) and `Show autoadded` (`Executive/ShowOptions.pas:208`) call it
+unconditionally — `DoShowCmd` (`Executive/ShowOptions.pas:156`) has **no**
+`NoFormsAllowed` guard, so `DSSI(8, 0)` does not reach this path. On Windows
+`FireOffEditor` is a `ShellExecute` of `DefaultEditor` (`Common/Utilities.pas:304`),
+read from the machine key at DLL load with the default `'Notepad.exe'`
+(`Common/DSSGlobals.pas:990`): every gate run therefore leaked one OS process per
+report, and ~900 orphaned Notepad windows accumulated across the lanes before this
+landed. `Engine::new` now issues `Set Editor=rundll32.exe` right after
+`Set RegistryUpdate=No` (so the value can never reach the user's key,
+`Common/DSSGlobals.pas:1017` under the guard at `:1015`), pinned by
+`crates/dss-epri/tests/protocol.rs::init_overrides_the_os_editor_and_never_writes_it_back`.
+`rundll32.exe` is the target because it exits at once on a non-DLL argument: measured
+2026-09-05 over the 14-deck file-set probe with the machine key poisoned to
+`notepad.exe`, 60 created files across 14 decks, **0** notepad/rundll32 processes
+created, **0** window-count change, and the created-file set byte-identical to the
+run before. The capi channel needs no counterpart — dss_capi gates the same
+`FireOffEditor` on `DSS_CAPI_ALLOW_EDITOR`
+(`.inputs/dss_capi/src/Common/Utilities.pas:231`) and
+`tools/oracle/oracle_server.py:1585` already clears it. `Set ShowReports=No` is not an
+alternative: `DoSetCmd_NoCircuit` does not serve option 138, so at init it raises
+`DSS error #301` (`Executive/ExecOptions.pas:645-649`), and it would not cover the
+unconditional call sites anyway. **Never restore a bridge source file with a
+timestamp-preserving copy** (`Copy-Item`, `cp -p`) after a scratch experiment: cargo's
+mtime fingerprint and `engines.rs::epri_worker_bin` both then keep the *experiment's*
+binary — measured while taking the numbers above, where a probe silently ran the
+un-suppressed worker. Touch the file (or `cargo clean -p dss-epri`) and re-verify.
+
 **Regenerate a golden** (manual, deliberate — never in CI): install the pinned
 venv from `tools/golden/PIN.txt`, then run the matching `tools/golden/gen_*.py`.
 Goldens pin intentional upstream inexactnesses (`TODO(compat)`), so improved
