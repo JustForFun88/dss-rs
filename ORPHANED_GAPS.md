@@ -517,6 +517,14 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   report text; wiring it inside G1.4d would have shipped an unwitnessed feature. **Priority: low.**
   Whoever ports it owes a `modes:` micro deck that issues both commands, and must decide the empty
   answer's spelling (upstream prints the `None` seed).
+- **Owner (D34, settled at the G1.4d audit settlement 2026-09-06).** D34 asked for this entry to be
+  recorded "with an owner", but no live plan covers unported *executive commands* today, so §2 —
+  "a live plan tracks them" — would be a false claim (checked: GOLDEN_REBASE WP-G3/G4/G5 are goldens
+  and docs, UPGRADE_PLAN is properties/semantics, WASM_USERMODELS is user models). It is therefore
+  **scheduled instead of owned**: `GOLDEN_REBASE_PLAN.md` §G5.2 (the closing record, which already
+  owes the same "add a named WP row … and record it in `ORPHANED_GAPS.md` until that row exists"
+  treatment for the model-6 `FInit` deferral, plan §1.3) either names a WP row for these two commands
+  or ratifies this entry as a standing orphan. Until G5.2 rules, this bullet is the record.
 
 ---
 

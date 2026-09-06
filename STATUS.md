@@ -159,7 +159,7 @@ port's state is **asserted** rather than excluded (**D15**/**D16**, four fail-on
 r4133's `VLL` **hang** is refused per bus (**D2**; `DIVERGENCES.md` §G1.4c, `to_opendss/` 64-66) — **0** new. And **G1.4b** (`lane-b`, `1aa08d9c` + `03565bf7` + docs),
 the bus **distance** surface on the same walk, compared **exactly** (`rel = abs = 0`), with `DISTANCE_POPULATION` **(867, 79 137)**
 fail-on-stale and D9's `MakeBusList` fix pinned live; **D29** refused its own step 1 (r4133's `MergeWith` leaves `DeviceList` stale), so
-`modes:reduce/midi_reduce.dss` stays capi-gated behind the new **`distance`** ledger field (**+1**). And **G1.4d** (`lane-b`, `62c616eb` + surface + docs;
+`modes:reduce/midi_reduce.dss` stays capi-gated behind the new **`distance`** ledger field (**+1**). And **G1.4d** (`lane-b`, `62c616eb` + `1acc1f53` + settlement/docs;
 split off by **D26** — *a plan amendment the user has not seen*), the bus **at-bus lists**: the port answers **S4**, neither oracle's criterion (D26's
 disabled-drop premise refuted: 15 of 223 ARE listed); each channel's own walk is **asserted** over the port's raw facts and the residue COUNTED into four
 fail-on-stale populations — (279, 279) / (18, 147) / (8, 11) / (0, 0), **0** new; the r4133 mode rows go `Pure` → **Impure** (`to_opendss/` 69-71). The lanes'

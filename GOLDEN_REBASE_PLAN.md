@@ -1940,6 +1940,11 @@ R4133_PROPS authoring commit, with the not-a-prerequisite-for-M0–M2 framing
 carried by its position) — flip it to COMPLETE, do **not** insert a second
 row. `WASM_USERMODELS_PLAN.md`: add the named
 model-6 `FInit` row (§1.3); `ORPHANED_GAPS.md`: record it until that row exists.
+Same treatment for `ORPHANED_GAPS.md` §1.20 (the `AllPCEatBus`/`AllPDEatBus`
+**executive commands**, deferred by G1.4d under **D34**, 2026-09-06): name a
+WP row that ports the two `GlobalResult` formatters — with the A-Diakoptics
+second consumer, r4133 `Common/Circuit.pas:1683` — or ratify the entry as a
+standing orphan; it is the one G1 deferral D34 asked to be given an owner.
 `STATUS.md` closing record: final `SPLIT_ALIAS_POPULATION` (= 5),
 `Escape::WholeCase` (= 1, model-6 — reported as the last reproduced upstream
 bug), golden count by anchor, the ledger delta, and a full

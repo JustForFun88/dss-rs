@@ -1665,6 +1665,37 @@ fn the_at_bus_guard_fires_when_a_pce_divergence_appears() {
     });
 }
 
+/// …and on the class-A GROWTH — a new deck (or a moved port answer) reaching
+/// r4133's terminal-1/2 blind spot. Class A is projected away on both sides of
+/// the r4133 mechanism assertion, so this counter is its only live witness and
+/// gets a drive of its own (G1.4d audit settlement T5).
+#[test]
+#[should_panic(expected = "`PDE terminal-3 declines` came out (280, 280)")]
+fn the_at_bus_guard_fires_when_the_terminal3_class_grows() {
+    harness::check_at_bus_populations(harness::AtBusPopulation {
+        // one more 3rd-winding bus reached
+        pde_terminal3_declines: (280, 280),
+        capi_noderef_drops: (18, 147),
+        capi_noderef_adds: (8, 11),
+        pce_declines: (0, 0),
+    });
+}
+
+/// …and when capi's stale-reference class SHRINKS — the direction that says a
+/// deck stopped exercising the `Circuit.pas:1756` staleness the entry describes
+/// (the fourth tuple's own drive, same settlement).
+#[test]
+#[should_panic(expected = "`capi node-ref adds` came out (7, 10)")]
+fn the_at_bus_guard_fires_when_a_stale_node_ref_stops_naming_an_element() {
+    harness::check_at_bus_populations(harness::AtBusPopulation {
+        pde_terminal3_declines: (279, 279),
+        capi_noderef_drops: (18, 147),
+        // one deck's stale reference gone
+        capi_noderef_adds: (7, 10),
+        pce_declines: (0, 0),
+    });
+}
+
 /// GOLDEN_REBASE G1.4b — the two `MakeBusList` decks of coordinator decision
 /// **D9**, pinned against the distances BOTH oracle channels measure.
 ///

@@ -3330,24 +3330,27 @@ row against the pre-fix lock.
   (`no_r4133_gated_case_reduces_by_merging`), eight re-pointed citations and two corrected populations.
   Recorded: the oracles' `[0.0]` no-circuit sentinel (documented at the accessor; the port keeps `[]`) and
   the third per-(case, channel, step) `all_bus_voltages()` rebuild (pre-existing pattern → G1.4d).
-- **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**) — the bus
-  **at-bus lists** (`Bus.AllPCEatBus`/`AllPDEatBus`) live on both channels on G1.4a's per-bus walk: no new
-  flag, no force rule, no lock cell (regenerated, empty diff), no golden byte, **0** ledger rows (55, every
-  entry still hit). The port answers **S4**, neither oracle's criterion, through
-  `ElemKind::is_power_delivery`/`is_power_conversion` (r4133 `Common/Circuit.pas:1513`/`:1559`) and
-  `Dss::all_bus_elements` → `BusElementsView`/`BusAttachment` — one walk publishing the answer AND the raw
-  terminal facts over which `harness::compare_bus_at_bus` replays each channel's own walk
-  (**D15**/**D16**/**D21**), behind four fail-on-stale populations: `PDE_TERMINAL3_DECLINES` **(279, 279)**
-  (r4133's name test misses every winding past the second, against its own header `Circuit.pas:1490-1492`),
-  `CAPI_NODEREF_DROPS` **(18, 147)** / `CAPI_NODEREF_ADDS` **(8, 11)** (capi answers from a `TermNodeRef`
-  that `ReProcessBusDefs` refreshes for enabled elements only, `:1746-1767`, `:2196-2202`) and
-  `PCE_AT_BUS_DECLINES` **(0, 0)**. **D26's premise that capi drops disabled elements is refuted by
-  measurement** (15 of 223 (disabled element, own bus) pairs ARE listed), which is what makes that channel an
-  equality and renames both populations for the mechanism that is true. Pins:
-  `the_makeposseq_xfmr_deck_reports_the_at_bus_lists_the_port_computes`,
-  `the_makeposseq_xfmr_at_bus_wires_are_each_channels_own_walk` and the three `the_at_bus_guard_*`, all in
-  `G1_4D_PINS`. Details: `TESTING.md` §"The bus at-bus surface", `tests/TOLERANCE_NOTES.md` §"Bus at-bus
-  lists", the plan's §G1.4 as-executed note, `to_opendss/` 69-71. Commits `62c616eb` (the two mode rows
-  `Pure` → `Impure`, own commit) + the surface commit (stamped by the commit step); both lanes
-  **7 892 / 0 / 5 ignored** over 79 binaries, corpus **526/526**, ledger **55** / 31 causes / 0 stale,
-  `lane_diff` **PASS** max |Δ| = 0.
+- **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**; commits
+  `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface) — the bus **at-bus
+  lists** (`Bus.AllPCEatBus`/`AllPDEatBus`) live on both channels on G1.4a's per-bus walk. The port
+  answers **S4**, neither oracle's criterion (r4133 `Common/Circuit.pas:1513`/`:1559`, capi
+  `:1746-1767`): `Dss::all_bus_elements` publishes the answer AND the raw terminal facts, over which
+  `harness::compare_bus_at_bus` replays each channel's own walk (**D15**/**D16**/**D21**) and COUNTS the
+  residue into four fail-on-stale populations — **(279, 279)** / **(18, 147)** / **(8, 11)** / **(0, 0)**.
+  D26's premise that capi drops disabled elements is refuted by measurement (15 of 223 (disabled element,
+  own bus) pairs ARE listed), which is what makes that channel an equality. **0** ledger rows (55 / 31),
+  no flag, no lock cell, no golden byte; pins in `G1_4D_PINS`, details in `TESTING.md` §"The bus at-bus
+  surface" and `to_opendss/` 69-71. Both lanes **7 892 / 0 / 5 ignored**, corpus **526/526**, `lane_diff`
+  **PASS** max |Δ| = 0.
+
+  **Audit settlement** (2026-09-06; 13 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted): the
+  comparator gained the one direction no channel assertion can state (`assert_port_at_bus_is_s4` — each
+  oracle's walk is a projection of the same facts, so a silently shortened port list vanished from both
+  sides of it; armed in a scratch copy it now reds 3/3 cases, where the same corruption left F4's full run
+  526/526 green), an offline drive for capi's node-less fallback arm (its reply re-measured on a fixture of
+  its own), one drive per remaining population direction, and D34's owner for `ORPHANED_GAPS.md` §1.20
+  (scheduled at the plan's §G5.2). Recorded: r4133's terminal-1/2 shunt filter and capi's terminal-window
+  arm (corpus exposure re-measured **0** for both), the deliberate order-insensitivity, the
+  prose-vs-constant check **D37(1)** defers to G1.11′, and two spec claims the landed code refutes.
+  Test-only change (no product file moved, so no `lane_diff` owed): both lanes **7 940 / 0 / 5 ignored**
+  over 79 binaries, corpus **526/526**, the four populations and the ledger (55 / 1567 hits) unmoved.
