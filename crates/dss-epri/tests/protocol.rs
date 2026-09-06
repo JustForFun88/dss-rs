@@ -1028,3 +1028,226 @@ fn init_overrides_the_os_editor_and_never_writes_it_back() {
          in Engine::new (key restored to {before:?})"
     );
 }
+
+// ---------------------------------------------------------------------------
+// D30 — the r4133 event-log capture reads in memory, not through a file
+// ---------------------------------------------------------------------------
+
+/// Decode `<CircuitName>_EXP_EventLog.CSV` exactly as the retired Oddie capture
+/// path in `capture.rs::capture_eventlog` did: strip a leading UTF-8 file BOM,
+/// then a per-line BOM and the CR, and drop blank lines. Kept here (and only
+/// here) so the deleted decode stays available as the *reference* the in-memory
+/// read is measured against.
+fn decode_exported_event_log(path: &std::path::Path) -> Vec<String> {
+    let bytes = std::fs::read(path)
+        .unwrap_or_else(|e| panic!("`export eventlog` file {} unreadable: {e}", path.display()));
+    let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
+    let text = String::from_utf8_lossy(body);
+    text.split('\n')
+        .map(|raw| {
+            raw.trim_start_matches('\u{FEFF}')
+                .trim_end_matches(['\r', '\n'])
+        })
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// D30 (class A): **the event log the r4133 transport reports must be the
+/// in-memory `Solution.EventLog`, and it must equal what `export eventlog`
+/// writes.**
+///
+/// `capture.rs::capture_eventlog` used to issue `export eventlog` and read the
+/// CSV back. That command is a *write*: r4133 `Common/ExportResults.pas:3527-3532`
+/// (`ExportEventLog` = `EventStrings[ActiveActor].SaveToFile`) drops
+/// `<CircuitName>_EXP_EventLog.CSV` (`Executive/ExportOptions.pas:365`) into
+/// `OutputDirectory` — a file neither the capi transport (`ckt.Solution.EventLog`,
+/// dss_capi 0.14.5 `src/CAPI/CAPI_Solution.pas:525-540`) nor the port ever
+/// creates, so G1.10a's created-file-set comparison reddened on **59** (case,
+/// channel) pairs that were purely our own capture's artifact. The fix is to read
+/// the same list both other producers read: `SolutionV(0)`
+/// (`Version8/Source/DDLL/DSolution.pas:518`, `:526-541`), i.e.
+/// [`dss_epri::dss::Engine::eventlog`], blank-filtered.
+///
+/// The equivalence was measured corpus-wide before the switch — the export path
+/// and the in-memory read compared line-for-line inside `capture_eventlog` over a
+/// full 526-case gate drive (83 cases with `evlog=1`): **0 mismatches**. This test
+/// is that assertion, promoted to a deck that actually logs events: [`DECK`]
+/// applies `Fault.f` at t=0.2 s and blows `Fuse.fz` at t=0.4 s, so the log is
+/// non-empty and the comparison cannot pass vacuously.
+///
+/// The export runs **here only**, in a scratch directory the test removes, so the
+/// gate's own r4133 runs no longer write it.
+#[test]
+fn the_in_memory_event_log_equals_the_exported_file() {
+    let scratch = std::env::temp_dir().join(format!(
+        "dss-rs-g110a-evlog-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&scratch).expect("create scratch dir");
+
+    let mut w = WorkerProc::spawn();
+    w.ok(json!({"cmd": "chdir", "dir": scratch.to_string_lossy()}));
+    w.exec("clear");
+    for c in DECK {
+        w.exec(c);
+    }
+    // Five duty steps: fault applied at t=0.2 s, fuse blown at t=0.4 s.
+    for _ in 0..5 {
+        w.exec("solve");
+    }
+
+    // The capture's read: `SolutionV(0)`, blank lines dropped.
+    let in_memory: Vec<String> = w
+        .read("eventlog")
+        .as_array()
+        .expect("eventlog is an array")
+        .iter()
+        .map(|l| l.as_str().expect("eventlog line is a string").to_string())
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+
+    // The retired path, run once, here.
+    let reply = w.exec("export eventlog")["reply"]
+        .as_str()
+        .expect("`export eventlog` reply is a string")
+        .trim()
+        .trim_start_matches('\u{FEFF}')
+        .to_string();
+    w.quit();
+
+    let exported_path = std::path::PathBuf::from(&reply);
+    let existed = exported_path.is_file();
+    let from_file = if existed {
+        decode_exported_event_log(&exported_path)
+    } else {
+        Vec::new()
+    };
+
+    // Clean up before asserting: the file the export wrote (wherever
+    // `OutputDirectory` put it) and the scratch directory.
+    if existed {
+        let _ = std::fs::remove_file(&exported_path);
+    }
+    let swept = std::fs::remove_dir_all(&scratch);
+
+    assert!(
+        existed,
+        "`export eventlog` reported {reply:?}, which is not a file — the decode \
+         reference below would be vacuous"
+    );
+    assert!(
+        exported_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.to_ascii_lowercase().ends_with("_exp_eventlog.csv")),
+        "`export eventlog` wrote {reply:?}, not <CircuitName>_EXP_EventLog.CSV \
+         (ExportOptions.pas:365) — the file this capture must not create has \
+         been renamed upstream"
+    );
+    assert!(
+        in_memory.len() >= 2,
+        "the deck logged {} event line(s) — the fault/fuse events are missing, \
+         so the equality below proves nothing: {in_memory:?}",
+        in_memory.len()
+    );
+    assert!(
+        in_memory[0].starts_with("Hour=0, Sec=0.2,") && in_memory[0].contains("Fault.f"),
+        "event-log format drifted: {in_memory:?}"
+    );
+    assert!(
+        in_memory.iter().any(|l| l.contains("BLOWN")),
+        "fuse blow missing from the in-memory event log: {in_memory:?}"
+    );
+    assert_eq!(
+        in_memory, from_file,
+        "the in-memory `Solution.EventLog` (SolutionV(0)) and the CSV \
+         `export eventlog` wrote disagree — `capture.rs::capture_eventlog` may \
+         not read in memory (D30 class A), because the two are no longer the \
+         same list"
+    );
+    swept.expect("remove the scratch dir");
+}
+
+/// D30 (class A), the behavioural half: **a `run` that captures the event log
+/// must create no file.**
+///
+/// The equivalence above is why reading in memory is *allowed*; this is why it
+/// is *required*. The gate's r4133 transport used to leave
+/// `<CircuitName>_EXP_EventLog.CSV` in the case directory on every
+/// event-logging case, which is invisible to every model comparison and shows up
+/// only in G1.10a's created-file SET — where it reddened 59 (case, channel)
+/// pairs against a capi channel and a port that never write it. So this drives
+/// the real capture path (`capture::run_case` with `eventlog: true`) over
+/// [`DECK`] and asserts, from the run's own `run_files` report, that the set is
+/// empty: the same `CorpusGuard` pass that sweeps the case dir also classifies
+/// what the run created, so nothing can be missed by looking in the wrong place.
+/// The event log is asserted non-empty in the same reply, so an empty file set
+/// cannot come from a capture that did nothing.
+#[test]
+fn the_event_log_capture_creates_no_file() {
+    let scratch = std::env::temp_dir().join(format!(
+        "dss-rs-g110a-evrun-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&scratch).expect("create scratch dir");
+    let deck = scratch.join("evlog_case.dss");
+    std::fs::write(&deck, format!("{}\n", DECK.join("\n"))).expect("write deck");
+
+    let mut w = WorkerProc::spawn();
+    let result = w.ok(json!({
+        "cmd": "run",
+        "case_path": deck.to_string_lossy(),
+        "n_steps": 5,
+        "eventlog": true,
+        "run_files": true,
+    }));
+    w.quit();
+
+    let created: Vec<String> = result["run_files"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|n| n.as_str().unwrap_or_default().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let log: Vec<String> = result["checkpoints"]
+        .as_array()
+        .and_then(|cps| cps.last())
+        .and_then(|cp| cp["eventlog"].as_array())
+        .map(|a| {
+            a.iter()
+                .map(|l| l.as_str().unwrap_or_default().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let swept = std::fs::remove_dir_all(&scratch);
+
+    assert!(
+        !log.is_empty(),
+        "the run captured no event log, so an empty created-file set proves \
+         nothing: {result}"
+    );
+    assert!(
+        log.iter().any(|l| l.contains("BLOWN")),
+        "the fuse never blew, so the capture is not exercising a real log: {log:?}"
+    );
+    assert_eq!(
+        created,
+        Vec::<String>::new(),
+        "an event-log capture created {created:?} — `capture_eventlog` is issuing \
+         `export eventlog` again (r4133 `Common/ExportResults.pas:3527-3532`), a \
+         file neither the capi channel nor the port writes (D30 class A)"
+    );
+    swept.expect("remove the scratch dir");
+}
