@@ -105,11 +105,11 @@ pub(crate) struct SolvableCase {
     /// `_columns`; r4133 transport `DDLL/DCktElement.pas` `CktElementV`).
     ///
     /// **Live since G1.3a** (`wired: true` in [`G1_SURFACE_FLAGS`]): the flag
-    /// today carries `Enabled` + `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`
-    /// (`DDLL/DCktElement.pas:1058`/`:1082`/`:827`). G1.3b adds the symmetrical
-    /// components and G1.3c `TotalPowers`; both extend this same flag rather
-    /// than adding their own, so a case that opts in now gains those channels
-    /// with them.
+    /// today carries all **thirteen** fields — `Enabled` + the three polar
+    /// channels (G1.3a, `DDLL/DCktElement.pas:1058`/`:1082`/`:827`), the three
+    /// symmetrical components (G1.3b) and, since G1.3c (2026-09-06), the two
+    /// `CplxSeq*` plus `TotalPowers`; every sub-step extended this same flag, so
+    /// a case that opts in now gains all of them at once.
     #[serde(default)]
     pub(crate) compare_derived: bool,
     /// G1.3d: the per-element **discrete extras** — `PhaseLosses`, `NodeOrder`,

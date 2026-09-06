@@ -17,6 +17,7 @@ mod compat_quirks;
 mod controls;
 mod derived_polar;
 mod derived_seq;
+mod derived_totals;
 mod distribute_uuids;
 mod dynamics;
 mod element_extras;

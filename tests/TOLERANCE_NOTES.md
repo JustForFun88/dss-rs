@@ -967,6 +967,138 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
      `phase_losses` sub-channel, again by measurement; a ledger envelope there is
      evaluated with this same band, so no scope can admit more than the floor
      plus its own pinned envelope.
+- **§G1.3c — the complex sequence pair and `TotalPowers`**
+  (`harness::compare_element_cplx_seq` / `harness::compare_element_total_powers`,
+  `GOLDEN_REBASE_PLAN.md` WP-G1 G1.3c): **no new tolerance class, no new constant,
+  no coefficient moved and no band widened.** Both floors are images of floors the
+  gate already applies — one of them is literally the same number §G1.3b derived.
+
+  1. **`CplxSeqCurrents`/`CplxSeqVoltages`: `harness::seq_band`, applied to the
+     complex difference.** Modes `13`/`14` (r4133 `DDLL/DCktElement.pas:885-928`,
+     `:931-975`) call the very `CalcSeqVoltages`/`CalcSeqCurrents` helpers
+     (`:84-122`, `:30-80`) that modes `7`/`8` call and simply skip the `Cabs`;
+     capi likewise (`Alt_CE_Get_ComplexSeqVoltages`/`…Currents`,
+     `CAPI/CAPI_Alt.pas:872-895`/`:898-925`, over `:294-338`/`:236-290`). So the
+     quantity is the one §G1.3b already bands, and §G1.3b derivation 1 is a bound
+     on the **complex** difference in the first place:
+
+         |ΔX012_k| ≤ (1/3)·Σ_j |ΔXph_j| ≤ x_abs + x_rel·mean_j |Xph_j|
+                    (+ SEQ_C012·max_j |Xph_j| on the r4133 three-phase arm)
+
+     `compare_element_seq` spends that bound on *magnitudes* through the weaker
+     `||a| − |b|| ≤ |a − b|`; `compare_element_cplx_seq` spends it directly. The
+     compare therefore gets **strictly stronger** — it sees the angle, which the
+     magnitude channel is structurally blind to — while the number is unchanged.
+     The bound is **attained**, not padded: the aligned phase perturbation
+     `ΔXph_j = conj(Ap2s[k][j])/|Ap2s[k][j]| · (x_abs + x_rel|Xph_j|)` moves the
+     component by exactly the band, on every row
+     (`harness::cplx_seq_and_total_power_floors::the_cplx_seq_band_is_the_complex_image_of_the_phase_bands`,
+     with the rejection leg
+     `…::a_phase_error_outside_the_disc_leaves_the_cplx_seq_band`). The pair that
+     shows what the strengthening buys: a **pure phase rotation** of the port's
+     012 currents reds this comparator and leaves `compare_element_seq` green
+     (`…::a_pure_phase_rotation_reds_the_complex_compare`,
+     `…::a_pure_phase_rotation_leaves_the_magnitude_compare_green`).
+
+     The r4133 truncated-matrix term (§G1.3b derivation 2) applies **verbatim**:
+     the same `(channel, arm)` key, the same `SEQ_C012`, added last — pinned
+     bit-exactly as `band_r4133 == band_capi + SEQ_C012·max_j|Xph_j|`
+     (`…::the_r4133_channel_carries_the_truncated_matrix_term_here_too`).
+     §G1.3b's other two channel-specific facts do **not** reach this surface, and
+     that was measured rather than assumed: the n/A sentinel is `(-1, 0)` on
+     **both** engines here (r4133 `DCktElement.pas:60`/`:106`, capi
+     `CAPI_Alt.pas:268`/`:324` — the FPC `ucomplex` real assignment `i012[i] := -1`
+     is the same complex value; cross-channel max `|Δ| = 0.0` over `upfc_dual`'s
+     not-available elements), so there is **no** `na_seq_power` twin and no fold at
+     all; and r4133's mode-`9` positive-sequence slot defect (D-b1) is confined to
+     that mode's inlined copy — the shared helper's `iV := 2` / `Inc(iV, 3)`
+     (`:50`/`:55`) indexes a *1-based* buffer, i.e. 0-based slot 1, exactly as
+     capi's (`CAPI_Alt.pas:255`/`:261`). Coordinator decision **D10** does not
+     apply either: this is a rectangular / modulus compare like
+     `assert_complex_close_c`, not a polar one, so no angle band is derived and
+     `polar_angle_band` is never consulted.
+
+     One further tightening comes for free: the per-terminal `(bv, bi)` walk now
+     lives once, in `harness::seq_terminal_bands`, used by `compare_element_seq`,
+     `compare_element_cplx_seq` **and** the ledger's `envelope_element`. A ledger
+     envelope can no longer be evaluated at a different number than the compare it
+     bounds; the extraction is byte-faithful and pinned against a literal
+     transcription of both former inline copies
+     (`…::seq_terminal_bands_reproduces_the_two_inline_copies`).
+
+  2. **`TotalPowers` = `assert_power_close`'s per-conductor floor, summed over one
+     terminal.** Both engines form
+     `TotalPowers[j] = 0.001·Σ_(i<nconds) V_k·conj(I_k)` at `k = j·nconds + i`
+     (r4133 `DDLL/DCktElement.pas:1123-1134`, capi `CAPI/CAPI_Alt.pas:1128-1139`)
+     — the very per-conductor products the `powers` channel bands one at a time —
+     so the admitted error of the sum is the sum of the admitted errors:
+
+         allowed_kVA(j) = Σ_(i<nconds) ( i_abs·max(1, |V_k|) + i_rel·|S_k| ),
+         |V_k| = |P_kW[k]| / |I_A[k]|   (assert_power_close's own recovery)
+
+     — `harness::total_power_band`. It is the identical construction
+     `compare_element_channels` already uses for `Get_Losses` (`losses = Σ_k S_k`
+     over **all** conductors) and `harness::phase_loss_band` uses for one phase's
+     conductors (§G1.3d(ii) derivation 1), here restricted to one terminal's. The
+     per-terminal bands are a **partition** of the whole-element `Get_Losses` band,
+     hence each is strictly tighter than it: measured on the module's
+     `three_phase_pair` fixture the two terminals get `0.000637` and
+     `0.0006363629999999999` kW, summing to the `Get_Losses` band exactly
+     (`…::the_total_power_band_is_the_conductor_sum_of_the_power_floor`, with the
+     0.5-band acceptance and 1.5-band rejection legs beside it — the
+     `phase_loss_bands` protocol, chosen for the same reason: a terminal total is a
+     near-cancellation of large conductor summands, so a *relative* mutation would
+     prove nothing).
+
+     **No `Tolerances` field is read or written that was not already**: the two
+     arguments are the existing `i_rel`/`i_abs` power policy, and the per-conductor
+     expression itself was factored out of `phase_loss_band` into the private
+     `harness::power_slot_band` **byte-faithfully**, so the two summations cannot
+     drift apart and no floor moved in the extraction. **Nothing is scaled at the
+     comparator** either: unlike `PhaseLosses`' `0.001`, `TotalPowers`' scaling is
+     applied once per terminal *inside* each engine's own arm, and the port
+     accumulates the unscaled W/var and scales the same way — both sides are
+     kW/kvar.
+
+  3. **Measured.** Cross-channel (capi_v0145 vs r4133 on the same `run` request,
+     the §G1.3b protocol), `controls/fuse/midi_fuse.dss`: worst `total_powers` gap
+     `9.843758253287048e-10` kVA (`Vsource.source` terminal 0, `1.40e-13`
+     relative), `cplx_seq_currents` `2.778440254525979e-07` A (`Load.ld17` slot 2),
+     `cplx_seq_voltages` `3.066366249451371e-05` V (`Transformer.sub` slot 2);
+     `controls/upfc/upfc_dual.dss`: `total_powers` `5.763007892181009e-11` kVA and
+     both `cplx_seq_*` maxima exactly `0.0`. The two complex figures are the same
+     magnitudes §G1.3b measured for the *moduli* of the same quantities
+     (`3.006929182447493e-05` V on `seq_v`) — the expected answer for one transform
+     read twice — and they sit under the bands those moduli are already judged at.
+     The port's own scaling-order residual `|Σ_j total_powers[j] − Σ_k powers[k]|`
+     is at worst `3.595093471822542e-13` kVA over IEEE13's elements (the oracle's
+     own two forms differ by `5.084229945850415e-13` kVA), ten orders under the
+     band — which is why the loop-for-loop scaling order is fidelity rather than a
+     gate. The per-entry live headroom over the gated population is recorded in the
+     widened ledger entries' own `measured.g13c_*` fields.
+
+  4. **Where a band is deliberately not consulted at all.** `TotalPowers` joins
+     `LANE_SKIP_ELEM_POWERS` on the two `newton*` decks, in **both** lanes, for the
+     same stale-`Iterminal` reason as `Powers`/`Losses`/`PhaseLosses`
+     (`GetPhasePower` opens with the cache-aware `ComputeIterminal`, r4133
+     `Common/CktElement.pas:1049`); that is a lane exclusion, not a floor, and it
+     was measured first — by the **live gate, on both channels**, with the bit
+     forced on (G1.3c F5, 2026-09-06; step 0, `Vsource.source` terminal 0):
+     `modes/newton/newton.dss` |d| `4.5155082046702575e-4` kVA > allowed
+     `2.2953166227444328e-5` on capi, `4.5155081076231536e-4` >
+     `2.2953166227444412e-5` on r4133; `modes/newton/newton_feeder.dss` |d|
+     `5.213217790400988e-3` > `2.1128110294679937e-4` on capi,
+     `5.213217533932785e-3` > `2.1128110294680455e-4` on r4133 — ~20x the band on
+     every channel, the band itself being `total_power_band`, untouched. Read one
+     solve earlier (after `compile` alone; the gate solves once more,
+     `tools/oracle/oracle_server.py:612-632`) the same capi channel is
+     `0.6831564014868734`/`2.1850404626011652` kVA off a freshly-recomputed
+     terminal sum, against `0.53`/`0.75` kVA of per-conductor `Powers` staleness
+     there, so summing a terminal grows the gap rather than cancelling it. The two `CplxSeq*` do **not** join it (they reach `GetCurrents`
+     into a scratch buffer, never the cache-aware path), so those decks gain two
+     more oracle-compared channels. The exclusion's expected-value pin is
+     `dss_core::exec::tests::newton::newton_total_powers_match_the_normal_algorithm`
+     (the port's own Newton-vs-normal gap: `3.320142298909114e-11` kVA).
 - **Dynamics fixpoint residuals** (`dSpeed`/`dTheta`/`speed`) are pinned against
   the oracle's actual (small, non-zero) value, not `≈0`: `dSpeed = (Pshaft +
   electrical_power)/Mmass` is a ~1.5e-8-rel residual the oracle reproduces; a value
@@ -1242,7 +1374,7 @@ pinned oracle, an artifact, not an engine gap.
 
 ## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
 
-`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:9420`)
+`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:11196`)
 compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
 and takes no `Tolerances` argument at all. That is a derivation, not an
 optimism: on every gated case today each compared value is one of
@@ -1262,7 +1394,7 @@ optimism: on every gated case today each compared value is one of
 rounding to absorb and any difference at all is a bug, not a floor. The one
 divergence the corpus does measure is not numeric drift but an uninitialized read
 in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
-(`crates/dss-core/tests/harness/mod.rs:9234`) and pinned — an envelope over a
+(`crates/dss-core/tests/harness/mod.rs:11010`) and pinned — an envelope over a
 value that changes every process would not be a fact. See TESTING.md
 §"The `PDElements` walk".
 
@@ -2524,12 +2656,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:8011`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:9787`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, each row's gap measured as `display_rel` (`props_norm.rs:783-792`) | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1135-1144` and `:1152-1161` (`i_rel`/`i_abs`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1208-1217` and `:1225-1234` (`i_rel`/`i_abs`) | unchanged |
 | the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1279-1288` and `:1268-1277` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:6905` (asserted as `i_abs / floor`) | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:8681` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and

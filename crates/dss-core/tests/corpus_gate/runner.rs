@@ -17,10 +17,11 @@ use crate::engines::{CaseResult, Channel, Oracle};
 use crate::harness::{
     self, ExportPolicy, RelCalcOutcome, RowPolicy, Tolerances, capture_guard,
     compare_all_properties, compare_ctrlqueue, compare_discrete, compare_element_channels,
-    compare_element_derived, compare_element_extras, compare_element_phase_losses,
-    compare_element_seq, compare_eventlog, compare_export, compare_fingerprint, compare_injection,
-    compare_meter, compare_monitor, compare_pd_elements, compare_probe, compare_reliability,
-    compare_system_y, compare_variables, compare_yprim, lane, tol_for,
+    compare_element_cplx_seq, compare_element_derived, compare_element_extras,
+    compare_element_phase_losses, compare_element_seq, compare_element_total_powers,
+    compare_eventlog, compare_export, compare_fingerprint, compare_injection, compare_meter,
+    compare_monitor, compare_pd_elements, compare_probe, compare_reliability, compare_system_y,
+    compare_variables, compare_yprim, lane, tol_for,
 };
 use crate::manifest::{EngineChannel, SolvableCase};
 
@@ -680,6 +681,49 @@ pub(crate) fn compare_capture(
                 cp.elements.iter().filter(|e| !e.seq_i.is_empty()).count(),
                 &ctx,
             );
+            // G1.3c's two, for the same reason: `compare_element_total_powers`
+            // and `compare_element_cplx_seq` read capture fields disjoint from
+            // each other and from the two rails above, so a channel that
+            // honoured the request for the polar and magnitude arrays but not
+            // for `TotalPowers` (a group-**A** read, issued at the head of the
+            // element) or not for the complex pair must fail the case rather
+            // than compare nothing — with its own sentence, never a shared one.
+            // Both arrays are empty on a disabled element (the capture skips
+            // those) and on a 0-terminal one, so each rail counts the elements
+            // whose array is NON-empty; every live circuit has at least one (the
+            // `Vsource`).
+            capture_guard::require_capture(
+                "compare_derived (TotalPowers)",
+                channel_tag(channel),
+                cp.elements.iter().filter(|e| !e.tp_kw.is_empty()).count(),
+                &ctx,
+            );
+            capture_guard::require_capture(
+                "compare_derived (CplxSeqCurrents)",
+                channel_tag(channel),
+                cp.elements
+                    .iter()
+                    .filter(|e| !e.cseq_i_re.is_empty())
+                    .count(),
+                &ctx,
+            );
+            // The voltage half gets its own rail too (G1.3c audit settlement,
+            // 2026-09-06): it is the one capture field of this surface that no
+            // other rail counts, and it is the half whose guards differ between
+            // the channels (capi's `CplxSeqVoltages` alone tests
+            // `NodeRef = NIL`, `CAPI/CAPI_Alt.pas:878`, where r4133 mode `13`
+            // tests only `Enabled`), so a transport that dropped exactly this
+            // key would otherwise reach the comparator's length assert rather
+            // than a sentence naming the field that went missing.
+            capture_guard::require_capture(
+                "compare_derived (CplxSeqVoltages)",
+                channel_tag(channel),
+                cp.elements
+                    .iter()
+                    .filter(|e| !e.cseq_v_re.is_empty())
+                    .count(),
+                &ctx,
+            );
             // The channel travels with the capture for one reason only: the
             // `SeqPowers` "not available" sentinel is spelled per channel and is
             // folded per channel (`harness::na_seq_power`, G1.3b D-b2), and the
@@ -708,6 +752,16 @@ pub(crate) fn compare_capture(
                 {
                     harness::record_seq_arm(arm, seq_channel);
                 }
+                // G1.3c, beside — never instead of — the three above, on the
+                // same possibly-rewritten cap: the un-`Cabs`'d complex pair
+                // (r4133 `DDLL/DCktElement.pas:931-975`/`:885-928`, capi
+                // `CAPI/CAPI_Alt.pas:898-925`/`:872-895`), which needs the
+                // channel for the r4133-only truncated-matrix band term and for
+                // its measured 0-terminal shapes, and the per-terminal
+                // `TotalPowers` sums (`:1109-1139` / `:1108-1141`), which need
+                // neither. Neither records a census (coordinator decision D24).
+                compare_element_cplx_seq(&snaps, cap, tol, &ctx, seq_channel, channels);
+                compare_element_total_powers(&snaps, cap, tol, &ctx, channels);
             }
         }
 
@@ -727,7 +781,7 @@ pub(crate) fn compare_capture(
         //
         // Fed from the same `el_rewrites`-or-raw caps as the two loops above so
         // the block keeps their shape, which costs nothing and hides nothing: a
-        // ledger rewrite is a full `clone_element_cap` (`ledger.rs:1695-1697`,
+        // ledger rewrite is a full `clone_element_cap` (`ledger.rs:2292-2294`,
         // `ec.clone()`) with only its six named value channels overwritten
         // (`rewrite_element_selected`, `:1702`), so the five extras fields it
         // hands back are always the untouched oracle ones.

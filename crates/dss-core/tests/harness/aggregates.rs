@@ -688,7 +688,7 @@ mod tests {
             p_kw: p_kw.to_vec(),
             p_kvar: p_kvar.to_vec(),
             loss_w: vec![loss.0, loss.1],
-            // The G1.3a derived channels are not part of this fixture: it
+            // The G1.3a-G1.3c derived channels are not part of this fixture: it
             // exercises `compare_aggregates`, which never reads them. Spelled
             // out rather than defaulted so a future channel has to be
             // considered here too.
@@ -722,6 +722,12 @@ mod tests {
             seq_v: Vec::new(),
             seq_p_kw: Vec::new(),
             seq_p_kvar: Vec::new(),
+            cseq_i_re: Vec::new(),
+            cseq_i_im: Vec::new(),
+            cseq_v_re: Vec::new(),
+            cseq_v_im: Vec::new(),
+            tp_kw: Vec::new(),
+            tp_kvar: Vec::new(),
         }
     }
 
@@ -756,7 +762,7 @@ mod tests {
                 p_kw: s.powers.iter().map(|c| c.re).collect(),
                 p_kvar: s.powers.iter().map(|c| c.im).collect(),
                 loss_w: vec![s.loss_w.0, s.loss_w.1],
-                // The G1.3a derived channels are not part of this fixture: it
+                // The G1.3a-G1.3c derived channels are not part of this fixture: it
                 // exercises `compare_aggregates`, which never reads them. Spelled
                 // out rather than defaulted so a future channel has to be
                 // considered here too.
@@ -790,6 +796,12 @@ mod tests {
                 seq_v: Vec::new(),
                 seq_p_kw: Vec::new(),
                 seq_p_kvar: Vec::new(),
+                cseq_i_re: Vec::new(),
+                cseq_i_im: Vec::new(),
+                cseq_v_re: Vec::new(),
+                cseq_v_im: Vec::new(),
+                tp_kw: Vec::new(),
+                tp_kvar: Vec::new(),
             })
             .collect();
         let losses = dss.losses();
@@ -851,7 +863,7 @@ mod tests {
             p_kw: src.p_kw.clone(),
             p_kvar: src.p_kvar.clone(),
             loss_w: src.loss_w.clone(),
-            // The G1.3a derived channels are not part of this fixture: it
+            // The G1.3a-G1.3c derived channels are not part of this fixture: it
             // exercises `compare_aggregates`, which never reads them. Spelled
             // out rather than defaulted so a future channel has to be
             // considered here too.
@@ -885,6 +897,12 @@ mod tests {
             seq_v: Vec::new(),
             seq_p_kw: Vec::new(),
             seq_p_kvar: Vec::new(),
+            cseq_i_re: Vec::new(),
+            cseq_i_im: Vec::new(),
+            cseq_v_re: Vec::new(),
+            cseq_v_im: Vec::new(),
+            tp_kw: Vec::new(),
+            tp_kvar: Vec::new(),
         };
         for v in &mut rewritten.i_re {
             *v += 1.0;

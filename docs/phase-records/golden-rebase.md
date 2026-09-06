@@ -3442,3 +3442,55 @@ row against the pre-fix lock.
   **PASS** with max |Δ| = 0 on all eight kinds.
 
   merge: lane lane-b -> update, see git log
+
+- **G1.3c** (2026-09-06, lane `lane-e`; D4/D7/D24) — per-element `CplxSeqCurrents`, `CplxSeqVoltages`
+  and `TotalPowers` on both channels over the same 442 `compare_derived` cases, closing the flag at
+  thirteen fields; **0 new ledger entries / 0 causes**, **31** measured widenings on 11 `element`
+  scopes on the lane (**25** on **9** at the landing — D12/D14 had deleted two of them; ledger
+  **56** / 32), 0 golden bytes, no band moved, `WP_G1_MODES` unchanged (**111** on `update`). Neither G1.3b divergence
+  reaches here (measured): the n/A sentinel is `(-1, 0)` on both engines (r4133
+  `DDLL/DCktElement.pas:60`/`:106`, capi `CAPI/CAPI_Alt.pas:268`/`:324`) and D-b1's posseq defect
+  lives only in mode 9 — no fold, no census (D24). `TotalPowers` joins `LANE_SKIP_ELEM_POWERS` as its
+  fourth channel on the two `newton*` decks (`GetPhasePower` opens with `ComputeIterminal`, r4133
+  `Common/CktElement.pas:1049`; ~20x the band on both channels); the `CplxSeq*` pair stays compared,
+  stronger than fastdss. Detail: plan §G1.3c, TESTING.md, TOLERANCE_NOTES §G1.3c; **55** pins — 7
+  `exec::tests::derived_totals` + 1 `exec::tests::newton`, 33 `harness::cplx_seq_and_total_power_floors`,
+  13 `ledger::*`, 1 `capture_order::*`. `548bc7b8` / `a15e2ae3` + docs; gate **7 319 / 0 / 5** per lane
+  after the settlement (**7 318** at `548bc7b8`), `lane_diff` PASS max |Δ| = 0 (523 cases / 3 220 861).
+- **G1.3c audit settlement** (2026-09-06, `a15e2ae3`) — 11 findings: **7 fixed / 4 recorded / 0
+  refuted**. Fixed: the missing registry `every_pin_the_g13c_record_names_exists_and_is_cited`
+  (55 pins, both group counts — the one **major**); a fourth `require_capture` rail on `cseq_v_re`
+  (`runner.rs:718`) driven empty on **both** channels, plus the r4133 leg of the `CplxSeqCurrents`
+  rail; ~20 Pascal anchors re-pointed at the construct they name (copy loops `:906-910`/`:952-956`
+  vs capi's copy-free `ResultPtr` writes, `setlength` `:900`/`:946`/`:1118`, `GetPhasePower` `:1120`,
+  `cmulreal` `:1132`, guards `:878`/`:906`); the ledger's G1.3c date. Recorded: `dead_channels`
+  polices `divergence` entries only (**114** `element` sub-channel names at the landing, 103 on exclusions — noted in
+  `ledger.rs`), the three `envelope_element` branches no divergence selects yet (fixture-covered;
+  inventing a row to make them live is the mask WP-G1 forbids), procedure ranges stopping 1-2 lines
+  short of the closing `end;`, and coordinator note "D28", absent in this lane. Carried out of range and closed at the
+  landing: the `file.rs:LINE` tripwire reads only TESTING.md / TOLERANCE_NOTES, so
+  `harness/mod.rs` and `runner.rs` still cited `ledger.rs:1695-1697` / `:1702` for
+  `clone_element_cap` / `rewrite_element_selected`; both were re-pointed at `:2292-2294` /
+  `:2301` on the merged tree.
+
+  Merged-tree checks (2026-09-06 landing into `update`): `fmt` + `clippy` clean in both lanes,
+  `oracle_parity_cfg_gate` **22/22** (the G1.3c registry beside G1.3b's, G1.4b's and G1.4c's, both
+  citation walkers), `capture_order` 25, `population_lock` 3 / `golden_lock` 4 with `tests/golden/**`
+  untouched, `corpus_gate` **526/526** cases in the default lane, ledger **56** entries / 1 571 hits /
+  **0** stale. Populations re-derived on the merged binary, none moved: sequence-arm census
+  `(297 867, 78, 4)` (D31's `posseq_r4133 == 4` holds), `DISTANCE_POPULATION` (867, 79 137), the four
+  seq/VLL populations (10, 129) / (4, 54) / (16, 196) / (2, 12), D15 (16, 135), D16 (8, 96), the
+  control census (298 536, 3 190, 18, 18). `population.lock.json` regenerated: **9** rows, `ledger=`
+  the only moved token. The union kept both sides whole — G1.3c's 31 widenings land as **25** on
+  **9** entries (D12/D14 had already deleted the two capi GIC entries it also widened; their r4133
+  twins carry the three sub-channels) and `makeposseq-cuf-applied-capi`'s three G1.3c samples were
+  **re-measured** here, one scoped drive per sub-channel, because D14 moved that deck's whole solve.
+  D31's exclusion widening stays `seq_powers`-only: modes 13/14 write the posseq value into the
+  correct slot on both engines (G1.3c F1), so `cplx_seq_*` keeps the banded-slot rule under **both**
+  ledger kinds — now driven that way by
+  `the_cplx_rewrite_and_the_cplx_envelope_cover_the_same_slots` and by the two `should_panic` rails.
+  The full five-command gate on the merged tree is green in BOTH lanes (**9 522 / 0 / 5 ignored** each,
+  `corpus_gate` 400 per lane) and `lane_diff` **PASS** with max |Δ| = 0 on all eight kinds (526 cases /
+  3 221 146 records).
+
+  merge: lane lane-e -> update, see git log
