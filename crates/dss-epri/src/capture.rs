@@ -184,6 +184,12 @@ struct Checkpoint {
     ctrlqueue: Vec<String>,
     buses: Vec<BusCap>,
     all_bus_vmag_pu: Vec<f64>,
+    /// G1.4b: `Circuit.AllBusDistances`, one `DistFromMeter` per bus in
+    /// `BusList` order; empty when the run did not request the bus surface.
+    all_bus_distances: Vec<f64>,
+    /// G1.4b: `Circuit.AllNodeDistances`, the owning bus's `DistFromMeter` per
+    /// node in the `AllNodeNames` permutation; same emptiness rule.
+    all_node_distances: Vec<f64>,
     all_properties: Vec<PropsCap>,
     global_result: String,
     aggregates: AggregatesCap,
@@ -539,11 +545,13 @@ struct VariablesCap {
 ///
 /// Parity target: fastdss' `IBus._columns` (`origin/fastdss` `dss/IBus.py:19-53`,
 /// reached through `save_state`'s `ActiveBus`, `tests/save_outputs.py:351`).
-/// The four surfaces below are the ones both gating channels compute with the
-/// identical algorithm; the bus quantities that diverge
-/// (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL` — the latter also hang this
-/// channel, `DBus.pas:575-583`) belong to G1.4c and are deliberately not read
-/// (coordinator decision D8).
+/// The first four surfaces below are the ones both gating channels compute
+/// with the identical algorithm. The four G1.4c arms after the short-circuit
+/// block — `SeqVoltages`/`CplxSeqVoltages` and `VLL`/`puVLL` — do NOT: the
+/// two channels split structurally on the bus's node set (this transport has
+/// no `Nvalues > 3` clamp on the sequence arms and its L-L pairing loop can
+/// hang, see [`BusCap::vll_declined`]), so the comparator recognizes each
+/// shape from the port's own node numbers rather than comparing sentinels.
 ///
 /// All three VOLTAGE arrays are `2 * nodes.len()` doubles in ONE order --
 /// **ascending node number** — and never the bus's internal insertion order:
@@ -560,6 +568,15 @@ struct BusCap {
     /// `BaseFactor = 1000 * kVBase` when positive, else `1.0`
     /// (`DBus.pas:413-414` == `CAPI_Alt.pas:2262-2265`).
     kv_base: f64,
+    /// `Bus.Distance` — `TDSSBus.DistFromMeter` in km, published verbatim
+    /// (`BUSF(5)`, `DBus.pas:122-128` == capi `CAPI_Bus.pas:419-427` ->
+    /// `CAPI_Alt.pas:2071-2074`). G1.4b.
+    ///
+    /// A zone-build output, not a solve output: `MakeMeterZoneLists` writes it
+    /// (`Meters/EnergyMeter.pas:1833-1838`), so a circuit with no EnergyMeter —
+    /// or a bus outside every meter's zone — reports the untouched `0.0`.
+    /// Neither channel has a "no meter" sentinel.
+    distance: f64,
     /// `Bus.Nodes` — node numbers, ascending (`BUSV(2)`, `DBus.pas:319-345`).
     nodes: Vec<i32>,
     /// `Bus.puVoltages` — `NodeV[GetRef]/BaseFactor`, interleaved `(re, im)`
@@ -596,6 +613,37 @@ struct BusCap {
     /// `BuildYMatrix` under `PreserveNodeVoltages` (`Ymatrix.pas:170`), so it
     /// is live on harmonics/dynamics decks too.
     voc: Vec<f64>,
+    /// `Bus.SeqVoltages` — the three `Cabs(V012[i])` magnitudes, ALWAYS 3
+    /// doubles: the arm publishes `SizeOf(double) * 3` unconditionally
+    /// (`BUSV(1)`, `DBus.pas:284-317`, `:315-316`). `-1.0` x3 whenever
+    /// `NumNodesThisBus <> 3` (`:296-297`) — and, unlike capi
+    /// (`CAPI_Alt.pas:2172-2186`), with NO `Nvalues > 3` clamp, so the two
+    /// channels split on a bus with more than three nodes.
+    seq_voltages: Vec<f64>,
+    /// `Bus.CplxSeqVoltages` — the same three components complex, 6 doubles
+    /// (`BUSV(10)`, `DBus.pas:520-547`), `cmplx(-1,-1)` x3 under the same
+    /// `Nvalues <> 3` test (`:531-532`) and the same missing clamp.
+    cplx_seq_voltages: Vec<f64>,
+    /// `Bus.VLL` — line-to-line voltages (`BUSV(11)`, `DBus.pas:549-601`):
+    /// 6 doubles (three pairs) on a bus with `>= 3` nodes, 2 doubles on any
+    /// other — one pair when it has exactly 2 (`Nvalues = 2 => 1`, `:563`), or
+    /// the `cmplx(-99999, 0)` marker of the `Nvalues <= 1` branch (`:594`).
+    /// EMPTY when [`Self::vll_declined`].
+    vll: Vec<f64>,
+    /// `Bus.puVLL` — the same pairs over `BaseFactor_LL = 1000*kVBase*sqrt3`,
+    /// or `1.0` when `kVBase <= 0` (`BUSV(12)`, `DBus.pas:603-657`, `:622-623`
+    /// == `CAPI_Alt.pas:2427-2430`). Same shape and same emptiness rule as
+    /// [`Self::vll`]: one guard decides both.
+    pu_vll: Vec<f64>,
+    /// THIS transport refused to compute `VLL`/`puVLL` for this bus: r4133's
+    /// pairing loop probes `jj` before wrapping it and would not terminate on
+    /// this node set ([`crate::modes::bus_vll_would_hang`],
+    /// `DBus.pas:580-584`), so neither mode was dispatched and both arrays
+    /// are empty. A hang yields no oracle value at all, which is why this is
+    /// a captured FACT the comparator asserts against its own replay of the
+    /// walk — never a silent gap. Always `false` on the capi transport, whose
+    /// second loop is the bounded `for k := 1 to 3` of `CAPI_Alt.pas:2500`.
+    vll_declined: bool,
 }
 
 /// What THIS transport publishes for `Bus.ZscMatrix`/`Bus.YscMatrix` — and for
@@ -847,10 +895,30 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 Vec::new()
             };
-            let (buses, all_bus_vmag_pu) = if req.buses {
+            let (buses, all_bus_vmag_pu, all_bus_distances, all_node_distances) = if req.buses {
                 let buses = capture_all_buses(engine, req.zsc)?;
                 let all_bus_vmag_pu = capture_all_bus_vmag_pu(engine)?;
+                // G1.4b: the two circuit-level views of the same
+                // `DistFromMeter` the per-bus walk above read one bus at a time.
+                let all_bus_distances = capture_all_bus_distances(engine)?;
+                let all_node_distances = capture_all_node_distances(engine)?;
                 let nodes: usize = buses.iter().map(|b| b.nodes.len()).sum();
+                if all_bus_distances.len() != buses.len() {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: AllBusDistances has {} values but the per-bus walk saw {} \
+                         buses (DCircuit.pas:574 sizes it NumBuses)",
+                        all_bus_distances.len(),
+                        buses.len()
+                    )));
+                }
+                if all_node_distances.len() != nodes {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: AllNodeDistances has {} values but the per-bus walk saw \
+                         {nodes} nodes over {} buses",
+                        all_node_distances.len(),
+                        buses.len()
+                    )));
+                }
                 if all_bus_vmag_pu.len() != nodes {
                     return Err(EngineError::Other(format!(
                         "bus capture: AllBusVmagPu has {} values but the per-bus walk saw {nodes} \
@@ -859,7 +927,12 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                         buses.len()
                     )));
                 }
-                (buses, all_bus_vmag_pu)
+                (
+                    buses,
+                    all_bus_vmag_pu,
+                    all_bus_distances,
+                    all_node_distances,
+                )
             } else if req.zsc {
                 // G1.5: the six SC arms ride the per-bus walk above, so asking
                 // for them without the bus surface would ship nothing at all.
@@ -872,7 +945,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                         .into(),
                 ));
             } else {
-                (Vec::new(), Vec::new())
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             };
             // Read LAST (after every other capture), like `oracle_server.run_case`:
             // the `? name.Like`/`? name.prop` sweep perturbs the active-element
@@ -920,6 +993,8 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 ctrlqueue,
                 buses,
                 all_bus_vmag_pu,
+                all_bus_distances,
+                all_node_distances,
                 all_properties,
                 global_result,
                 aggregates,
@@ -1851,7 +1926,8 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// r4133 half of the `compare_bus` capture, a field-for-field port of
 /// `oracle_server.capture_all_buses` over the typed mode accessors
 /// ([`crate::modes`] rows `Circuit.AllBusNames`, `Bus.Nodes`, `Bus.puVoltages`,
-/// `Bus.VMagAngle`, `Bus.puVMagAngle`; `Bus.kVBase` is `BUSF(0)`).
+/// `Bus.VMagAngle`, `Bus.puVMagAngle`, `Bus.SeqVoltages`,
+/// `Bus.CplxSeqVoltages`, `Bus.VLL`, `Bus.puVLL`; `Bus.kVBase` is `BUSF(0)`).
 ///
 /// Walked in `BusList` order, which `SetActiveBus`'s returned 0-based index
 /// (`DCircuit.pas:247-250`, `ActiveBusIndex - 1`) re-asserts per bus: a failed
@@ -1868,6 +1944,17 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// 0-node bus — 2 in the corpus — yields empty arrays and passes at `0 == 0`),
 /// and the node numbers must come back strictly ascending, which is what makes
 /// this capture comparable to the port's sorted view.
+///
+/// The four G1.4c arms (`SeqVoltages`, `CplxSeqVoltages`, `VLL`, `puVLL`) are
+/// read unconditionally, after the five voltage arms and before the
+/// conditional short-circuit block — group C as well (`DBus.pas:305`, `:536`,
+/// `:588`, `:644` read `Solution.NodeV` only). `VLL`/`puVLL` go through the
+/// state-dependent guard [`Engine::bus_vll_pair`], the crate's ONLY dispatcher
+/// of `BUSV(11)`/`BUSV(12)`: on a bus whose node set would spin the pairing
+/// loop forever it publishes empty arrays plus [`BusCap::vll_declined`]
+/// instead of hanging the worker. Their shapes are derived from the node
+/// count, not assumed: 3 and 6 doubles for the sequence arms, and 6 (three
+/// pairs) or 2 (one pair, or the `-99999` marker) for the L-L pair.
 ///
 /// `want_sc` (G1.5, request field `zsc`) appends the six short-circuit arms to
 /// THIS walk — never a second `SetActiveBus` pass — in the fixed order
@@ -1897,6 +1984,11 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
         }
         let nodes = engine.bus_nodes()?;
         let kv_base = engine.bus_kvbase();
+        // G1.4b, group C: `BUSF(5)` returns the stored `DistFromMeter` and
+        // touches nothing (`DBus.pas:122-128`). Read here, with the bus's other
+        // scalar attribute and ahead of the value arrays, so both transports
+        // share ONE per-bus read order (`oracle_server.py::capture_all_buses`).
+        let distance = engine.bus_distance()?;
         let pu_voltages = engine.bus_pu_voltages()?;
         let vmag_angle = engine.bus_vmag_angle()?;
         let pu_vmag_angle = engine.bus_pu_vmag_angle()?;
@@ -1917,6 +2009,56 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
                     v.len(),
                     nodes.len()
                 )));
+            }
+        }
+        // G1.4c, still group C (order-free): both sequence arms and the two
+        // L-L arms read `Solution.NodeV` plus the bus object only
+        // (`DBus.pas:305`, `:536`, `:588`, `:644`), with no `ComputeIterminal`
+        // and no `ActiveCktElement`. The order below is the CONTRACT between
+        // the two transports, asserted by the capture-order test.
+        let seq_voltages = engine.bus_seq_voltages()?;
+        let cplx_seq_voltages = engine.bus_cplx_seq_voltages()?;
+        // The ONLY dispatcher of `BUSV(11)`/`BUSV(12)` in this crate's capture
+        // path: it re-reads `Bus.Nodes` itself and refuses the pair whole when
+        // the pairing loop would not terminate.
+        let (vll, pu_vll, vll_declined) = match engine.bus_vll_pair()? {
+            Some((vll, pu_vll)) => (vll, pu_vll, false),
+            None => (Vec::new(), Vec::new(), true),
+        };
+        for (key, v, want) in [
+            ("seq_voltages", &seq_voltages, 3usize),
+            ("cplx_seq_voltages", &cplx_seq_voltages, 6),
+        ] {
+            if v.len() != want {
+                return Err(EngineError::Other(format!(
+                    "bus capture: {name}.{key} returned {} values, expected {want} \
+                     (DBus.pas:315-316 / :546-547 publish a fixed length)",
+                    v.len()
+                )));
+            }
+        }
+        if vll_declined {
+            // The `Nvalues <= 1` branch never enters a loop (`DBus.pas:594`,
+            // `:650`), so a refusal there would be the guard misfiring.
+            if nodes.len() < 2 {
+                return Err(EngineError::Other(format!(
+                    "bus capture: {name} has nodes {nodes:?} but the VLL guard \
+                     refused — DBus.pas:563/:594 cannot loop below 2 nodes"
+                )));
+            }
+        } else {
+            // `Nvalues > 3 => 3` then `= 2 => 1` (`:561-563`): three pairs on a
+            // bus with `>= 3` nodes, one complex on every other — either one
+            // L-L pair or the `-99999` marker.
+            let want = if nodes.len() >= 3 { 6 } else { 2 };
+            for (key, v) in [("vll", &vll), ("pu_vll", &pu_vll)] {
+                if v.len() != want {
+                    return Err(EngineError::Other(format!(
+                        "bus capture: {name}.{key} returned {} values, expected {want} \
+                         for nodes {nodes:?} (DBus.pas:561-563, :594)",
+                        v.len()
+                    )));
+                }
             }
         }
         let (zsc1, zsc0, zsc, ysc, isc, voc) = if want_sc {
@@ -1959,6 +2101,7 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
         out.push(BusCap {
             name: name.clone(),
             kv_base,
+            distance,
             nodes,
             pu_voltages,
             vmag_angle,
@@ -1969,6 +2112,11 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
             ysc,
             isc,
             voc,
+            seq_voltages,
+            cplx_seq_voltages,
+            vll,
+            pu_vll,
+            vll_declined,
         });
     }
     engine.assert_clean("buses")?;
@@ -1987,6 +2135,32 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
 fn capture_all_bus_vmag_pu(engine: &Engine) -> Result<Vec<f64>, EngineError> {
     let v = engine.circuit_all_bus_mag_pu()?;
     engine.assert_clean("all_bus_vmag_pu")?;
+    Ok(v)
+}
+
+/// `Circuit.AllBusDistances` — each bus's `DistFromMeter` (km) in `BusList`
+/// order (`CircuitV(12)`, `DCircuit.pas:566-580` == `CAPI_Circuit.pas:671-688`,
+/// whose comment reads *"in an array that aligns with the buslist"*).
+/// GOLDEN_REBASE_PLAN.md WP-G1 G1.4b.
+///
+/// Length = `NumBuses`, checked by the caller against the per-bus walk, so this
+/// array and [`capture_all_buses`]' per-bus `distance` cannot drift apart
+/// silently.
+fn capture_all_bus_distances(engine: &Engine) -> Result<Vec<f64>, EngineError> {
+    let v = engine.circuit_all_bus_distances()?;
+    engine.assert_clean("all_bus_distances")?;
+    Ok(v)
+}
+
+/// `Circuit.AllNodeDistances` — the owning bus's `DistFromMeter` repeated once
+/// per node, walked bus x the bus's INTERNAL node index (`CircuitV(13)`,
+/// `DCircuit.pas:582-604` == `CAPI_Circuit.pas:697-722`: *"Array sequence is
+/// same as all bus Vmag and Vmagpu"*), i.e. the [`capture_all_bus_vmag_pu`]
+/// permutation and NOT the ascending-node-number order of the per-bus arrays.
+/// Length = `NumNodes`, checked by the caller.
+fn capture_all_node_distances(engine: &Engine) -> Result<Vec<f64>, EngineError> {
+    let v = engine.circuit_all_node_distances()?;
+    engine.assert_clean("all_node_distances")?;
     Ok(v)
 }
 

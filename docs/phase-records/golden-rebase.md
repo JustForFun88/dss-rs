@@ -3315,7 +3315,7 @@ row against the pre-fix lock.
   and pinned by `a_non_finite_reliability_cell_fails_the_decode_on_both_transports`; the eight-column
   non-vacuity, moved out of a log into `every_bus_reliability_column_is_compared_per_bus`; the
   mode-table sum; this record's length, shas and gate; a named owner for the zone-boundary decision
-  (`ORPHANED_GAPS.md` §1.19); and the r4133 half of the four pin tables re-measured from scratch here
+  (`ORPHANED_GAPS.md` §1.20); and the r4133 half of the four pin tables re-measured from scratch here
   — a fresh `epri-worker` capture reproduces all **55** pinned per-bus tuples bit-for-bit.
   **Recorded:** the pre-existing corpus dropping leak (an oracle-side I/O race on a deck-written
   export, unowned by this sub-step — droppings deleted, never staged); and the citation checker
@@ -3385,3 +3385,60 @@ row against the pre-fix lock.
   (526 cases / 3 221 146 records).
 
   merge: lane lane-e -> update, see git log
+
+- **G1.4c** (2026-09-05, lane `lane-b`, bus chain — **D7**) — the bus **sequence** and **line-to-line** arms
+  (`SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL`) live on both oracle channels, on G1.4a's per-bus capture:
+  no new flag, no lock move, no golden byte, **0** ledger rows. Per **D4**/**D8**/**D21** the port answers
+  S-SEQ / S-VLL — r4133's own stated intent (`DDLL/DBus.pas:299` against its node-*count* test `:298`;
+  `Common/ShowResults.pas:193-194` against the pre-wrap poll `:575-584`); every divergent bus is closed by a
+  positive mechanism assertion (**D15**/**D16**) behind four fail-on-stale populations and the sequence-transform
+  term `SEQ_C012` (deduped with G1.3b's at the merge, D21: the tight row sum, never the rounded-up `5.30e-10`),
+  and r4133's `VLL` hang is refused per bus by the new `crates/dss-epri` register (**D2**). Details:
+  `TESTING.md`, `tests/TOLERANCE_NOTES.md`, `DIVERGENCES.md` §G1.4c, the plan's §G1.4 note,
+  `investigations/to_opendss/` 64-66. Commits `74cb0ef6` (surface) + `6fc63848` (settlement) + docs; both
+  lanes **5 339 / 0 / 5 ignored** over 75 binaries, corpus **525/525**, ledger 53 / 0 stale, `lane_diff`
+  **PASS** max |Δ| = 0.
+  **Audit settlement** (15 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted):
+  the port's own `VLL`/`puVLL` are now asserted on **every** bus, not only where the oracle's walk
+  coincides with S-VLL (AC-1, live-proven on NEV `13kvbus`); `puVLL` and r4133 non-vacuity drives
+  added. Recorded: `Export SeqVoltages`' ground substitution → `ORPHANED_GAPS.md` §1.19.
+- **G1.4b** (2026-09-05, lane `lane-b`, bus chain — **D7**, split by **D26**) — the bus **distance**
+  surface (`Bus.Distance`, `AllBusDistances`, `AllNodeDistances`) live on both channels on G1.4a's
+  per-bus capture: no new flag, no force rule, no golden byte, and the only `population.lock.json` move
+  is one `ledger=` digest cell. All three publish the ONE zone-build field `DistFromMeter` (written at
+  `Meters/EnergyMeter.pas:1833-1838`), read by reference and compared **exactly** (`rel = abs = 0`,
+  `tests/TOLERANCE_NOTES.md` §"Bus distance surface") behind `DISTANCE_POPULATION = (867, 79_137)`.
+  **D26** moved the at-bus half to a new **G1.4d** (plan amendment, unseen by the user); **D29** step 1
+  was measured and refused (r4133's `MergeWith` renames a line without updating `DeviceList` —
+  `PDElements/Line.pas:1684`, `to_opendss/68`), so `modes:reduce/midi_reduce.dss` stays capi-gated behind
+  the new **`distance`** ledger field: one entry `reduce-merge-units-lost-midi-capi-distance`
+  (54 → **55**) pinned by `the_reduced_midi_deck_reports_the_merged_lines_kft_distances`, and D9's
+  `MakeBusList` fix is pinned live by
+  `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`. Details: `TESTING.md`, the
+  plan's §G1.4 note. Commits `1aa08d9c` (surface) + `03565bf7` (settlement) + docs; both lanes
+  **7 741 / 0 / 5 ignored** over 79 binaries, corpus **526/526**, ledger **55** / **1 567** hits /
+  0 stale, `lane_diff` **PASS** max |Δ| = 0.
+  **Audit settlement** (2026-09-06; 15 findings, 12 distinct — 10 fixed / 2 recorded / 0 refuted): the
+  comparator gained the committed offline drives its own doc claimed
+  (`harness::bus_distance_comparator_tests`), a METERED `both` cross-transport pin
+  (`the_two_transports_agree_on_the_bus_distances_of_a_metered_both_case`), the population guard's growth
+  direction, the `G1_4B_PINS` registry, D29's channel rule as a machine guard
+  (`no_r4133_gated_case_reduces_by_merging`), eight re-pointed citations and two corrected populations.
+  Recorded: the oracles' `[0.0]` no-circuit sentinel (documented at the accessor; the port keeps `[]`) and
+  the third per-(case, channel, step) `all_bus_voltages()` rebuild (pre-existing pattern → G1.4d).
+
+  Merged-tree checks (2026-09-06 landing of both blocks): `fmt` + `clippy` clean in both lanes,
+  `oracle_parity_cfg_gate` **21/21** (both sides' pin registries), `population_lock` 3 / `golden_lock` 4
+  with `tests/golden/**` untouched, `corpus_gate` **526/526** cases in the default lane, ledger **56**
+  entries / 1 571 hits / **0** stale, the sequence-arm census `(297 867, 78, 4)`, `DISTANCE_POPULATION`
+  (867, 79 137) and the four seq/VLL populations re-derived unchanged, `population.lock.json` regenerated
+  (one `ledger=` cell), and the 47 `file.rs:LINE` citations the merge shifted re-pointed. The two lanes'
+  012-matrix term was deduped to ONE constant (`harness::SEQ_C012`, D21): the analytic ceiling
+  `2·Δsin60/3 = 5.229591574599605e-10` reconciles G1.4c's rounded-up `5.30e-10` with G1.3b's tight row sum
+  `5.229590094302253e-10`, and the tight value is the one kept — G1.4c's live worst
+  (`5.229587392548124e-10`) is `0.99999948 ×` it, and the row sum bounds every gap this surface can
+  measure, so no band widened and nothing on either surface moved. The full five-command gate on the merged
+  tree is green in BOTH lanes (**8 740 / 0 / 5 ignored** each, `corpus_gate` 354 per lane) and `lane_diff`
+  **PASS** with max |Δ| = 0 on all eight kinds.
+
+  merge: lane lane-b -> update, see git log

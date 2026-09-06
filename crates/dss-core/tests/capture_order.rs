@@ -799,6 +799,32 @@ fn the_declared_selectors_are_not_quantity_reads() {
     }
 }
 
+/// G1.4b: the three `DistFromMeter` views are **group C** in the ONE mode table.
+///
+/// `crates/dss-core/tests/corpus_gate.rs` pins WHERE each of them is read —
+/// `Bus.Distance` between the bus's other scalar and the value arrays of the
+/// per-bus walk, the two circuit arrays inside the same order-free checkpoint
+/// slot as `AllBusVmagPu` — and that placement is only legitimate while all
+/// three are order-free. The claim itself has exactly one home
+/// (`dss_epri::modes`, whose `ModeEffect` rows transcribe the Pascal `case`
+/// arms: `DBus.pas:122-128` `BUSF` 5, `DCircuit.pas:566-580` `CircuitV` 12,
+/// `:582-604` `CircuitV` 13 — each returns the stored field and moves no
+/// cursor), so it is asserted here rather than restated there.
+#[test]
+fn the_distance_surface_is_order_free_in_the_mode_table() {
+    for (family, name) in [
+        ("Bus", "Distance"),
+        ("Circuit", "AllBusDistances"),
+        ("Circuit", "AllNodeDistances"),
+    ] {
+        assert_eq!(
+            capture_group_of(family, name),
+            Some('C'),
+            "`{family}.{name}` is captured inside an order-free block (`corpus_gate.rs::BUS_READ_ORDER` / the checkpoint slot list), but the mode table gives it another capture group — the table wins: re-class the read or move it out of the group-C block"
+        );
+    }
+}
+
 /// Both live channels must capture the *same* quantities in the *same* order —
 /// otherwise the two oracles are compared against the Rust snapshot through
 /// different read paths and a divergence could be an artefact of the capture.

@@ -544,8 +544,8 @@ impl LedgerRuntime {
 /// it (or a typo'd field) would silently never apply, so loading rejects
 /// anything outside this list loudly (pre-E/F audit UGA-T4).
 ///
-/// The last six — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
-/// `reliability` — are
+/// The last seven — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
+/// `reliability`, `distance` — are
 /// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]). The first four name a whole
 /// compared artifact rather than a value with a natural envelope, so the only
 /// thing the ledger can say about them is "this (case, channel) does not
@@ -582,7 +582,21 @@ impl LedgerRuntime {
 /// convention. The eight columns are compared exactly too, and their counts (bus
 /// walk length, name sequence) stay unconditional for the same reason. No entry
 /// of either shape exists today.
-const LEDGER_FIELDS: [&str; 15] = [
+///
+/// `distance` (`GOLDEN_REBASE_PLAN.md` G1.4b, coordinator decision D29 step 3)
+/// is the third of that per-VALUE shape: the key is the BUS name, and
+/// `harness::compare_bus_distances` compares `Bus.Distance` EXACTLY
+/// (`rel = abs = 0` — the zone walk is the same `len · ConvertLineUnits` sum on
+/// all three engines and never touches the solver), so there is no envelope a
+/// `divergence` could re-assert. Every other assertion of that surface stays
+/// unconditional on an excluded bus — the bus count, the name sequence, the
+/// three array lengths, the port-internal identity
+/// `AllBusDistances[i] == Bus.Distance == AllNodeDistances[k]` and the
+/// oracle-internal one — so an exclusion drops one bus's port↔oracle equality
+/// and nothing else. It is consulted only AFTER that equality has failed, which
+/// is what makes its per-scope `hit` mean "masked something" rather than
+/// "matched a name" (see [`PER_VALUE_EXCLUSION_FIELDS`]).
+const LEDGER_FIELDS: [&str; 16] = [
     "iterations",
     "voltages",
     "injection",
@@ -598,18 +612,20 @@ const LEDGER_FIELDS: [&str; 15] = [
     "meter",
     "variables",
     "reliability",
+    "distance",
 ];
 
 /// Fields an entry may name only with `kind: "exclusion"` — see
 /// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
 /// nothing re-asserts.
-const EXCLUSION_ONLY_FIELDS: [&str; 6] = [
+const EXCLUSION_ONLY_FIELDS: [&str; 7] = [
     "y",
     "y_fingerprint",
     "yprim",
     "meter",
     "variables",
     "reliability",
+    "distance",
 ];
 
 /// Fields an `exclusion` entry may name — the mirror obligation of
@@ -633,7 +649,7 @@ const EXCLUSION_ONLY_FIELDS: [&str; 6] = [
 /// assertion unconditional whatever the ledger says, and asserts for every
 /// index an exclusion drops that both engines spell that variable the same —
 /// a mask selected by name must not be able to slide onto a clean channel.
-const EXCLUSION_FIELDS: [&str; 11] = [
+const EXCLUSION_FIELDS: [&str; 12] = [
     "voltages",
     "element",
     "injection",
@@ -645,6 +661,7 @@ const EXCLUSION_FIELDS: [&str; 11] = [
     "meter",
     "variables",
     "reliability",
+    "distance",
 ];
 
 /// Fields whose [`Scope::channels`] selects **sub-channels** of a multi-part
@@ -2486,15 +2503,16 @@ const EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER: [&str; 2] = ["voltages", "elem
 /// whole artifact, and which therefore need their own per-SCOPE liveness in
 /// [`LedgerRuntime::assert_all_hit`]: `applied`/`exceeded_floor` are per ENTRY,
 /// so a dead selector on an entry that also excludes something coarse would
-/// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i)).
-const PER_VALUE_EXCLUSION_FIELDS: [&str; 2] = ["variables", "reliability"];
+/// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i) and by
+/// G1.4b's `distance`, whose selector is a BUS name).
+const PER_VALUE_EXCLUSION_FIELDS: [&str; 3] = ["variables", "reliability", "distance"];
 
 /// Every field [`EXCLUSION_FIELDS`] lets an `exclusion` name must actually be
 /// honoured at runtime — the same guarantee [`LEDGER_FIELDS`] gives one level
 /// up, at the kind granularity `GOLDEN_REBASE_PLAN.md` G2.5 introduced.
 ///
-/// This is a **synthetic** drive because two of the nine (`probe`, `meter`) have
-/// no live entry in `tests/corpus/ledger.json` today: without it they would be
+/// This is a **synthetic** drive because two of the twelve (`probe`, `meter`)
+/// have no live entry in `tests/corpus/ledger.json` today: without it they would be
 /// whitelisted, pass `assert_structural`, and then be reachable only by a future
 /// author who has no way to know whether the branch works. The drive also pins
 /// the three selector rules `excluded()` implements — `name_re` matching, the
@@ -2797,7 +2815,8 @@ fn a_voltages_exclusion_that_masks_nothing_is_stale() {
     // matching (a renamed state variable, a renamed meter) would leave the
     // entry `applied` through its other scopes and mask nothing in silence.
     // Both directions, for every field on the register (RP3.10 audit
-    // settlement finding AT-4; GOLDEN_REBASE G1.6(i) added `reliability`).
+    // settlement finding AT-4; GOLDEN_REBASE G1.6(i) added `reliability`, G1.4b
+    // `distance`).
     for field in PER_VALUE_EXCLUSION_FIELDS {
         let unhit = mk(field, true);
         let err = unhit

@@ -5141,3 +5141,96 @@ fn every_pin_the_g13b_record_names_exists_and_is_cited() {
         bad.join("\n  ")
     );
 }
+
+/// The GOLDEN_REBASE **G1.4b** (bus distance surface) names the operational docs
+/// and the phase record cite, with the number of definitions each must have.
+///
+/// The [`G1_9_PINS`] / [`G1_7_PINS`] registries are the precedent, and the G1.4b
+/// audit found the twin missing (finding AT-3): the sub-step's pins were named
+/// by `TESTING.md`, `GOLDEN_REBASE_PLAN.md` and the record with nothing checking
+/// they exist, so a rename would have left the prose citing a test that no
+/// longer runs — the exact rot the G1.9 settlement closed. Everything here is
+/// one definition; the comparator [`compare_bus_distances`] is in the list
+/// because the three documents describe the surface BY it.
+const G1_4B_PINS: [(&str, usize); 15] = [
+    // the comparator and its committed offline drives (`tests/harness/mod.rs`)
+    ("compare_bus_distances", 1),
+    ("compare_bus_distances_accepts_the_engines_own_surface", 1),
+    // the two both-numbers pins (`tests/corpus_gate.rs`)
+    (
+        "the_reduced_midi_deck_reports_the_merged_lines_kft_distances",
+        1,
+    ),
+    (
+        "the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure",
+        1,
+    ),
+    // the fail-on-stale population, both directions
+    ("the_distance_guard_is_silent_on_the_measured_population", 1),
+    (
+        "the_distance_guard_fires_when_a_deck_stops_building_its_meter_zone",
+        1,
+    ),
+    ("the_distance_guard_fires_when_a_metered_case_arrives", 1),
+    // the capture-order claim and the two-transport equality (`tests/corpus_gate.rs`,
+    // `tests/capture_order.rs`)
+    ("the_distance_surface_is_order_free_in_the_mode_table", 1),
+    (
+        "the_two_transports_agree_on_the_bus_distances_of_a_metered_both_case",
+        1,
+    ),
+    // D29's channel rule, machine-checked (`tests/corpus_gate/manifest.rs`)
+    ("no_r4133_gated_case_reduces_by_merging", 1),
+    (
+        "the_reduce_merge_channel_guard_refuses_an_r4133_gated_deck",
+        1,
+    ),
+    // the engine-side identities without an oracle (`src/exec/view.rs`)
+    ("bus_distance_is_the_zone_walk_accumulator", 1),
+    ("a_meterless_circuit_has_no_distances", 1),
+    ("all_bus_distances_is_the_bus_list_order", 1),
+    ("all_node_distances_repeats_each_bus_value_per_node", 1),
+];
+
+/// The documents that cite the G1.4b names, same rule as [`G1_9_PIN_DOCS`].
+const G1_4B_PIN_DOCS: [&str; 4] = [
+    "TESTING.md",
+    "tests/TOLERANCE_NOTES.md",
+    "GOLDEN_REBASE_PLAN.md",
+    "docs/phase-records/golden-rebase.md",
+];
+
+#[test]
+fn the_g1_4b_pins_the_docs_cite_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let docs: Vec<String> = G1_4B_PIN_DOCS
+        .iter()
+        .map(|rel| {
+            fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the G1.4b doc surface: {e}"))
+        })
+        .collect();
+
+    for (pin, want) in G1_4B_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the G1.4b name `{pin}` is defined {defs} times in the tree, expected \
+             exactly {want} — {} cite it by name, so a rename, a deletion or an \
+             undocumented second copy must red here instead of leaving them stale",
+            G1_4B_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(pin)),
+            "the G1.4b name `{pin}` is in this registry but no longer named by any \
+             of {} — either restore the citation or drop it from the list",
+            G1_4B_PIN_DOCS.join(" / ")
+        );
+    }
+}

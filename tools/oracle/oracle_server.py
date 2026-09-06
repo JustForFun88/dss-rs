@@ -846,6 +846,21 @@ _SC_KEYS = ("zsc1", "zsc0", "zsc", "ysc", "isc", "voc")
 #: "no matrix" by the comparator, never compared as values.
 _CAPI_SC_SENTINEL_LEN = 1
 
+#: What the two G1.4c line-to-line arms publish when the bus has at most ONE
+#: node: the two-double `[-99999.0, 0.0]` "for 1-phase buses, do not attempt to
+#: compute" sentinel (`CAPI/CAPI_Alt.pas:2486-2491` == r4133
+#: `DDLL/DBus.pas:594-596`, one `cmplx(-99999.0, 0)`). Both gating channels
+#: agree on this one; the comparator recognizes it from the bus's NODE SET, not
+#: from the length — a 2-phase bus's single L-L pair is also 2 doubles.
+_CAPI_VLL_ONE_PHASE_LEN = 2
+
+#: `DefaultResult`'s length on the pinned build (`CAPI/CAPI_Utils.pas:212-221`
+#: with `DSS_CAPI_COM_DEFAULTS` on): one `0.0`. The L-L arms fall back to it
+#: when the partner-node scan finds nothing (`CAPI_Alt.pas:2525-2529`) —
+#: measured live on `NEVMASTER` `ckt1-1-1`, a `[1, 10]` bus. r4133 has no such
+#: branch: its unbounded scan wraps onto the node itself and reports `[0, 0]`.
+_CAPI_VLL_DEFAULT_LEN = 1
+
 
 def capture_all_buses(ckt, want_sc: bool) -> list:
     """Every bus's node set, kV base, the three per-node voltage surfaces and —
@@ -870,6 +885,13 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
     * `kv_base` — `Bus.kVBase` in kV. Both engines derive the per-unit divisor
       as `BaseFactor = 1000·kVBase` when positive, else `1.0` — the branch
       11 480 of the corpus's 209 211 buses take.
+    * `distance` — `Bus.Distance`, i.e. `TDSSBus.DistFromMeter` in km, published
+      verbatim (`CAPI_Bus.pas:419-427` -> `CAPI_Alt.pas:2071-2074` == r4133
+      `DBus.pas:122-128`, `BUSF` 5). G1.4b. A zone-build output, not a solve
+      output: `MakeMeterZoneLists` writes it (`Meters/EnergyMeter.pas:1833-1838`)
+      and a circuit with no EnergyMeter — or a bus no meter's zone reaches —
+      reports the untouched `0.0`. There is no "no meter" sentinel on either
+      channel, so the all-zero vector is a real assertion about the port.
     * `pu_voltages` — `NodeV[GetRef]/BaseFactor`, `2·NumNodes` interleaved
       (re, im), in that same ascending-node-number order
       (`CAPI_Alt.pas:2251-2280` == r4133 `DBus.pas:399-430`).
@@ -879,10 +901,51 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
       `BaseFactor` (`CAPI_Alt.pas:2540-2571` == r4133 `DBus.pas:690-723`).
 
     All four value surfaces are the identical algorithm on both gating channels
-    (re-read at HEAD). The bus quantities that do diverge between the channels
-    (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`) belong to G1.4c and are
-    deliberately NOT read here — `VLL`/`puVLL` additionally hang the r4133
-    channel on the NEV decks (coordinator decision D8).
+    (re-read at HEAD).
+
+    G1.4c appends FOUR more arms to this same walk — read after the voltage
+    surfaces and before the (conditional) short-circuit arms. Unlike everything
+    above them these four diverge between the channels *structurally*, by
+    construction, which is why the comparator judges them against the port's own
+    node set (a positive assertion of each engine's own walk) instead of
+    value-for-value (coordinator decision D21):
+
+    * `seq_voltages` — `Bus.SeqVoltages`, `|V012|`, ALWAYS 3 doubles
+      (`CAPI/CAPI_Bus.pas:142` -> `CAPI_Alt.pas:2165-2200`). THIS transport
+      clamps `Nvalues > 3` to 3 and so answers a real V012 on any bus carrying
+      three phase nodes; r4133 (`DDLL/DBus.pas:284-317`) has no clamp and
+      answers the `-1.0` x3 "n/A" sentinel whenever `NumNodesThisBus <> 3`.
+      Both arms substitute GROUND for a missing phase (`Find(i) = 0` ->
+      `NodeV[0]`), so a `[1, 2, 10]` bus is answered here from a fabricated 0 V
+      phase C while the port declines (S-SEQ).
+    * `cplx_seq_voltages` — `Bus.CplxSeqVoltages`, the same V012 as re/im pairs,
+      ALWAYS 6 doubles (`CAPI_Bus.pas:440` -> `CAPI_Alt.pas:2367-2398`,
+      `Alt_Bus_Get_ComplexSeqVoltages`): same clamp, sentinel `-1.0` x6
+      (r4133 `DBus.pas:520-548`, three `cmplx(-1, -1)` — the same six doubles).
+    * `vll` / `pu_vll` — `Bus.VLL` / `Bus.puVLL` (`CAPI_Bus.pas:547` / `:528` ->
+      `CAPI_Alt.pas:2473-2537` / `:2400-2470`), the L-L pairs, `2*Nvalues`
+      doubles with `Nvalues = min(NumNodesThisBus, 3)` and `2 -> 1`. Three
+      shapes, which the LENGTH alone does not name — the node set does:
+      `n <= 1` -> the `_CAPI_VLL_ONE_PHASE_LEN` sentinel; no partner node found
+      -> `DefaultResult`, `_CAPI_VLL_DEFAULT_LEN`; otherwise 2 doubles (2
+      phases) or 6 (3). Both engines probe node `jj` BEFORE the `jj > 3 ->
+      jj := 1` wrap, so a 4-node bus's third pair is `V3 - V4`, not `V3 - V1`
+      (live: `Test/indmachtest/Master.DSS` `sourcebus`) — the shared upstream
+      pairing defect of D21, which r4133's own sibling report path
+      (`Common/ShowResults.pas:193-194`) and its own commented-out original
+      (`DBus.pas:586-587`) both contradict.
+      This transport cannot hang: its partner scan is bounded (`for k := 1 to
+      3`, the 2020-03-01 C-API fix quoted at `CAPI_Alt.pas:2512-2513`) and the
+      preceding unbounded `repeat` is entered only with `n >= 2` distinct
+      positive node numbers, so a node number `>= i` exists for every
+      `i <= Nvalues <= 3`. r4133's second loop is an unbounded `repeat`
+      (`DBus.pas:580-584` / `:636-640`) and DOES hang (measured TIMEOUT on the
+      NEV `double-*` buses), so ITS transport refuses the call per bus;
+      `vll_declined` is hard-`False` here and exists only so both transports
+      ship one wire shape.
+    * `pu_vll` divides by `BaseFactor_LL = 1000*kVBase*sqrt3` when
+      `kVBase > 0`, else `1.0` (`CAPI_Alt.pas:2427-2430` == r4133
+      `DBus.pas:622-623`) — a different divisor from `pu_voltages`' above.
 
     G1.5's six short-circuit arms are appended to THIS walk (never a second
     `SetActiveBus` pass), in the fixed order `zsc1, zsc0, zsc, ysc, isc, voc`,
@@ -952,6 +1015,11 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
         cap = {
             "name": str(b.Name),
             "kv_base": float(b.kVBase),
+            # G1.4b, read here — with the bus's other scalar attribute, ahead of
+            # the value arrays — so both transports share one per-bus read order
+            # (`crates/dss-epri/src/capture.rs::capture_all_buses`). Group C:
+            # `Alt_Bus_Get_Distance` returns a stored field and touches nothing.
+            "distance": float(b.Distance),
             "nodes": nodes,
             "pu_voltages": [float(x) for x in b.puVoltages],
             "vmag_angle": [float(x) for x in b.VMagAngle],
@@ -963,6 +1031,37 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
                     f"bus capture: {name}.{key} returned {len(cap[key])} values, "
                     f"expected 2*{len(nodes)} for nodes {nodes}"
                 )
+        cap["seq_voltages"] = [float(x) for x in b.SeqVoltages]
+        cap["cplx_seq_voltages"] = [float(x) for x in b.CplxSeqVoltages]
+        cap["vll"] = [float(x) for x in b.VLL]
+        cap["pu_vll"] = [float(x) for x in b.puVLL]
+        # This transport's partner scan is bounded, so it never refuses; the key
+        # is emitted so both transports ship one wire shape (see the docstring).
+        cap["vll_declined"] = False
+        nv = min(len(nodes), 3)
+        if nv <= 1:
+            want_ll = (_CAPI_VLL_ONE_PHASE_LEN,)
+        else:
+            want_ll = (_CAPI_VLL_DEFAULT_LEN, 2 if nv == 2 else 6)
+        for key, want in (
+            ("seq_voltages", (3,)),
+            ("cplx_seq_voltages", (6,)),
+            ("vll", want_ll),
+            ("pu_vll", want_ll),
+        ):
+            if len(cap[key]) not in want:
+                raise RuntimeError(
+                    f"bus capture: {name}.{key} returned {len(cap[key])} values, "
+                    f"expected one of {want} for nodes {nodes} (see "
+                    "capture_all_buses' docstring for each arm's Pascal shape)"
+                )
+        if len(cap["vll"]) != len(cap["pu_vll"]):
+            raise RuntimeError(
+                f"bus capture: {name}.vll ({len(cap['vll'])} values) and "
+                f"{name}.pu_vll ({len(cap['pu_vll'])}) disagree in length for "
+                f"nodes {nodes} — the two arms walk the identical loop over the "
+                "identical node set, so they cannot"
+            )
         cap.update({k: [] for k in _SC_KEYS})
         if want_sc:
             cap["zsc1"] = [float(x) for x in b.Zsc1]
@@ -1002,6 +1101,34 @@ def capture_all_bus_vmag_pu(ckt) -> list:
     checkpoint; order-free (group C).
     """
     return [float(x) for x in ckt.AllBusVmagPu]
+
+
+def capture_all_bus_distances(ckt) -> list:
+    """`Circuit.AllBusDistances` — each bus's `DistFromMeter` (km), BusList order.
+
+    GOLDEN_REBASE_PLAN.md WP-G1 G1.4b. `for i := 0 to NumBuses-1 do Result[i] :=
+    Buses[i+1].DistFromMeter` (`CAPI_Circuit.pas:671-688` == r4133
+    `DCircuit.pas:566-580`, `CircuitV` 12) — capi's own comment: *"in an array
+    that aligns with the buslist"*, i.e. the same sequence
+    [`capture_all_buses`] walks. Length = `NumBuses`. Order-free (group C).
+    """
+    return [float(x) for x in ckt.AllBusDistances]
+
+
+def capture_all_node_distances(ckt) -> list:
+    """`Circuit.AllNodeDistances` — the owning bus's `DistFromMeter` per node.
+
+    GOLDEN_REBASE_PLAN.md WP-G1 G1.4b. Walked bus x the bus's INTERNAL node
+    index (`for i := 1 to NumBuses do for j := 1 to NumNodesThisBus`,
+    `CAPI_Circuit.pas:697-722` == r4133 `DCircuit.pas:582-604`, `CircuitV` 13) —
+    the `AllNodeNames` permutation, which capi's own comment names (*"Array
+    sequence is same as all bus Vmag and Vmagpu"*): the same order as
+    [`capture_all_bus_vmag_pu`], NOT the ascending-node-number order of the
+    per-bus arrays. Length = `NumNodes`. Order-free (group C).
+    """
+    return [float(x) for x in ckt.AllNodeDistances]
+
+
 def _topo_names(v) -> list:
     """Normalize one `ITopology` string array to its comparable shape.
 
@@ -1451,6 +1578,16 @@ def run_case(d, req: dict) -> dict:
                         ),
                         "all_bus_vmag_pu": (
                             capture_all_bus_vmag_pu(ckt) if want_buses else []
+                        ),
+                        # G1.4b: the two circuit-level distance arrays, read in
+                        # the same order-free slot and behind the same
+                        # `compare_bus` flag as the per-bus `distance` above —
+                        # one surface, three views of `DistFromMeter`.
+                        "all_bus_distances": (
+                            capture_all_bus_distances(ckt) if want_buses else []
+                        ),
+                        "all_node_distances": (
+                            capture_all_node_distances(ckt) if want_buses else []
                         ),
                         # WP8.5b: read after every established capture above, so
                         # the property sweep's `?` queries never perturb any
