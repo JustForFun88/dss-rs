@@ -77,15 +77,20 @@ pub(crate) struct CaseResult {
     /// `dss_epri::guard::CorpusGuard::finish`), normalized like
     /// [`Self::run_files`].
     ///
-    /// Not flag-gated and never `Option`: every transport reports it on every
-    /// case, because a dropping one producer leaves behind is in the NEXT
-    /// producer's pre-run snapshot and silences that name in its created set —
-    /// which is exactly how dss_capi's never-closed Storage trace stream
+    /// Not flag-gated: every transport reports it on every case, because a
+    /// dropping one producer leaves behind is in the NEXT producer's pre-run
+    /// snapshot and silences that name in its created set — which is exactly how
+    /// dss_capi's never-closed Storage trace stream
     /// (`src/PCElements/Storage.pas:872`) made the `r4133` channel look green.
-    /// [`crate::runner::compare_with_result`] fails the case on a non-empty
-    /// list, naming the producer.
+    /// [`crate::runner::assert_swept_clean`] fails the case on a non-empty list,
+    /// naming the producer.
+    ///
+    /// `Option` since the G1.10a audit settlement (finding AT-3): as a plain
+    /// `Vec<String>` behind `serde(default)` a reply that stopped emitting the
+    /// key deserialized to `[]` and disarmed the D32(2) rail in silence. `None`
+    /// is now a broken transport and fails the case, `Some([])` the clean sweep.
     #[serde(default)]
-    pub(crate) sweep_failed: Vec<String>,
+    pub(crate) sweep_failed: Option<Vec<String>>,
     /// `GOLDEN_REBASE_PLAN.md` G1.10a, coordinator decision D33(1) — the
     /// message of the exception the transport's own D32(2)(a) teardown `clear`
     /// raised, or `None` when it completed. The pinned dss_capi 0.14.5 faults
@@ -936,9 +941,10 @@ fn a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_resp
         ),
         "the created-file set is still reported"
     );
-    assert!(
-        cr.sweep_failed.is_empty(),
-        "the guard still swept: {:?}",
+    assert_eq!(
+        cr.sweep_failed.as_deref(),
+        Some(&[][..]),
+        "the guard still swept, and it still REPORTED that it did: {:?}",
         cr.sweep_failed
     );
     // ... and then the worker leaves, so the pool respawns instead of reusing it.

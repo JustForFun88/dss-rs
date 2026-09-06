@@ -258,14 +258,53 @@ impl CorpusGuard {
     /// `std::fs`, so it is now ungated (and the crate is an unconditional
     /// dev-dependency): the twin is deleted and "one classification, three
     /// consumers" is literally true on every platform.
-    fn sweep_created(&self) {
-        for (path, is_dir) in dss_epri::guard::classify_created(&self.dir, &self.snap.names).roots {
-            if is_dir {
+    /// Returns the normalized names of created entries the case directory STILL
+    /// lists afterwards — the same `sweep_failed` report its two twins make
+    /// (`dss_epri::guard::CorpusGuard::sweep_created`,
+    /// `corpus_guard.py::_sweep_created`). Until the G1.10a audit settlement
+    /// (finding AC-2) this one producer discarded every removal error, so the
+    /// classification was shared but the LOUDNESS was not: on a `kind=large*`
+    /// case no `RunFileProbe` brackets the run and this guard is the ONLY
+    /// sweeper, so a dropping it could not remove was invisible to the gate and
+    /// left for a human to notice as an untracked file. `Drop` prints what comes
+    /// back; nothing here panics, because a panicking `Drop` during another
+    /// panic aborts the process.
+    fn sweep_created(&self) -> Vec<String> {
+        let c = dss_epri::guard::classify_created(&self.dir, &self.snap.names);
+        for (path, is_dir) in &c.roots {
+            if *is_dir {
                 let _ = std::fs::remove_dir_all(path);
             } else {
                 let _ = std::fs::remove_file(path);
             }
         }
+        if c.roots.is_empty() {
+            return Vec::new();
+        }
+        // A fresh listing, not `Path::exists`: every root is a direct child of
+        // the case dir, and a Windows delete-pending entry (a removal accepted
+        // while another handle is open) is still enumerated — and still blocks
+        // the next producer's write — while `metadata` on it fails. An
+        // unprovable removal is never reported as a clean sweep.
+        let still: Option<BTreeSet<String>> = std::fs::read_dir(&self.dir).ok().map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        });
+        c.roots
+            .iter()
+            .filter(|(path, _)| match &still {
+                None => true,
+                Some(names) => path
+                    .file_name()
+                    .map(|n| names.contains(&n.to_string_lossy().into_owned()))
+                    .unwrap_or(true),
+            })
+            .map(|(path, is_dir)| {
+                let name = path.file_name().unwrap_or(path.as_os_str());
+                dss_epri::guard::normalize_created_name(&name.to_string_lossy(), *is_dir)
+            })
+            .collect()
     }
 }
 
@@ -289,12 +328,40 @@ impl Drop for CorpusGuard {
         // as vendored (coordinator decision D33(2)); only then release the
         // directory and wake whoever is waiting for it.
         if self.snap.snapshot_ok {
-            self.sweep_created();
+            let leaked = self.sweep_created();
+            if !leaked.is_empty() {
+                // D32(2) forbids a silently swallowed removal failure. This
+                // guard cannot fail the case from `Drop` (a panic here during
+                // another panic aborts the process), so it says so on stderr,
+                // where a full-drive log keeps it greppable.
+                eprintln!(
+                    "corpus guard: leaked dropping(s) under {}: {} — the sweep                      could not remove them (a producer is still holding the file                      open). They stay in the vendored corpus and poison the next                      producer's pre-run snapshot of this directory.",
+                    self.dir.display(),
+                    leaked.join(", "),
+                );
+            }
             for (name, data) in &self.snap.buf {
                 let p = self.dir.join(name);
                 match std::fs::read(&p) {
+                    // Untouched by the run.
                     Ok(cur) if cur == *data => {}
-                    _ => {
+                    // Overwritten by the run: put the vendored bytes back.
+                    Ok(_) => {
+                        let _ = std::fs::write(&p, data);
+                    }
+                    // GONE. Never write it back (G1.10a audit settlement, the
+                    // settle stage's measurement): a guard on a PARENT case
+                    // directory photographs a sibling case's directory too, and
+                    // when that sibling's own guard sweeps its output this arm
+                    // used to RESURRECT it — the `Test/AutoTrans/Auto{1,3}bus_*`
+                    // residue STATUS tracks, and the shrunken created-file set it
+                    // causes in the next producer. A deck that genuinely deletes
+                    // a vendored file leaves a tracked deletion, which is loud on
+                    // its own. The Python twin (`corpus_guard.py::__exit__`)
+                    // already behaved this way: it reads before it writes.
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    // Unreadable for another reason (a held handle): try, as before.
+                    Err(_) => {
                         let _ = std::fs::write(&p, data);
                     }
                 }
@@ -344,6 +411,115 @@ fn corpus_guard_restores_case_dir_recursively() {
         !root.join("ckt_di").exists(),
         "run-created dir tree removed"
     );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// G1.10a audit settlement, the settle stage's own measurement — a guard on a
+/// PARENT case directory must never RESURRECT the output a sibling case's guard
+/// has just swept.
+///
+/// `Test/` holds 36 manifest cases and `Test/AutoTrans/` five more, and the two
+/// are different claim keys, so they run concurrently by design. The parent's
+/// pre-run photograph used to walk into the child directory and buffer whatever
+/// the child's run had already written; when the child then swept its own
+/// output, the parent's `restore` found the file *missing*, took that for "the
+/// run destroyed a vendored file" and wrote it back. That is the mechanism
+/// behind the `Test/AutoTrans/Auto{1,3}bus_*.txt` residue STATUS has tracked
+/// since 2026-08-29 (measured again here: one full `corpus_gate` drive left 9
+/// such files with no `sweep_failed` report anywhere, the next left none), and
+/// the residue is what silently shrinks the next producer's created-file set —
+/// it red `run_files_pins::the_two_oracle_spellings_of_auto1bus_fold_to_one_member`
+/// with `0` names instead of 9 during this settlement's own gate.
+///
+/// The fix is in `restore`: a snapshot entry that is GONE stays gone (a deck that
+/// deletes a vendored file shows up as a tracked deletion, which is loud), while
+/// an entry that still exists and was overwritten is still restored — the
+/// contract `corpus_guard_restores_case_dir_recursively` pins.
+#[test]
+fn a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output() {
+    let root = std::env::temp_dir().join(format!("dss_guard_sibling_{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let sub = root.join("AutoTrans");
+    std::fs::create_dir_all(&sub).unwrap();
+    let parent_case = root.join("parent.dss");
+    std::fs::write(&parent_case, b"! parent case master").unwrap();
+    let child_case = sub.join("child.dss");
+    std::fs::write(&child_case, b"! child case master").unwrap();
+
+    let out = sub.join("child_export.txt");
+    {
+        // The child case is running: its guard is up and its deck has written
+        // its export.
+        let gchild = CorpusGuard::new(&child_case.to_string_lossy());
+        std::fs::write(&out, b"the child run's export").unwrap();
+        // …and only now does the parent case start, photographing a directory
+        // that already holds the child's live output.
+        let gparent = CorpusGuard::new(&parent_case.to_string_lossy());
+        // The child finishes first and sweeps what it created.
+        drop(gchild);
+        assert!(!out.exists(), "the child's own guard sweeps its own output");
+        drop(gparent);
+    }
+    assert!(
+        !out.exists(),
+        "the parent guard resurrected {} — a sibling case's swept output must          never be written back by a guard that only photographed it",
+        out.display()
+    );
+    assert!(child_case.is_file(), "the vendored child master survives");
+    assert!(parent_case.is_file(), "the vendored parent master survives");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// G1.10a audit settlement (finding AC-2): the outer guard REPORTS a removal it
+/// could not perform, exactly like its two twins
+/// (`dss_epri::guard::tests::a_created_file_the_sweep_cannot_remove_is_reported_as_sweep_failed`,
+/// `corpus_guard.py`'s `SELF_TEST_LEAK_*`). The fixture holds the created file
+/// open with `FILE_SHARE_READ` only — what the FPC/Delphi file APIs do — so
+/// `remove_file` fails with a sharing violation, the mechanism dss_capi's
+/// never-closed Storage trace stream produced live (G1.10a F4).
+#[cfg(windows)]
+#[test]
+fn the_outer_guard_reports_a_created_file_it_cannot_remove() {
+    use std::os::windows::fs::OpenOptionsExt;
+    /// `FILE_SHARE_READ` — deletion of the open file is NOT shared, so
+    /// `DeleteFile` fails with a sharing violation (winnt.h).
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+
+    let root = std::env::temp_dir().join(format!("dss_guard_leak_{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(&root).unwrap();
+    let case = root.join("case.dss");
+    std::fs::write(&case, b"! fixture master").unwrap();
+
+    let guard = CorpusGuard::new(&case.to_string_lossy());
+    std::fs::write(
+        root.join("STOR_s1.CSV"),
+        b"hour,t
+",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("EXP_Y.CSV"),
+        b"y
+",
+    )
+    .unwrap();
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(root.join("STOR_s1.CSV"))
+        .expect("open the created file");
+
+    let leaked = guard.sweep_created();
+    assert_eq!(
+        leaked,
+        vec!["stor_s1.csv".to_string()],
+        "the entry the sweep could not remove is reported, and only it: the          ordinary report file next to it was removed normally"
+    );
+    assert!(!root.join("EXP_Y.CSV").exists());
+
+    drop(held);
+    drop(guard);
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -559,6 +735,24 @@ pub(crate) fn run_rust_capture(label: &str, case_path: &str, c: &SolvableCase) -
         dss.command(cmd);
     }
     assert_expected_warnings(&dss, &c.expect_warnings, &format!("{label}: after compile"));
+    // G1.10a audit settlement (finding AT-1) — a `compile` that produced NEITHER
+    // a circuit NOR an error can only mean the master file read back with no
+    // command in it: `exec/solve.rs::do_redirect` errors loudly on a missing
+    // (`Redirect file not found`) or unreadable (`could not be read`) file, but a
+    // SHORT read — an empty file, or just its leading comment block — yields no
+    // command and no diagnostic, and every later command then fails with "You
+    // must create a new circuit object first" (the shape the one-off
+    // `controls:espvlcontrol` red of this sub-step's part P took, on a machine at
+    // 100 % CPU). Assert it HERE, where the deck's size on disk is still evidence,
+    // instead of one step later where only the symptom shows. Never retry the
+    // case: a deck that reads short means a producer is writing it.
+    assert!(
+        dss.circuit().is_some(),
+        "{label}: `compile` left the port with no active circuit and reported no          error — the deck read back with no command in it. `{case_path}` is {}          byte(s) on disk right now; if that is its full size the deck is broken,          and if it is short a concurrent producer (a `CorpusGuard` restore, an          editor, a sync tool) was writing the file while the port read it.",
+        std::fs::metadata(case_path)
+            .map(|m| m.len() as i64)
+            .unwrap_or(-1),
+    );
     let baseline_errors = dss.errors().len();
     (dss, baseline_errors)
 }
@@ -1316,6 +1510,69 @@ pub(crate) fn compare_capture(
     }
 }
 
+/// G1.10a / coordinator decision D32(2), hardened by the G1.10a audit
+/// settlement (finding AT-3) — hygiene H1, checked BEFORE anything else a case
+/// does with the filesystem.
+///
+/// `swept` is the transport's own `sweep_failed` report: what its `CorpusGuard`
+/// classified as run-created and then could NOT remove. Such an entry stays in
+/// the case directory, so the next producer of this case (the other channel, or
+/// the port's probe) snapshots it as pre-existing and silently drops that name
+/// from its created set. Not hypothetical: dss_capi never closes a Storage
+/// `debugtrace` stream (`src/PCElements/Storage.pas:872`, freed only at
+/// `:871`/`:1199`), so the capi channel used to leak `STOR_<name>.csv` and make
+/// the `r4133` channel report an empty set for that deck (G1.10a F4).
+///
+/// `None` is a MISSING report, not a clean one: the field was a plain
+/// `Vec<String>` behind `serde(default)` until the audit settlement, so a
+/// transport that stopped emitting the key deserialized to `[]` and disarmed
+/// this rail in silence. Both transports emit it unconditionally
+/// (`tools/oracle/oracle_server.py::run_case`, `dss-epri::capture::run_case`),
+/// so its absence is a broken transport and fails the case here.
+fn assert_swept_clean(label: &str, producer: &str, swept: Option<&[String]>) {
+    let Some(swept) = swept else {
+        panic!(
+            "{label}: the `{producer}` producer sent no `sweep_failed` report.              Every transport reports it on every case (it is the D32(2) leak              rail); a reply without the key can never be read as \"the sweep              was clean\"."
+        );
+    };
+    assert!(
+        swept.is_empty(),
+        "{label}: the `{producer}` producer left {} leaked dropping(s) in the          case directory that its corpus guard classified as run-created and          could not remove: {}. A file still held open by that engine poisons          every later producer's pre-run snapshot (and pollutes the vendored          corpus). Fix the producer — release the circuit (`clear`) before the          guard sweeps, or close the file — never widen the surface around it.",
+        swept.len(),
+        swept.join(", "),
+    );
+}
+
+/// The D32(2) rail fires on a leaked dropping, and names the producer.
+#[test]
+#[should_panic(expected = "left 1 leaked dropping(s)")]
+fn a_transport_reporting_a_leaked_dropping_fails_the_case() {
+    let reply = serde_json::json!({
+        "node_order": ["a.1"],
+        "n_steps": 0,
+        "checkpoints": [],
+        "run_files": ["stor_s1.csv"],
+        "sweep_failed": ["stor_s1.csv"],
+    });
+    let cr: CaseResult = serde_json::from_value(reply).expect("a transport reply deserializes");
+    assert_swept_clean("fixture:leak", "capi_v0145", cr.sweep_failed.as_deref());
+}
+
+/// …and a reply that simply OMITS the key is a broken transport, not a clean
+/// sweep — the hole `serde(default)` on a plain `Vec` used to leave open.
+#[test]
+#[should_panic(expected = "sent no `sweep_failed` report")]
+fn a_transport_reply_without_a_sweep_report_fails_the_case() {
+    let reply = serde_json::json!({
+        "node_order": ["a.1"],
+        "n_steps": 0,
+        "checkpoints": [],
+        "run_files": ["stor_s1.csv"],
+    });
+    let cr: CaseResult = serde_json::from_value(reply).expect("a transport reply deserializes");
+    assert_swept_clean("fixture:missing", "r4133", cr.sweep_failed.as_deref());
+}
+
 /// Assert the oracle step counts, run the Rust engine once, compare against the
 /// given `channel`'s capture (its iteration + eventlog-mask policy). No guard,
 /// no oracle fetch — the caller (scheduler or [`run_and_compare`]) owns those.
@@ -1369,18 +1626,7 @@ pub(crate) fn compare_with_result(
     // report an empty set for that deck (G1.10a F4). Both transports now release
     // the circuit before their guard sweeps, and any survivor fails the case
     // here instead of hiding — the order-coupling can never come back silently.
-    assert!(
-        oc.sweep_failed.is_empty(),
-        "{label}: the `{}` producer left {} leaked dropping(s) in the case \
-         directory that its corpus guard classified as run-created and could \
-         not remove: {}. A file still held open by that engine poisons every \
-         later producer's pre-run snapshot (and pollutes the vendored corpus). \
-         Fix the producer — release the circuit (`clear`) before the guard \
-         sweeps, or close the file — never widen the surface around it.",
-        channel_tag(channel),
-        oc.sweep_failed.len(),
-        oc.sweep_failed.join(", "),
-    );
+    assert_swept_clean(label, channel_tag(channel), oc.sweep_failed.as_deref());
     let tol = tol_for(&c.kind);
     // G1.10a — the run-produced FILE SET. The port needs its OWN before/after
     // bracket (and must sweep what it classified) because the scheduler runs the
