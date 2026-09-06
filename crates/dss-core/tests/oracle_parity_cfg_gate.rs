@@ -5054,3 +5054,186 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
         bad.join("\n  ")
     );
 }
+
+/// The G1.10a (run-file artifacts, part a — the created-file SET) names the
+/// operational docs and the phase record cite, with the number of definitions
+/// each one must have in the tree: the [`G1_9_PINS`] / [`G1_7_PINS`] /
+/// [`G1_8_PINS`] pattern, fourth instance.
+///
+/// The registry is load-bearing here for the same reason it was in G1.8, twice
+/// over. (1) G1.10a lands exactly **one** `ledger.json` row (the `Visualize`
+/// DSSView pair on `Test/YgD-Test.dss [r4133]`); everything else it settled —
+/// the D25/Q2 engine-scratch split, the case-fold of the two oracles'
+/// spellings, the D30(1) in-memory event-log read, the D32 Storage
+/// `DebugTrace` port and its leak report, the D33 per-case-directory claim and
+/// the guarded teardown `clear` — is carried by a test name and nothing else,
+/// so a deleted or renamed pin would leave a documented claim with no prover.
+/// (2) Four of the names live in `crates/dss-epri`, the test-only bridge crate
+/// that the corpus gate compiles but the product never links; a rename there
+/// is invisible to every product test.
+///
+/// `RunFileProbe::start` is deliberately absent: `fn start(` is a generic
+/// method name the needle below would over-count. Its half of the lifecycle is
+/// pinned through `finish_and_clean`, which no other module defines.
+const G1_10_PINS: [(&str, usize); 35] = [
+    // the three both-numbers pins (`crates/dss-core/tests/run_files_pins.rs`)
+    (
+        "visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port",
+        1,
+    ),
+    ("the_harmonics_scratch_file_is_declined_on_the_nev_deck", 1),
+    ("the_two_oracle_spellings_of_auto1bus_fold_to_one_member", 1),
+    // the comparator and the port-side probe
+    // (`crates/dss-core/tests/harness/run_files.rs`)
+    ("compare_run_files", 1),
+    ("finish_and_clean", 1),
+    ("scratch_decline_table", 1),
+    ("the_engine_scratch_file_is_split_off_and_counted", 1),
+    ("the_port_may_never_report_a_scratch_file", 1),
+    ("a_port_dropping_the_probe_cannot_remove_fails_the_case", 1),
+    // the ONE classification the two oracle guards and the runner share
+    // (`crates/dss-epri/src/guard.rs`, the Python twin in
+    // `tools/oracle/corpus_guard.py`)
+    ("classify_created", 1),
+    ("normalize_created_name", 1),
+    ("is_engine_scratch_file", 1),
+    ("split_engine_scratch", 1),
+    ("classifies_the_shared_synthetic_fixture", 1),
+    ("normalize_created_name_is_the_python_twin", 1),
+    (
+        "the_python_twin_shares_this_fixture_and_passes_its_self_test",
+        1,
+    ),
+    (
+        "a_sibling_cases_files_under_a_pre_existing_subdirectory_are_neither_reported_nor_swept",
+        1,
+    ),
+    (
+        "a_created_file_the_sweep_cannot_remove_is_reported_as_sweep_failed",
+        1,
+    ),
+    (
+        "an_incomplete_snapshot_refuses_to_report_and_never_deletes",
+        1,
+    ),
+    // the rails (`crates/dss-core/tests/corpus_gate/scheduler.rs`)
+    ("the_run_files_forcing_rule_is_every_live_non_large_case", 1),
+    (
+        "the_run_files_surface_is_declared_on_every_gating_channel",
+        1,
+    ),
+    ("assert_scratch_declines_are_the_pinned_population", 1),
+    // D33: one producer per case directory, and the guarded capi teardown
+    // (`corpus_gate/{runner,scheduler,engines}.rs`)
+    (
+        "corpus_guard_serializes_two_threads_in_one_case_directory",
+        1,
+    ),
+    (
+        "corpus_guard_does_not_serialize_two_different_case_directories",
+        1,
+    ),
+    (
+        "two_manifest_rows_in_one_case_directory_land_in_one_task",
+        1,
+    ),
+    (
+        "a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_respawn",
+        1,
+    ),
+    // the r4133 bridge: D25 editor suppression and D30(1)'s in-memory event log
+    // (`crates/dss-epri/tests/protocol.rs`)
+    ("init_overrides_the_os_editor_and_never_writes_it_back", 1),
+    ("the_in_memory_event_log_equals_the_exported_file", 1),
+    ("the_event_log_capture_creates_no_file", 1),
+    // the per-RUN capture-order rule over both transports' source text
+    // (`crates/dss-core/tests/capture_order.rs`, F5). The anchor strings the
+    // rule searches for are NOT registered — they appear in this gate's own
+    // synthetic fixtures, so a count there would pin test scaffolding (the
+    // `capture_inc_matrix` precedent in [`G1_8_PINS`]).
+    ("check_run_files_last", 1),
+    ("capi_capture_classifies_the_run_files_last", 1),
+    ("r4133_capture_classifies_the_run_files_last", 1),
+    (
+        "the_run_file_gate_rejects_an_early_escaped_or_nested_classification",
+        1,
+    ),
+    (
+        "the_run_file_gates_have_teeth_on_the_real_transport_sources",
+        1,
+    ),
+    (
+        "the_run_file_gate_rejects_a_classification_after_the_sweep",
+        1,
+    ),
+];
+
+/// The G1.10a **constants** the same documents cite by name — the `fn {pin}(`
+/// needle cannot see them, and all three are fail-on-stale populations whose
+/// whole value is that a silent drift reds somewhere.
+const G1_10_CONSTS: [(&str, usize); 3] = [
+    ("SCRATCH_FILE_DECLINES", 1),
+    ("FORCED_RUN_FILES_POPULATION", 1),
+    ("RUN_FILES_DECLARED_IN_MANIFEST", 1),
+];
+
+/// The documents that cite the G1.10a names, same rule as [`G1_9_PIN_DOCS`].
+const G1_10_PIN_DOCS: [&str; 4] = [
+    "TESTING.md",
+    "tests/TOLERANCE_NOTES.md",
+    "GOLDEN_REBASE_PLAN.md",
+    "docs/phase-records/golden-rebase.md",
+];
+
+#[test]
+fn the_g1_10_pins_the_docs_cite_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let docs: Vec<String> = G1_10_PIN_DOCS
+        .iter()
+        .map(|rel| {
+            fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the G1.10a doc surface: {e}"))
+        })
+        .collect();
+
+    for (pin, want) in G1_10_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the G1.10a name `{pin}` is defined {defs} times in the tree, expected \
+             exactly {want} — {} cite it by name, so a rename, a deletion or an \
+             undocumented second copy must red here instead of leaving them stale",
+            G1_10_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(pin)),
+            "the G1.10a name `{pin}` is in this registry but no longer named by any \
+             of {} — either restore the citation or drop it from the list",
+            G1_10_PIN_DOCS.join(" / ")
+        );
+    }
+
+    for (konst, want) in G1_10_CONSTS {
+        let needle = format!("const {konst}");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the G1.10a constant `{konst}` is defined {defs} times in the tree, \
+             expected exactly {want} — {} cite it by name",
+            G1_10_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(konst)),
+            "the G1.10a constant `{konst}` is in this registry but no longer named \
+             by any of {} — either restore the citation or drop it from the list",
+            G1_10_PIN_DOCS.join(" / ")
+        );
+    }
+}

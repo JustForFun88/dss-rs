@@ -3349,3 +3349,83 @@ row against the pre-fix lock.
   citations the merge shifted re-pointed so
   `operational_docs_line_citations_point_at_the_line_they_name` is green, and no `CorpusGuard`
   dropping was left behind by the merge gate.
+
+- **G1.10a** (2026-09-06, lane `lane-s`, decisions **D7**/**D25**/**D30**/**D32**/**D33**/**D35**) — the
+  **created-file SET** goes live on both channels: for one (case, channel, port-run), the set of
+  entries the run creates under the case dir (`OutputDirectory` after `Compile`, r4133
+  `Common/DSSGlobals.pas:962`), `/`-joined, a trailing `/` marking a created directory, ASCII-case
+  folded, exact at `rel = abs = 0`. Forced on every live non-`large` case (443 = 312/87/44, six of
+  them declaring it, one `kind=large`): **no floor**, **1** ledger entry, **0** golden bytes, lock
+  +6 `runf=` and one `ledger=` digest, `LEDGER_FIELDS` 15 → 16 (`run_files`, the third per-VALUE
+  exclusion field). Three producers now share ONE classification (`dss_epri::guard::classify_created`,
+  the `corpus_guard.py` twin, the gate's outer guard), which also defines the surface against
+  concurrency — no descent into a pre-existing subdirectory (9 measured members, all belonging to a
+  sibling case) — and closes the sibling-case deletion hazard everywhere. **R-18 struck and
+  replaced by measurement:** the two ORACLES disagree on the spelling (r4133
+  `Executive/ExportOptions.pas:333-356` upper, capi `src/Executive/ExportOptions.pas:314,343,345`
+  lower, plus r4133 lowercasing deck-supplied stems), so the port keeps capi's and the comparator
+  folds ASCII case — `DIVERGENCES.md` §R-18, pin
+  `the_two_oracle_spellings_of_auto1bus_fold_to_one_member`. Structural normalizations, 0 rows:
+  the harmonics scratch `<CircuitName_>SavedVoltages.dbl` (r4133 `Common/Utilities.pas:1512-1521`)
+  split symmetrically and counted, `SCRATCH_FILE_DECLINES = (9, 9)` fail-on-stale both ways +
+  `the_harmonics_scratch_file_is_declined_on_the_nev_deck`. The ONE entry is
+  `r4133-visualize-writes-a-dssview-file-pair` (cause `visualize-dssview-file-pair`, `name_re` on
+  the two `_pq` names) + `visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port`
+  — a product divergence, so `DIVERGENCES.md` and no `to_opendss` note.
+  Four sub-parts landed ahead of or beside the surface, each measured, none of them a ledger row:
+  **D25** the bridge issues `Set Editor=rundll32.exe` at init (r4133 fires `FireOffEditor` on every
+  `Show`/`Dump` unguarded; ~900 orphaned Notepads across the lanes) — own commit,
+  `init_overrides_the_os_editor_and_never_writes_it_back`; **D30(1)** the event-log capture reads
+  `Solution.EventLog` in memory instead of `export eventlog` (59 of the first drive's 61 reds; the
+  two byte-identical corpus-wide) — own commit, `the_in_memory_event_log_equals_the_exported_file` +
+  `the_event_log_capture_creates_no_file`; **D32(1)** Storage `DebugTrace` was a **port gap** on the
+  authority channel (both oracles write `STOR_<name>.CSV` at edit time, r4133
+  `PCElements/Storage.pas:1073-1085`) — ported in its own commit, open-append-close, name compared
+  here and contents handed to G1.10b (the two ORACLES disagree there in 16 columns, FPC `%-.g` = 2
+  significant digits vs Delphi ~15); **D32(2)/D33** the leak is closed loudly (a dropping surviving
+  the sweep fails the case naming its producer; the capi transport clears before sweeping, guarded
+  because dss_capi 0.14.5 faults on that `clear` after an AutoAdd solve — recorded in
+  `DIVERGENCES.md`, pinned by
+  `a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_respawn`) and
+  `runner::CorpusGuard` claims the canonical case directory across both oracle captures and the port
+  run (`corpus_guard_serializes_two_threads_in_one_case_directory`; the concurrent producer was a
+  sibling `#[test]`, not the scheduler). Sharing that one classification on every platform ungates
+  `dss_epri::guard` (pure `std::fs`) and deletes the runner's `cfg(not(windows))` twin, so
+  `crates/dss-core/Cargo.toml` moves `dss-epri` from the Windows-only dev-dependencies to plain
+  `[dev-dependencies]` (D33(3), accepted by D35(2)). That claim **cost nothing**: the gate's wall time went
+  221.7 s to 188.6 / 186.8 / 165.8 s over three post-change default-lane drives
+  (−33.1 / −34.9 / −55.9 s) and 174.0 s on parity. Everything else: `TESTING.md` §"G1.10a — the
+  created-file SET" (the surface, the fold, the population, the leak rule, the per-directory claim,
+  the per-RUN capture-order rule, rider C3), `tests/TOLERANCE_NOTES.md` §G1.10a, the plan's §G1.10
+  as-executed note, and the name registry
+  `oracle_parity_cfg_gate::the_g1_10_pins_the_docs_cite_exist_exactly_once`. The self-check stage
+  added the one §4.3 deliverable the micro-parts had left as prose —
+  `guard::tests::the_python_twin_shares_this_fixture_and_passes_its_self_test`, which compares the
+  two guards' `SELF_TEST_*`/`const` fixture lists and RUNS the Python twin's self-test inside
+  `cargo test` (drift drive: a one-name edit to `corpus_guard.py` reds it).
+  **D35** settled the one gate red the sub-step produced: F4a's four `for … in 1..=` loops building
+  the trace header pushed DE_PASCALIZE **P14** to 110 over its ceiling 106, so all four were
+  rewritten 0-based with the `+ 1` written at the 1-based user-API label — the ceiling was **not**
+  nudged (106, and the population now sits exactly on it) and the rendered header is byte-identical
+  (`storage_debugtrace_opens_the_trace_file_at_edit_time`); the same commit hands the two
+  cross-transport `#[test]`s (`corpus_gate.rs:821`, `:984`), the last producers running in a case
+  directory without a claim, the same `CorpusGuard`, after which F4f measured the intermittent
+  single-case capi red absent in four consecutive default-lane drives — it did recur once later, on
+  a loaded machine (see the gate note below).
+  Commits `11386d96` (F4a, Storage `DebugTrace`), `48af5a74` (D35), `9029ec42` (F0, bridge
+  editor), `8a6f2e73` (F2a, in-memory event log) and the surface commit of this sub-step. Gate, both lanes: `cargo fmt --all --check` rc 0,
+  clippy clean; `corpus_gate` **308 / 0 failed / 0 ignored** per lane with **526/526** cases green
+  (218.9 s default, 173.8 s parity), ledger **55** entries / **1 566** hits / 0 stale and no unhit
+  entry, `SCRATCH_FILE_DECLINES` `(9, 9)` identical on both lanes, `run_files_pins` **238 / 0**,
+  `capture_order` **34 / 0**, `oracle_parity_cfg_gate` **21 / 0**, `population_lock` **3 / 0**,
+  `golden_lock` **4 / 0** with `tests/golden/**` untouched. Two earlier parity drives, taken while
+  three other lanes were building on the same machine (CPU pinned at 100 %), each carried one
+  `capi_v0145` `oracle timeout after 120s` on a `ckt24` deck, and the second also the single-case
+  `espvlcontrol` "You must create a new circuit object first" the D35(3) fix was measured against;
+  both cases pass scoped on the same tree and the quiet third drive is the 526/526 above — an
+  environment artifact recorded, not a divergence, and the `espvlcontrol` recurrence is carried to
+  the settle stage as an open flake. Hygiene: the drives left 2 + 19 `Test/AutoTrans/*.txt`
+  droppings of the STATUS-tracked `kind=large*` leak (no run-file probe brackets those cases), and the
+  self-check's three scoped drives 9 more (`Auto1bus_*`, same mechanism) —
+  removed by name, `git status --short tests/corpus` clean. `lane_diff` is owed by F4a's writer (expected max
+  |Δ| = 0 — a writer, no numeric path) and runs at the gate stage.

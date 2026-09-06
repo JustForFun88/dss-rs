@@ -57,6 +57,50 @@ pub(crate) struct CaseResult {
     pub(crate) checkpoints: Vec<Checkpoint>,
     #[serde(default)]
     pub(crate) autoadd_log: Option<String>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10a — the run-produced FILE SET: every
+    /// filesystem entry the run created under the case dir, `/`-joined,
+    /// ASCII-case-folded, sorted, a trailing `/` marking a created directory
+    /// (`dss_epri::guard::normalize_created_name`). Run-level, not per step —
+    /// the sibling of [`Self::autoadd_log`], not of a [`Checkpoint`] field —
+    /// because a file is created by the whole run, not by one solve.
+    ///
+    /// Flag-gated (`SolvableCase::compare_run_files`), so `None` is the honest
+    /// reply when the case did not request it; the presence rail
+    /// (`harness::capture_guard::require_capture_opt`) turns `None` into a
+    /// failure exactly when the flag IS on. `Some([])` — "asked, and this deck
+    /// created nothing" — is the common, legitimate answer.
+    #[serde(default)]
+    pub(crate) run_files: Option<Vec<String>>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10a, coordinator decision D32(2) — the
+    /// created entries the channel's OWN hygiene guard could not remove
+    /// (`tools/oracle/corpus_guard.py::CorpusGuard.sweep_failed`,
+    /// `dss_epri::guard::CorpusGuard::finish`), normalized like
+    /// [`Self::run_files`].
+    ///
+    /// Not flag-gated and never `Option`: every transport reports it on every
+    /// case, because a dropping one producer leaves behind is in the NEXT
+    /// producer's pre-run snapshot and silences that name in its created set —
+    /// which is exactly how dss_capi's never-closed Storage trace stream
+    /// (`src/PCElements/Storage.pas:872`) made the `r4133` channel look green.
+    /// [`crate::runner::compare_with_result`] fails the case on a non-empty
+    /// list, naming the producer.
+    #[serde(default)]
+    pub(crate) sweep_failed: Vec<String>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10a, coordinator decision D33(1) — the
+    /// message of the exception the transport's own D32(2)(a) teardown `clear`
+    /// raised, or `None` when it completed. The pinned dss_capi 0.14.5 faults
+    /// on that second `clear` on the two AutoAdd decks
+    /// (`tools/oracle/oracle_server.py::run_case`), and the whole compared
+    /// surface is captured BEFORE the teardown, so this is a note, not a
+    /// failure: [`crate::runner::compare_with_result`] prints it and compares
+    /// the case normally. The transport that raised exits after replying, so a
+    /// pooled worker is respawned rather than reused
+    /// ([`WorkerPool::checkin`]). The `r4133` transport issues no teardown
+    /// `clear` (its engines close their own trace files, r4133
+    /// `Version8/Source/PCElements/Storage.pas:1085`) and therefore always
+    /// omits the key — `serde(default)` makes that `None`.
+    #[serde(default)]
+    pub(crate) teardown_error: Option<String>,
 }
 
 /// One committed-step capture (same shape as the checkpoint goldens, but live).
@@ -222,6 +266,13 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "inc_matrix": c.compare_inc_matrix,
         "global_result": c.compare_global_result,
         "autoadd_log": c.compare_autoadd_log,
+        // G1.10a: same contract — both transports honor this key
+        // (`oracle_server.py` reads `req["run_files"]`, `dss-epri`'s
+        // `RunRequest::run_files`) and both report the set from the very
+        // `CorpusGuard` that sweeps the case dir, STRICTLY LAST of the run
+        // (after `autoadd_log`, which itself reads a file off disk) and inside
+        // the guard's scope.
+        "run_files": c.compare_run_files,
         // WP-G1 G1.3a: the per-element derived polar channels. One key for the
         // whole `compare_derived` surface, honored by BOTH transports —
         // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145) and
@@ -795,6 +846,118 @@ fn the_epri_worker_binary_is_not_older_than_its_bridge_sources() {
          would compare the r4133 channel against a stale bridge",
         bin.display()
     );
+}
+
+/// Coordinator decision **D33(1)**: the D32(2)(a) teardown `clear` is guarded,
+/// and a PERSISTENT worker whose teardown raised must still deliver its reply
+/// and then LEAVE, so the pool hands the next case a fresh process instead of
+/// one an access violation may have poisoned.
+///
+/// The producer is the pinned dss_capi 0.14.5 on the AutoAdd decks
+/// (`tests/corpus/modes/autoadd/*.dss`): the second `clear` of the run raises
+/// `DSSException (#303) ... Access violation` — the same backend instability the
+/// manifest note already records as a process-EXIT segfault (`GAPS_PLAN.md`
+/// 2.2). Driven on a COPY of the deck in a scratch directory, never on the
+/// corpus row, so this test can never write into the window of the manifest case
+/// of the same name (the same-directory race of D33(2)).
+///
+/// Three claims, in order: the reply survives the fault in full (the whole
+/// surface is captured BEFORE the teardown); the worker is gone by the next
+/// request (`Worker::request` -> `None`, i.e. `broken`); and
+/// [`WorkerPool::call`]'s respawn path serves the SAME faulting case twice in a
+/// row without losing one. If the pinned oracle is ever fixed, the first
+/// assertion fires — read it as "the guard and `teardown_error` can go", not as
+/// a regression.
+#[test]
+fn a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_respawn() {
+    let root: PathBuf = [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect();
+    let deck = root.join("tests/corpus/modes/autoadd/autoadd.dss");
+    let dir = std::env::temp_dir().join(format!("dss_teardown_d33_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("scratch case dir");
+    let case = dir.join("autoadd.dss");
+    std::fs::copy(&deck, &case).expect("copy the AutoAdd deck into the scratch dir");
+    let req = json!({
+        "cmd": "run",
+        "case_path": case.to_string_lossy(),
+        "post": [],
+        "n_steps": 1,
+        "full_csc": true,
+        "global_result": true,
+        "autoadd_log": true,
+        "run_files": true,
+    });
+
+    let python = std::env::var("DSS_ORACLE_PYTHON").unwrap_or_else(|_| "python".to_string());
+    let timeout = oracle_timeout();
+    let mut w = spawn_worker(&python, &oracle_server_path());
+    assert_pinned(&mut w, timeout);
+    let r = w
+        .request(&req, timeout)
+        .expect("the faulting case must still be answered");
+    assert!(
+        r.ok,
+        "oracle case failed instead of replying: {:?}",
+        r.error
+    );
+    let cr: CaseResult = serde_json::from_value(r.result.expect("ok response carries a result"))
+        .expect("malformed CaseResult");
+    let err = cr.teardown_error.unwrap_or_else(|| {
+        panic!(
+            "the pinned dss_capi 0.14.5 no longer faults on the AutoAdd teardown \
+             `clear` — D33(1)'s guard, `teardown_error` and this test can be retired"
+        )
+    });
+    assert!(
+        err.contains("clear") && err.contains("Access violation"),
+        "unexpected teardown fault (D33(1) measured `#303 ... clear ... Access violation`): {err}"
+    );
+    // The fault is a TEARDOWN: everything compared is read before it.
+    assert_eq!(
+        cr.checkpoints.len(),
+        1,
+        "the run's capture survives the fault"
+    );
+    assert_eq!(
+        cr.checkpoints[0].global_result, "b3, 0.0180069930672805",
+        "the AutoAdd winner is still reported"
+    );
+    assert!(
+        cr.autoadd_log.is_some_and(|l| l.lines().count() == 4),
+        "the AutoAddLog is still read (4 rows)"
+    );
+    assert_eq!(
+        cr.run_files.as_deref(),
+        Some(
+            &[
+                "gaps_aa_autoaddedgenerators.txt".to_string(),
+                "gaps_aa_autoaddlog.csv".to_string()
+            ][..]
+        ),
+        "the created-file set is still reported"
+    );
+    assert!(
+        cr.sweep_failed.is_empty(),
+        "the guard still swept: {:?}",
+        cr.sweep_failed
+    );
+    // ... and then the worker leaves, so the pool respawns instead of reusing it.
+    assert!(
+        w.request(&json!({"cmd": "ping"}), Duration::from_secs(30))
+            .is_none(),
+        "the worker answered another request after a raised teardown `clear` —          `oracle_server.main` must exit so the pool respawns it"
+    );
+    assert!(w.broken, "the dead worker must be marked broken");
+    w.close();
+
+    // The pool's respawn path loses no case: the same faulting request twice.
+    let pool = WorkerPool::new(1);
+    for i in 0..2 {
+        let r = pool.call(&req);
+        assert!(r.ok, "pooled faulting case {i} failed: {:?}", r.error);
+    }
+    pool.close();
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Modification time of one file, or `None` when it cannot be stat'd.
