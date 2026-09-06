@@ -1212,14 +1212,20 @@ fn the_event_log_capture_creates_no_file() {
     }));
     w.quit();
 
+    // `expect`, not `unwrap_or_default`: an ABSENT (or null) `run_files` key
+    // would otherwise read as "the run created nothing" and green this test
+    // while proving nothing — the very claim it exists to make (G1.10a audit
+    // settlement, finding AC-1/AT-2).
     let created: Vec<String> = result["run_files"]
         .as_array()
-        .map(|a| {
-            a.iter()
-                .map(|n| n.as_str().unwrap_or_default().to_string())
-                .collect()
+        .expect("the run must report its created-file set (`run_files`)")
+        .iter()
+        .map(|n| {
+            n.as_str()
+                .expect("every created-file entry is a string")
+                .to_string()
         })
-        .unwrap_or_default();
+        .collect();
     let log: Vec<String> = result["checkpoints"]
         .as_array()
         .and_then(|cps| cps.last())

@@ -577,3 +577,60 @@ fn storage_debugtrace_writes_the_dynamics_record() {
     std::fs::remove_file(&trace).expect("the trace file must not be held open");
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+/// GOLDEN_REBASE G1.10a audit settlement (finding AC-4) — the JSON model reader
+/// creates the trace file too.
+///
+/// Pascal opens it inside the property side effect itself (dss_capi
+/// `src/PCElements/Storage.pas:765` `TStorageObj.PropertySideEffects` → the
+/// `ord(TProp.debugtrace)` arm at `:868-885`), which `FillObjFromJSON` reaches
+/// like every other write path. The port queues the header in the hook and
+/// drains it in the executive, so EVERY edit path has to drain: before this fix
+/// `exec/json_import.rs` called `end_edit` without the drain, and a Storage
+/// imported with `DebugTrace: true` kept a queued header forever and traced
+/// nothing — silently, because `write_trace_record` early-returns without a path.
+#[test]
+fn storage_debugtrace_survives_a_json_model_round_trip() {
+    let built = trace_scratch("json-src");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", built.display()));
+    dss.command("New circuit.t basekv=0.48 phases=3 bus1=a pu=1");
+    dss.command(
+        "New Storage.storage1 phases=3 bus1=a kv=0.48 pf=1 kWrated=50 %reserve=20          kWhrated=500 %stored=50 state=idling debugtrace=yes model=1",
+    );
+    dss.command("makebuslist");
+    let json = dss
+        .circuit_to_json(crate::report::export::json::JsonOpts::default())
+        .expect("the built circuit exports");
+    assert!(
+        json.contains("\"DebugTrace\""),
+        "the property must survive the export, or this test would prove nothing"
+    );
+    drop(dss);
+    let _ = std::fs::remove_dir_all(&built);
+
+    // Re-import into a fresh engine whose output directory is a clean scratch.
+    let scratch = trace_scratch("json");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.circuit_from_json(&json).expect("the model imports");
+    assert!(
+        dss.errors().is_empty(),
+        "unexpected errors: {:?}",
+        dss.errors()
+    );
+
+    let trace = scratch.join("STOR_storage1.CSV");
+    assert!(
+        trace.is_file(),
+        "`DebugTrace: true` must create {} on the JSON import path too",
+        trace.display()
+    );
+    assert_eq!(
+        std::fs::read_to_string(&trace).expect("trace readable"),
+        STORAGE_TRACE_HEADER_3PH,
+        "the header is the same Pascal one the command path writes"
+    );
+    std::fs::remove_file(&trace).expect("the trace file must not be held open");
+    let _ = std::fs::remove_dir_all(&scratch);
+}

@@ -5075,7 +5075,7 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
 /// `RunFileProbe::start` is deliberately absent: `fn start(` is a generic
 /// method name the needle below would over-count. Its half of the lifecycle is
 /// pinned through `finish_and_clean`, which no other module defines.
-const G1_10_PINS: [(&str, usize); 35] = [
+const G1_10_PINS: [(&str, usize); 40] = [
     // the three both-numbers pins (`crates/dss-core/tests/run_files_pins.rs`)
     (
         "visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port",
@@ -5164,6 +5164,20 @@ const G1_10_PINS: [(&str, usize); 35] = [
     ),
     (
         "the_run_file_gate_rejects_a_classification_after_the_sweep",
+        1,
+    ),
+    // the G1.10a audit settlement's four (findings AC-2 / AT-3 / AC-4):
+    // the outer guard's own leak report, the two negative drives of the
+    // `sweep_failed` rail, and the JSON-import twin of the Storage
+    // `DebugTrace` drain.
+    ("the_outer_guard_reports_a_created_file_it_cannot_remove", 1),
+    ("a_transport_reporting_a_leaked_dropping_fails_the_case", 1),
+    ("a_transport_reply_without_a_sweep_report_fails_the_case", 1),
+    ("storage_debugtrace_survives_a_json_model_round_trip", 1),
+    // …and the root cause the settlement's own gate run measured: a guard on a
+    // PARENT case directory used to write a sibling case's swept output back.
+    (
+        "a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output",
         1,
     ),
 ];

@@ -61,6 +61,16 @@ const RESTORE_MAX: u64 = 2 * 1024 * 1024;
 /// `src/Executive/ExecHelper.pas:3387`, port
 /// `crates/dss-core/src/exec/report.rs:2490-2522`) — all three engines write it,
 /// so it stays a compared member of the set.
+/// The match is a SUFFIX, not the full `<CircuitName_>SavedVoltages.dbl` shape
+/// (G1.10a audit settlement, finding AC-8: a conscious choice, not an
+/// oversight). It cannot hide anything: the split is SYMMETRIC — a name that
+/// matches leaves the compared set on the oracle side and on the port side
+/// alike, the port is asserted to produce none
+/// (`harness::run_files::compare_run_files`), and every declined name is counted
+/// into the fail-on-stale `SCRATCH_FILE_DECLINES` population
+/// (`corpus_gate/scheduler.rs`), which reds in BOTH directions. So a future file
+/// that happens to end in the suffix moves the population and fails the gate as
+/// a population move, instead of vanishing from the surface.
 pub const ENGINE_SCRATCH_SUFFIXES: [&str; 1] = ["savedvoltages.dbl"];
 
 /// Canonical member of the created-file set: `/`-joined, `./`-stripped,
@@ -446,8 +456,25 @@ impl CorpusGuard {
         for (name, data) in &self.buf {
             let p = self.dir.join(name);
             match std::fs::read(&p) {
+                // Untouched by the run.
                 Ok(cur) if cur == *data => {}
-                _ => {
+                // Overwritten by the run: put the vendored bytes back.
+                Ok(_) => {
+                    let _ = std::fs::write(&p, data);
+                }
+                // GONE. Never write it back (G1.10a audit settlement, the
+                // settle stage's measurement): a guard on a PARENT case
+                // directory photographs a sibling case's directory too, and
+                // when that sibling's own guard sweeps its output this arm
+                // used to RESURRECT it — the `Test/AutoTrans/Auto{1,3}bus_*`
+                // residue STATUS tracks, and the shrunken created-file set it
+                // causes in the next producer. A deck that genuinely deletes
+                // a vendored file leaves a tracked deletion, which is loud on
+                // its own. The Python twin (`corpus_guard.py::__exit__`)
+                // already behaved this way: it reads before it writes.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                // Unreadable for another reason (a held handle): try, as before.
+                Err(_) => {
                     let _ = std::fs::write(&p, data);
                 }
             }

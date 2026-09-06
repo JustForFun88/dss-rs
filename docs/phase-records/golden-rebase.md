@@ -3427,5 +3427,50 @@ row against the pre-fix lock.
   the settle stage as an open flake. Hygiene: the drives left 2 + 19 `Test/AutoTrans/*.txt`
   droppings of the STATUS-tracked `kind=large*` leak (no run-file probe brackets those cases), and the
   self-check's three scoped drives 9 more (`Auto1bus_*`, same mechanism) —
-  removed by name, `git status --short tests/corpus` clean. `lane_diff` is owed by F4a's writer (expected max
-  |Δ| = 0 — a writer, no numeric path) and runs at the gate stage.
+  removed by name, `git status --short tests/corpus` clean. `lane_diff`, owed by F4a's writer, was RUN at
+  the gate stage and passed: max |Δ| = **0.000e0** on all eight gated kinds (errs 522, iter 2 165, loss
+  366 496, pow 1 170 182, v 375 842, y 1 738 268; 0 iteration counts drifted), and again after the
+  settlement below.
+  **Audit settlement** (2026-09-06, own commit) — 15 rows (11 distinct): **9 fixed / 5 recorded / 1 refuted**
+  (`tmp/g110a/settle.md`). Fixed: the two rails that could pass vacuously (the D30(1) protocol test
+  `expect`s its `run_files` key; `CaseResult::sweep_failed` is an `Option` behind the presence rail,
+  negative-driven by `a_transport_reply_without_a_sweep_report_fails_the_case` and
+  `a_transport_reporting_a_leaked_dropping_fails_the_case`), the outer guard's swallowed removal
+  errors (`runner::CorpusGuard::sweep_created` returns its survivors and `Drop` names them —
+  `the_outer_guard_reports_a_created_file_it_cannot_remove`; the D32(2) loudness now reaches all
+  three producers), a **port gap** in F4a's writer (`exec/json_import.rs` never drained
+  `open_debug_traces`, while dss_capi opens the file from `PropertySideEffects`
+  (`src/PCElements/Storage.pas:765` → `:868-885`) on every write path, the JSON reader included —
+  `storage_debugtrace_survives_a_json_model_round_trip`, proven by a negative drive), and two
+  mis-pointed citations (`DIVERGENCES.md`'s `ExecHelper.pas:4071` is a `FireOffEditor` in `DoSave`;
+  the real chain is `:3672` → `Plot/DSSPlot.pas:3642`/`:3746`/`:3758` → `Plot/DSSGraph.pas:109`/
+  `:114-115`/`:125`/`:128`, and `TOLERANCE_NOTES.md`'s `runner.rs:733,508`). The one **major**
+  finding (D35(3)'s STOP clause, after the `espvlcontrol` recurrence) is settled with a mechanism
+  rather than another drive: a `compile` that leaves neither a circuit nor an error can only be a
+  SHORT READ of the master file (`exec/solve.rs::do_redirect` errors loudly on a missing or
+  unreadable one), so `run_rust_capture` asserts the circuit exists and prints the deck's size on
+  disk — the next occurrence diagnoses itself; the flake stays OPEN in STATUS, no retry loop, no
+  case re-driven. Recorded, measured and deliberately unchanged: shape (i)'s lost sweep under a
+  pre-existing subdirectory (D30(2); escape hatch = shape (ii)), r4133's `InShowResults` suppression
+  (`PCElements/Storage.pas:2407`) still unported and handed to G1.10b with the contents surface, the
+  engine-scratch SUFFIX match (symmetric on both sides and counted by `SCRATCH_FILE_DECLINES`, so an
+  unforeseen name is a population move, never a hidden decline), and this block's length. Refuted:
+  the handoff's liveness decomposition (763 is right; the terms are −5 `skip` pairs +11 fixtures,
+  and no landed doc states them).
+  **And the settle stage's own gate found the root cause of the STATUS-tracked `Test/AutoTrans/*`
+  residue** (it red `run_files_pins::the_two_oracle_spellings_of_auto1bus_fold_to_one_member`, 0 names
+  instead of 9, with no `sweep_failed` anywhere): `Test/` holds 36 manifest cases and
+  `Test/AutoTrans/` five, two different claim keys running concurrently by design, and the parent's
+  guard photographed the CHILD directory too — so when the child's own guard swept its export, the
+  parent's `restore` found the file missing and wrote it back. Both Rust guards now leave a GONE
+  entry gone (an overwritten one is still restored; the Python twin already read before it wrote),
+  proven by `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output` (deterministic
+  interleaving, red before the fix) and measured end to end: 9 leaked files before, **0** after over
+  the settlement's full drives.
+  Gate after the settlement, both lanes: `cargo fmt --all --check` rc 0, clippy clean,
+  **8 371 passed / 0 failed / 5 ignored** per lane over 81 binaries, corpus **526/526** cases,
+  ledger **55** entries / **1 566** hits / 0 unhit, `SCRATCH_FILE_DECLINES (9, 9)` and 763 set
+  compares identical in both lanes, `golden.lock.json` and `tests/golden/**` untouched, `lane_diff`
+  **PASS** (max |Δ| = 0.000e0 on all eight kinds, run after the `json_import` fix), and **zero**
+  untracked corpus droppings after four consecutive full drives — the residue that reds
+  `run_files_pins` when it survives.
