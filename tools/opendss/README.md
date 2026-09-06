@@ -114,9 +114,24 @@ longer exists.
   (`crates/dss-core/src/exec/construct.rs:173`). `tools/oracle/oracle_server.py`
   mirrors the frequency reset on the capi channel (which has no registry and
   rejects `Set RegistryUpdate` outright). Both are pinned by
-  `crates/dss-epri/tests/protocol.rs`. `Set Editor=rundll32.exe`, the other
-  command the old Oddie python channel issued, survives only in the frozen
-  `tools/golden/gen_protection.py` generator.
+  `crates/dss-epri/tests/protocol.rs`.
+- **No OS editor is fired** (GOLDEN_REBASE G1.10a, coordinator decision D25). r4133
+  ends every `Show` writer with
+  `If AutoDisplayShowReport Then FireOffEditor(FileNm)` (`Common/ShowResults.pas`,
+  20+ sites; `AutoDisplayShowReport := TRUE` at `Common/DSSGlobals.pas:2052`) and
+  calls it unconditionally from `Dump` (`Executive/ExecHelper.pas:1357`), the
+  hash-list dumps (`:1223`-`:1249`), `VDIFF` (`:3373`) and `Show autoadded`
+  (`Executive/ShowOptions.pas:208`); `DoShowCmd` (`Executive/ShowOptions.pas:156`)
+  has **no** `NoFormsAllowed` guard, so `DSSI(8, 0)` does not cover it. On Windows
+  `FireOffEditor` `ShellExecute`s `DefaultEditor` (`Common/Utilities.pas:304`),
+  which the DLL read from the machine key at load with the default `'Notepad.exe'`
+  (`Common/DSSGlobals.pas:990`) — one leaked OS process per report on every gate
+  run. The bridge therefore issues **`Set Editor=rundll32.exe` at init**, right
+  after `Set RegistryUpdate=No` so the value never reaches the user's registry
+  (`Common/DSSGlobals.pas:1017`, guarded by `:1015`); `rundll32.exe` exits at once
+  on a non-DLL argument (measured: 0 processes, 0 windows, no created-file name
+  moves). Pinned by `crates/dss-epri/tests/protocol.rs`. The capi channel already
+  clears `DSS_CAPI_ALLOW_EDITOR` (`tools/oracle/oracle_server.py:1585`).
 - **The DLL is never `FreeLibrary`'d** (`Dll::leak()`): the r4133 unit
   finalization tears down its Delphi solver actor thread through a
   message-pumping `TThread.WaitFor` that deadlocks in a headless process. The

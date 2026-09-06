@@ -2,12 +2,26 @@
 //!
 //! One `#[test]` runs the UNION of all four manifests. The task list is grouped
 //! by case directory (§3.3 simplification: task = case-dir group, its cases run
-//! sequentially inside the task — this removes the D9 per-dir mutexes entirely,
-//! since only one thread ever touches a given case dir), pre-sorted longest-first
-//! by a static weight, and drained by `available_parallelism()` (or
-//! `DSS_GATE_JOBS`) threads via an `AtomicUsize` cursor + `std::thread::scope` —
-//! NOT rayon/tokio (tasks block on oracle subprocess I/O; the global rayon pool
-//! belongs to faer inside the solves).
+//! sequentially inside the task, so THIS test never schedules two cases of one
+//! folder at once), pre-sorted longest-first by a static weight, and drained by
+//! `available_parallelism()` (or `DSS_GATE_JOBS`) threads via an `AtomicUsize`
+//! cursor + `std::thread::scope` — NOT rayon/tokio (tasks block on oracle
+//! subprocess I/O; the global rayon pool belongs to faer inside the solves).
+//!
+//! That grouping is necessary but **not sufficient**, and since coordinator
+//! decision **D33(2)** (G1.10a) a per-directory claim backs it: libtest runs
+//! this `#[test]` concurrently with its siblings in the same binary, and
+//! `corpus_ad_matches_normal_mode` compiles `ad_sweep.json`'s decks IN PLACE —
+//! among them `8500-Node/Run_8500Node.dss`, `Run_8500Node_Unbal.dss` and
+//! `Run_RecloserSiting.DSS`, whose own `Show`/`Export` lines run during
+//! `compile` and land in a case directory this gate is measuring (G1.10a F4 run
+//! 2 measured the consequence: one case's created-file SET carrying another
+//! deck's reports, `tmp/g110a/f_F4_unexpected_run2.md`). The claim therefore
+//! lives one level down, in [`crate::runner::CorpusGuard`] — exclusive per
+//! canonical case directory, reentrant for the owning thread — so every
+//! producer that guards a case dir takes it: this scheduler's cases (held
+//! across both oracle captures, the port run and the sweep), the AD sweep, and
+//! the opt-in report tests.
 //!
 //! The pinned `capi_v0145` channel is served by a persistent [`WorkerPool`]; the
 //! `r4133` channel by a persistent [`EpriPool`] of `epri-worker` bridge processes
@@ -1196,6 +1210,709 @@ pub(crate) fn assert_topology_declines_are_the_pinned_population() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.8 — the incidence-matrix surface: its forced population and
+// the manifest rows that carry the declaration into the anti-shrink lock
+// ---------------------------------------------------------------------------
+
+/// Apply the G1.8 incidence-forcing rule to a live case.
+///
+/// The surface is the four flat incidence quantities the fastdss harness dumps
+/// for `Solution` — `IncMatrix`, `Laplacian`, `IncMatrixCols`, `IncMatrixRows`
+/// (`origin/fastdss` `tests/save_outputs.py:187`, built by the `CalcIncMatrix` /
+/// `CalcLaplacian` pair the same harness issues at `:117-118`). They are read on
+/// r4133 from `Version8/Source/DDLL/DSolution.pas:542-568` (`IncMatrix`),
+/// `:589-608` (rows), `:609-639` (cols) and `:640-666` (`Laplacian`); on capi
+/// 0.14.5 from `src/CAPI/CAPI_Solution.pas:897-926`, `:953-971`, `:979-1021` and
+/// `:860-889` — the two integer getters allocating one cell too many (`:910`,
+/// `:873`, each carrying upstream's own `//TODO: remove the +1`), which the capi
+/// capture drops after asserting it is zero.
+///
+/// Two neighbours of that group are deliberately never requested on either
+/// channel. `BusLevels` (`DSolution.pas:569-588`) does
+/// `setlength(myIntArray, ArrSize)` and then `for IMIdx := 0 to ArrSize` — one
+/// write past the array — and therefore sits on the bridge's do-not-call
+/// register (`crates/dss-epri/src/modes.rs:271-280`). The ORDERED builder
+/// `Calc_Inc_Matrix_Org` (`Common/Solution.pas:3146`) calls `GetTopology`
+/// (`:3173`), which rebuilds and re-memoizes the branch tree G1.7's two decline
+/// censuses are defined on; the flat `Calc_Inc_Matrix` (`:3046`) is what this
+/// surface drives, and the golden `*_org_*` stems keep covering the other one.
+///
+/// The rule is **every live case whose `kind` does not start with `large`** —
+/// deliberately the same population [`force_properties`] and [`force_topology`]
+/// force, so the gate keeps reasoning about ONE forced set
+/// ([`FORCED_INC_MATRIX_POPULATION`] asserts all three stay equal). The cost
+/// guard is what buys the surface: the live `large*` decks are a small slice of
+/// the corpus but over half of the capi oracle's wall time and payload, and
+/// nothing caches the matrix — the pair rebuilds it from scratch on every call,
+/// on both oracles and on the port.
+///
+/// As with [`force_topology`] there is no per-source arm (no family deck is
+/// `kind=large*`, asserted by
+/// [`the_property_forcing_rule_is_every_live_non_large_case`]), and a manifest
+/// may also declare the flag itself — which only ever ADDS, and is the only way
+/// the surface reaches `population.lock.json` at all
+/// ([`INC_MATRIX_DECLARED_IN_MANIFEST`]).
+fn force_inc_matrix(c: &mut SolvableCase) {
+    if !c.kind.starts_with("large") {
+        c.compare_inc_matrix = true;
+    }
+}
+
+/// **The forced incidence population, pinned** — `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
+///
+/// Re-derived from the four manifests by
+/// [`the_inc_matrix_forcing_rule_is_every_live_non_large_case`] on every run:
+/// 526 cases → 522 live → **443** forced once the live `kind=large*` decks come
+/// off, of which 312 are `both`, 87 r4133-only and 44 capi-only (measured
+/// 2026-09-05 on the merged tree; `(440, 313, 83, 44)` on the lane, before G1.4a's
+/// D12/D14 flips and the three micro decks the other lanes added). Identical to
+/// [`FORCED_TOPOLOGY_POPULATION`] and
+/// [`FORCED_PROPS_POPULATION`] by construction, and the test asserts those
+/// equalities instead of leaving them a comment.
+///
+/// The lock it backs up is `population.lock.json`, which records the **manifest**
+/// flag (`population_lock.rs::rigor`'s `incm=` token) and cannot see the
+/// scheduler-side forcing at all — the same blind spot the property and topology
+/// rules carry, and the reason all three have a re-derivation test. It also
+/// fixes settlement S-INC's decline population: `harness::inc_matrix`'s
+/// `INC_UPSTREAM_ROW_DECLINES` was measured over exactly this set, so narrowing
+/// it moves that constant too.
+const FORCED_INC_MATRIX_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
+
+/// **The manifest rows that declare `compare_inc_matrix` themselves**, with the
+/// gating channel each one carries.
+///
+/// The forcing rule above is invisible to `population.lock.json`, so without at
+/// least one declared row the surface would arm the whole gate while leaving the
+/// anti-shrink lock byte-identical — and switching it off again would leave no
+/// diff either. These six decks are the §1.1(f) acceptance witnesses: every
+/// gating channel is represented (`capi_v0145`, `r4133`, `both`), and each row's
+/// measured step-0 answer is non-trivial in at least one of the four quantities
+/// (`tmp/g18` probes, 2026-09-05; both channels agree exactly after the capture
+/// normalizations, so one set of numbers describes both):
+///
+/// * `asymmetric:capacitor/midi_capacitor_asym.dss` — `both`; all four row
+///   builders (lines, transformers, series capacitors, series reactors) fire in
+///   one deck: 39 rows / 36 cols, 79 incidence and 112 Laplacian triples.
+/// * `asymmetric:reactor/reactor_asym.dss` — `both`; the settlement S-INC
+///   witness: 6 rows / 5 cols, 12 triples, upstream's largest row index **6**
+///   against **6** row names, because its shunt `Reactor.rsh` still advances the
+///   row cursor (r4133 `Common/Solution.pas:3039`).
+/// * `solvable_now:Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss` —
+///   `both`, 24 steps of 17 rows / 16 cols, 34 incidence and 46 Laplacian
+///   triples; the deck every other WP-G1 surface is also declared on.
+/// * `solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS` — the
+///   `capi_v0145`-only channel: 7 rows / 8 cols, 14 and 22 triples.
+/// * `controls:fuse/indmach_r4133/indmach_dyn.dss` — the `r4133`-only channel:
+///   2 steps of 13 rows / 12 cols, 26 and 34 triples.
+/// * `solvable_now:Test/CableParameters.dss` — `both`, and the only declared
+///   deck with an **empty** `IncMat`: the raw payload is r4133's bare `[0]`
+///   sentinel (`DSolution.pas:545-546`) / capi's lone unwritten `+1` cell, and
+///   `IncMatrixRows` arrives as `['']` on capi (`CAPI_Solution.pas:959`) and
+///   `['None']` on r4133 (`DSolution.pas:605`). The sentinel path is therefore
+///   declared, not merely forced.
+const INC_MATRIX_DECLARED_IN_MANIFEST: &[(&str, &str)] = &[
+    ("solvable_now:Test/CableParameters.dss", "both"),
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+        "capi_v0145",
+    ),
+    (
+        "solvable_now:Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
+        "both",
+    ),
+    ("asymmetric:capacitor/midi_capacitor_asym.dss", "both"),
+    ("asymmetric:reactor/reactor_asym.dss", "both"),
+    ("controls:fuse/indmach_r4133/indmach_dyn.dss", "r4133"),
+];
+
+/// Which gating channels the manifests ask the incidence surface for — the
+/// arming half of `harness::inc_matrix`'s decline census, read HERE because that
+/// module compiles into ~20 test binaries with no manifest access (the G1.7
+/// predicate in [`assert_topology_declines_are_the_pinned_population`], moved
+/// across the module boundary by the G1.8 audit settlement).
+pub(crate) fn inc_matrix_requested_channels() -> harness::inc_matrix::RequestedChannels {
+    let mut out = harness::inc_matrix::RequestedChannels {
+        capi: false,
+        r4133: false,
+    };
+    for uc in build_unified_cases()
+        .iter()
+        .filter(|uc| uc.class == CaseClass::Live && uc.case.compare_inc_matrix)
+    {
+        out.capi |= uc.case.engines == "both" || uc.case.engines == "capi_v0145";
+        out.r4133 |= uc.case.engines == "both" || uc.case.engines == "r4133";
+    }
+    out
+}
+
+/// **The incidence-forcing rule is a rule, not a habit** — the G1.8 twin of
+/// [`the_topology_forcing_rule_is_every_live_non_large_case`], and for the same
+/// reason: nothing else can see [`force_inc_matrix`]. `population.lock.json`
+/// fingerprints manifest flags only, and the live census
+/// `harness::inc_matrix::assert_declines_are_the_pinned_population` sees the
+/// SHAPE of the re-mask (nothing compared, or nothing compared on one channel)
+/// rather than its size — a rule narrowed from 440 cases to 400 leaves both
+/// green. This test walks the four manifests without an oracle and asserts the
+/// forced set **is** the live non-`large` population, cell for cell.
+#[test]
+fn the_inc_matrix_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        // The rule: every live case, minus `large`. A manifest may also declare
+        // the flag itself, which only ever ADDS — so a declared row outside the
+        // rule (a `large` deck, or a pending/abort/deferred one) is a review,
+        // not a silent widening, and reds here.
+        let expected = live && !large;
+        if uc.case.compare_inc_matrix != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} → compare_inc_matrix={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_inc_matrix,
+            ));
+        }
+        if uc.case.compare_inc_matrix {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the incidence-forcing rule is `every live non-`large` case` (GOLDEN_REBASE G1.8, \
+         2026-09-05) — these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        forced, FORCED_INC_MATRIX_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in either r4133 half is a \
+         per-channel re-mask of the incidence request — the thing the live census cannot see, \
+         because it only counts the comparisons that did run. It also re-measures \
+         `harness::inc_matrix::INC_UPSTREAM_ROW_DECLINES`, which was derived over exactly this \
+         population. A legitimate corpus change moves this lock together with \
+         `population.lock.json`."
+    );
+    assert_eq!(
+        FORCED_INC_MATRIX_POPULATION, FORCED_TOPOLOGY_POPULATION,
+        "G1.8 forces the incidence surface over the SAME population as the topology surface (one \
+         rule, one set to reason about — `force_inc_matrix`'s doc). If that is deliberately no \
+         longer true, narrow one rule, drop this assertion, and re-measure \
+         `INC_UPSTREAM_ROW_DECLINES`, which is a function of this population."
+    );
+    assert_eq!(
+        FORCED_INC_MATRIX_POPULATION, FORCED_PROPS_POPULATION,
+        "…and the same population as the property surface, which is where the `live non-`large`` \
+         rule came from (RP0.1/RP0.2's census). Three rules, one forced set."
+    );
+}
+
+/// **The surface reaches the anti-shrink lock** — the static half of the G1.8
+/// acceptance (`GOLDEN_REBASE_PLAN.md` §1.1(f): the flag is set on at least one
+/// case per gating channel).
+///
+/// [`force_inc_matrix`] arms the gate but is scheduler code; only a *declared*
+/// manifest row reaches `population_lock.rs::rigor`'s `incm=` token, so this
+/// test pins exactly which rows carry the declaration and on which channel.
+/// Deleting one — the cheapest way to shrink the surface's recorded footprint —
+/// fails here and in `population.lock.json`, never silently.
+#[test]
+fn the_inc_matrix_surface_is_declared_on_every_gating_channel() {
+    let mut declared: Vec<(String, String)> = Vec::new();
+    for c in load_solvable() {
+        if c.compare_inc_matrix {
+            declared.push((format!("solvable_now:{}", c.path), c.engines.clone()));
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            if c.compare_inc_matrix {
+                declared.push((format!("{}:{}", fam.name, c.path), c.engines.clone()));
+            }
+        }
+    }
+    declared.sort();
+    let mut want: Vec<(String, String)> = INC_MATRIX_DECLARED_IN_MANIFEST
+        .iter()
+        .map(|(l, e)| ((*l).to_string(), (*e).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(
+        declared, want,
+        "the manifest declarations of `compare_inc_matrix` moved. They are what puts the surface \
+         into `population.lock.json` (the `incm=` rigor token) — the scheduler-side \
+         `force_inc_matrix` is invisible to it — so this set is pinned, and a change to it \
+         belongs in the same commit as a regenerated lock."
+    );
+    for ch in ["capi_v0145", "r4133", "both"] {
+        assert!(
+            declared.iter().any(|(_, e)| e == ch),
+            "no manifest case declares `compare_inc_matrix` with engines={ch:?}; \
+             GOLDEN_REBASE_PLAN.md §1.1(f) wants the flag set on at least one case per gating \
+             channel, so that each channel's capture path is exercised by a declared row and not \
+             only by the scheduler's forcing rule"
+        );
+    }
+}
+
+/// **G1.10a - the run's created FILE SET.** Force `compare_run_files` on every
+/// live case whose `kind` does not start with `large`.
+///
+/// The surface is the set of filesystem entries the run
+/// (`clear -> compile -> post -> n_steps x solve`) creates under the case
+/// directory - the case dir's own entries plus everything under a directory the
+/// run created - as `/`-joined, ASCII-case-folded relative names, a trailing `/`
+/// marking a created directory (`harness::run_files`, over the classification
+/// `dss_epri::guard::CorpusGuard::classify` and its Python twin
+/// `tools/oracle/corpus_guard.py`). It is well defined because `Compile` points
+/// the output directory at the deck's own folder (r4133
+/// `Version8/Source/Common/DSSGlobals.pas:962`, capi 0.14.5 twin
+/// `src/Common/DSSGlobals.pas:563`) and every executive writer prefixes its name
+/// with it (r4133 `Version8/Source/Executive/ExportOptions.pas:401`,
+/// `Executive/ShowOptions.pas:208-211`).
+///
+/// Upstream never gated it: fastdss archives every `*.csv` under the run dir
+/// (`origin/fastdss` `tests/save_outputs.py:597-609`) and its comparison SKIPS a
+/// name the other side does not have (`tests/compare_outputs.py:412-421`), so a
+/// file one engine writes and the other does not is invisible there. New
+/// coverage, not catch-up.
+///
+/// The rule is **every live case whose `kind` does not start with `large`** -
+/// deliberately the same population [`force_properties`], [`force_topology`] and
+/// [`force_inc_matrix`] force, so the gate keeps reasoning about ONE forced set
+/// ([`FORCED_RUN_FILES_POPULATION`] asserts all four stay equal). The cost is a
+/// recursive listing of the case dir: free on the oracle side (both guards
+/// already walk that tree to snapshot and to sweep - the classification is now
+/// *reported* instead of discarded) and one walk before + one after on the port
+/// side, which is why the `large*` decks, whose directories hold the corpus's
+/// biggest file trees, stay out with the rest of the one forced set.
+///
+/// As with [`force_topology`] there is no per-source arm (no family deck is
+/// `kind=large*`, asserted by
+/// [`the_property_forcing_rule_is_every_live_non_large_case`]), and a manifest
+/// may also declare the flag itself - which only ever ADDS, and is the only way
+/// the surface reaches `population.lock.json` at all
+/// ([`RUN_FILES_DECLARED_IN_MANIFEST`]).
+fn force_run_files(c: &mut SolvableCase) {
+    if !c.kind.starts_with("large") {
+        c.compare_run_files = true;
+    }
+}
+
+/// **The forced run-file population, pinned** - `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`, counted over
+/// the cases the RULE reaches (the one declared `large` witness is counted
+/// separately by the test below).
+///
+/// Re-derived from the four manifests by
+/// [`the_run_files_forcing_rule_is_every_live_non_large_case`] on every run:
+/// 526 cases -> 522 live -> **443** forced once the live `kind=large*` decks come
+/// off, of which 312 are `both`, 87 r4133-only and 44 capi-only (measured
+/// 2026-09-05 on lane `lane-s`, synced with `update` at `44c1d51f`). Identical to
+/// [`FORCED_INC_MATRIX_POPULATION`], [`FORCED_TOPOLOGY_POPULATION`] and
+/// [`FORCED_PROPS_POPULATION`] by construction, and the test asserts those
+/// equalities instead of leaving them a comment.
+///
+/// The lock it backs up is `population.lock.json`, which records the **manifest**
+/// flag (`population_lock.rs::rigor`'s `runf=` token) and cannot see the
+/// scheduler-side forcing at all - the same blind spot the other three rules
+/// carry, and the reason all four have a re-derivation test. The D25/Q2
+/// engine-scratch decline census (`harness::run_files::scratch_census`) is
+/// measured over exactly this set, so narrowing the rule re-measures it too.
+const FORCED_RUN_FILES_POPULATION: (usize, usize, usize, usize) = (443, 312, 87, 44);
+
+/// **The manifest rows that declare `compare_run_files` themselves**, with the
+/// gating channel each one carries.
+///
+/// The forcing rule above is invisible to `population.lock.json`, so without at
+/// least one declared row the surface would arm the whole gate while leaving the
+/// anti-shrink lock byte-identical - and switching it off again would leave no
+/// diff either. These six decks are the section 1.1(f) acceptance witnesses:
+/// every gating channel is represented (`capi_v0145`, `r4133`, `both`), and each
+/// row's created set was measured on its own channel(s) before it was declared
+/// (`tmp/g110a` F0/F1/F2 probes, 2026-09-05; the two oracles' raw spellings
+/// differ and fold onto one member, so one set of names describes both):
+///
+/// * `solvable_now:Test/REACTORTest.DSS` - `both`; 8 files from `Show`/`Dump`
+///   over the deck's TWO circuits (`reactortest*` + `reactortest2*`), the
+///   plainest non-monitor writer set in the corpus.
+/// * `solvable_now:Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss` -
+///   `both`; 7 created names of which **1** is the engines' internal harmonics
+///   scratch `nev_savedvoltages.dbl` (r4133 `Common/Utilities.pas:1512-1521`,
+///   written only by `InitializeForHarmonics`), split off symmetrically by
+///   D25/Q2 and counted, 6 compared - the declared witness of that
+///   normalization.
+/// * `solvable_now:Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss`
+///   (`both`): the created **directory** convention: `ieee13nodecktmod/`,
+///   `ieee13nodecktmod/di_yr_0/` and the six DI CSVs under it are all members
+///   (8 names). It is also the hook G1.10c reads the DI tree's contents from.
+/// * `solvable_now:Test/DistanceRelayTest.DSS` - the `r4133`-only channel; 1
+///   file, the deck's own `export eventlog` (`rly21test_eventlog.txt`).
+/// * `solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS` - the
+///   `capi_v0145`-only channel, and the measured **empty** set: the deck's two
+///   writers (`export monitor MPCC`, `show monitor MPCC` - capi's `ShowMonitor`
+///   re-writes the same CSV) and the harmonics scratch all target files that are
+///   *vendored* in the corpus (`IEEE_519_Mon_mpcc_1.csv` and
+///   `IEEE_519_SavedVoltages.dbl` are tracked), so nothing is CREATED and the
+///   honest answer is the empty set. It is a real witness all the same: the
+///   presence rail (`capture_guard::require_capture_opt`) fails the case if the
+///   capi transport answers `None`, so this row is what proves that channel's
+///   capture path is wired. It is also the only capi-only witness available - of
+///   the 44 capi-only live cases exactly three reach a file-writing command and
+///   all three write into vendored names (`tmp/g110a/scan_writers.txt`).
+/// * `solvable_now:Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss` - `both`,
+///   `kind=large`, so it is reached ONLY by the manifest declaration (which "only
+///   ever ADDS") and not by [`force_run_files`]: 1 file, the CIM export
+///   (`ieee13nodeckt_cim100x.xml`; r4133 spells it `.XML` and the fold makes the
+///   two channels agree). It proves the flag itself works where the force rule
+///   does not reach.
+///
+/// No family manifest declares the flag: measured over the three family
+/// manifests, no `asymmetric`/`controls`/`modes` deck issues a file-writing
+/// command at all, so a family row would declare an unconditionally empty set.
+const RUN_FILES_DECLARED_IN_MANIFEST: &[(&str, &str)] = &[
+    ("solvable_now:Test/DistanceRelayTest.DSS", "r4133"),
+    ("solvable_now:Test/REACTORTest.DSS", "both"),
+    (
+        "solvable_now:Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
+        "both",
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+        "capi_v0145",
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
+        "both",
+    ),
+    (
+        "solvable_now:Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss",
+        "both",
+    ),
+];
+
+/// **The run-file forcing rule is a rule, not a habit** - the G1.10a twin of
+/// [`the_inc_matrix_forcing_rule_is_every_live_non_large_case`], and for the same
+/// reason: nothing else can see [`force_run_files`]. `population.lock.json`
+/// fingerprints manifest flags only, and a comparison that never runs leaves no
+/// trace anywhere - a rule narrowed from 443 cases to 40 would stay green
+/// everywhere else. This test walks the four manifests without an oracle and
+/// asserts the forced set **is** the live non-`large` population, cell for cell,
+/// plus exactly the declared rows on top of it.
+#[test]
+fn the_run_files_forcing_rule_is_every_live_non_large_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let live = uc.class == CaseClass::Live;
+        let large = uc.case.kind.starts_with("large");
+        // The rule: every live case, minus `large`. A manifest may also declare
+        // the flag itself, which only ever ADDS - so the declared `large` witness
+        // (`IEEE13_CDPSM.dss`) is expected here and is what the `declared` term
+        // admits; a declared row on a pending/abort/deferred case never reaches
+        // the forcing pass at all and so reds below.
+        let declared = RUN_FILES_DECLARED_IN_MANIFEST
+            .iter()
+            .any(|(l, _)| *l == uc.label);
+        let expected = live && (!large || declared);
+        if uc.case.compare_run_files != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} declared={declared} -> compare_run_files={} \
+                 (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if live { "live" } else { "not-live" },
+                uc.case.compare_run_files,
+            ));
+        }
+        if uc.case.compare_run_files {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the run-file forcing rule is `every live non-`large` case` (GOLDEN_REBASE G1.10a, \
+         2026-09-05), plus whatever `RUN_FILES_DECLARED_IN_MANIFEST` adds - these cases \
+         disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    // The declared `large` witness is the one case the rule itself does not
+    // reach, so the pinned tuple counts the rule's own population and this
+    // assertion counts the declaration that reaches past it.
+    let declared_large: Vec<&str> = cases
+        .iter()
+        .filter(|uc| {
+            uc.class == CaseClass::Live
+                && uc.case.kind.starts_with("large")
+                && uc.case.compare_run_files
+        })
+        .map(|uc| uc.label.as_str())
+        .collect();
+    assert_eq!(
+        declared_large,
+        ["solvable_now:Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss"],
+        "exactly one `kind=large*` case declares `compare_run_files` - the proof that a manifest \
+         declaration reaches where `force_run_files` does not"
+    );
+    let by_rule = (
+        forced.0 - declared_large.len(),
+        forced.1 - declared_large.len(),
+        forced.2,
+        forced.3,
+    );
+    assert_eq!(
+        by_rule, FORCED_RUN_FILES_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in either r4133 half is a \
+         per-channel re-mask of the run-file request - invisible to every other gate, because \
+         a comparison that does not run reports nothing. It also re-measures the D25/Q2 \
+         scratch-file decline census, which was derived over exactly this population. A \
+         legitimate corpus change moves this lock together with `population.lock.json`."
+    );
+    assert_eq!(
+        FORCED_RUN_FILES_POPULATION, FORCED_INC_MATRIX_POPULATION,
+        "G1.10a forces the run-file surface over the SAME population as the incidence surface \
+         (one rule, one set to reason about - `force_run_files`'s doc). If that is deliberately \
+         no longer true, narrow one rule, drop this assertion, and re-measure the scratch-file \
+         decline census, which is a function of this population."
+    );
+    assert_eq!(
+        FORCED_RUN_FILES_POPULATION, FORCED_TOPOLOGY_POPULATION,
+        "...and the same population as the topology surface."
+    );
+    assert_eq!(
+        FORCED_RUN_FILES_POPULATION, FORCED_PROPS_POPULATION,
+        "...and the same population as the property surface, which is where the `live \
+         non-`large`` rule came from (RP0.1/RP0.2's census). Four rules, one forced set."
+    );
+}
+
+/// **The surface reaches the anti-shrink lock** - the static half of the G1.10a
+/// acceptance (`GOLDEN_REBASE_PLAN.md` section 1.1(f): the flag is set on at
+/// least one case per gating channel).
+///
+/// [`force_run_files`] arms the gate but is scheduler code; only a *declared*
+/// manifest row reaches `population_lock.rs::rigor`'s `runf=` token, so this test
+/// pins exactly which rows carry the declaration and on which channel. Deleting
+/// one - the cheapest way to shrink the surface's recorded footprint - fails here
+/// and in `population.lock.json`, never silently.
+#[test]
+fn the_run_files_surface_is_declared_on_every_gating_channel() {
+    let mut declared: Vec<(String, String)> = Vec::new();
+    for c in load_solvable() {
+        if c.compare_run_files {
+            declared.push((format!("solvable_now:{}", c.path), c.engines.clone()));
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            if c.compare_run_files {
+                declared.push((format!("{}:{}", fam.name, c.path), c.engines.clone()));
+            }
+        }
+    }
+    declared.sort();
+    let mut want: Vec<(String, String)> = RUN_FILES_DECLARED_IN_MANIFEST
+        .iter()
+        .map(|(l, e)| ((*l).to_string(), (*e).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(
+        declared, want,
+        "the manifest declarations of `compare_run_files` moved. They are what puts the surface \
+         into `population.lock.json` (the `runf=` rigor token) - the scheduler-side \
+         `force_run_files` is invisible to it - so this set is pinned, and a change to it \
+         belongs in the same commit as a regenerated lock."
+    );
+    for ch in ["capi_v0145", "r4133", "both"] {
+        assert!(
+            declared.iter().any(|(_, e)| e == ch),
+            "no manifest case declares `compare_run_files` with engines={ch:?}; \
+             GOLDEN_REBASE_PLAN.md section 1.1(f) wants the flag set on at least one case per \
+             gating channel, so that each channel's capture path is exercised by a declared row \
+             and not only by the scheduler's forcing rule"
+        );
+    }
+}
+
+/// **D25/Q2 — the population where an ORACLE writes an engine-internal scratch
+/// file the port, by design, never writes**, as `(cases, names)`.
+///
+/// Both Pascal engines round-trip the fundamental solution through disk when a
+/// harmonics run starts: `SavePresentVoltages` writes
+/// `<OutputDirectory><CircuitName_>SavedVoltages.dbl` (r4133
+/// `Common/Utilities.pas:1512-1521`, called from `InitializeForHarmonics`
+/// `:1608`) and `RetrieveSavedVoltages` reads it back (`:1554-1564`, consumed at
+/// `SolutionAlgs.pas:1056`/`:1131`); dss_capi 0.14.5 is the same. The port keeps
+/// that state in memory (`crates/dss-core/src/solution/solution/state.rs`,
+/// `solution/solution/harmonics.rs`) and writes no such file, so the name is
+/// **not** a divergence to triage but an artifact of the oracles' internal
+/// plumbing — the D25/Q2 settlement splits it off SYMMETRICALLY in
+/// `harness::run_files::compare_run_files` (asserting the port side of the split
+/// is empty, so a port that ever starts writing one is a real change and not a
+/// normalization) and counts it here. **0 `ledger.json` rows**: a row per
+/// harmonics deck would be ~a dozen entries for one structural cause, which is
+/// exactly the shape coordinator decisions D8/D15/D16 rejected.
+///
+/// The pin is that census, re-derived on every full gate run and failing in
+/// BOTH directions — a bigger population means a new name started being split
+/// off with nobody looking, a smaller one means the normalization now covers
+/// less than it claims. Both numbers of one row are pinned literally by
+/// `run_files_pins::the_harmonics_scratch_file_is_declined_on_the_nev_deck`.
+///
+/// **Measured `(9, 9)` on 2026-09-06** (GOLDEN_REBASE G1.10a F4e, lane
+/// `lane-s`), read off COMPLETED full 526-case drives — the value is never
+/// guessed, because the epilogue that calls the assertion below
+/// (`corpus_gate.rs`) runs only after the per-case failure report, so a drive
+/// with ANY red case never reaches it and a partial run cannot found a
+/// fail-on-stale population. Nine cases, nine names, one name each: the four
+/// `modes:harmonics/*` decks, `modes:inputformat/xycurve_files`, and four
+/// `solvable_now:` harmonics decks (`Test/PVSystemTestHarm.dss`,
+/// `Examples/FreqScan/Run_Scan.dss`, `Examples/HarmonicsVariableLoad/IEEE_519.DSS`,
+/// `IEEETestCases/NEVTestCase/Run_NEV.dss`), each declining exactly one
+/// `<CircuitName_>savedvoltages.dbl`. That is the whole population that reaches
+/// `InitializeForHarmonics` on either oracle, and it is identical on the two
+/// lanes — the full row table is in the record
+/// (`docs/phase-records/golden-rebase.md`).
+///
+/// `(cases, names)` and not `(cases, names, visits)`: the census key is
+/// `(case label, scratch name)` with no channel in it, so a `both` case that
+/// declines the same name on both channels is one row either way, and the
+/// process-wide visit counter also counts this binary's own
+/// `harness::run_files` unit fixtures. Those fixtures are why the population is
+/// read off the decline TABLE and restricted to labels the manifests actually
+/// carry — every other label must be one of them, which the assertion checks
+/// rather than assumes.
+const SCRATCH_FILE_DECLINES: (usize, usize) = (9, 9);
+
+/// The D25/Q2 census, re-derived from this run and pinned in both directions —
+/// the [`assert_topology_declines_are_the_pinned_population`] shape for a
+/// settlement that deliberately writes no ledger rows.
+///
+/// Silent in the two documented situations that shape has: `DSS_GATE_ONLY` is
+/// set (a filtered run holds a filtered population), and no live manifest case
+/// requests `compare_run_files` at all (a fact re-read from the manifests here,
+/// not assumed, so the assertion arms itself the moment the surface is forced
+/// or declared).
+pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let cases = build_unified_cases();
+    let requested = cases
+        .iter()
+        .filter(|uc| uc.class == CaseClass::Live)
+        .any(|uc| uc.case.compare_run_files);
+    #[cfg(not(windows))]
+    {
+        assert!(
+            !requested,
+            "`compare_run_files` is Windows-only (the classification lives in the \
+             `#[cfg(windows)]` crate `dss-epri`), yet a live case requests it"
+        );
+    }
+    #[cfg(windows)]
+    {
+        let gate_labels: std::collections::BTreeSet<&str> =
+            cases.iter().map(|uc| uc.label.as_str()).collect();
+        let table = harness::run_files::scratch_decline_table();
+        let census = harness::run_files::scratch_census();
+        // Rows this binary's own `harness::run_files` unit fixtures wrote. They
+        // share the process-wide census with the gate, so they are separated by
+        // label and REFUSED when they are neither a manifest case nor one of
+        // those fixtures — a typo'd or foreign label must never be absorbed into
+        // the pinned population.
+        let (gate_rows, fixture_rows): (Vec<_>, Vec<_>) = table
+            .iter()
+            .partition(|(case, _)| gate_labels.contains(case.as_str()));
+        let foreign: Vec<&String> = fixture_rows
+            .iter()
+            .map(|(case, _)| *case)
+            .filter(|case| !case.starts_with("unit:"))
+            .collect();
+        assert!(
+            foreign.is_empty(),
+            "the D25/Q2 scratch census carries the label(s) {foreign:?}, which are \
+             neither a manifest case nor one of this binary's `unit:` fixtures. The \
+             pinned population is a fact about the corpus, so an unrecognized \
+             producer fails instead of being counted or dropped."
+        );
+        let measured = (
+            gate_rows.len(),
+            gate_rows
+                .iter()
+                .map(|(_, names)| names.len())
+                .sum::<usize>(),
+        );
+        let report: Vec<String> = gate_rows
+            .iter()
+            .map(|(case, names)| format!("{case} -> {names:?}"))
+            .collect();
+        if !requested {
+            assert_eq!(
+                measured,
+                (0, 0),
+                "no manifest case requests `compare_run_files`, yet the run-file \
+                 comparator split engine-scratch files off real gate cases:\n  {}",
+                report.join("\n  ")
+            );
+            eprintln!(
+                "corpus_gate run files: the surface is not requested by any live case \
+                 - nothing to re-derive"
+            );
+            return;
+        }
+        eprintln!(
+            "corpus_gate run files: D25/Q2 engine-scratch declines {measured:?} \
+             (+{} unit fixture row(s); {} channel visit(s) and {} set compare(s) \
+             process-wide)\n  {}",
+            fixture_rows.len(),
+            census.visits,
+            census.compared,
+            report.join("\n  ")
+        );
+        assert_eq!(
+            measured,
+            SCRATCH_FILE_DECLINES,
+            "the D25/Q2 engine-scratch decline population moved (measured {:?}, \
+             pinned {:?}). It is re-derived on every run and fails in BOTH \
+             directions: a bigger population means a case started having a name \
+             split off its created-file SET with nobody looking, a smaller one \
+             means the normalization now covers less than it claims. Re-measure, \
+             move the constant WITH the record, and re-read the pin \
+             `run_files_pins::the_harmonics_scratch_file_is_declined_on_the_nev_deck`.\
+             \n  {}",
+            measured,
+            SCRATCH_FILE_DECLINES,
+            report.join("\n  ")
+        );
+        assert!(
+            measured.0 > 0,
+            "the D25/Q2 scratch census counted nothing on a run where live cases \
+             request `compare_run_files`. The pinned population would then be a \
+             statement about nothing - the surface is masked off somewhere \
+             between the manifest and the transports."
+        );
+    }
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(
@@ -1234,6 +1951,8 @@ fn make_case(
         force_zsc(&mut c);
         force_element_extras(source, &mut c);
         force_topology(&mut c);
+        force_inc_matrix(&mut c);
+        force_run_files(&mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
     let dir_key = dir_key_of(&abs);
@@ -1268,6 +1987,63 @@ fn build_unified_cases() -> Vec<UnifiedCase> {
         }
     }
     out
+}
+
+/// Coordinator decision **D33(2)**, the scheduler's half: two manifest rows in
+/// ONE case directory are never scheduled at the same time, because
+/// [`build_tasks`] puts them in ONE task and a task is drained by a single
+/// thread, in manifest order. Case-insensitively — a Windows path can reach one
+/// physical folder through two spellings, and [`dir_key_of`] folds them.
+///
+/// The other half of the guarantee is against the SIBLING `#[test]`s of this
+/// binary (see the module doc) and is pinned by
+/// `runner::corpus_guard_serializes_two_threads_in_one_case_directory`.
+#[test]
+fn two_manifest_rows_in_one_case_directory_land_in_one_task() {
+    let mk = |order: usize, abs: &str| UnifiedCase {
+        order,
+        label: format!("fixture:{abs}"),
+        abs: abs.to_string(),
+        dir_key: dir_key_of(abs),
+        weight: 1,
+        class: CaseClass::Live,
+        case: SolvableCase::default(),
+    };
+    // The `IEEETestCases/8500-Node` shape: several rows writing
+    // `<CircuitName>_*` reports into one folder, one of them spelled with a
+    // different case, plus one row in a different folder.
+    let tasks = build_tasks(
+        vec![
+            mk(0, "C:/corpus/8500-Node/Run_8500Node.dss"),
+            mk(1, "C:/corpus/8500-Node/P174_Run_Voltage_Profile.DSS"),
+            mk(2, "C:/corpus/8500-node/Master-unbal.dss"),
+            mk(3, "C:/corpus/AutoTrans/Auto3bus.dss"),
+        ],
+        None,
+    );
+    assert_eq!(
+        tasks.len(),
+        2,
+        "three rows of one case directory (two spellings) plus one row of \
+         another must be exactly two tasks, got {:?}",
+        tasks.iter().map(|t| &t.dir_key).collect::<Vec<_>>()
+    );
+    let shared = tasks
+        .iter()
+        .find(|t| t.dir_key.ends_with("8500-node"))
+        .expect("the shared case directory has a task");
+    assert_eq!(
+        shared.cases.iter().map(|c| c.order).collect::<Vec<_>>(),
+        vec![0, 1, 2],
+        "every row of one case directory belongs to that directory's single \
+         task, in manifest order — a task is drained by ONE thread, which is \
+         what keeps their file-writing windows apart (D33(2))"
+    );
+    let other = tasks
+        .iter()
+        .find(|t| t.dir_key.ends_with("autotrans"))
+        .expect("the other case directory has its own task");
+    assert_eq!(other.cases.len(), 1);
 }
 
 /// A tiny deterministic PRNG (splitmix64) for the shuffle probe — avoids a dev

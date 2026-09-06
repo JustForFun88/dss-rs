@@ -861,6 +861,7 @@
    "kind": "feeder",
    "n_steps": 2,
    "compare_topology": true,
+   "compare_inc_matrix": true,
    "engines": "r4133",
    "wp": "WP-U2.1",
    "selected_elements": [

@@ -127,50 +127,62 @@ reproduced in any lane. Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE WP-G0 /
 WP-G2 — condensed records" (full session records precede it there).
 
-**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04 its chains run in parallel **lanes**, D7, merged one sub-step
-at a time). Landed: **G1.1**, killed and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2** (the ESPVLControl deck)
-2026-08-29; and, 2026-09-04/06, the rails plus fourteen surfaces, each with its full record in [`golden-rebase.md`](docs/phase-records/golden-rebase.md) —
-**G1.0** (`c4b67a6e` + `42454b64`), the flag vocabulary, exclusion `channels`, the capture guard and the r4133 bridge, whose mode probe **discharges G1.11**;
-**G1.9** (`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates + `Solution` scalars; **G1.6b** (`lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`), the
-`PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` + `588e0bfe` + `9f9c723d`), `Enabled` + the three polar channels (**1** new entry,
-`DIVERGENCES.md` L8, + **13** widenings); **G1.4a** (`lane-b`, `6b0dbd32` + `be01e413` + `10417d99`), the bus surface's divergence-free half (**0** new; **D8**
-defers the rest to G1.4c), with **D11(1)** `float_roundtrip`, **D12**/**D14** the four `GICTransformer` decks onto `r4133` (ledger −4) and **D13** the worker's
-registry leak; **G1.3d(i)** (`lane-e`, `e4d99806` + `b7d7da2a` + `c9c4ac09`), the per-element counts, `NodeOrder` and `EnergyMeter`, exact (**0** new); **G1.7**
-(`lane-s`, `8fc32991` + `898f8a86` + `434a6b51` + `1314431a`), the six order-free `Topology` rows with the memoized-tree and window-dedup defects
-**asserted, not excluded** (**D15**/**D16**, fail-on-stale `(16, 135)` / `(8, 96)`; two port gaps fixed en route, **0** new); **G1.6(i)** (`lane-m`, `e343d9e8`
-+ `96d7540a` + `bcc835b6`), meter extras and **the run protocol** — the executive `RelCalc` driven once per case, the indices, sections,
-`CalcCurrent`/`AllocFactors`, `Meters.Totals` and the **ordered** zone lists exact but for three tier-banded cells (**D17a**, **D11/D18**, **0** new); **G1.5**
-(`lane-b`, `7d920701` + `5d206bdb` + docs), the bus short-circuit surface read as **precomputed state** on G1.4a's per-bus walk, sentinels normalized (**D4**),
-D11(2) narrowed to `Voc`/`Isc`, a `ReduceAlgs` port gap closed in step and a settlement `SC_STUDY_POPULATION` fail-on-stale (**0** new); and **G1.3d(ii)**
-(`lane-e`, `e6d66d66` + `43108993` + `d8090b6b`), `PhaseLosses` + the five control-derived scalars — **§G1.3d complete** — on a floor derived from
-`assert_power_close`, the first channel to join `LANE_SKIP_ELEM_POWERS`, with the per-edit control re-attach (`DIVERGENCES.md` L9), the disabled-OCP scan and
-adjacent defect A-1 fixed behind a fail-on-stale multi-control census (**0** new; its ten `phase_losses` widenings land as **eight**, D12/D14 having deleted the
-two capi GIC entries it also widened); and **G1.6(ii)** (`lane-m`, `3e65ae2d` + `572954e6` + `fc4dfa73`), the eight per-bus reliability columns inside G1.6(i)'s
-payload — 6 cases / 50 capi + 84 r4133 buses, exact, keys `bus:<bus>:<field>` on the existing `reliability` field, plus the **D20/D22** engine fix
-(`calc_reliability_indices` recomputes `TotalUpDownstreamCustomers`, r4133 `EnergyMeter.pas:2466-2468`) whose only footprint is a capi divergence under
-`RelCalc <restore>`, unreachable on the corpus (`DIVERGENCES.md` §D22) — **the PD/meter chain closes here** (**0** new); and **G1.3b** (`lane-e`, `40a65ffd` +
-`3d350ce6` + `ef110b71`), per-element `SeqCurrents`/`SeqVoltages`/`SeqPowers` on both channels — **31** widenings on 11 `element` scopes, the n/A power sentinel
-a channel-scoped fold, `SEQ_C012 = 5.229590094302253e-10` the r4133-only 012-matrix term — landing under **D31**: `makeposseq_gic.dss` (D12/D14's flip) is the
-only case reaching the 1φ-posseq arm on `r4133`, so r4133's slot/stride defect costs **1** entry + a both-numbers pin, census `(297 896, 79, 0)` →
-`(297 867, 78, 4)`, re-derived on the merged tree; **G1.4c** (`lane-b`, `74cb0ef6` + `6fc63848` + `27fe66fc`/`1289928f`), the bus **sequence** and
-**line-to-line** arms on G1.4a's per-bus walk, where port, capi and r4133 all differ: the port publishes the physically correct answer (S-SEQ/S-VLL, **D21**),
-each oracle's own walk over the port's state is **asserted** rather than excluded (**D15**/**D16**, four fail-on-stale populations) and r4133's `VLL` **hang**
-is refused per bus (**D2**; `DIVERGENCES.md` §G1.4c, `to_opendss/` 64-66) — **0** new; and **G1.4b** (2026-09-06, `lane-b`, `1aa08d9c` + `03565bf7` +
-`50a75c08`/`e6101383`), the bus **distance** surface on the same walk, compared **exactly** (`rel = abs = 0`) behind `DISTANCE_POPULATION` **(867, 79 137)**
-fail-on-stale with D9's `MakeBusList` fix pinned live — **D26** split its at-bus half into a NEW **G1.4d** (**a plan amendment the user has not seen**) and
-**D29** refused its own step 1 (r4133's `MergeWith` renames a line without updating `DeviceList`, `to_opendss/68`), so `modes:reduce/midi_reduce.dss` stays
-capi-gated behind the new **`distance`** ledger field (**+1** entry); the two lanes' 012-matrix term was deduped here to one `SEQ_C012` (**D21**, the tight row
-sum); and **G1.3c** (2026-09-06, `lane-e`, `548bc7b8` + `a15e2ae3` + `6d0cde8e`/`7cefa8d0`), per-element `CplxSeqCurrents`/`CplxSeqVoltages`/`TotalPowers` —
-**the element chain closes here**, `compare_derived` at **thirteen** sub-channels: **0** new entries, **25** widenings on 9 `element` scopes (31 on the lane;
-D12/D14 had deleted two capi GIC entries), `TotalPowers` the fourth `LANE_SKIP_ELEM_POWERS` channel on the two `newton*` decks while `CplxSeq*` stays compared
-there, and D31's widening measured `seq_powers`-only (modes 13/14 slot correctly). The lanes' micro decks met here: corpus **526** cases / 522 live,
-`FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` = (443, 312, 87, 44) and `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden
-byte, |Δ| = 0 throughout; `WP_G1_MODES` **111**, ledger **56** / 32 causes; **G1.4d**, G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+**GOLDEN_REBASE WP-G1 (live gate to fastdss parity) — OPEN** (opened 2026-08-08; since 2026-09-04 its chains run in parallel **lanes**, D7, merged one
+sub-step at a time). Landed: **G1.1**, killed and delivered by `R4133_PROPS_PLAN.md` RP4.1 2026-09-03 (**G3.4**/**G3.5** unblocked); **G1.2** (the
+ESPVLControl deck) 2026-08-29; and, 2026-09-04/06, the rails plus sixteen surfaces, each with its full record in
+[`golden-rebase.md`](docs/phase-records/golden-rebase.md) — **G1.0** (`c4b67a6e` + `42454b64`), the flag vocabulary, exclusion `channels`, the capture guard
+and the r4133 bridge, whose mode probe **discharges G1.11**; **G1.9** (`lane-s`, `9757d26c` + `f27f9598`), `Circuit` aggregates + `Solution` scalars;
+**G1.6b** (`lane-m`, `06808a6d` + `e1e18367` + `c6a3c0a8`), the `PDElements` walk + the **D9** engine fix; **G1.3a** (`lane-e`, `d8e71991` + `588e0bfe` +
+`9f9c723d`), `Enabled` + the three polar channels (**1** new entry, `DIVERGENCES.md` L8, + **13** widenings); **G1.4a** (`lane-b`, `6b0dbd32` + `be01e413` +
+`10417d99`), the bus surface's divergence-free half (**0** new; **D8** defers the rest to G1.4c), with **D11(1)** `float_roundtrip`, **D12**/**D14** the four
+`GICTransformer` decks onto `r4133` (ledger −4) and **D13** the worker's registry leak; **G1.3d(i)** (`lane-e`, `e4d99806` + `b7d7da2a` + `c9c4ac09`), the
+per-element counts, `NodeOrder` and `EnergyMeter`, exact (**0** new); **G1.7** (`lane-s`, `8fc32991` + `898f8a86` + `434a6b51` + `1314431a`), the six
+order-free `Topology` rows with the memoized-tree and window-dedup defects **asserted, not excluded** (**D15**/**D16**, fail-on-stale `(16, 135)` / `(8, 96)`;
+two port gaps fixed en route, **0** new); **G1.6(i)** (`lane-m`, `e343d9e8` + `96d7540a` + `bcc835b6`), meter extras and **the run protocol** — the executive
+`RelCalc` driven once per case, the indices, sections, `CalcCurrent`/`AllocFactors`, `Meters.Totals` and the **ordered** zone lists exact but for three
+tier-banded cells (**D17a**, **D11/D18**, **0** new); **G1.5** (`lane-b`, `7d920701` + `5d206bdb` + docs), the bus short-circuit surface read as **precomputed
+state** on G1.4a's per-bus walk, sentinels normalized (**D4**), D11(2) narrowed to `Voc`/`Isc`, a `ReduceAlgs` port gap closed in step and a settlement
+`SC_STUDY_POPULATION` fail-on-stale (**0** new); and **G1.3d(ii)** (`lane-e`, `e6d66d66` + `43108993` + `d8090b6b`), `PhaseLosses` + the five control-derived
+scalars — **§G1.3d complete** — on a floor derived from `assert_power_close`, the first channel to join `LANE_SKIP_ELEM_POWERS`, with the per-edit control
+re-attach (`DIVERGENCES.md` L9), the disabled-OCP scan and adjacent defect A-1 fixed behind a fail-on-stale multi-control census (**0** new; its ten
+`phase_losses` widenings land as **eight**, D12/D14 having deleted the two capi GIC entries it also widened); and **G1.6(ii)** (`lane-m`, `3e65ae2d` +
+`572954e6` + `fc4dfa73`), the eight per-bus reliability columns inside G1.6(i)'s payload — 6 cases / 50 capi + 84 r4133 buses, exact, keys `bus:<bus>:<field>`
+on the existing `reliability` field, plus the **D20/D22** engine fix (`calc_reliability_indices` recomputes `TotalUpDownstreamCustomers`, r4133
+`EnergyMeter.pas:2466-2468`) whose only footprint is a capi divergence under `RelCalc <restore>`, unreachable on the corpus (`DIVERGENCES.md` §D22) — **the
+PD/meter chain closes here** (**0** new); and **G1.3b** (`lane-e`, `40a65ffd` + `3d350ce6` + `ef110b71`), per-element `SeqCurrents`/`SeqVoltages`/`SeqPowers`
+on both channels — **31** widenings on 11 `element` scopes, the n/A power sentinel a channel-scoped fold, `SEQ_C012 = 5.229590094302253e-10` the r4133-only
+012-matrix term — landing under **D31**: `makeposseq_gic.dss` (D12/D14's flip) is the only case reaching the 1φ-posseq arm on `r4133`, so r4133's slot/stride
+defect costs **1** entry + a both-numbers pin, census `(297 896, 79, 0)` → `(297 867, 78, 4)`, re-derived on the merged tree; **G1.4c** (`lane-b`, `74cb0ef6`
++ `6fc63848` + `27fe66fc`/`1289928f`), the bus **sequence** and **line-to-line** arms on G1.4a's per-bus walk, where port, capi and r4133 all differ: the port
+publishes the physically correct answer (S-SEQ/S-VLL, **D21**), each oracle's own walk over the port's state is **asserted** rather than excluded
+(**D15**/**D16**, four fail-on-stale populations) and r4133's `VLL` **hang** is refused per bus (**D2**; `DIVERGENCES.md` §G1.4c, `to_opendss/` 64-66) — **0**
+new; and **G1.4b** (2026-09-06, `lane-b`, `1aa08d9c` + `03565bf7` + `50a75c08`/`e6101383`), the bus **distance** surface on the same walk, compared
+**exactly** (`rel = abs = 0`) behind `DISTANCE_POPULATION` **(867, 79 137)** fail-on-stale with D9's `MakeBusList` fix pinned live — **D26** split its at-bus
+half into a NEW **G1.4d** (**a plan amendment the user has not seen**) and **D29** refused its own step 1 (r4133's `MergeWith` renames a line without updating
+`DeviceList`, `to_opendss/68`), so `modes:reduce/midi_reduce.dss` stays capi-gated behind the new **`distance`** ledger field (**+1** entry); the two lanes'
+012-matrix term was deduped here to one `SEQ_C012` (**D21**, the tight row sum); and **G1.3c** (2026-09-06, `lane-e`, `548bc7b8` + `a15e2ae3` +
+`6d0cde8e`/`7cefa8d0`), per-element `CplxSeqCurrents`/`CplxSeqVoltages`/`TotalPowers` — **the element chain closes here**, `compare_derived` at **thirteen**
+sub-channels: **0** new entries, **25** widenings on 9 `element` scopes (31 on the lane; D12/D14 had deleted two capi GIC entries), `TotalPowers` the fourth
+`LANE_SKIP_ELEM_POWERS` channel on the two `newton*` decks while `CplxSeq*` stays compared there, and D31's widening measured `seq_powers`-only (modes 13/14
+slot correctly); **G1.8** (2026-09-05, `lane-s`, `2cadc808` + `f3436c77` + `166bae9b` + `24348239`/`8caebab2`), the four flat incidence quantities
+(`IncMatrix`, `Laplacian`, `IncMatrixRows`, `IncMatrixCols`) on both channels, read **strictly last** because they move `ActiveCktElement`, with the reactor
+row cursor **asserted, not excluded** (settlement S-INC, `INC_UPSTREAM_ROW_DECLINES = (4, 5)` fail-on-stale; **0** new, no floor); and **G1.10a** (2026-09-06,
+`lane-s`, `11386d96` + `48af5a74` + `9029ec42` + `8a6f2e73` + `a6d7f1fd` + `728332b6` + `fdfdd68e`), the run's **created-file SET** — one classification
+shared by all three producers, the two oracles' spellings ASCII-folded (`DIVERGENCES.md` §R-18), the harmonics scratch split off and counted
+(`SCRATCH_FILE_DECLINES` **(9, 9)**), **1** new entry (the r4133 `Visualize` `.DSV`/`.dbl` pair, a *product* divergence) — with **D25** editor suppression,
+**D30(1)** the in-memory event log, **D32(1)** the Storage `DebugTrace` **port gap** closed in its own commit, **D33** the loud leak report + one producer per
+case dir, and **D35** (the four trace-header loops 0-based; DE_PASCALIZE P14's ceiling stays 106); its audit settlement also found and fixed the parent-guard
+resurrect behind the `Test/AutoTrans` residue below. The lanes' micro decks met here: corpus **526** cases / 522 live,
+`FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44) and `FORCED_DERIVED_POPULATION` = (445, 314,
+87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111**, ledger **57** / 33 causes; **G1.4d**, G1.10b/c, G1.11a–c and WP-G3–G5 remain.
 
-**Next.** `lane-s` **G1.10a** (running, its P14 fix `48af5a74` committed); `lane-b` **G1.4d** (running, unsynced — the at-bus lists, criterion S4, **D26**);
-`lane-e` idle after its **G3.0** pre-flight (**D36**/**D37**), its element chain closed with G1.3c; `lane-m` idle, its chain closed with G1.6(ii) (the AT-1
-zone-boundary decision it hands on is owned by `ORPHANED_GAPS.md` §1.20); then G1.10b/c, G1.11a–c + the **G1.11′** docs close-out (**D37**) and WP-G3–G5;
-queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** **USER WIND-DOWN (2026-09-06):** `lane-b` **G1.4d** (the at-bus lists, criterion S4, **D26**) is finishing and lands last; nothing else is launched
+— `lane-s`/`lane-e`/`lane-m` are idle (the AT-1 zone-boundary decision `lane-m` hands on is owned by `ORPHANED_GAPS.md` §1.20). First next session: **F0′**
+(**D39** — the bridge suppresses report auto-display through r4133's own `AllowForms=No` / `ShowReports=No` (throwaway circuit) / `ShowExport=No`, `Set
+Editor=` staying only the safety net, plus the upstream report; brief `lane-s tmp/g110a/f0prime_brief.md`); then **G1.10b**, **STOPPED at spec** (`lane-s
+tmp/g110b/STOP.md` — the `Export Currents` reprint classes C1–C5, 108 cells over 6 cases, recommended settlement S-B = per-column map + case floor + print
+ulp, 0 ledger rows; coordinator ruling pending), **G1.10c** (brief `lane-e tmp/g110c`), G1.11a–c + the **G1.11′** docs close-out (**D37**), and WP-G3 per
+**D37**; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape
@@ -325,22 +337,22 @@ each row's measured cost.
   re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
-- **`CorpusGuard` leaks deck-written artifacts under concurrency — mechanism MEASURED at GOLDEN_REBASE G1.6b (2026-09-04, audit settlement T5); still OPEN, owed a hygiene sub-step**
-  (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace` runs intermittently leave untracked deck-written exports in the tracked corpus tree —
-  nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the decks' own `export … file=` lines).
-  **Thirty-one sightings** 2026-08-29 … 2026-09-06 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1, G1.7 ×3, the G1.7
-  merge ×1, G1.6(i) ×2 — one of those, after a settlement gate + `lane_diff`, was 22 `.txt` plus a 0-byte `controls/gfm/DA3ABD.tmp`, a new shape — the G1.6(i)
-  merge ×1, the G1.5 merge ×2 (two `AutoHLT_*`, then three `auto3bus_*`), the G1.3d(ii) merge ×2 (`AutoAuto_HL_current.txt` + `auto3bus_load_voltage.txt`; the
-  first alone again at the gate), G1.6(ii) ×1 (12: 5 `AutoTrans` exports + 7 `IEEE8500u_Mon_storage_*` csv; its settlement gate then clean first attempt), the
-  G1.6(ii) merge ×1 (8 `auto3bus_*` at the five-command gate)) — plus the `lane-b` bus chain, which retired its per-run tally at G1.4a/G1.5 because nearly every
-  unfiltered run left a set (G1.4c's handoffs name five and G1.4b's two, the settlement gates included), and the G1.4c+G1.4b merge ×1 (10 `AutoTrans`). 1 … 36 files,
-  varying between runs of the *same* tree (measured at §RP3.13) and once with an unreproducible `corpus_gate` `137 passed; 1 failed`; every set was removed
-  before its commit and both lanes were green with the files present, no tracked corpus or golden byte ever moving, so the leak costs hygiene only.
-  **It is a drop-order race, not a missing sweep:** `impl Drop for CorpusGuard` (`corpus_gate/runner.rs:161-190`) releases the directory lock *before*
-  `sweep_created` and the restore loop run, so a sibling case starting in that window (`Test/AutoTrans` holds five cases in one directory) photographs the
-  outgoing case's exports as "vendored" and its own drop rewrites them — only files under `RESTORE_MAX`; scoped or single-binary runs leave it clean, and the
-  case-insensitive collision at `runner.rs:42-55` compounds it. The fix (hold the lock across sweep + restore) owes a gate-contention measurement in a file
-  every lane is editing (**D7**); start with `DSS_GATE_JOBS=1` per G2.2d.
+- **`CorpusGuard` leaks deck-written artifacts under concurrency — root cause FOUND and FIXED at GOLDEN_REBASE G1.10a (2026-09-06); the item stays OPEN**
+  (first seen G1.2 2026-08-29; drop-order mechanism measured at G1.6b). Unfiltered `cargo test --workspace` runs intermittently leave untracked deck-written
+  exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the decks' own
+  `export … file=` lines). **Forty-two sightings** 2026-08-29 … 2026-09-06 (G1.10a ×8, the RP rounds ×10, four merges ×7, G1.7 ×4, G1.8 and G1.6(i) ×3 each,
+  the rest across G1.0–G1.6(ii); the `lane-b` chain retired its tally — nearly every unfiltered run left a set), 1 … 36 files per run; every set was removed
+  before its commit and no tracked corpus or golden byte ever moved — hygiene only. **Two mechanisms fixed.** The drop-order race (**D33(2)**):
+  `runner::CorpusGuard` now holds an exclusive claim on the *canonicalized* case dir from before the pre-run photograph until after the sweep **and** the
+  restore, and the contention it owed measured negative. The parent-guard **resurrect** (`728332b6`): `Test/` holds 36 manifest cases and `Test/AutoTrans/`
+  five — two claim keys, concurrent by design — so the parent photographed the child's live output and its `restore` wrote back a file the child's own guard
+  had swept; both Rust guards now leave a GONE entry gone (an overwritten one is still restored; `corpus_guard.py` always did), pinned by
+  `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`, 9 leaked before / 0 after. **Residual:** `kind=large*` decks are skipped by
+  `force_run_files`, so no `RunFileProbe` brackets them and a survivor reads as *pre-existing* next run, silently shrinking a created-file set (a bracketed
+  producer's leak now fails the case loudly through `sweep_failed`). The same shape hides in **gitignored** droppings: two stale `*_SavedVoltages.dbl` in the
+  main tree (one dating from 2026-09-04) read as pre-existing and shrank `SCRATCH_FILE_DECLINES` to (8, 8) until this merge deleted them by name. The
+  single-case `espvlcontrol` "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced
+  a circuit and prints the deck's size on disk.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
   (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `BusTotalMiles` and its siblings are
   zeroed per meter on its `SequenceList`'s FROM bus and read on the TO bus, so a zone-boundary bus
@@ -489,30 +501,20 @@ with different EOLs: `tools/corpus/vendor.py --force` produces a ~1544-file
 EOL-only diff — clean run pollution with `git restore tests/corpus` instead;
 re-vendor only deliberately.
 
-**DSS-Python validation harness, vendored (`tools/opendss/dsspy_validation/`
-— 2026-07-07):** copy of DSS-Python `fastdss` `tests/`
-`_settings`/`save_outputs`/`compare_outputs` (BSD-3, attribution headers,
-local edits marked `# dss-rs:`): full-API-state dumps (~40 collections/case,
-206 upstream-curated cases, all present in our corpus) zipped per engine +
-offline tolerant diff (their `KNOWN_COM_DIFF` catalog kept as upstream) —
-broad-surface upstream inventory complementing `ab_compare.py`. Adaptations:
-corpus → vendored copy, engine spec `DSS_EXTENSIONS_TEST_ODDIE=oddie:<rev>`
-via `revisions.json` (+ expect_version hard check), COM branch dropped, our
-`RegistryUpdate=No`+`Editor=rundll32.exe` suppression, per-case `CorpusGuard`
-(lifted move-only into `tools/oracle/corpus_guard.py`, shared with
-oracle_server), results → `tmp/dsspy_validation/`, and `(Oddie)`-prefixed
-DSSException skips for API exports absent from older official DLLs (r3723
-lacks `Transformers_Get_LossesByType`, `StoragesI`, ...). **Its `capi` side
-is dss_capi 0.15.0b4 — NOT the pinned 0.14.5 oracle; inventory only, never
-feeds goldens/gate.** pandas+xmldiff pinned into the Oddie venv
-(`PIN_OPENDSS.txt`). Sweeps must end with `git status tests/corpus` (guard is
-non-recursive; a sweep-created *subdirectory* — 123Bus `Run_YearlySim` makes
-`16Nov2011/` — escapes it: `git clean -fd` that path). Full-sweep baseline
-2026-07-07: capi 199/206 captured, oddie:r3723 189/206 (its 19 misses = the
-`epri-invcontrol-maxiter` #485 class, 1:1 with known_diffs), compare
-processes 3885 zip entries. The two beta packages are vendored as wheels in
-`tools/opendss/wheels/` (+SHA256SUMS; offline `--find-links` install proven)
-— setup no longer depends on the pre-releases staying on PyPI.
+**DSS-Python validation harness, vendored (`tools/opendss/dsspy_validation/` — 2026-07-07):** copy of DSS-Python `fastdss` `tests/`
+`_settings`/`save_outputs`/`compare_outputs` (BSD-3, attribution headers, local edits marked `# dss-rs:`): full-API-state dumps (~40
+collections/case, 206 upstream-curated cases, all present in our corpus) zipped per engine + offline tolerant diff (their `KNOWN_COM_DIFF`
+catalog kept as upstream) — broad-surface upstream inventory complementing `ab_compare.py`. Adaptations: corpus → vendored copy, engine spec
+`DSS_EXTENSIONS_TEST_ODDIE=oddie:<rev>` via `revisions.json` (+ expect_version hard check), COM branch dropped, our
+`RegistryUpdate=No`+`Editor=rundll32.exe` suppression, per-case `CorpusGuard` (lifted move-only into `tools/oracle/corpus_guard.py`, shared with
+oracle_server), results → `tmp/dsspy_validation/`, and `(Oddie)`-prefixed DSSException skips for API exports absent from older official DLLs
+(r3723 lacks `Transformers_Get_LossesByType`, `StoragesI`, ...). **Its `capi` side is dss_capi 0.15.0b4 — NOT the pinned 0.14.5 oracle; inventory
+only, never feeds goldens/gate.** pandas+xmldiff pinned into the Oddie venv (`PIN_OPENDSS.txt`). Sweeps must end with `git status tests/corpus`
+(the guard was non-recursive until GOLDEN_REBASE G1.10a, 2026-09-06; it now sweeps a run-created *subdirectory* — 123Bus `Run_YearlySim`'s
+`16Nov2011/` — whole, and never descends into a pre-existing one). Full-sweep baseline 2026-07-07: capi 199/206 captured, oddie:r3723 189/206
+(its 19 misses = the `epri-invcontrol-maxiter` #485 class, 1:1 with known_diffs), compare processes 3885 zip entries. The two beta packages are
+vendored as wheels in `tools/opendss/wheels/` (+SHA256SUMS; offline `--find-links` install proven) — setup no longer depends on the pre-releases
+staying on PyPI.
 
 **DSS-Python corpus cross-check (`tools/corpus/dsspy_crosscheck.py` —
 2026-07-07):** diffs DSS-Python's own 206-case validation list

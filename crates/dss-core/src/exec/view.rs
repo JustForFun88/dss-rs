@@ -539,6 +539,178 @@ pub struct TopologyView {
     pub looped_pair_candidates: Vec<(String, String)>,
 }
 
+/// GOLDEN_REBASE G1.8 — the four **flat** branch-to-node incidence quantities the
+/// live corpus gate compares after one `CalcIncMatrix` + `CalcLaplacian` pair:
+/// `Solution.IncMatrix`, `Solution.Laplacian`, `Solution.IncMatrixRows` and
+/// `Solution.IncMatrixCols` (r4133 `Version8/Source/DDLL/DSolution.pas`
+/// `SolutionV` modes 1 `:542-568`, 5 `:640-666`, 3 `:589-608` and 4 `:609-639`;
+/// capi 0.14.5 `src/CAPI/CAPI_Solution.pas:897-925`, `:860-888`, `:953-970` and
+/// `:979-1020`; the pinned dss-python harness reads them as
+/// `Solution.IncMatrix` / `.Laplacian` / `.IncMatrixRows` / `.IncMatrixCols`,
+/// `.inputs/DSS-Python` `origin/fastdss` `dss/ISolution.py:608-631`, `:651-675`,
+/// `:642-649` and `:633-640`).
+///
+/// Every field is **discrete** — integers and names — so the gate compares it at
+/// zero tolerance; there is no floor anywhere on this surface.
+///
+/// Two members of the same Pascal family are deliberately absent.
+/// `Solution.BusLevels` (`SolutionV` mode 2, `DSolution.pas:569-588`) sizes its
+/// buffer `length(Inc_Mat_Levels) - 1` (`:577`) and then writes `0..ArrSize`
+/// **inclusive** (`:581`) — one element past the end, so the r4133 bridge refuses
+/// the mode before the call (`crates/dss-epri/src/modes.rs` `DO_NOT_CALL`), and a
+/// surface only one channel can answer is not a gate. The hierarchical
+/// `CalcIncMatrix_O` build is out for a second reason as well: it runs
+/// `GetTopology` (r4133 `Common/Solution.pas:3173`), which builds and memoizes
+/// the very `Branch_List` the G1.7 topology census is defined on. Both keep their
+/// byte-exact `tests/golden/inc_matrix/` `org_*` coverage.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IncMatrixView {
+    /// `Solution.IncMatrix` — `IncMat`'s stored `[row, col, value]` triples in
+    /// insertion (= storage) order, exactly the sequence both getters flatten
+    /// into their integer vector (r4133 `DSolution.pas:551-564`; capi
+    /// `CAPI_Solution.pas:908-921`, which allocates one cell too many — the
+    /// `//TODO: remove the +1` at `:911` — and leaves it zero).
+    ///
+    /// Rows are **dense**: `inc_matrix[i][0]` always indexes [`Self::rows`].
+    /// Upstream's are not — see [`Self::upstream_row_index`].
+    pub inc_matrix: Vec<[i32; 3]>,
+    /// `Solution.Laplacian` — the triples of `IncMatᵀ · IncMat`, same encoding
+    /// (r4133 `DSolution.pas:649-662`; capi `CAPI_Solution.pas:871-884`). Its row
+    /// and column indices are both **bus** columns, so it is blind to the row
+    /// gaps [`Self::upstream_row_index`] describes and is compared unmapped.
+    pub laplacian: Vec<[i32; 3]>,
+    /// `Solution.IncMatrixRows` — `Inc_Mat_Rows`, one PD-element `FullName` per
+    /// matrix row in build order (Lines → Transformers → series Capacitors →
+    /// series Reactors, `solution::inc_matrix::calc_inc_matrix`).
+    pub rows: Vec<String>,
+    /// `Solution.IncMatrixCols` — the API getter's own branch, which the
+    /// `Export IncMatrixCols` CSV writer deliberately does *not* take: with
+    /// `IncMat_Ordered` set it is `Inc_Mat_Cols`, otherwise — the state a flat
+    /// `CalcIncMatrix` leaves behind — **every bus in `BusList` order**
+    /// (r4133 `DSolution.pas:616` / `:627-631`; capi `CAPI_Solution.pas:991` /
+    /// `:1014-1017`). Computed by `exec::view::inc_matrix_cols`.
+    pub cols: Vec<String>,
+    /// **Not one of the four compared quantities** — the matrix row index the
+    /// ORACLES' cursor assigns to the port's row `i`, i.e. the map the live gate
+    /// applies to [`Self::inc_matrix`]'s row component before comparing it
+    /// (GOLDEN_REBASE G1.8 settlement S-INC, the
+    /// [`TopologyView::looped_pair_candidates`] precedent of decision D16).
+    ///
+    /// Both oracles advance the incidence row cursor for **every** reactor:
+    /// `inc(ActiveIncCell[0])` sits at r4133 `Common/Solution.pas:3039`, outside
+    /// the `if BusdotIdx = 0` guard at `:3015` that decides whether a row was
+    /// emitted (dss_capi 0.14.5 `Common/Solution.pas:1501` is identical), while
+    /// the walk's three siblings advance only on an emitted row (`:2885`,
+    /// `:2938`, `:2986`). A series reactor that follows a shunt one therefore
+    /// carries a row index that does not index `Inc_Mat_Rows`. The port does not
+    /// reproduce that (CLAUDE.md; `solution::inc_matrix::add_series_reactors`) —
+    /// its rows are dense — and the gate re-derives upstream's index positively
+    /// instead of excluding the field: rows contributed by Lines, Transformers
+    /// and series Capacitors map to themselves, while the k-th emitted reactor
+    /// row maps to `base + j`, where `j` is that reactor's 0-based position in
+    /// the circuit's reactor list and `base = rows.len() - <reactor rows>`.
+    ///
+    /// It is the identity wherever no shunt reactor precedes a series one, which
+    /// is every corpus deck but four.
+    pub upstream_row_index: Vec<i32>,
+    /// How many diagnostics the `CalcIncMatrix` + `CalcLaplacian` pair pushed.
+    /// The contract is **0**, and the gate asserts it in the same step: the port
+    /// guards `CalcLaplacian` with error 8877 when no incidence matrix exists
+    /// (`exec::command`'s `do_calc_laplacian`, capi
+    /// `Executive/ExecCommands.pas:421-432`; r4133 `:911-917` has no guard at all
+    /// and would dereference NIL), so a swapped or dropped `CalcIncMatrix` shows
+    /// up here rather than one step later in the runner's own error-count check.
+    pub new_errors: usize,
+}
+
+/// `Solution.IncMatrixCols` as the API getters compute it (r4133
+/// `DSolution.pas:609-639`; capi `CAPI_Solution.pas:979-1020`): the hierarchical
+/// `Inc_Mat_Cols` when the last build was `CalcIncMatrix_O` (`IncMat_Ordered` —
+/// r4133 `:616`, capi `:991`), otherwise every bus in `BusList` order (r4133
+/// `:627-631`, capi `:1014-1017`).
+///
+/// The two are genuinely different lists, not a fallback: a flat `CalcIncMatrix`
+/// leaves `Inc_Mat_Cols` untouched (`solution::inc_matrix::calc_inc_matrix` writes
+/// only `IncMat`/`Inc_Mat_Rows`), so reading it unconditionally — which is what
+/// the `Export IncMatrixCols` CSV writer does, faithfully to `ExportResults.pas` —
+/// would answer an empty list where the getter answers every bus name.
+///
+/// Names come back lowercased: the port normalizes `BusList` entries
+/// (`support::hashlist::HashList`, CLAUDE.md's case-insensitive identifier
+/// convention) while upstream keeps the spelling it first saw, so the gate
+/// compares this list case-insensitively.
+pub(crate) fn inc_matrix_cols(ckt: &Circuit) -> Vec<String> {
+    let st = &ckt.solution.inc_matrix;
+    if st.ordered {
+        st.cols.clone()
+    } else {
+        // Pascal `FOR i := 0 to NumBuses-1 DO WriteStr2Array(BusList.Get(i+1))`.
+        (0..ckt.buses.len())
+            .map(|i| {
+                ckt.bus_list
+                    .name(i)
+                    .expect("`BusList` and the bus array are appended in lockstep")
+                    .to_string()
+            })
+            .collect()
+    }
+}
+
+/// Re-derive, per port row, the matrix row index the **oracles'** cursor assigns —
+/// see [`IncMatrixView::upstream_row_index`] for why the two differ and what the
+/// gate does with the difference.
+///
+/// The map is built over `ckt.reactors`, the same list
+/// `solution::inc_matrix::add_series_reactors` walks (upstream walks the Reactor
+/// class's own element list — r4133 `Common/Solution.pas:3010`/`:3038` — which is
+/// the same creation order), applying the same series test: a reactor is a row iff
+/// its bus-2 spec carries no `.0` ground-node token (`:3013-3015`). That duplicated
+/// test is not left to drift — the tail of `rows` must be exactly the series
+/// reactors' names in order, and this asserts it.
+fn upstream_row_index(classes: &[DssClass], ckt: &Circuit, rows: &[String]) -> Vec<i32> {
+    let full_name = |r: ElemId| -> String {
+        format!(
+            "{}.{}",
+            classes[r.class_ord()].props.class_name(),
+            classes[r.class_ord()].arena[r.index()].data().name()
+        )
+    };
+    let series: Vec<(usize, ElemId)> = ckt
+        .reactors
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|&(_, r)| {
+            // Pascal `RBus := ActiveCktElement.GetBus(2); ansipos('.0', RBus) = 0`.
+            !classes[r.class_ord()]
+                .arena
+                .try_ckt_elem(r.index())
+                .expect("the circuit's reactor list holds circuit elements")
+                .cd()
+                .get_bus(2)
+                .contains(".0")
+        })
+        .collect();
+    assert!(
+        rows.len() >= series.len(),
+        "the flat incidence build emitted {} rows for {} series reactors",
+        rows.len(),
+        series.len()
+    );
+    let base = rows.len() - series.len();
+    let tail: Vec<String> = series.iter().map(|&(_, r)| full_name(r)).collect();
+    assert_eq!(
+        &rows[base..],
+        tail.as_slice(),
+        "the flat incidence rows must end with the series reactors in circuit-list \
+         order — `upstream_row_index` reconstructs the oracle cursor from exactly \
+         that layout (`solution::inc_matrix::calc_inc_matrix`)"
+    );
+    (0..base as i32)
+        .chain(series.iter().map(|&(j, _)| (base + j) as i32))
+        .collect()
+}
+
 /// Sum `Get_Losses` over one of the circuit's `TPointerList` kind lists
 /// (`refs`), in list (= creation) order.
 ///
@@ -2801,6 +2973,70 @@ impl Dss {
             isolated_branches,
             isolated_loads,
             looped_pair_candidates,
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // GOLDEN_REBASE G1.8 — the flat incidence-matrix interface
+    // -----------------------------------------------------------------------
+
+    /// Build the **flat** branch-to-node incidence matrix and its Laplacian, then
+    /// read back the four quantities of [`IncMatrixView`].
+    ///
+    /// The pair goes through the real command dispatch — `CalcIncMatrix`
+    /// (ordinal 108) then `CalcLaplacian` (111), in that order — so the
+    /// `IncMat_Ordered := FALSE` reset and the 8877 NIL guard are the ones the
+    /// product ships, and [`IncMatrixView::new_errors`] reports what they pushed.
+    ///
+    /// `&mut self` is not incidental: like upstream this **rebuilds engine
+    /// state** — `IncMat`, `Laplacian`, `Inc_Mat_Rows` and `IncMat_Ordered` are
+    /// all overwritten. On the oracles the same pair additionally moves
+    /// `ActiveCktElement`, because `AddSeriesReac2IncMatrix` reassigns
+    /// `LastClassReferenced` / `ActiveDSSClass` and then calls
+    /// `ActiveDSSClass.First` (r4133 `Common/Solution.pas:3007-3010`). That is
+    /// why the live corpus gate reads this surface **strictly last** in a
+    /// checkpoint: after every per-element and property read, and after the
+    /// topology read whose memoized-`Branch_List` census (G1.7) is defined on a
+    /// tree nothing else has touched.
+    ///
+    /// Empty ([`IncMatrixView::default`]) when no circuit exists, and the two
+    /// commands are then not issued at all: upstream answers its nil sentinels
+    /// there (capi `DefaultResult`, r4133 `[0]` / `'None'` — both normalized to
+    /// empty in the capture), whereas issuing any command with no circuit would
+    /// push "You must create a new circuit object first" and make `new_errors`
+    /// nonzero.
+    pub fn inc_matrix_view(&mut self) -> IncMatrixView {
+        if self.circuit.is_none() {
+            return IncMatrixView::default();
+        }
+        let before = self.errors().len();
+        self.command("CalcIncMatrix");
+        self.command("CalcLaplacian");
+        let new_errors = self.errors().len() - before;
+
+        let classes: &[DssClass] = &self.classes;
+        let ckt = self
+            .circuit
+            .as_ref()
+            .expect("a circuit was present before the pair and no command clears one");
+        let st = &ckt.solution.inc_matrix;
+        let rows = st.rows.clone();
+        let upstream_row_index = upstream_row_index(classes, ckt, &rows);
+        IncMatrixView {
+            inc_matrix: st
+                .inc_mat
+                .as_ref()
+                .map(|m| m.data.clone())
+                .unwrap_or_default(),
+            laplacian: st
+                .laplacian
+                .as_ref()
+                .map(|m| m.data.clone())
+                .unwrap_or_default(),
+            rows,
+            cols: inc_matrix_cols(ckt),
+            upstream_row_index,
+            new_errors,
         }
     }
 }

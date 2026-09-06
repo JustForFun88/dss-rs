@@ -3,7 +3,8 @@
 //! with `tools/golden/gen_checkpoints.py`) against the raw r4133 DLL.
 //!
 //! The response is JSON-shape-identical to the retired Oddie oracle's
-//! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`), so the Rust
+//! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`, + G1.10a's
+//! `run_files` and `sweep_failed`), so the Rust
 //! gate's `serde` deserialize accepts it unchanged (bit-diff-proven against the
 //! Python path by `xcheck_bridge.py`, itself retired with that stack in Phase
 //! E). Read order within a step matches `oracle_server` exactly — notably the
@@ -114,10 +115,22 @@ pub struct RunRequest {
     /// `GOLDEN_REBASE_PLAN.md` G1.7 — the six order-free `Topology` reads.
     #[serde(default)]
     pub topology: bool,
+    /// `GOLDEN_REBASE_PLAN.md` G1.8 — the flat `CalcIncMatrix` / `CalcLaplacian`
+    /// pair and the four `SolutionV` rows it makes readable. See
+    /// [`capture_inc_matrix`].
+    #[serde(default)]
+    pub inc_matrix: bool,
     #[serde(default)]
     pub global_result: bool,
     #[serde(default)]
     pub autoadd_log: bool,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10a — the run-produced FILE SET under the
+    /// case's DataPath. Not a model read: the run's filesystem effect, taken
+    /// from the SAME [`CorpusGuard`] pass that sweeps the corpus clean, and read
+    /// STRICTLY LAST of the whole run (after `autoadd_log`) while the guard is
+    /// still alive. Twin request key: `oracle_server.py`'s `run_files`.
+    #[serde(default)]
+    pub run_files: bool,
     #[serde(default)]
     pub warn_and_continue: bool,
     // `full_csc` is accepted but ignored: the gate always requests it (true) and
@@ -151,6 +164,24 @@ pub struct CaseResult {
     n_steps: usize,
     checkpoints: Vec<Checkpoint>,
     autoadd_log: Option<String>,
+    /// G1.10a — the sorted, normalized set of filesystem entries this run
+    /// created under the case dir (a trailing `/` marks a created directory;
+    /// see [`crate::guard::normalize_created_name`]). `None` when the request
+    /// did not ask for it, and also when the guard cannot report honestly (an
+    /// incomplete pre-run snapshot); the gate's presence rail
+    /// (`harness::capture_guard::require_capture_opt`) turns the second case
+    /// into a failed case rather than "this deck created nothing".
+    run_files: Option<Vec<String>>,
+    /// G1.10a / coordinator decision D32(2) — the created entries this run's own
+    /// hygiene guard could NOT remove, normalized like [`Self::run_files`].
+    /// Always present (`[]` is the normal answer), never gated on a request
+    /// flag: a producer that leaves an undeletable dropping behind silences the
+    /// created set of every LATER producer of the same case, which is how the
+    /// capi Storage trace-file leak hid from the gate (see
+    /// [`crate::guard::CorpusGuard::sweep_created`]). The gate's runner fails
+    /// the case on a non-empty list
+    /// (`crates/dss-core/tests/corpus_gate/runner.rs::compare_with_result`).
+    sweep_failed: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -197,6 +228,7 @@ struct Checkpoint {
     aggregates: AggregatesCap,
     solution_scalars: SolutionScalarsCap,
     topology: Option<TopologyCap>,
+    inc_matrix: Option<IncMatrixCap>,
 }
 
 #[derive(Serialize)]
@@ -767,6 +799,30 @@ struct TopologyCap {
     isolated_loads: Vec<String>,
 }
 
+/// The four flat incidence quantities of `GOLDEN_REBASE_PLAN.md` G1.8, in the
+/// exact shape `oracle_server.capture_inc_matrix` emits (identical JSON keys,
+/// identical normalized shapes). See [`capture_inc_matrix`].
+///
+/// `inc_matrix` and `laplacian` are FLAT `(row, col, value)` integer triples in
+/// the sparse container's insertion order, `3 * NZero` long: `SolutionV(1)`
+/// (`DDLL/DSolution.pas:542-568`) and `SolutionV(5)` (`:640-667`) copy
+/// `IncMat.data[k][0..2]` / `Laplacian.data[k][0..2]` cell by cell. The
+/// nil/empty sentinel is decoded away by [`inc_ints`], so an empty matrix is an
+/// empty list on both channels.
+///
+/// `rows` are `Class.name` labels, one per incidence-matrix row
+/// (`Inc_Mat_Rows`, `DSolution.pas:589-608`); `cols` are bus names — after the
+/// flat build `IncMat_Ordered` is FALSE (`Common/Solution.pas:3066`), so the
+/// getter answers the WHOLE `BusList` rather than `Inc_Mat_Cols`
+/// (`DSolution.pas:616-632`), measured on 1 756 / 1 756 steps.
+#[derive(Serialize)]
+struct IncMatrixCap {
+    inc_matrix: Vec<i32>,
+    laplacian: Vec<i32>,
+    rows: Vec<String>,
+    cols: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // The run.
 // ---------------------------------------------------------------------------
@@ -776,7 +832,13 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     let warn = req.warn_and_continue;
     let star = req.selected_elements == ["*"];
 
-    let _guard = CorpusGuard::new(&req.case_path);
+    // G1.10a: bound by name (it used to be `_guard`) because the run's created
+    // FILE SET is reported from this very guard, after the last read and before
+    // it sweeps — one classification, two consumers (`CorpusGuard::created` and
+    // the sweep), so the reported set cannot disagree with the swept one. `mut`
+    // since D32(2): the sweep is driven explicitly by `finish()` below so its
+    // failures can travel in this reply instead of dying in `Drop`.
+    let mut guard = CorpusGuard::new(&req.case_path);
 
     let mut node_order: Vec<String> = Vec::new();
     let mut checkpoints: Vec<Checkpoint> = Vec::new();
@@ -916,7 +978,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             let probes = capture_probes(engine, &req.probes)?;
             let variables = capture_variables(engine, &req.variables)?;
             let eventlog = if req.eventlog {
-                capture_eventlog(engine)?
+                capture_eventlog(engine)
             } else {
                 Vec::new()
             };
@@ -997,6 +1059,19 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             } else {
                 None
             };
+            // G1.8 — read STRICTLY LAST, after the G1.7 topology block, on both
+            // transports (`oracle_server.run_case` does the same; the source
+            // order of both is asserted by
+            // `crates/dss-core/tests/capture_order.rs`). Why last, why the pair
+            // is issued in this order, and why `CalcIncMatrix_O` / `BusLevels`
+            // are never touched: see [`capture_inc_matrix`].
+            let inc_matrix = if req.inc_matrix {
+                let cap = capture_inc_matrix(engine)?;
+                engine.assert_clean("inc_matrix")?;
+                Some(cap)
+            } else {
+                None
+            };
 
             let _ = step;
             checkpoints.push(Checkpoint {
@@ -1030,6 +1105,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
                 aggregates,
                 solution_scalars,
                 topology,
+                inc_matrix,
             });
         }
 
@@ -1054,11 +1130,27 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         None
     };
 
+    // G1.10a: STRICTLY LAST of the whole run — after every step's model read and
+    // after the `autoadd_log` file read — and while `guard` is still alive, since
+    // its `Drop` removes exactly what this call classifies. `None` means "cannot
+    // be reported honestly" (incomplete pre-run snapshot / failed listing); the
+    // gate's presence rail turns that into a failed case.
+    let run_files = if req.run_files { guard.created() } else { None };
+
+    // D32(2): sweep NOW, not in `Drop`, so a removal the guard could not perform
+    // is reported to the gate instead of being swallowed. Unconditional — the
+    // hygiene contract does not depend on the run-file request flag. (An early
+    // `?` return above still sweeps through `Drop`, which prints the leak to
+    // stderr; that case has already failed on the error itself.)
+    let sweep_failed = guard.finish();
+
     Ok(CaseResult {
         node_order,
         n_steps: req.n_steps,
         checkpoints,
         autoadd_log,
+        run_files,
+        sweep_failed,
     })
 }
 
@@ -1974,6 +2066,188 @@ fn topo_names(v: Vec<String>, what: &str) -> Result<Vec<String>, EngineError> {
     Ok(v)
 }
 
+/// The G1.8 incidence capture: build the FLAT incidence matrix and its
+/// Laplacian, then read the four `SolutionV` rows that expose them — issued and
+/// read STRICTLY LAST in the step, after [`capture_topology`], on both
+/// transports.
+///
+/// **The pair, in this order.** `CalcIncMatrix` is `ExecCommand[109]`
+/// (`Executive/ExecCommands.pas:163`, `:888-890` -> `Calc_Inc_Matrix`,
+/// `Common/Solution.pas:3046-3068`) and `CalcLaplacian` is `ExecCommand[117]`
+/// (`:171`, `:911-917`). The order is not cosmetic: the Laplacian arm is a bare
+/// `Laplacian := IncMat.Transpose()` then `Laplacian.multiply(IncMat)` with
+/// **no** `Assigned(IncMat)` guard, so issuing it first on a circuit whose
+/// `IncMat` was never built dereferences nil inside the DLL and kills the
+/// worker. (dss_capi guards the same command with error 8877,
+/// `Executive/ExecCommands.pas:421-433`, and so does the port's
+/// `exec::command::do_calc_laplacian`; r4133 does not, which is exactly why the
+/// ordering lives here and not in a comment.) `Calc_Inc_Matrix` creates or
+/// resets `IncMat` unconditionally (`Common/Solution.pas:3051-3054`), so after
+/// the first command the getter's `IncMat <> Nil` test always holds — measured:
+/// 1 756 steps over 464 r4133-gating cases, zero DLL errors, 104 of them with an
+/// empty matrix.
+///
+/// **Why last**, two independent reasons:
+///  * `AddSeriesReac2IncMatrix` is not a pure read of the model — it sets
+///    `LastClassReferenced` / `ActiveDSSClass` and then calls
+///    `ActiveDSSClass.First`, which reassigns `ActiveCircuit.ActiveCktElement`
+///    (`Common/Solution.pas:3007-3010`). Building the matrix therefore moves the
+///    active-element cursor and must not precede any per-element or per-property
+///    read of the step.
+///  * it must follow the G1.7 topology read, whose census constants
+///    (`TOPOLOGY_STALE_DECLINES`, `LOOPED_PAIR_WINDOW_DECLINES`) are defined on a
+///    `Branch_List` nothing else has touched.
+///
+/// **What is deliberately never issued or read here.** `CalcIncMatrix_O`
+/// (`ExecCommand[110]`, `Calc_Inc_Matrix_Org`) calls `GetTopology`
+/// (`Common/Solution.pas:3173`), which would build and memoize that same
+/// `Branch_List` and move G1.7's census; and `SolutionV(2)` `Solution.BusLevels`
+/// is on [`crate::modes::DO_NOT_CALL`] — `DSolution.pas:578-582` does
+/// `setlength(myIntArray, ArrSize)` then `for IMIdx := 0 to ArrSize`, a
+/// one-element heap overflow inside the DLL. Both are out of the live gate by
+/// decision (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c); the `_O` builder, the bus
+/// levels and the CSV writer keep their byte goldens instead.
+///
+/// The caller escalates any lingering read error ([`Engine::assert_clean`]).
+fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
+    engine.exec_wait("CalcIncMatrix")?;
+    engine.exec_wait("CalcLaplacian")?;
+    // Same read order as `oracle_server.capture_inc_matrix`: the two integer
+    // matrices, then the two name lists.
+    let inc_matrix = inc_ints(engine.solution_inc_matrix()?, "Solution.IncMatrix")?;
+    let laplacian = inc_ints(engine.solution_laplacian()?, "Solution.Laplacian")?;
+    let rows = inc_names(
+        engine.solution_inc_matrix_rows()?,
+        "Solution.IncMatrixRows",
+        inc_matrix.is_empty(),
+    )?;
+    let cols = inc_names(
+        engine.solution_inc_matrix_cols()?,
+        "Solution.IncMatrixCols",
+        false,
+    )?;
+    Ok(IncMatrixCap {
+        inc_matrix,
+        laplacian,
+        rows,
+        cols,
+    })
+}
+
+/// Normalize one `SolutionV` integer reply to the flat triple list both
+/// transports emit (G1.8 transport rule N2) — the sentinel decode and the shape
+/// contract, nothing else.
+///
+/// Both arms pre-seed a one-cell `[0]` array and enlarge it only when the matrix
+/// exists AND has non-zeros: `setlength(myIntArray, 1); myIntArray[0] := 0;`
+/// (`DSolution.pas:544-545`, `:642-643`) followed by
+/// `ArrSize := <matrix>.NZero * 3; if ArrSize > 0 then setlength(...)`
+/// (`:550-552`, `:648-650`). So `[0]` means "no non-zeros" and never a value: a
+/// real reply is `3 * NZero` long with `NZero >= 1`, i.e. at least three cells.
+/// Measured over the whole r4133 population (`GOLDEN_REBASE_PLAN.md` G1.8 §3.1):
+/// 1 756 steps, 1 652 with `len % 3 == 0` and exactly 104 equal to `[0]` — no
+/// third shape occurred, on either quantity.
+///
+/// The capi channel carries ONE cell more, because `CAPI_Solution.pas:874`/`:906`
+/// allocate `ArrSize + 1` (`//TODO: remove the +1`); that channel drops its
+/// trailing cell — with an assert that it is 0 — in
+/// `oracle_server.capture_inc_matrix`. The rule is spelled per channel rather
+/// than shared precisely because the two shapes differ; after both
+/// normalizations the channels are byte-identical (358 `both` cases, 0
+/// disagreements).
+///
+/// Every other shape is REFUSED rather than repaired: a length that is neither
+/// `3 * NZero` nor the sentinel means the surface's shape contract broke, which
+/// is G1.8's kill criterion and not something a transport may quietly round off.
+fn inc_ints(v: Vec<i32>, what: &str) -> Result<Vec<i32>, EngineError> {
+    if v.len() == 1 {
+        if v[0] != 0 {
+            return Err(EngineError::Other(format!(
+                "{what}: a one-cell reply [{}] — the r4133 empty/nil sentinel is \
+                 exactly [0] (DSolution.pas:544-545) and a real reply is 3*NZero \
+                 cells, so this is a shape failure, never a value",
+                v[0]
+            )));
+        }
+        return Ok(Vec::new());
+    }
+    if v.is_empty() || !v.len().is_multiple_of(3) {
+        return Err(EngineError::Other(format!(
+            "{what}: {} cells — the arm writes 3*NZero cells, or the single-cell \
+             [0] sentinel when the matrix is empty (DSolution.pas:544-552); this \
+             length is neither",
+            v.len()
+        )));
+    }
+    Ok(v)
+}
+
+/// Normalize one incidence `SolutionV` string reply to the list shape both
+/// transports emit (G1.8 transport rule N3) — the sentinel decode, and nothing
+/// else.
+///
+/// Both name arms build their buffer and then, only if it stayed empty, write
+/// the single token `'None'` (`DSolution.pas:604-605` for the rows, `:635-636`
+/// for the columns); the capi channel's counterpart is `DefaultResult(..., '')`
+/// (`CAPI_Solution.pas:959`, `:988`, `:996`, `:1010`), normalized on its own
+/// side. `sentinel_expected` says whether *this* read is one where upstream's
+/// emptiness test can fire, and the sentinel decodes to an empty list only
+/// there:
+///
+///  * **rows** — `sentinel_expected` is "the incidence matrix came back empty".
+///    The two are equivalent by construction (every emitted row appends both a
+///    name to `Inc_Mat_Rows` and cells to `IncMat`) and measured equivalent on
+///    all 1 756 steps: `['None']` in exactly the 104 empty-matrix steps and in no
+///    other. A row label is always `Class.name`, so a bare `None` can never be a
+///    real entry either way.
+///  * **cols** — always `false`. After the flat build `IncMat_Ordered` is FALSE
+///    (`Common/Solution.pas:3066`), so the arm writes one token per bus
+///    (`DSolution.pas:627-631`) and can only stay empty at `NumBuses = 0`, which
+///    a compiled circuit never reaches: measured `cols.len() == NumBuses >= 1`
+///    and `cols == AllBusNames` on 1 756 / 1 756 steps, sentinel 0 / 1 756. A bus
+///    may legally be *named* `None`, so a one-entry `['None']` here is ambiguous
+///    — and this transport refuses an ambiguous reply instead of guessing.
+///
+/// An EMPTY entry is likewise refused, not dropped. Unlike `TopologyV`, these
+/// arms carry no `if TStr[i] <> ''` filter (`DSolution.pas:597-601`, `:627-631`),
+/// but a row label always carries its `Class.` prefix and `BusList.Get` never
+/// returns a blank, so an empty token means the array was padded or the buffer
+/// decode slipped — a transport failure, and swallowing it would hide exactly
+/// the shape change this check exists to catch.
+fn inc_names(
+    v: Vec<String>,
+    what: &str,
+    sentinel_expected: bool,
+) -> Result<Vec<String>, EngineError> {
+    if v.len() == 1 && v[0] == "None" {
+        if !sentinel_expected {
+            return Err(EngineError::Other(format!(
+                "{what}: the empty-list sentinel ['None'] on a read whose upstream \
+                 emptiness test cannot fire (DSolution.pas:604-605 / :635-636) — \
+                 refused rather than decoded, because a bus may legally be named \
+                 `None`"
+            )));
+        }
+        return Ok(Vec::new());
+    }
+    if v.is_empty() {
+        return Err(EngineError::Other(format!(
+            "{what}: an empty reply — the arm always writes at least the single \
+             'None' token (DSolution.pas:604-605), so this is a transport failure"
+        )));
+    }
+    if let Some(i) = v.iter().position(String::is_empty) {
+        return Err(EngineError::Other(format!(
+            "{what}: an empty entry at index {i} of {} — a row label always \
+             carries its `Class.` prefix and `BusList.Get` never returns a blank \
+             (DSolution.pas:597-601, :627-631), so this is a transport failure, \
+             never a value: {v:?}",
+            v.len()
+        )));
+    }
+    Ok(v)
+}
+
 /// Oracle-free smoke hook (§2.4): dump every element's every property for the
 /// currently-compiled circuit, so `smoke.rs` can prove the `DSSElementV`
 /// enumeration + `? name.prop` value read round-trips without an oracle.
@@ -2250,35 +2524,36 @@ fn capture_ctrlqueue(engine: &Engine) -> Vec<String> {
         .collect()
 }
 
-/// `capture_eventlog` (Oddie path): `export eventlog` writes a UTF-8-BOM CSV;
-/// read it back stripping the BOM per line and dropping blank lines.
-fn capture_eventlog(engine: &Engine) -> Result<Vec<String>, EngineError> {
-    let reply = engine.raw_command("export eventlog");
-    let (errno, desc) = engine.poll_error();
-    if errno != 0 {
-        return Err(EngineError::Dss {
-            errno,
-            desc,
-            ctx: "export eventlog".to_string(),
-        });
-    }
-    let path = reply.trim().trim_start_matches('\u{FEFF}').to_string();
-    let Ok(bytes) = std::fs::read(&path) else {
-        return Ok(Vec::new());
-    };
-    // utf-8-sig: strip a leading file BOM, then per-line BOM + CR.
-    let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
-    let text = String::from_utf8_lossy(body);
-    let mut out = Vec::new();
-    for raw in text.split('\n') {
-        let line = raw
-            .trim_start_matches('\u{FEFF}')
-            .trim_end_matches(['\r', '\n']);
-        if !line.trim().is_empty() {
-            out.push(line.to_string());
-        }
-    }
-    Ok(out)
+/// `capture_eventlog`: the run's cumulative event log, read **in memory** from
+/// `Solution.EventLog` ([`Engine::eventlog`] = `SolutionV(0)`, r4133
+/// `Version8/Source/DDLL/DSolution.pas:518,526-541`, which serializes
+/// `EventStrings[ActiveActor]`), with blank lines dropped.
+///
+/// This is the same list the other two producers read: the capi transport takes
+/// `ckt.Solution.EventLog` (`tools/oracle/oracle_server.py::capture_eventlog`
+/// -> dss_capi 0.14.5 `src/CAPI/CAPI_Solution.pas:525-540`, the same
+/// `EventStrings` walk) and the port reads its own log in memory. It replaces
+/// the retired Oddie path, which issued `export eventlog` and read the CSV back
+/// (r4133 `Common/ExportResults.pas:3527-3532` =
+/// `EventStrings[ActiveActor].SaveToFile`, named `<CircuitName>_EXP_EventLog.CSV`
+/// at `Executive/ExportOptions.pas:365`): that command made the r4133 channel
+/// write a file into the case directory that neither the capi channel nor the
+/// port creates, which G1.10a's created-file-set surface sees as a divergence on
+/// every event-logging case (coordinator decision **D30**, class A: 59 red
+/// (case, channel) pairs). The two reads were measured byte-identical over a
+/// full 526-case corpus drive (0 mismatches, 83 cases with `evlog=1`), and the
+/// equivalence is pinned by
+/// `tests/protocol.rs::the_in_memory_event_log_equals_the_exported_file`.
+///
+/// Upstream's own harness never compared this surface at all — fastdss
+/// `tests/compare_outputs.py:289-292` skips `EventLog` as "too textual" — so the
+/// gate's comparison is new coverage, not catch-up.
+fn capture_eventlog(engine: &Engine) -> Vec<String> {
+    engine
+        .eventlog()
+        .into_iter()
+        .filter(|l| !l.trim().is_empty())
+        .collect()
 }
 
 /// Read the `<CircuitName>_AutoAddLog.csv` the AutoAdd solve wrote (inside the
@@ -2296,7 +2571,7 @@ fn read_autoadd_log(engine: &Engine, case_path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{complex_pair, topo_names};
+    use super::{complex_pair, inc_ints, inc_names, topo_names};
 
     /// A `myType = 3` reply is exactly two doubles or it is a transport
     /// failure — the bridge must never pad one into a plausible `(0, 0)`
@@ -2348,6 +2623,96 @@ mod tests {
             let msg = err.to_string();
             assert!(
                 msg.contains("Topology.AllIsolatedBranches") && msg.contains("empty entry"),
+                "unhelpful message: {msg}"
+            );
+        }
+    }
+
+    /// The G1.8 `SolutionV` integer shape rule (N2): `[0]` is r4133's
+    /// empty/nil sentinel (`DSolution.pas:544-545`, `:642-643`), every real
+    /// reply is `3 * NZero` cells, and nothing else is a reply at all.
+    #[test]
+    fn inc_ints_decodes_the_empty_sentinel_and_refuses_every_other_shape() {
+        assert_eq!(
+            inc_ints(vec![0], "Solution.IncMatrix").unwrap(),
+            Vec::<i32>::new()
+        );
+        let triples = vec![0, 0, 1, 0, 1, -1, 1, 2, 1];
+        assert_eq!(
+            inc_ints(triples.clone(), "Solution.IncMatrix").unwrap(),
+            triples
+        );
+        // A one-cell reply that is not the sentinel is a shape failure, never a
+        // value: the arm can only produce `[0]` or `3*NZero` cells.
+        let err = inc_ints(vec![7], "Solution.IncMatrix")
+            .expect_err("a non-zero one-cell reply must be an error");
+        assert!(
+            err.to_string().contains("Solution.IncMatrix")
+                && err.to_string().contains("sentinel is"),
+            "unhelpful message: {err}"
+        );
+        // The capi `+1` shape must NOT be silently accepted here: it is dropped
+        // on its own channel (`oracle_server.capture_inc_matrix`), and a
+        // `len % 3 == 1` reply on THIS channel means the DDLL arm changed.
+        for bad in [
+            &[0, 0, 1, 0][..],
+            &[][..],
+            &[0, 0][..],
+            &[1, 2, 3, 4, 5][..],
+        ] {
+            let err = inc_ints(bad.to_vec(), "Solution.Laplacian")
+                .expect_err("a length that is neither 3*NZero nor the sentinel must be an error");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Solution.Laplacian") && msg.contains("cells"),
+                "unhelpful message: {msg}"
+            );
+        }
+    }
+
+    /// The G1.8 `SolutionV` name shape rule (N3): `['None']` is the empty-list
+    /// sentinel only where upstream's emptiness test can fire
+    /// (`DSolution.pas:604-605`, `:635-636`); everywhere else — including the
+    /// column list, where a bus may legally be *named* `None` — it is refused,
+    /// and an empty entry is always refused.
+    #[test]
+    fn inc_names_decodes_the_sentinel_only_where_upstream_can_emit_it() {
+        assert_eq!(
+            inc_names(vec!["None".into()], "Solution.IncMatrixRows", true).unwrap(),
+            Vec::<String>::new()
+        );
+        let rows = vec!["Line.l1".to_string(), "Reactor.r1".to_string()];
+        assert_eq!(
+            inc_names(rows.clone(), "Solution.IncMatrixRows", true).unwrap(),
+            rows
+        );
+        // A bus genuinely named `None` inside a longer list is untouched — only
+        // the one-entry reply is the sentinel shape.
+        let cols = vec!["sourcebus".to_string(), "None".to_string()];
+        assert_eq!(
+            inc_names(cols.clone(), "Solution.IncMatrixCols", false).unwrap(),
+            cols
+        );
+        let err = inc_names(vec!["None".into()], "Solution.IncMatrixCols", false)
+            .expect_err("the ambiguous one-entry `None` must be refused, not decoded");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Solution.IncMatrixCols") && msg.contains("cannot fire"),
+            "unhelpful message: {msg}"
+        );
+        let err = inc_names(Vec::new(), "Solution.IncMatrixRows", true)
+            .expect_err("an empty reply must be a transport failure");
+        assert!(err.to_string().contains("empty reply"), "{err}");
+        for bad in [&["Line.l1", ""][..], &["", "Line.l1"][..]] {
+            let err = inc_names(
+                bad.iter().map(|s| s.to_string()).collect(),
+                "Solution.IncMatrixRows",
+                true,
+            )
+            .expect_err("an empty entry must be an error, not a silent drop");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Solution.IncMatrixRows") && msg.contains("empty entry"),
                 "unhelpful message: {msg}"
             );
         }

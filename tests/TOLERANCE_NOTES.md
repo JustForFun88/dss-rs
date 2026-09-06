@@ -529,7 +529,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   `let allowed = abs_floor + rel * mag;` — it bands the **modulus** of the
   complex difference, `|Δz| ≤ abs + rel·|z|`. Node voltages reach the same
   function through `harness::assert_complex_close`
-  (`corpus_gate/runner.rs:505,508`). So the admitted error set is the closed
+  (`corpus_gate/runner.rs:927,930`). So the admitted error set is the closed
   **disc** `D(z, ρ)` with `ρ = abs + rel·|z|`, and derivations 1, 2 and 4 below
   are images of that disc.
   *Had* the gate banded `re` and `im` separately at `abs + rel·|component|`, the
@@ -569,7 +569,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
      element-by-element by `compare_element_channels`); `VoltagesMagAng` is the
      rendering of `NodeV[NodeRef[·]]` (`v_rel/v_abs`, gated node-by-node in
      `harness::assert_complex_close`,
-     `corpus_gate/runner.rs:505-508`). The two evaluations of `|·|` themselves
+     `corpus_gate/runner.rs:927-930`). The two evaluations of `|·|` themselves
      differ by at most an ulp each (`num_complex::norm` = hypot vs the naive FPC
      `Cabs`, proven equal on the whole reachable domain by
      `line_constants::tests::naive_modulus_equals_hypot_until_the_square_overflows`),
@@ -1374,7 +1374,7 @@ pinned oracle, an artifact, not an engine gap.
 
 ## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
 
-`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:11196`)
+`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:11214`)
 compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
 and takes no `Tolerances` argument at all. That is a derivation, not an
 optimism: on every gated case today each compared value is one of
@@ -1394,7 +1394,7 @@ optimism: on every gated case today each compared value is one of
 rounding to absorb and any difference at all is a bug, not a floor. The one
 divergence the corpus does measure is not numeric drift but an uninitialized read
 in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
-(`crates/dss-core/tests/harness/mod.rs:11010`) and pinned — an envelope over a
+(`crates/dss-core/tests/harness/mod.rs:11028`) and pinned — an envelope over a
 value that changes every process would not be a fact. See TESTING.md
 §"The `PDElements` walk".
 
@@ -2656,12 +2656,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:9787`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:9805`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, each row's gap measured as `display_rel` (`props_norm.rs:783-792`) | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
 | capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1208-1217` and `:1225-1234` (`i_rel`/`i_abs`) | unchanged |
 | the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1279-1288` and `:1268-1277` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:8681` (asserted as `i_abs / floor`) | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:8699` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
@@ -2872,6 +2872,79 @@ nothing to bite on and a band would only be able to hide a real divergence. The
 two measured Rust↔oracle differences on this surface are structural upstream
 defects, not numerics, and are handled by positive assertions with zero ledger
 rows (`TESTING.md` §"The two topology settlements"), never by a tolerance.
+
+
+## G1.8 incidence matrix / Laplacian (`harness::inc_matrix`) — **no floor, deliberately**
+
+The incidence surface introduces **no tolerance of any kind**, in either lane, and — as
+with G1.7 — the absence is a decision. All four compared quantities are discrete:
+`Solution.IncMatrix` and `Solution.Laplacian` are flat `(row, col, value)` triples of
+`i32` (the values are `+1` / `-1` in the incidence matrix and small integer degrees and
+off-diagonals in the Laplacian), and `IncMatrixRows` / `IncMatrixCols` are lists of
+qualified element names and bus names. Integers are compared with `assert_eq!` at every
+position and lengths first; names with an ASCII-case-insensitive equality, in **sequence**
+order, because both sides are creation-order walks (`Inc_Mat_Rows` grows one entry per
+emitted row, r4133 `Common/Solution.pas:3018`; the columns are `BusList` order).
+
+The case-insensitivity is belt-and-braces, not a band: both oracles store bus names
+lowercased (`THashList.Add` keeps `LowerCase(S)`, r4133 `Shared/HashList.pas:268`,
+`:281`) and build a row label as a hardcoded capitalized class prefix plus the element's
+already-lowercase `Name` (`Common/Solution.pas:3019`), so the spellings coincide with the
+port's — measured, `SourceBus`/`BusUpper`/`MiXeD` come back as `sourcebus`/`busupper`/
+`mixed`. It admits case, never a different name, a different order or a missing entry.
+
+Nothing on this surface can accumulate a floating-point error: no quantity is a sum, a
+product or a solve output — the builder walks four element lists and writes `+1` / `-1`
+per terminal, and the Laplacian is an exact integer product of that matrix with its own
+transpose — so the "prove the floor by decomposition" rule has nothing to bite on and a
+band could only hide a real divergence. The three shape differences between the two
+channels (capi's over-allocated trailing cell, r4133's one-cell `[0]` sentinel, the two
+spellings of an empty name list) are decoded in the **transports** with asserts, and the
+comparator asserts the fixpoint rather than repeating the repair; they are not tolerances
+and no value passes through them. The one measured Rust↔oracle difference — upstream's
+incidence row cursor advancing for a skipped shunt reactor
+(`Common/Solution.pas:3039` against its three siblings) — is a structural upstream
+defect, handled by a positive assertion of upstream's own numbering with zero ledger rows
+and a fail-on-stale population (`TESTING.md` §"Settlement S-INC"), never by a tolerance.
+
+## G1.10a run-file artifacts (`harness::run_files`) — **no floor, deliberately**
+
+The created-file SET introduces **no tolerance of any kind**, in either lane, and — as with G1.7
+and G1.8 — the absence is a decision, not an omission. The compared quantity is a *set of
+filesystem names*: `compare_run_files` puts both sides in a `BTreeSet` and asserts equality,
+reporting the two symmetric differences. There is no number in it, so `rel = abs = 0` is not a
+tightened band but the only band the type admits, and the "prove the floor by decomposition" rule
+has nothing to bite on. Nothing on this surface is a sum, a product or a solve output; a name is
+either created or it is not.
+
+**The ASCII case-fold is a normalization, not a band, and it is forced by the two oracles
+disagreeing with each other.** r4133 writes its export stems in upper case —
+`FileName := 'EXP_VOLTAGES.CSV'` at `Version8/Source/Executive/ExportOptions.pas:333-356` — while
+the pinned dss_capi 0.14.5 writes them in lower case at the same switch,
+`src/Executive/ExportOptions.pas:314,343,345`, and r4133 goes further and lowercases the
+*deck-supplied* stem as well (`auto1bus_hl_current.txt` against capi's `Auto1bus_HL_current.txt`,
+measured on `Test/AutoTrans/Auto1bus.dss`). There is therefore no single "upstream spelling" the
+port could adopt without diverging from the other gating channel, and NTFS makes the difference
+unobservable to any behaviour. Folding ASCII case on all three producers is what lets one set be
+compared against both channels; it is in the `PROPS_NORM_R4133` tradition (a documented shape
+normalization with a pin), and it is deliberately **ASCII-only** so that a non-ASCII name is
+refused loudly rather than folded by one language's locale rule. What it admits is case, and
+nothing else: a different name, a different extension, an extra member or a missing member all
+still fail. The literal pin, both spellings written out, is
+`run_files_pins::the_two_oracle_spellings_of_auto1bus_fold_to_one_member`, and
+`harness::run_files::tests::the_fold_keeps_the_extension` is the negative side.
+
+The other two deliberate reductions of the set are likewise structural, counted and pinned, never
+bands. The engine-internal harmonics scratch file `<CircuitName_>SavedVoltages.dbl` (r4133
+`Common/Utilities.pas:1512-1521`, read back at `:1554-1564`) is split off symmetrically on every
+producer and its declining population is re-derived on every run as `SCRATCH_FILE_DECLINES = (9, 9)`,
+fail-on-stale in both directions, with `run_files_pins::the_harmonics_scratch_file_is_declined_on_the_nev_deck`
+naming both numbers (oracle 7, port 6). The r4133-only `Visualize` DSSView pair is a single
+`ledger.json` exclusion scoped by `name_re` with
+`run_files_pins::visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port` naming
+r4133's 6 against the port's 4. Both are exclusions of *named members*, decided per name and pinned
+by value — the field-by-field shape this file's rules require — and neither widens anything for any
+other name on any other case. See `TESTING.md` §"G1.10a — the created-file SET".
 
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)

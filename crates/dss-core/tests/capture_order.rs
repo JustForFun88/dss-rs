@@ -51,8 +51,8 @@
 //! `ActiveCircuit.ActiveCktElement` — but it carries its own two constraints,
 //! and both are asserted here:
 //!
-//! * it is read **strictly last** in the step, after `all_properties`: the
-//!   FIRST `Topology` read is what builds the memoized `Branch_List` and
+//! * it is read after `all_properties` and after every other *reading* capture:
+//!   the FIRST `Topology` read is what builds the memoized `Branch_List` and
 //!   rewrites `Checked`/`IsIsolated`/`BusChecked` on every element (r4133
 //!   `Common/Circuit.pas:2932-2950`, `:2937-2947`), and `TopologyI(1)`/`(2)` +
 //!   `TopologyV(1)`/`(2)` leave the `PDElements`/`PCElements` cursors at the end
@@ -63,6 +63,34 @@
 //!   rows; every one reassigns `ActiveCktElement` (capi
 //!   `CAPI/CAPI_Topology.pas:98-110`; r4133 `DTopology.pas:29-54`, `:96-160`,
 //!   `:170-186`) and would poison the per-element capture of the same step.
+//!
+//! G1.8's flat incidence surface (`Solution.IncMatrix` / `Laplacian` /
+//! `IncMatrixRows` / `IncMatrixCols`) is the one capture that comes after the
+//! topology read, i.e. **strictly last in the step**, and it is not a pure read
+//! at all: it issues the executive pair `CalcIncMatrix` + `CalcLaplacian` first.
+//! Three separate rules, all asserted below:
+//!
+//! * **last** — `Calc_Inc_Matrix` recreates or resets `IncMat`, refills
+//!   `Inc_Mat_Rows` and clears `IncMat_Ordered` (r4133
+//!   `Common/Solution.pas:3051-3066`), and `AddSeriesReac2IncMatrix` re-points
+//!   `LastClassReferenced` / `ActiveDSSClass` and calls `ActiveDSSClass.First`
+//!   (`:3007-3010`), which reassigns `ActiveCircuit.ActiveCktElement`. It must
+//!   therefore follow every per-element and property read — and it must follow
+//!   the topology read too, because G1.7's two decline censuses are defined on a
+//!   `Branch_List` nothing else has touched;
+//! * **the pair, in that order** — r4133's `CalcLaplacian`
+//!   (`Executive/ExecCommands.pas:911-917`) is a bare
+//!   `Laplacian := IncMat.Transpose()` / `.multiply(IncMat)` with no
+//!   `Assigned(IncMat)` guard, so issuing it first dereferences NIL inside the
+//!   DLL. capi guards the same command with error 8877
+//!   (`Executive/ExecCommands.pas:421-433`) and so does the port, which is why
+//!   the swap is pinned from the sources here rather than driven live;
+//! * **`CalcIncMatrix_O` and `Solution.BusLevels` are never touched** — the
+//!   ordered builder calls `GetTopology` (`Common/Solution.pas:3173`), which
+//!   would memoize that same `Branch_List`, and `SolutionV(2)` writes one element
+//!   past its own array on r4133 (`DDLL/DSolution.pas:578-582`, on the bridge's
+//!   `modes::DO_NOT_CALL` register). Both keep their `tests/golden/inc_matrix/`
+//!   `org_*` byte goldens instead (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c).
 //!
 //! The bodies gated here are the element captures of the two live channels:
 //! the pinned dss-python oracle (`tools/oracle/oracle_server.py`, backend
@@ -111,6 +139,38 @@
 //! [`the_gate_rejects_a_swapped_or_renamed_capture`] shows it has
 //! teeth. Folded here from the G1.9 lane's own `capture_order.rs` at the D7
 //! lane merge (2026-09-05), which D3 always assigned to this file.
+//!
+//! # The third ordering rule: the per-RUN read (G1.10a, D33(3))
+//!
+//! G1.10a's surface is not a model read at all: it is the SET of files the run
+//! created under the case's DataPath, classified by the very `CorpusGuard` pass
+//! that sweeps the corpus clean. Being per-**run**, its contract is a position
+//! rather than a capture group, and [`check_run_files_last`] asserts all of it
+//! from both transports' source text:
+//!
+//! * **strictly last of the run** — after every per-step capture above and after
+//!   the WPG.5 `autoadd_log` read, which reads one of the created files
+//!   (`<CircuitName_>AutoAddLog.csv`) off disk. A report writer of the last step
+//!   must already have hit the disk when the set is classified;
+//! * **a direct statement of the guard scope** — not nested in the retry loop,
+//!   which recompiles in-process and would leave the classification describing
+//!   the wrong attempt;
+//! * **inside the guard scope** — the sweep removes exactly what the
+//!   classification returns, so reading outside it would report a set nothing
+//!   removed (the Python guard raises on that by design; the Rust one cannot
+//!   express it, `finish()` consuming the guard);
+//! * **nothing but the teardown after it** (D33(3)) — the one statement the capi
+//!   transport may still run is the D32(2)(a) teardown `clear`, which releases
+//!   dss_capi's never-closed Storage trace stream (`src/PCElements/Storage.pas:872`
+//!   opens it; `:871`/`:1199` are the only closes). r4133 closes its own
+//!   immediately (`Version8/Source/PCElements/Storage.pas:1085`) and needs no
+//!   counterpart, so its tail is empty. A teardown is not a read: it comes after
+//!   the classification, so the compared surface stays exactly the run
+//!   `clear → compile → post → n × solve` on both channels.
+//!
+//! The upstream harness compares no file set at all — fastdss
+//! `tests/compare_outputs.py:517-524` prints a CSV mismatch and carries on — so
+//! this rule guards new coverage, not catch-up.
 //!
 //! # Platform
 //!
@@ -1206,7 +1266,7 @@ fn the_gate_fires_when_a_helper_call_misdeclares_the_helpers_order() {
 // The per-step call order (GOLDEN_REBASE G1.9, folded in at the D7 lane merge)
 // ---------------------------------------------------------------------------
 
-/// The six call sites the call-order gate locates inside one transport's
+/// The seven call sites the call-order gate locates inside one transport's
 /// `run_case`.
 struct Anchors {
     /// Start of the per-step capture function itself.
@@ -1224,8 +1284,12 @@ struct Anchors {
     reliability: &'static str,
     /// The WP8.5b property sweep, read after every established capture.
     properties: &'static str,
-    /// G1.7's topology capture — read after `properties`, i.e. last of all.
+    /// G1.7's topology capture — read after `properties`, i.e. last of the
+    /// order-free *reads*.
     topology: &'static str,
+    /// G1.8's flat incidence capture — after `topology`, i.e. strictly last in
+    /// the step. It is the only capture that WRITES solution state.
+    inc_matrix: &'static str,
 }
 
 fn read_source(rel: &str) -> String {
@@ -1292,6 +1356,7 @@ const CAPI_CALLS: Anchors = Anchors {
     reliability: "capture_reliability(ckt",
     properties: "capture_all_properties(d, ckt",
     topology: "capture_topology(ckt",
+    inc_matrix: "capture_inc_matrix(d, ckt",
 };
 
 /// The EPRI r4133 transport (`r4133` channel), which must capture in the exact
@@ -1307,6 +1372,7 @@ const R4133_CALLS: Anchors = Anchors {
     reliability: "capture_reliability(engine",
     properties: "capture_all_properties(engine",
     topology: "capture_topology(engine",
+    inc_matrix: "capture_inc_matrix(engine",
 };
 
 #[test]
@@ -1336,6 +1402,7 @@ fn the_gate_rejects_a_swapped_or_renamed_capture() {
         reliability: "capture_reliability(",
         properties: "capture_all_properties(",
         topology: "capture_topology(",
+        inc_matrix: "capture_inc_matrix(",
     };
     let ok = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_all_elements(x);";
     assert!(check_order(ok, &a, "synthetic").is_ok());
@@ -1361,7 +1428,9 @@ fn the_gate_rejects_a_swapped_or_renamed_capture() {
 // order-free rows (`GOLDEN_REBASE_PLAN.md` §G1.7, brief B16).
 // ---------------------------------------------------------------------------
 
-/// The topology capture must be the LAST read of the step on both transports.
+/// The topology capture must follow every other READ of the step on both
+/// transports — the four below. Since G1.8 exactly one capture comes after it,
+/// the incidence pair, and that ordering is [`check_inc_matrix_last`]'s.
 ///
 /// Two reasons, the stronger first: the first `Topology` read is what BUILDS
 /// the memoized `Branch_List` and rewrites `Checked`/`IsIsolated`/`BusChecked`
@@ -1385,7 +1454,7 @@ fn check_topology_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> 
                 "{rel}: the G1.7 topology capture (byte {topology}) is read BEFORE {what} \
                  (byte {other}). The first `Topology` read builds the memoized `Branch_List` \
                  and rewrites Checked/IsIsolated/BusChecked on every element (r4133 \
-                 `Common/Circuit.pas:2932-2950`), so it must come strictly last in the step."
+                 `Common/Circuit.pas:2932-2950`), so it must follow every other read of                  the step (only G1.8's incidence pair may come after it)."
             ));
         }
     }
@@ -1815,6 +1884,7 @@ fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
         reliability: "capture_reliability(",
         properties: "capture_all_properties(",
         topology: "capture_topology(",
+        inc_matrix: "capture_inc_matrix(",
     };
     let ok = "fn run_case( capture_aggregates(x); capture_discrete(x); \
               capture_all_elements(x); capture_reliability(x); capture_all_properties(x); \
@@ -1850,4 +1920,1188 @@ fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
             "{m} is not an ITopology member"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// G1.8 — the flat incidence surface: issued and read strictly last, as the pair
+// `CalcIncMatrix` + `CalcLaplacian`, and never `CalcIncMatrix_O` /
+// `Solution.BusLevels` (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c, decision D3).
+// ---------------------------------------------------------------------------
+
+/// The two executive commands the G1.8 capture may issue, in this order.
+///
+/// The order is a contract, not a style: r4133's `CalcLaplacian`
+/// (`Version8/Source/Executive/ExecCommands.pas:911-917`) is a bare
+/// `Laplacian := IncMat.Transpose()` / `.multiply(IncMat)` with no
+/// `Assigned(IncMat)` test, so issuing it before any `CalcIncMatrix`
+/// dereferences NIL inside the DLL and kills the worker. capi guards the same
+/// command with error 8877 (`.inputs/dss_capi/src/Executive/ExecCommands.pas:421-433`)
+/// and so does the port — which is why the swap is pinned from the sources here
+/// rather than driven live (`inc_matrix_pins.rs::calclaplacian_without_calcincmatrix_raises_8877`).
+const INCIDENCE_PAIR: [&str; 2] = ["CalcIncMatrix", "CalcLaplacian"];
+
+/// The four `ISolution` members the capture reads afterwards, in this order
+/// (`origin/fastdss:dss/ISolution.py:608-631`, `:651-675`, `:642-649`,
+/// `:633-640`).
+const INCIDENCE_READS: [&str; 4] = ["IncMatrix", "Laplacian", "IncMatrixRows", "IncMatrixCols"];
+
+/// Executive commands no capture may ever issue. `CalcIncMatrix_O`
+/// (`Calc_Inc_Matrix_Org`) calls `GetTopology` (r4133
+/// `Common/Solution.pas:3173`), which builds and memoizes the very `Branch_List`
+/// G1.7's two decline censuses are defined on. Its coverage stays byte-golden
+/// (`tests/golden/inc_matrix/` `org_*`), per the §G3.2c re-scope.
+const FORBIDDEN_COMMANDS: [&str; 1] = ["CalcIncMatrix_O"];
+
+/// `Solution.BusLevels` — `SolutionV(2)`, `DDLL/DSolution.pas:569-588`: `:578`
+/// sizes the buffer `length(Inc_Mat_Levels) - 1` and `:581` writes `0..ArrSize`
+/// inclusive, one element past the end. The r4133 bridge refuses the mode before
+/// the FFI (`crates/dss-epri/src/modes.rs::DO_NOT_CALL`), so a surface only one
+/// channel can answer is not a gate: neither transport may read it.
+const FORBIDDEN_READS: [&str; 2] = ["BusLevels", "bus_levels"];
+
+/// The incidence capture must come after EVERY other capture of the step, the
+/// topology one included — it is the only capture that WRITES solution state.
+///
+/// `Calc_Inc_Matrix` recreates or resets `IncMat`, refills `Inc_Mat_Rows` and
+/// clears `IncMat_Ordered` (r4133 `Common/Solution.pas:3051-3066`), and
+/// `AddSeriesReac2IncMatrix` re-points `LastClassReferenced` / `ActiveDSSClass`
+/// and calls `ActiveDSSClass.First` (`:3007-3010`), reassigning
+/// `ActiveCircuit.ActiveCktElement`; and it must follow the topology read,
+/// because that read is the one that memoizes `Branch_List`.
+fn check_inc_matrix_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> {
+    let run = offset_after(src, a.run, 0, rel)?;
+    let inc = offset_after(src, a.inc_matrix, run, rel)?;
+    for (what, needle) in [
+        ("the G1.7 topology capture", a.topology),
+        ("the WP8.5b property sweep", a.properties),
+        ("the per-element capture", a.elements),
+        ("the discrete-state capture", a.discrete),
+        ("the G1.9 aggregates", a.aggregates),
+    ] {
+        let other = offset_after(src, needle, run, rel)?;
+        if inc <= other {
+            return Err(format!(
+                "{rel}: the G1.8 incidence capture (byte {inc}) runs BEFORE {what} \
+                 (byte {other}). `Calc_Inc_Matrix` rewrites solution state and \
+                 `AddSeriesReac2IncMatrix` reassigns ActiveCktElement (r4133 \
+                 `Common/Solution.pas:3007-3010`, `:3051-3066`), and it must not \
+                 precede the topology read that memoizes `Branch_List` — so it \
+                 comes strictly last in the step."
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The body of a top-level Python `def`: from the end of its header line to the
+/// next line that begins in column 0 with a non-blank character.
+fn py_def_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, String> {
+    let at = text
+        .find(header)
+        .ok_or_else(|| format!("{rel}: `{header}` is gone — update this gate"))?;
+    let start = text[at..].find('\n').map_or(text.len(), |i| at + i + 1);
+    let end = text[start..]
+        .match_indices('\n')
+        .map(|(i, _)| start + i + 1)
+        .find(|&s| text[s..].chars().next().is_some_and(|c| !c.is_whitespace()))
+        .unwrap_or(text.len());
+    Ok(&text[start..end])
+}
+
+/// The body of a top-level Rust `fn`: from its header to the first line that is
+/// exactly `}` in column 0 — rustfmt's shape for a free function.
+///
+/// The line terminator is read as LF **or** CRLF: this repo checks Rust out with
+/// `core.autocrlf`, so a CRLF working copy must not make the gate claim the
+/// closing brace is missing (it did, at the G1.8 lane merge).
+fn rust_fn_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, String> {
+    let at = text
+        .find(header)
+        .ok_or_else(|| format!("{rel}: `{header}` is gone — update this gate"))?;
+    let end = text[at..]
+        .match_indices("\n}")
+        .find(|&(i, _)| {
+            matches!(
+                text.as_bytes().get(at + i + 2).copied(),
+                None | Some(b'\n') | Some(b'\r')
+            )
+        })
+        .map(|(i, _)| at + i + 1)
+        .ok_or_else(|| format!("{rel}: `{header}` has no column-0 closing brace"))?;
+    Ok(&text[at..end])
+}
+
+/// Every `….Text.Command = "<literal>"` assignment in `text`, in source order.
+///
+/// Read off the **raw** source on purpose: [`code_only`] blanks string literals,
+/// and the command names ARE those literals — a `code_only` view of this rule
+/// would be vacuous in both directions.
+fn py_commands(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (at, _) in text.match_indices("Text.Command") {
+        let rest = text[at + "Text.Command".len()..].trim_start();
+        let Some(rest) = rest.strip_prefix('=') else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('"') else {
+            continue;
+        };
+        if let Some(end) = rest.find('"') {
+            out.push(rest[..end].to_string());
+        }
+    }
+    out
+}
+
+/// Every `exec_wait("<literal>")` call in `text`, in source order — likewise off
+/// the raw source.
+fn rust_commands(text: &str) -> Vec<String> {
+    let needle = "exec_wait(\"";
+    text.match_indices(needle)
+        .filter_map(|(at, _)| {
+            let rest = &text[at + needle.len()..];
+            rest.find('"').map(|end| rest[..end].to_string())
+        })
+        .collect()
+}
+
+/// Every identifier in `code` that begins with `prefix`, in **source order** —
+/// unlike [`idents_with_prefix`], which sorts and dedups. The read ORDER is part
+/// of what this gate protects, and a member read twice is itself a finding.
+fn idents_in_order(code: &str, prefix: &str) -> Vec<String> {
+    code.match_indices(prefix)
+        .filter(|(at, _)| starts_token(code, *at))
+        .map(|(at, _)| ident_at(code, at))
+        .collect()
+}
+
+/// Every identifier in `code` that CONTAINS `needle`, deduped, in source order.
+///
+/// Substring, not token start: a forbidden read hides inside
+/// `engine.solution_bus_levels()` as surely as it does in `sol.BusLevels`, and
+/// only the first of the two starts a token at the needle.
+fn idents_containing(code: &str, needle: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (at, _) in code.match_indices(needle) {
+        let start = code[..at]
+            .char_indices()
+            .rev()
+            .take_while(|(_, c)| c.is_alphanumeric() || *c == '_')
+            .map(|(i, _)| i)
+            .last()
+            .unwrap_or(at);
+        let id = ident_at(code, start);
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
+/// Every `<handle>.<member>` read in `body`, in source order.
+fn member_reads_in_order(body: &str, handle: &str) -> Vec<String> {
+    let dotted = format!("{handle}.");
+    body.match_indices(&dotted)
+        .filter(|(at, _)| starts_token(body, *at))
+        .map(|(at, _)| ident_at(body, at + dotted.len()))
+        .collect()
+}
+
+fn incidence_error(rel: &str, what: &str, found: &[String], want: &[String]) -> String {
+    format!(
+        "{rel}: {what} is {found:?}, but the G1.8 capture does exactly {want:?}. \
+         The pair's ORDER is a contract (r4133 `ExecCommands.pas:911-917` has no \
+         NIL guard and would crash the worker; capi and the port raise 8877), the \
+         read order is what both channels must share, and `CalcIncMatrix_O` / \
+         `Solution.BusLevels` are out of the live gate by decision \
+         (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c). If the surface really changed, \
+         change these constants and the comparator with them — never just this list."
+    )
+}
+
+fn owned(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| (*s).to_string()).collect()
+}
+
+/// The capi incidence capture: the pair in order, then the four reads off the
+/// one `ckt.Solution` handle it binds — and nothing else.
+///
+/// The command rule reads the RAW body, so it also refuses a *computed* command
+/// (`Text.Command = f"…"`): the gate would not be able to tell what was issued.
+/// The corollary is that the function's docstring may name a command but must
+/// not spell an assignment to `Text.Command` — the real transport's does not.
+fn check_capi_incidence(src: &str, rel: &str) -> Result<(), String> {
+    let raw = py_def_body(src, "def capture_inc_matrix(", rel)?;
+    let cmds = py_commands(raw);
+    let sites = raw.matches("Text.Command").count();
+    if sites != cmds.len() {
+        return Err(format!(
+            "{rel}: `capture_inc_matrix` has {sites} `Text.Command` site(s) but only \
+             {} plain string literal(s). This gate cannot read a computed command — \
+             write the two commands as literals, or the ordering rule is unverifiable.",
+            cmds.len()
+        ));
+    }
+    if cmds != owned(&INCIDENCE_PAIR) {
+        return Err(incidence_error(
+            rel,
+            "the executive commands `capture_inc_matrix` issues",
+            &cmds,
+            &owned(&INCIDENCE_PAIR),
+        ));
+    }
+
+    let code = code_only(src, Lang::Python);
+    let body = py_def_body(&code, "def capture_inc_matrix(", rel)?;
+    let bind = body.find("= ckt.Solution").ok_or_else(|| {
+        format!("{rel}: `capture_inc_matrix` no longer binds `ckt.Solution` — update this gate")
+    })?;
+    let handle: String = body[..bind]
+        .trim_end()
+        .chars()
+        .rev()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect::<Vec<char>>()
+        .into_iter()
+        .rev()
+        .collect();
+    if handle.is_empty() {
+        return Err(format!("{rel}: cannot name the `ckt.Solution` handle"));
+    }
+    let reads = member_reads_in_order(body, &handle);
+    if reads != owned(&INCIDENCE_READS) {
+        return Err(incidence_error(
+            rel,
+            &format!("the sequence of `{handle}.<member>` reads"),
+            &reads,
+            &owned(&INCIDENCE_READS),
+        ));
+    }
+    Ok(())
+}
+
+/// The r4133 incidence capture: the same pair, in the same order, then the four
+/// typed mode accessors in the same order.
+///
+/// The pair is also checked **file-wide**: `crates/dss-epri/src/capture.rs`
+/// issues executive commands at exactly these two sites and nowhere else, so a
+/// capture cannot quietly drive the engine mid-step.
+fn check_r4133_incidence(src: &str, rel: &str) -> Result<(), String> {
+    let raw = rust_fn_body(src, "fn capture_inc_matrix(", rel)?;
+    let cmds = rust_commands(raw);
+    if cmds != owned(&INCIDENCE_PAIR) {
+        return Err(incidence_error(
+            rel,
+            "the executive commands `capture_inc_matrix` issues",
+            &cmds,
+            &owned(&INCIDENCE_PAIR),
+        ));
+    }
+    let file = rust_commands(src);
+    if file != owned(&INCIDENCE_PAIR) {
+        return Err(incidence_error(
+            rel,
+            "the executive commands the whole transport issues",
+            &file,
+            &owned(&INCIDENCE_PAIR),
+        ));
+    }
+
+    let code = code_only(src, Lang::Rust);
+    let body = rust_fn_body(&code, "fn capture_inc_matrix(", rel)?;
+    let want: Vec<String> = INCIDENCE_READS
+        .iter()
+        .map(|m| format!("solution_{}", snake(m)))
+        .collect();
+    let called = idents_in_order(body, "solution_");
+    if called != want {
+        return Err(incidence_error(
+            rel,
+            "the sequence of `solution_*` accessors called",
+            &called,
+            &want,
+        ));
+    }
+    Ok(())
+}
+
+/// Neither transport may issue [`FORBIDDEN_COMMANDS`] anywhere, nor read
+/// [`FORBIDDEN_READS`] as code anywhere. Both sources name them in prose — that
+/// is where the reason is written down — so the command rule reads the raw
+/// literals and the read rule reads the [`code_only`] view.
+fn check_no_forbidden_incidence_use(
+    src: &str,
+    lang: Lang,
+    rel: &str,
+    commands: &[String],
+) -> Result<(), String> {
+    for bad in FORBIDDEN_COMMANDS {
+        if commands.iter().any(|c| c == bad) {
+            return Err(format!(
+                "{rel}: the transport issues `{bad}`. `Calc_Inc_Matrix_Org` calls \
+                 `GetTopology` (r4133 `Common/Solution.pas:3173`), which memoizes the \
+                 `Branch_List` G1.7's `TOPOLOGY_STALE_DECLINES` / \
+                 `LOOPED_PAIR_WINDOW_DECLINES` censuses are defined on — it is out of \
+                 the live gate by decision (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c) and \
+                 keeps its `org_*` byte goldens instead."
+            ));
+        }
+    }
+    let code = code_only(src, lang);
+    for bad in FORBIDDEN_READS {
+        let hits = idents_containing(&code, bad);
+        if !hits.is_empty() {
+            return Err(format!(
+                "{rel}: the transport reads `{bad}` in code ({hits:?}). `SolutionV(2)` \
+                 `Solution.BusLevels` writes one element past its own array on r4133 \
+                 (`DDLL/DSolution.pas:578-582`) and sits on the bridge's \
+                 `modes::DO_NOT_CALL` register, so no channel may read it."
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The bridge cannot call a mode it refuses before the FFI: `SolutionV(2)` must
+/// still be on `modes::DO_NOT_CALL`. Second half of the same rail — the check
+/// above says no capture reads bus levels, this one says the mode is refused
+/// even if one tried.
+fn check_do_not_call_still_refuses_bus_levels(src: &str, rel: &str) -> Result<(), String> {
+    let at = src
+        .find("pub const DO_NOT_CALL")
+        .ok_or_else(|| format!("{rel}: `pub const DO_NOT_CALL` is gone — update this gate"))?;
+    let end = src[at..]
+        .find("\n];")
+        .map(|i| at + i)
+        .ok_or_else(|| format!("{rel}: `DO_NOT_CALL` has no closing `];`"))?;
+    let block = &src[at..end];
+    for needle in [
+        "\"Solution\"",
+        "ModeKind::V,",
+        "        2,",
+        "Solution.BusLevels",
+    ] {
+        if !block.contains(needle) {
+            return Err(format!(
+                "{rel}: the `DO_NOT_CALL` register no longer carries `{needle}`. \
+                 `SolutionV(2)` `Solution.BusLevels` is a one-element heap overflow \
+                 inside the DLL (`DDLL/DSolution.pas:578-582`); removing the row would \
+                 let a future accessor call it."
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The capi transport's two incidence normalizers must still REFUSE a shape they
+/// were not written for.
+///
+/// `_inc_ints` implements rule N1 — drop the one trailing cell capi allocates and
+/// never writes (`CAPI_Solution.pas:873`/`:910`) — and the sub-step's KILL
+/// CRITERION is that the cell is 0 and the length is `3·NZero + 1`
+/// (`GOLDEN_REBASE_PLAN.md` §G1.8). Both are enforced in Python, where no Rust
+/// test reaches them; an edit that kept the strip and dropped the zero-check
+/// (`return xs[:-1]` unconditionally) would leave every existing test green,
+/// because the gate-side `assert_transport_shape` only re-asserts the fixpoint
+/// `len % 3 == 0` — and a capi reply whose last cell stopped being the unwritten
+/// slot would then be silently truncated. Same shape for `_inc_names`' rule N3:
+/// the one-element `''` sentinel is dropped ONLY where the engine can reach it
+/// (`sentinel_ok`), and any other blank raises. The r4133 twins have real unit
+/// tests (`crates/dss-epri/src/capture.rs`); this is their capi counterpart,
+/// written as a source-text gate for the reason every rule in this file is.
+/// (G1.8 audit settlement, finding G18-T2.)
+fn check_capi_incidence_normalizers(src: &str, rel: &str) -> Result<(), String> {
+    for (header, needles) in [
+        (
+            "def _inc_ints(",
+            &[
+                "len(xs) % 3 != 1",
+                "xs[-1] != 0",
+                "raise ValueError",
+                "return xs[:-1]",
+            ][..],
+        ),
+        (
+            "def _inc_names(",
+            &["if not sentinel_ok:", "raise ValueError", "return xs"][..],
+        ),
+    ] {
+        let body = py_def_body(src, header, rel)?;
+        for needle in needles {
+            if !body.contains(needle) {
+                return Err(format!(
+                    "{rel}: `{header}…` no longer contains `{needle}`. The G1.8 \
+                     transport normalizations must RAISE on a shape they were not \
+                     written for, never repair it silently: the trailing-cell \
+                     contract is this sub-step's kill criterion, and the empty \
+                     name sentinel may be dropped only where the engine can reach \
+                     it."
+                ));
+            }
+        }
+        if body.matches("raise ValueError").count() < 2 {
+            return Err(format!(
+                "{rel}: `{header}…` has fewer than two `raise ValueError` arms — \
+                 one of the two refusals was dropped"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn the_capi_incidence_transport_refuses_a_shape_it_was_not_written_for() {
+    let rel = "tools/oracle/oracle_server.py";
+    check_capi_incidence_normalizers(&read_source(rel), rel).unwrap_or_else(|e| panic!("{e}"));
+
+    // Non-vacuity: a normalizer that strips the cell without checking it, and
+    // one that drops the sentinel unconditionally, must both be refused.
+    let ok = "\
+def _inc_ints(v, what: str) -> list:
+    xs = [int(x) for x in v]
+    if len(xs) % 3 != 1:
+        raise ValueError(what)
+    if xs[-1] != 0:
+        raise ValueError(what)
+    return xs[:-1]
+
+
+def _inc_names(v, sentinel_ok: bool, what: str) -> list:
+    xs = [str(s) for s in v]
+    if len(xs) == 1 and xs[0].strip() == \"\":
+        if not sentinel_ok:
+            raise ValueError(what)
+        return []
+    if [i for i, s in enumerate(xs) if not s.strip()]:
+        raise ValueError(what)
+    return xs
+";
+    assert!(check_capi_incidence_normalizers(ok, "synthetic").is_ok());
+
+    for (what, mutated) in [
+        (
+            "the trailing-cell zero check",
+            ok.replace("    if xs[-1] != 0:\n        raise ValueError(what)\n", ""),
+        ),
+        (
+            "the length check",
+            ok.replace(
+                "    if len(xs) % 3 != 1:\n        raise ValueError(what)\n",
+                "",
+            ),
+        ),
+        (
+            "the sentinel guard",
+            ok.replace(
+                "        if not sentinel_ok:\n            raise ValueError(what)\n",
+                "",
+            ),
+        ),
+    ] {
+        check_capi_incidence_normalizers(&mutated, "synthetic")
+            .expect_err(&format!("{what} was dropped and the gate stayed green"));
+    }
+}
+
+#[test]
+fn capi_capture_reads_the_incidence_surface_last() {
+    let rel = "tools/oracle/oracle_server.py";
+    check_inc_matrix_last(&read_source(rel), &CAPI_CALLS, rel).unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn r4133_capture_reads_the_incidence_surface_last() {
+    let rel = "crates/dss-epri/src/capture.rs";
+    check_inc_matrix_last(&read_source(rel), &R4133_CALLS, rel).unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn the_incidence_capture_issues_calcincmatrix_then_calclaplacian() {
+    let capi = "tools/oracle/oracle_server.py";
+    check_capi_incidence(&read_source(capi), capi).unwrap_or_else(|e| panic!("{e}"));
+    let r4133 = "crates/dss-epri/src/capture.rs";
+    check_r4133_incidence(&read_source(r4133), r4133).unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn neither_capture_calls_calcincmatrix_o_or_reads_buslevels() {
+    let capi = "tools/oracle/oracle_server.py";
+    let src = read_source(capi);
+    check_no_forbidden_incidence_use(&src, Lang::Python, capi, &py_commands(&src))
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    for r4133 in [
+        "crates/dss-epri/src/capture.rs",
+        "crates/dss-epri/src/dss.rs",
+    ] {
+        let src = read_source(r4133);
+        check_no_forbidden_incidence_use(&src, Lang::Rust, r4133, &rust_commands(&src))
+            .unwrap_or_else(|e| panic!("{e}"));
+    }
+
+    let modes = "crates/dss-epri/src/modes.rs";
+    check_do_not_call_still_refuses_bus_levels(&read_source(modes), modes)
+        .unwrap_or_else(|e| panic!("{e}"));
+}
+
+/// Non-vacuity (§1.1(f)) for the four gates above: same predicates, synthetic
+/// sources. The accepted cases name the forbidden command and the forbidden read
+/// in *prose* — which is exactly what the real sources do — and every rejected
+/// case differs from them by moving that text into code, swapping the pair,
+/// dropping a read, or moving the capture earlier in the step.
+#[test]
+fn the_incidence_gates_reject_a_swapped_or_early_capture() {
+    // -- capi ---------------------------------------------------------------
+    let py_ok = "\
+def capture_inc_matrix(d, ckt) -> dict:
+    \"\"\"NEVER CalcIncMatrix_O and never sol.BusLevels: the first calls
+    GetTopology, the second overruns its array.\"\"\"
+    sol = ckt.Solution
+    d.Text.Command = \"CalcIncMatrix\"
+    d.Text.Command = \"CalcLaplacian\"
+    inc = _inc_ints(sol.IncMatrix, \"IncMatrix\")
+    lap = _inc_ints(sol.Laplacian, \"Laplacian\")
+    return {
+        \"rows\": _inc_names(sol.IncMatrixRows, not inc, \"IncMatrixRows\"),
+        \"cols\": _inc_names(sol.IncMatrixCols, int(ckt.NumBuses) == 0, \"IncMatrixCols\"),
+    }
+
+
+def later(d):
+    d.Text.Command = \"solve\"
+";
+    assert!(
+        check_capi_incidence(py_ok, "synthetic").is_ok(),
+        "a capture that only DOCUMENTS the forbidden command must pass — the real \
+         transport does exactly that"
+    );
+    assert!(
+        check_no_forbidden_incidence_use(py_ok, Lang::Python, "synthetic", &py_commands(py_ok))
+            .is_ok(),
+        "…and the docstring's `CalcIncMatrix_O` / `BusLevels` are prose, not code"
+    );
+
+    let swapped = py_ok
+        .replace("d.Text.Command = \"CalcIncMatrix\"\n    ", "")
+        .replace(
+            "d.Text.Command = \"CalcLaplacian\"",
+            "d.Text.Command = \"CalcLaplacian\"\n    d.Text.Command = \"CalcIncMatrix\"",
+        );
+    let err = check_capi_incidence(&swapped, "synthetic").expect_err("the pair was swapped");
+    assert!(err.contains("executive commands"), "{err}");
+    assert!(err.contains("CalcLaplacian"), "{err}");
+
+    let ordered = py_ok.replace(
+        "d.Text.Command = \"CalcLaplacian\"",
+        "d.Text.Command = \"CalcIncMatrix_O\"",
+    );
+    let err = check_no_forbidden_incidence_use(
+        &ordered,
+        Lang::Python,
+        "synthetic",
+        &py_commands(&ordered),
+    )
+    .expect_err("the ordered builder was issued");
+    assert!(err.contains("GetTopology"), "{err}");
+
+    let levels = py_ok.replace(
+        "    lap = _inc_ints(sol.Laplacian, \"Laplacian\")",
+        "    lap = _inc_ints(sol.Laplacian, \"Laplacian\")\n    lvl = sol.BusLevels",
+    );
+    let err =
+        check_no_forbidden_incidence_use(&levels, Lang::Python, "synthetic", &py_commands(&levels))
+            .expect_err("bus levels were read");
+    assert!(err.contains("DO_NOT_CALL"), "{err}");
+    let err = check_capi_incidence(&levels, "synthetic").expect_err("an extra member was read");
+    assert!(err.contains("BusLevels"), "{err}");
+
+    let dropped = py_ok.replace(
+        "        \"cols\": _inc_names(sol.IncMatrixCols, int(ckt.NumBuses) == 0, \"IncMatrixCols\"),\n",
+        "",
+    );
+    let err = check_capi_incidence(&dropped, "synthetic").expect_err("a read went missing");
+    assert!(err.contains("IncMatrixCols"), "{err}");
+
+    let computed = py_ok.replace(
+        "d.Text.Command = \"CalcLaplacian\"",
+        "d.Text.Command = f\"Calc{what}\"",
+    );
+    let err = check_capi_incidence(&computed, "synthetic").expect_err("a computed command");
+    assert!(err.contains("plain string literal"), "{err}");
+
+    // -- r4133 --------------------------------------------------------------
+    let rs_ok = "\
+/// Never issues `CalcIncMatrix_O` and never reads `Solution.BusLevels` /
+/// `solution_bus_levels` — `DSolution.pas:578-582`.
+fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
+    engine.exec_wait(\"CalcIncMatrix\")?;
+    engine.exec_wait(\"CalcLaplacian\")?;
+    let inc_matrix = inc_ints(engine.solution_inc_matrix()?, \"Solution.IncMatrix\")?;
+    let laplacian = inc_ints(engine.solution_laplacian()?, \"Solution.Laplacian\")?;
+    let rows = inc_names(engine.solution_inc_matrix_rows()?, \"r\", inc_matrix.is_empty())?;
+    let cols = inc_names(engine.solution_inc_matrix_cols()?, \"c\", false)?;
+    Ok(IncMatrixCap { inc_matrix, laplacian, rows, cols })
+}
+";
+    assert!(
+        check_r4133_incidence(rs_ok, "synthetic").is_ok(),
+        "doc comments and string literals must not count as calls"
+    );
+    assert!(
+        check_no_forbidden_incidence_use(rs_ok, Lang::Rust, "synthetic", &rust_commands(rs_ok))
+            .is_ok()
+    );
+
+    let swapped = rs_ok.replace(
+        "    engine.exec_wait(\"CalcIncMatrix\")?;\n    engine.exec_wait(\"CalcLaplacian\")?;",
+        "    engine.exec_wait(\"CalcLaplacian\")?;\n    engine.exec_wait(\"CalcIncMatrix\")?;",
+    );
+    let err = check_r4133_incidence(&swapped, "synthetic").expect_err("the pair was swapped");
+    assert!(err.contains("ExecCommands.pas:911-917"), "{err}");
+
+    let extra = rs_ok.replace(
+        "    let cols = inc_names(engine.solution_inc_matrix_cols()?, \"c\", false)?;",
+        "    let cols = inc_names(engine.solution_inc_matrix_cols()?, \"c\", false)?;\n    let _ = engine.solution_bus_levels()?;",
+    );
+    let err = check_r4133_incidence(&extra, "synthetic").expect_err("an extra accessor was called");
+    assert!(err.contains("solution_bus_levels"), "{err}");
+    let err =
+        check_no_forbidden_incidence_use(&extra, Lang::Rust, "synthetic", &rust_commands(&extra))
+            .expect_err("bus levels were read");
+    assert!(err.contains("DO_NOT_CALL"), "{err}");
+
+    let stray =
+        format!("{rs_ok}\nfn other(e: &Engine) {{\n    e.exec_wait(\"solve\").unwrap();\n}}\n");
+    let err = check_r4133_incidence(&stray, "synthetic").expect_err("a stray command was issued");
+    assert!(err.contains("the whole transport issues"), "{err}");
+
+    // -- the DO_NOT_CALL register -------------------------------------------
+    let modes_ok = "\
+pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
+    (
+        \"Solution\",
+        ModeKind::V,
+        2,
+        \"Solution.BusLevels: DSolution.pas:580-582 overruns its array\",
+    ),
+];
+";
+    assert!(check_do_not_call_still_refuses_bus_levels(modes_ok, "synthetic").is_ok());
+    let gutted = modes_ok.replace("        \"Solution\",\n", "        \"Bus\",\n");
+    let err = check_do_not_call_still_refuses_bus_levels(&gutted, "synthetic")
+        .expect_err("the row is gone");
+    assert!(err.contains("heap overflow"), "{err}");
+
+    // -- the order gate -----------------------------------------------------
+    let a = Anchors {
+        run: "fn run_case(",
+        aggregates: "capture_aggregates(",
+        elements: "capture_all_elements(",
+        discrete: "capture_discrete(",
+        reliability: "capture_reliability(",
+        properties: "capture_all_properties(",
+        topology: "capture_topology(",
+        inc_matrix: "capture_inc_matrix(",
+    };
+    let ok = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_all_elements(x); \
+              capture_reliability(x); capture_all_properties(x); capture_topology(x); \
+              capture_inc_matrix(x);";
+    assert!(check_inc_matrix_last(ok, &a, "synthetic").is_ok());
+    assert!(check_topology_last(ok, &a, "synthetic").is_ok());
+
+    let before_topology = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_all_elements(x); \
+         capture_all_properties(x); capture_inc_matrix(x); capture_topology(x);";
+    let err = check_inc_matrix_last(before_topology, &a, "synthetic")
+        .expect_err("the incidence pair ran before the topology read");
+    assert!(err.contains("topology capture"), "{err}");
+    assert!(err.contains("Branch_List"), "{err}");
+
+    // Topology first this time, so its arm is satisfied and the failure has to
+    // come from one of the reads the pair still overtakes.
+    let early = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_topology(x); \
+                 capture_inc_matrix(x); capture_all_elements(x); capture_all_properties(x);";
+    let err = check_inc_matrix_last(early, &a, "synthetic").expect_err("the pair ran early");
+    assert!(err.contains("property sweep"), "{err}");
+
+    let renamed = "fn run_case( capture_aggregates(x); capture_discrete(x); \
+                   capture_all_elements(x); capture_all_properties(x); capture_topology(x); \
+                   build_the_matrix(x);";
+    let err = check_inc_matrix_last(renamed, &a, "synthetic").expect_err("the anchor is gone");
+    assert!(err.contains("could not find"), "{err}");
+}
+
+// ---------------------------------------------------------------------------
+// G1.10a — the run-file set: a per-RUN read, strictly last, inside the guard
+// scope, with nothing but the D32(2)(a) teardown after it
+// (`GOLDEN_REBASE_PLAN.md` §G1.10; coordinator decisions D32(2)(a) and D33(3)).
+// ---------------------------------------------------------------------------
+
+/// Where one transport classifies the run's created-file set, and the scope
+/// that classification must sit inside.
+///
+/// The two transports express that scope differently — Python opens it with
+/// `with _CorpusGuard(…) as guard:` and ends it by indentation, Rust binds the
+/// guard and consumes it with an explicit `finish()` — so the rule carries both
+/// spellings and [`check_run_files_last`] resolves the end accordingly.
+struct RunFileRule {
+    lang: Lang,
+    /// The classification call. It must appear exactly once in the transport's
+    /// **code**: a second classification would report one set while the guard
+    /// sweeps another.
+    created: &'static str,
+    /// The WPG.5 `autoadd_log` read — a file read off disk, of a file the run
+    /// itself created, so it must precede the classification.
+    autoadd: &'static str,
+    /// Where the guard's scope opens.
+    guard_open: &'static str,
+    /// The statement that ends the guard's life where the language needs one
+    /// (the explicit sweep, Rust side). `None` on the Python side, where the
+    /// scope is the `with` block and its end is found by indentation.
+    guard_close: Option<&'static str>,
+    /// The EXACT statement sequence this transport may still run after the
+    /// classification, as line prefixes, in order (D33(3)). Empty for a
+    /// transport that needs no teardown. Pinning the sequence rather than a
+    /// membership set is what states F4c's half of the rule: the teardown
+    /// `clear` is the sole statement of its `try` block, because the statement
+    /// before it is that `try:` and the one after it is the `except`.
+    teardown: &'static [&'static str],
+    /// The engine commands that teardown issues, in order — the semantic half
+    /// of the same rule: no other command, and no read, may follow.
+    teardown_commands: &'static [&'static str],
+}
+
+/// The capi channel. Its teardown is D32(2)(a): dss_capi opens a Storage
+/// `debugtrace` stream at edit time and never closes it for the life of the
+/// object (`src/PCElements/Storage.pas:872`; `FreeAndNil(TraceFile)` only at
+/// `:871` on a re-edit and `:1199` in `TStorageObj.Destroy`), so the circuit is
+/// released with one `clear` — after the classification — or the guard's
+/// `os.remove` raises and the next producer of the same case snapshots the
+/// leaked file as pre-existing. D33(1) wraps that `clear` in `try:` because the
+/// pinned 0.14.5 faults on it after an AutoAdd solve; the recording arms are on
+/// the whitelist for exactly that reason.
+const CAPI_RUN_FILES: RunFileRule = RunFileRule {
+    lang: Lang::Python,
+    created: "guard.created()",
+    autoadd: "autoadd_log = fh.read()",
+    guard_open: "with _CorpusGuard(",
+    guard_close: None,
+    teardown: &[
+        "teardown_error = None",
+        "try:",
+        "d.Text.Command = \"clear\"",
+        "except Exception as e:",
+        "teardown_error = f\"",
+        "log(f\"teardown clear raised",
+    ],
+    teardown_commands: &["clear"],
+};
+
+/// The r4133 channel. r4133 closes its own Storage trace file as it writes the
+/// header (`Version8/Source/PCElements/Storage.pas:1085`), so this transport
+/// needs no teardown at all: after the classification the guard is swept and the
+/// reply is built, and **nothing** may run in between.
+const R4133_RUN_FILES: RunFileRule = RunFileRule {
+    lang: Lang::Rust,
+    created: "guard.created()",
+    autoadd: "read_autoadd_log(engine",
+    guard_open: "CorpusGuard::new(",
+    guard_close: Some("guard.finish()"),
+    teardown: &[],
+    teardown_commands: &[],
+};
+
+/// Byte offset of the start of the line containing `at`.
+fn line_start_at(text: &str, at: usize) -> usize {
+    text[..at].rfind('\n').map_or(0, |i| i + 1)
+}
+
+/// The indentation (leading spaces) of the line containing `at`.
+fn indent_at(text: &str, at: usize) -> usize {
+    text[line_start_at(text, at)..]
+        .chars()
+        .take_while(|c| *c == ' ')
+        .count()
+}
+
+/// Byte offset of the first non-blank line strictly after the line containing
+/// `at` (`text.len()` if there is none).
+fn next_code_line(text: &str, at: usize) -> usize {
+    let mut i = text[at..].find('\n').map_or(text.len(), |j| at + j + 1);
+    while i < text.len() {
+        let end = text[i..].find('\n').map_or(text.len(), |j| i + j + 1);
+        if !text[i..end].trim().is_empty() {
+            return i;
+        }
+        i = end;
+    }
+    text.len()
+}
+
+/// The end of the indented block whose header line contains `at`: the first
+/// later non-blank line indented no deeper than that header. Python only — it
+/// is how `with _CorpusGuard(…) as guard:` states the guard's lifetime.
+fn py_block_end(text: &str, at: usize) -> usize {
+    let head = indent_at(text, at);
+    let mut i = text[at..].find('\n').map_or(text.len(), |j| at + j + 1);
+    while i < text.len() {
+        let end = text[i..].find('\n').map_or(text.len(), |j| i + j + 1);
+        if !text[i..end].trim().is_empty() && indent_at(text, i) <= head {
+            return i;
+        }
+        i = end;
+    }
+    text.len()
+}
+
+/// The whole run-file rule as a pure function of one transport's source text,
+/// so it can be shown to have teeth
+/// ([`the_run_file_gate_rejects_an_early_escaped_or_nested_classification`]).
+fn check_run_files_last(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> Result<(), String> {
+    let run = offset_after(src, a.run, 0, rel)?;
+    let created = offset_after(src, r.created, run, rel)?;
+    let guard_open = offset_after(src, r.guard_open, run, rel)?;
+
+    // 1. one classification, so the set reported IS the set swept.
+    let n = code_only(src, r.lang).matches(r.created).count();
+    if n != 1 {
+        return Err(format!(
+            "{rel}: `{}` appears {n} times in this transport's code. The run-file \
+             classification runs exactly once, at the end of the run — a second one \
+             would report a set the guard does not sweep (or sweep a set it did not \
+             report).",
+            r.created
+        ));
+    }
+
+    // 2. after every per-step capture: a report a LATER step writes must already
+    //    be on disk when the set is classified.
+    for (what, needle) in [
+        ("the G1.8 incidence capture", a.inc_matrix),
+        ("the G1.7 topology capture", a.topology),
+        ("the WP8.5b property sweep", a.properties),
+        ("the G1.6(i) reliability capture", a.reliability),
+        ("the per-element capture", a.elements),
+        ("the discrete-state capture", a.discrete),
+        ("the G1.9 aggregates", a.aggregates),
+    ] {
+        let other = offset_after(src, needle, run, rel)?;
+        if created <= other {
+            return Err(format!(
+                "{rel}: the G1.10a run-file classification (byte {created}) runs BEFORE \
+                 {what} (byte {other}). It is a per-RUN read of the filesystem and must \
+                 follow every per-step read, or a file a later step writes is missing \
+                 from the compared set (`GOLDEN_REBASE_PLAN.md` §G1.10)."
+            ));
+        }
+    }
+
+    // 3. after the `autoadd_log` read — that log is one of the created files,
+    //    read off disk while the guard still holds it.
+    let autoadd = offset_after(src, r.autoadd, run, rel)?;
+    if created <= autoadd {
+        return Err(format!(
+            "{rel}: the run-file classification (byte {created}) runs BEFORE the WPG.5 \
+             `autoadd_log` read (byte {autoadd}). The classification is the LAST read of \
+             the run (D33(3)); the AutoAddLog is one of the files it classifies."
+        ));
+    }
+
+    // 4. inside the guard scope: the sweep removes exactly what it returns.
+    let scope_end = match r.guard_close {
+        Some(close) => line_start_at(src, offset_after(src, close, guard_open, rel)?),
+        None => py_block_end(src, guard_open),
+    };
+    if created <= guard_open || created >= scope_end {
+        return Err(format!(
+            "{rel}: the run-file classification (byte {created}) sits OUTSIDE the guard \
+             scope (bytes {guard_open}..{scope_end}). The guard sweeps exactly what the \
+             classification returns; outside the scope the two can disagree, and the \
+             files the set names are already gone."
+        ));
+    }
+
+    // 5. a direct statement of that scope, not nested in the retry loop — which
+    //    recompiles in-process, so a classification inside it describes the
+    //    wrong attempt's filesystem.
+    let scope_indent = match r.lang {
+        Lang::Python => indent_at(src, next_code_line(src, guard_open)),
+        Lang::Rust => indent_at(src, guard_open),
+    };
+    let created_indent = indent_at(src, created);
+    if created_indent != scope_indent {
+        return Err(format!(
+            "{rel}: the run-file classification is indented {created_indent} where the \
+             guard scope's own statements are indented {scope_indent} — it is nested. \
+             The retry loop recompiles in-process; a classification inside it reports \
+             the filesystem of an attempt that was thrown away."
+        ));
+    }
+
+    // 6. D33(3): the classification is the last READ, and the only statement
+    //    after it inside the guard scope is the D32(2)(a) teardown.
+    let tail_start = src[created..]
+        .find('\n')
+        .map_or(src.len(), |i| created + i + 1);
+    let tail = src.get(tail_start..scope_end).unwrap_or("");
+
+    let cmds = match r.lang {
+        Lang::Python => py_commands(tail),
+        Lang::Rust => rust_commands(tail),
+    };
+    if cmds != owned(r.teardown_commands) {
+        return Err(format!(
+            "{rel}: the commands issued after the run-file classification are {cmds:?}, \
+             but the only thing allowed to follow it inside the guard scope is the \
+             D32(2)(a) teardown {:?} (D33(3)). Any other command changes the run whose \
+             filesystem effect was just classified.",
+            r.teardown_commands
+        ));
+    }
+
+    let code = code_only(tail, r.lang);
+    if let Some(read) = idents_with_prefix(&code, "capture_").first() {
+        return Err(format!(
+            "{rel}: `{read}` is called AFTER the run-file classification, inside the \
+             guard scope. The classification is the LAST read of the run (D33(3)); a \
+             capture that follows it reads a model the reported file set no longer \
+             describes."
+        ));
+    }
+
+    let stmts: Vec<&str> = tail
+        .lines()
+        .map(|l| code_of(l, r.lang).trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    for (i, stmt) in stmts.iter().enumerate() {
+        match r.teardown.get(i) {
+            Some(want) if stmt.starts_with(want) => {}
+            _ => {
+                return Err(format!(
+                    "{rel}: statement {i} after the run-file classification is `{stmt}`, \
+                     but D33(3) allows exactly the D32(2)(a) teardown, in this order: \
+                     {:?}. The classification is the last READ of the run; the teardown \
+                     is not a read, and its `clear` is the SOLE statement of its `try` \
+                     block. If the teardown itself changed, change this rule with it — \
+                     deliberately.",
+                    r.teardown
+                ));
+            }
+        }
+    }
+    if stmts.len() != r.teardown.len() {
+        return Err(format!(
+            "{rel}: the guard scope ends after {} statement(s) following the run-file \
+             classification, but the declared D32(2)(a) teardown has {}: {:?}. A teardown \
+             that shrank silently is the leak D32(2)(a) closed (dss_capi's Storage trace \
+             stream, `src/PCElements/Storage.pas:872`) coming back.",
+            stmts.len(),
+            r.teardown.len(),
+            r.teardown
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn capi_capture_classifies_the_run_files_last() {
+    let rel = "tools/oracle/oracle_server.py";
+    check_run_files_last(&read_source(rel), &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn r4133_capture_classifies_the_run_files_last() {
+    let rel = "crates/dss-epri/src/capture.rs";
+    check_run_files_last(&read_source(rel), &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .unwrap_or_else(|e| panic!("{e}"));
+}
+
+/// A synthetic capi `run_case` in the real transport's shape, so the mutations
+/// below run against the SAME [`CAPI_CALLS`] / [`CAPI_RUN_FILES`] constants the
+/// two gates above apply to the real sources.
+const SYNTH_CAPI_RUN: &str = r#"
+def run_case(d, req):
+    with _CorpusGuard(case_path) as guard:
+        for attempt in range(1, 3):
+            capture_aggregates(ckt)
+            capture_all_elements(ckt, derived)
+            gc.capture_discrete(ckt)
+            capture_reliability(ckt)
+            capture_all_properties(d, ckt)
+            capture_topology(ckt)
+            capture_inc_matrix(d, ckt)
+        if want_autoadd_log:
+            autoadd_log = fh.read()
+        run_files = guard.created() if want_run_files else None
+        teardown_error = None
+        try:
+            d.Text.Command = "clear"
+        except Exception as e:
+            teardown_error = f"{e}"
+            log(f"teardown clear raised for {case_path}: {teardown_error}")
+    sweep_failed = guard.sweep_failed
+    return {}
+"#;
+
+/// Non-vacuity (§1.1(f)) for the capi half of the run-file rule: the gate above
+/// passes on the real source, so this one shows each of its six clauses rejects
+/// the corresponding mistake. No file on disk is mutated.
+#[test]
+fn the_run_file_gate_rejects_an_early_escaped_or_nested_classification() {
+    let rel = "synthetic";
+    let ok = SYNTH_CAPI_RUN;
+    check_run_files_last(ok, &CAPI_CALLS, &CAPI_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
+
+    // (2) classified before the last per-step captures.
+    let early = move_line_after(ok, "guard.created()", "capture_all_elements(ckt, derived)");
+    let err = check_run_files_last(&early, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("classified mid-step");
+    assert!(err.contains("runs BEFORE"), "{err}");
+    assert!(err.contains("must follow every per-step read"), "{err}");
+
+    // (3) classified before the AutoAddLog is read off disk.
+    let before_log = move_line_after(ok, "guard.created()", "capture_inc_matrix(d, ckt)");
+    let err = check_run_files_last(&before_log, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("classified before the autoadd read");
+    assert!(err.contains("autoadd_log"), "{err}");
+
+    // (4) classified after the guard scope closed.
+    let escaped = move_line_after(ok, "guard.created()", "sweep_failed = guard.sweep_failed");
+    let err = check_run_files_last(&escaped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("classified outside the scope");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    // (5) classified from inside the retry loop's body (indentation is how both
+    // languages state it; here the statement simply moves one level deeper).
+    let nested = ok.replace(
+        "        run_files = guard.created()",
+        "            run_files = guard.created()",
+    );
+    let err = check_run_files_last(&nested, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("classified inside the retry loop");
+    assert!(err.contains("nested"), "{err}");
+
+    // (6a) another command issued after the classification.
+    let extra_cmd = insert_after(ok, "guard.created()", "        d.Text.Command = \"solve\"");
+    let err = check_run_files_last(&extra_cmd, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a command followed the classification");
+    assert!(err.contains("solve"), "{err}");
+
+    // (6b) another READ issued after the classification.
+    let extra_read = insert_after(ok, "guard.created()", "        capture_topology(ckt)");
+    let err = check_run_files_last(&extra_read, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a capture followed the classification");
+    assert!(err.contains("capture_topology"), "{err}");
+
+    // (6c) any other statement in the tail — not a read, not a command, but not
+    // the teardown either.
+    let extra_stmt = insert_after(ok, "guard.created()", "        run_files.sort()");
+    let err = check_run_files_last(&extra_stmt, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a statement followed the classification");
+    assert!(err.contains("run_files.sort()"), "{err}");
+
+    // (6d) the teardown's `clear` hoisted out of its `try:` block — the shape
+    // D33(1) needs (the pinned 0.14.5 faults on that `clear` after an AutoAdd
+    // solve) and F4c asked this rule to state. Same statements, wrong order.
+    let unguarded = move_line_after(ok, "d.Text.Command", "teardown_error = None");
+    let err = check_run_files_last(&unguarded, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the teardown clear left its try block");
+    assert!(err.contains("SOLE statement of its `try` block"), "{err}");
+
+    // (1) a second classification.
+    let twice = insert_after(ok, "guard.created()", "        again = guard.created()");
+    let err = check_run_files_last(&twice, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("classified twice");
+    assert!(err.contains("appears 2 times"), "{err}");
+
+    // the anchor itself: a rename must fail loudly, never vacuously pass.
+    let renamed = ok.replace("guard.created()", "guard.classify()");
+    let err = check_run_files_last(&renamed, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the anchor is gone");
+    assert!(err.contains("could not find"), "{err}");
+}
+
+/// Non-vacuity on the REAL sources, not only on the synthetic shapes: the two
+/// gates above pass on the transports as they stand, so this one corrupts each
+/// transport's own text in memory — hoisting the classification to the top of
+/// the guard scope, and pushing it past the sweep — and asserts the gate rejects
+/// both. Nothing on disk is touched.
+#[test]
+fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
+    let rel = "tools/oracle/oracle_server.py";
+    let src = read_source(rel);
+    let hoisted = move_line_after(
+        &src,
+        "run_files = guard.created()",
+        "with _CorpusGuard(case_path) as guard:",
+    );
+    let err = check_run_files_last(&hoisted, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("classified before the first step");
+    assert!(err.contains("runs BEFORE"), "{err}");
+    let escaped = move_line_after(
+        &src,
+        "run_files = guard.created()",
+        "sweep_failed = guard.sweep_failed",
+    );
+    let err = check_run_files_last(&escaped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("classified after the guard scope closed");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    let rel = "crates/dss-epri/src/capture.rs";
+    let src = read_source(rel);
+    let hoisted = move_line_after(
+        &src,
+        "let run_files = if req.run_files",
+        "let mut guard = CorpusGuard::new(",
+    );
+    let err = check_run_files_last(&hoisted, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("classified before the first step");
+    assert!(err.contains("runs BEFORE"), "{err}");
+    let escaped = move_line_after(
+        &src,
+        "let run_files = if req.run_files",
+        "let sweep_failed = guard.finish();",
+    );
+    let err = check_run_files_last(&escaped, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("classified after the sweep");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+}
+
+/// The r4133 half: the same rule against the Rust spelling of the scope, where
+/// the guard is consumed by an explicit `finish()` and the tail must be EMPTY
+/// (that transport has no teardown — r4133 closes its own trace file,
+/// `Version8/Source/PCElements/Storage.pas:1085`).
+#[test]
+fn the_run_file_gate_rejects_a_classification_after_the_sweep() {
+    let rel = "synthetic";
+    let ok = "\
+pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineError> {
+    let mut guard = CorpusGuard::new(&req.case_path);
+    for attempt in 1..=RUN_ATTEMPTS {
+        capture_aggregates(engine)?;
+        capture_all_elements(engine)?;
+        capture_discrete(engine)?;
+        capture_reliability(engine)?;
+        capture_all_properties(engine)?;
+        capture_topology(engine)?;
+        capture_inc_matrix(engine)?;
+    }
+    let autoadd_log = read_autoadd_log(engine, &req.case_path);
+    let run_files = if req.run_files { guard.created() } else { None };
+    let sweep_failed = guard.finish();
+    Ok(CaseResult { run_files, sweep_failed })
+}
+";
+    check_run_files_last(ok, &R4133_CALLS, &R4133_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
+
+    let swept_first = move_line_after(ok, "guard.created()", "guard.finish()");
+    let err = check_run_files_last(&swept_first, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("classified after the sweep");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    let teardown = insert_after(ok, "guard.created()", "    engine.exec_wait(\"clear\")?;");
+    let err = check_run_files_last(&teardown, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("this transport has no teardown");
+    assert!(err.contains("clear"), "{err}");
 }

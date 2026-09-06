@@ -19,6 +19,7 @@
    "ad": "off:too-small",
    "kind": "micro",
    "n_steps": 1,
+   "compare_inc_matrix": true,
    "selected_elements": [
     "Reactor.rz12",
     "Reactor.rmat",
@@ -455,6 +456,7 @@
    "ad": "off:ad-nonconvergent",
    "kind": "micro",
    "n_steps": 2,
+   "compare_inc_matrix": true,
    "selected_elements": [
     "*"
    ]
