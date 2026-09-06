@@ -66,6 +66,24 @@ pub mod aggregates;
 /// normalizations and one fully discrete, zero-tolerance live comparator.
 pub mod topology;
 
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.8: the flat branch-to-node
+/// incidence surface — `IncMatrix`, `Laplacian`, `IncMatrixRows`,
+/// `IncMatrixCols` — as a capture struct, the gate-side statement of the three
+/// transport shape normalizations, one fully discrete, zero-tolerance live
+/// comparator and settlement S-INC's decline census.
+pub mod inc_matrix;
+
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.10a: the run-produced FILE SET —
+/// every filesystem entry a run creates under the case dir — as the port-side
+/// probe, the D25/Q2 engine-scratch census and one fully discrete,
+/// zero-tolerance live comparator. Windows-only: the classification it shares
+/// with the two oracle transports lives in `dss_epri::guard`, and `dss-epri` is
+/// `#[cfg(windows)]` (the vendored EPRI binary is a Win64 DLL). The corpus gate
+/// refuses `compare_run_files` loudly on any other platform rather than
+/// comparing nothing (`corpus_gate::runner::compare_with_result`).
+#[cfg(windows)]
+pub mod run_files;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;

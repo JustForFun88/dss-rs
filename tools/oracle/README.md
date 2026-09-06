@@ -22,9 +22,22 @@ the pinned dss-python oracle (`tools/golden/PIN.txt`).
   now gates the r4133 channel the same way.
   The `"topology": true` request field (GOLDEN_REBASE G1.7, 2026-09-05) adds
   `capture_topology`: the six order-free `ITopology` rows (`NumLoops`,
-  `NumIsolated*`, `AllLoopedPairs`, `AllIsolated*`), read **strictly last** in the
-  step because the first `Topology` read builds the memoized branch tree; the
-  twelve cursor rows are never read (they reassign `ActiveCktElement`).
+  `NumIsolated*`, `AllLoopedPairs`, `AllIsolated*`), read after every other read
+  of the step because the first `Topology` read builds the memoized branch tree;
+  the twelve cursor rows are never read (they reassign `ActiveCktElement`).
+  (Corrected 2026-09-05, G1.8: it is no longer *strictly* last — the incidence
+  pair below is the one capture that follows it.)
+  The `"inc_matrix": true` request field (GOLDEN_REBASE G1.8, 2026-09-05) adds
+  `capture_inc_matrix`: it issues `CalcIncMatrix` then `CalcLaplacian` and reads
+  the four flat quantities (`IncMatrix`, `Laplacian`, `IncMatrixRows`,
+  `IncMatrixCols`) **after** the topology capture, i.e. last of the whole step —
+  the pair rewrites solution state and must not precede the read that memoizes
+  the branch tree. `CalcIncMatrix_O` and `BusLevels` are never issued. Two
+  transport normalizations make this channel byte-identical to the r4133 bridge
+  and both RAISE on anything unexpected: the unwritten `+1` cell capi allocates
+  for each integer array is dropped after asserting it is 0, and the
+  one-element `''` sentinel of an absent name list becomes `[]` only where the
+  engine can reach it (no incidence rows / no buses).
 - **`corpus_guard.py`** — restores the vendored corpus tree after a run (the
   engine writes reports/DI files next to each deck); the Rust side has a mirror
   `CorpusGuard`.

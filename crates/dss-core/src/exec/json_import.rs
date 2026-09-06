@@ -210,6 +210,7 @@ impl Dss {
             vars,
             enums,
             errors,
+            output_directory,
             ..
         } = self;
         {
@@ -250,6 +251,17 @@ impl Dss {
                 };
                 props.fill_from_json(&mut objects[oi], members, &mut eng);
             }
+            // Deferred debug-trace creates (Storage `DebugTrace=yes`). Pascal
+            // opens the file inside the property hook itself
+            // (`PropertySideEffects`, dss_capi `src/PCElements/Storage.pas:765`
+            // -> `:868-885`; r4133 `PCElements/Storage.pas:1073-1085`), so every
+            // write path reaches it — the JSON reader's `FillObjFromJSON`
+            // included. The port's hook cannot see `OutputDirectory`, so it
+            // queues the header and the executive drains it; this path must
+            // drain it too, or a Storage imported with `debugtrace=yes` keeps a
+            // queued header forever and traces nothing (G1.10a audit settlement,
+            // finding AC-4; the `exec/command.rs` twin).
+            objects[oi].open_debug_traces(output_directory, errors);
             // Pascal `RecalcElementData` (run by `EndEdit`) reads the live
             // `ActiveCircuit.Solution` globals; thread that snapshot in.
             let live_sys = circuit

@@ -34,6 +34,8 @@
 //! - [`registers`]: `ComputeDCkW`, the loss split, `UpdateStorage` (SOC
 //!   integration), the energy-meter registers and `TakeSample`.
 //! - [`accessors`]: the `CktElement` / `DssObject` / [`InvBasedPce`] trait impls.
+//! - [`trace`]: the `DebugTrace=yes` CSV file — header, per-record and dynamics
+//!   writers (r4133 `Storage.pas:1073-1085`/`:2401-2429`/`:3676-3683`).
 //!
 //! [`PVSystem`]: crate::elements::pc::pvsystem::PVSystem
 //! [`InvBasedPce`]: crate::elements::pc::inv_based_pce::InvBasedPce
@@ -54,6 +56,7 @@ mod dynamics;
 mod nominal;
 mod registers;
 mod solve;
+mod trace;
 mod user_model;
 
 pub use user_model::StorageUserModelSlot;
@@ -484,6 +487,10 @@ pub struct Storage {
     pub user_model: Option<Box<StorageUserModelSlot>>,
     /// Pascal `DynaModel: TStoreDynaModel` (`:282`) — the 13-fn `DynaDLL=` slot.
     pub dyna_model: Option<Box<StorageUserModelSlot>>,
+    /// The `DebugTrace=yes` CSV trace file (`trace`), r4133
+    /// `Storage.pas:1073-1085`/`:2401-2429`. Private: the property hook queues
+    /// the header, the executive creates the file, the record writers append.
+    trace: trace::DebugTraceFile,
     /// Deferred `UserModel=`/`UserData=`/`DynaDLL=`/`DynaData=` load/edit
     /// requests, drained + resolved by the executive (§2.4 activation rule).
     pub pending_user_model_loads: Vec<crate::obj::base::UserModelLoad>,
@@ -611,6 +618,7 @@ impl Storage {
             dyna_model_edit: String::new(),
             user_model: None,
             dyna_model: None,
+            trace: trace::DebugTraceFile::default(),
             pending_user_model_loads: Vec::new(),
         };
         // Pascal seeds PrpSequence with PF.

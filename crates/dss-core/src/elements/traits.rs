@@ -509,6 +509,13 @@ pub struct SysCtx {
     /// `Solution.DynaVars.dblHour`.
     pub dbl_hour: f64,
     pub solution_count: i32,
+    /// `Solution.Iteration` — the power-flow iteration counter the elements'
+    /// debug traces stamp (r4133 `PCElements/Storage.pas:2409`
+    /// `WriteTraceRecord`, capi `:1956`). A per-iteration scalar: every
+    /// injection/terminal-current pass rebuilds this snapshot
+    /// (`solution/solution/power_flow.rs`), so the value a record sees is the
+    /// iteration that produced it.
+    pub iteration: i32,
     pub loads_need_updating: bool,
     pub neglect_load_y: bool,
     pub long_line_correction: bool,
@@ -580,6 +587,7 @@ impl SysCtx {
             year: 0,
             dbl_hour: 0.0,
             solution_count: 0,
+            iteration: 0,
             loads_need_updating: true,
             neglect_load_y: false,
             long_line_correction: false,

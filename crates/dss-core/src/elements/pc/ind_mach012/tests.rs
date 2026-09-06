@@ -182,6 +182,7 @@ fn direct_shortcut_selects_yprim_currents() {
         last_solution_was_direct: true,
         ncim: false,
         solution_count: 0,
+        iteration: 0,
         ..default_recalc_ctx()
     };
     let mut i_d = vec![Complex64::ZERO; n];
@@ -192,6 +193,7 @@ fn direct_shortcut_selects_yprim_currents() {
     m_n.cd.compute_vterminal(&node_v);
     let sys_normal = SysCtx {
         solution_count: 0,
+        iteration: 0,
         ..default_recalc_ctx()
     };
     let mut i_n = vec![Complex64::ZERO; n];
