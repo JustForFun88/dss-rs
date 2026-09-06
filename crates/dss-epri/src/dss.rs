@@ -176,7 +176,7 @@ pub struct Engine {
 impl Engine {
     /// Load the r4133 DLL (leaking its `Library` handle — see [`Engine`]) and run
     /// the init sequence (`UNIFIED_GATE_PLAN.md` §2.2): `DSSI(8,0)` disable forms
-    /// → read Version → `Set RegistryUpdate=No` →
+    /// → read Version → `Set RegistryUpdate=No` → `Set Editor=rundll32.exe` →
     /// `Set DefaultBaseFrequency=60`. All subsequent DLL calls happen
     /// on this same thread.
     ///
@@ -205,6 +205,59 @@ impl Engine {
     /// against this DLL (2026-09-04): a worker that runs
     /// `Set DefaultBaseFrequency=37` and exits leaves `BaseFrequency = 37` in the
     /// key; with this command issued first the key does not move.
+    ///
+    /// # `Set Editor=rundll32.exe` — the OS-editor channel (D25)
+    ///
+    /// r4133 keeps `AutoDisplayShowReport := TRUE`
+    /// (`Common/DSSGlobals.pas:2052`) and every `Show` writer ends with
+    /// `If AutoDisplayShowReport Then FireOffEditor(FileNm)`
+    /// (`Common/ShowResults.pas` — 20+ sites, `:403`, `:717`, `:1116` …
+    /// `:2904`; `Common/ControlQueue.pas:482`;
+    /// `Common/Solution.pas:3543`), while `Dump`
+    /// (`Executive/ExecHelper.pas:1357`), the hash-list dumps (`:1223`, `:1232`,
+    /// `:1241`, `:1249`), `VDIFF` (`:3373`), `FileEdit` (`:1674`),
+    /// `Show autoadded` (`Executive/ShowOptions.pas:208-209`) and
+    /// `Show QueryLog` (`:385`) call it unconditionally. `DoShowCmd`
+    /// (`Executive/ShowOptions.pas:156`) has **no** `NoFormsAllowed` guard —
+    /// that flag reaches only `DoAboutBox` (`ExecHelper.pas:1803`),
+    /// `DoFormEditCmd` (`:2760`) and the empty-parameter `Show Variables`
+    /// (`:4464`) — so `DSSI(8,0)` does not cover this path. In the Windows
+    /// build `FireOffEditor` is
+    /// `ShellExecute(0, nil, encloseQuotes(DefaultEditor), encloseQuotes(FileNm),
+    /// nil, SW_SHOW)` (`Common/Utilities.pas:298-318`, `:304`): asynchronous, so
+    /// it does not hang the worker — it *accumulates* one OS process per report.
+    /// `DefaultEditor` comes from `HKCU\Software\OpenDSS` with the default
+    /// `'Notepad.exe'` (`Common/DSSGlobals.pas:990`, hard default `:2122`), read
+    /// at DLL load like `BaseFrequency`, so the bridge cannot pre-empt the read
+    /// and must overwrite the variable instead — which
+    /// `Set Editor=` does, with no circuit active (`DoSetCmd_NoCircuit`,
+    /// `Executive/ExecOptions.pas:570`; the with-circuit twin is `:722`).
+    ///
+    /// Measured on this DLL (2026-09-05, GOLDEN_REBASE G1.10a F0 record): an
+    /// unsuppressed sweep spawns one `notepad.exe` per `Show`/`Dump` report
+    /// (hundreds of orphaned windows accumulated across the lanes); with this
+    /// command the same 14-deck probe spawns **zero** lingering processes and
+    /// creates exactly the same file set.
+    /// `rundll32.exe` is the target because it exits immediately on a
+    /// non-DLL argument, leaving no process and no window — `where.exe`,
+    /// `cmd.exe` and `PING.EXE` each leave one lingering process.
+    /// `Set ShowReports=No` (option 138, `Executive/ExecOptions.pas:182`) is not
+    /// usable here: `DoSetCmd_NoCircuit` does not serve 138, so at init it falls
+    /// into the `ELSE` that raises `DSS error #301` (`:645-649`) — and it would
+    /// not cover the unconditional `FireOffEditor` call sites anyway.
+    ///
+    /// Issued *after* `Set RegistryUpdate=No` so the write-back guard is already
+    /// closed for the whole lifetime of this bridge's editor string: r4133
+    /// persists `DefaultEditor` alongside `BaseFrequency`
+    /// (`Common/DSSGlobals.pas:1017`, under the `UpdateRegistry` test at
+    /// `:1015`), so with that order no code path can carry `rundll32.exe` into
+    /// the user's `HKCU\Software\OpenDSS`
+    /// (pinned by `the_worker_never_writes_the_editor_registry_value`). The capi channel needs no counterpart: dss_capi has the same
+    /// `FireOffEditor` (`.inputs/dss_capi/src/Common/Utilities.pas:226-259`) but
+    /// gates it on `DSS_CAPI_ALLOW_EDITOR` (`:231`,
+    /// `.inputs/dss_capi/src/Common/DSSGlobals.pas:784`), which
+    /// `tools/oracle/oracle_server.py:1585` already clears
+    /// (`d.AllowEditor = False` → `CAPI_DSS.pas:102`).
     ///
     /// # `Set DefaultBaseFrequency=60` — the init reset (D13)
     ///
@@ -258,6 +311,12 @@ impl Engine {
         // fn doc. Strict: a DLL that does not accept the option must fail loudly,
         // never leave the registry channel open.
         eng.command_strict("Set RegistryUpdate=No", "init")?;
+        // D25: stop `Show`/`Dump` from ShellExecute-ing Notepad once per report
+        // (`Common/Utilities.pas:304`, unguarded by `NoFormsAllowed`) — see the
+        // fn doc. Issued AFTER `Set RegistryUpdate=No` so this value never
+        // reaches the user's registry. Strict: a DLL that does not accept the
+        // option must fail loudly, never leave the editor channel open.
+        eng.command_strict("Set Editor=rundll32.exe", "init")?;
         // D13: the registry read already happened at DLL load
         // (`Common/DSSGlobals.pas:1005`), so start this session from the port's
         // own default (`crates/dss-core/src/exec/construct.rs:173`, 60 Hz)
