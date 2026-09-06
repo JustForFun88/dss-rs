@@ -516,7 +516,7 @@ fn seq_currents_and_seq_voltages_are_one_on_the_na_arm() {
 // Expected-value pin — the transform reads the ROW's own terminal: each
 // terminal's three slots are the 012 components of that terminal's own first
 // three conductors (`k := (j-1)*NConds` on both engines: r4133
-// `DCktElement.pas:47`/`:53`, capi `CAPI_Alt.pas:280`/`:316`). This is the API
+// `DCktElement.pas:69`/`:70`, capi `CAPI_Alt.pas:279`/`:281`). This is the API
 // path, NOT the `Export SeqCurrents` report path
 // (`report/export/seq_currents.rs`), which branches on `nphases >= 3`, has no
 // sentinel arm and carries the report's own rating/`Iresidual` logic — a frozen

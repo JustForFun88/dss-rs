@@ -302,6 +302,60 @@ pub struct ElementSnapshot {
     /// `PositiveSequence` x3 that `Get_Powers` applies to
     /// [`powers`](Self::powers).
     pub seq_powers: Vec<num_complex::Complex64>,
+    /// `CktElement.CplxSeqCurrents`: the **complex** symmetrical components of
+    /// the terminal current — the `(0, +, −)` layout and the `3 * n_terms`
+    /// length of [`seq_currents`](Self::seq_currents), amps, before the `Cabs`.
+    /// r4133 `DDLL/DCktElement.pas:931-975` (`CktElementV` mode `14`, guard
+    /// `If Enabled` only) over the shared `CalcSeqCurrents` `:30-80`; capi
+    /// `CAPI/CAPI_Alt.pas:898-925` (`Alt_CE_Get_ComplexSeqCurrents`, guard
+    /// `MissingSolution or (not Enabled)` at `:906` — **no** `NodeRef` test,
+    /// unlike its voltage twin), facade `CAPI/CAPI_CktElement.pas:752-760`;
+    /// fastdss `dss/ICktElement.py:66` on `origin/fastdss`.
+    ///
+    /// One transform, one `norm()`: `seq_currents[k]` is
+    /// `cplx_seq_currents[k].norm()` by construction, pinned by
+    /// `exec::tests::derived_totals::cplx_seq_currents_are_the_012_components_whose_magnitudes_are_seq_currents`.
+    /// The n/A sentinel is `(-1, 0)` on **both** engines here (r4133
+    /// `DCktElement.pas:60`, capi `CAPI_Alt.pas:268` — the FPC `ucomplex` real
+    /// assignment `i012[i] := -1` is the same complex value), so unlike
+    /// [`seq_powers`](Self::seq_powers) this surface needs no channel
+    /// normalization; and the positive-sequence slot defect of r4133's mode 9
+    /// does not reach it either — modes 13/14 call the shared helper, whose
+    /// `iV := 2` indexes a ONE-based buffer with stride 3 (`:50`/`:55`).
+    pub cplx_seq_currents: Vec<num_complex::Complex64>,
+    /// `CktElement.CplxSeqVoltages`: the same for the node voltages this
+    /// element's `NodeRef` points at (volts) — the un-`Cabs`'d
+    /// [`seq_voltages`](Self::seq_voltages). r4133
+    /// `DDLL/DCktElement.pas:885-928` (`CktElementV` mode `13`) over
+    /// `CalcSeqVoltages` `:84-122`; capi `CAPI/CAPI_Alt.pas:872-895`
+    /// (`Alt_CE_Get_ComplexSeqVoltages`, guard
+    /// `MissingSolution or (not Enabled) or (NodeRef = NIL)` at `:878`), facade
+    /// `CAPI/CAPI_CktElement.pas:735-743`; fastdss `dss/ICktElement.py:60`.
+    /// Same `(-1, 0)` n/A sentinel on both engines (r4133 `:106`, capi `:324`).
+    pub cplx_seq_voltages: Vec<num_complex::Complex64>,
+    /// `CktElement.TotalPowers`: the per-terminal sum of
+    /// [`powers`](Self::powers)' conductors, `kW + j·kvar`, length `n_terms`.
+    /// r4133 `DDLL/DCktElement.pas:1109-1139` (`CktElementV` mode `20`: the
+    /// `myInit := (j-1)*NConds+1 … myEnd := NConds*j` conductor walk at
+    /// `:1126-1127` and `cmulreal(…, 0.001)` at `:1132`); capi
+    /// `CAPI/CAPI_Alt.pas:1108-1141` (`Alt_CE_Get_TotalPowers`, the same walk
+    /// and `total.re * 0.001` at `:1138-1139`), facade
+    /// `CAPI/CAPI_CktElement.pas:1043-1053`. A fastdss `_columns` entry
+    /// (`dss/ICktElement.py:53`) that fastdss itself *removes* in the COM/Oddie
+    /// configuration (`tests/save_outputs.py:198-200`), so gating it live is
+    /// stronger than fastdss parity.
+    ///
+    /// The `0.001` is applied **once per terminal, to the summed W/var**, as
+    /// both engines apply it — not per conductor, which is why this is
+    /// accumulated beside [`powers`](Self::powers) instead of being summed from
+    /// it (the two forms differ by up to `3.6e-13` kVA over IEEE13's elements,
+    /// `5.1e-13` kVA on the oracle's own numbers; pinned by
+    /// `exec::tests::derived_totals::total_powers_are_the_terminal_sums_of_the_phase_powers`).
+    /// `GetPhasePower` (r4133 `Common/CktElement.pas:1041-1071`) zero-fills a
+    /// disabled element and skips the `NodeRef = 0` neutral slots, so a
+    /// disabled or never-energized element reports `n_terms` exact zeros and a
+    /// 0-terminal element reports nothing.
+    pub total_powers: Vec<num_complex::Complex64>,
 }
 
 /// `(n, [(row, col, value)])` — the assembled, unfactored system Y as 0-based
@@ -1064,6 +1118,16 @@ impl Dss {
             let yorder = elem.cd().yorder;
             let mut currents = vec![num_complex::Complex64::ZERO; yorder];
             let mut powers = vec![num_complex::Complex64::ZERO; yorder];
+            // `TotalPowers` (r4133 `DDLL/DCktElement.pas:1109-1139` mode `20`,
+            // capi `CAPI/CAPI_Alt.pas:1108-1141`) accumulates the SAME
+            // `GetPhasePower` slots this loop fills, in W/var, and scales the
+            // per-terminal total by `0.001` once (r4133 `:1132`, capi
+            // `:1138-1139`) — so it is summed here, unscaled, rather than from
+            // the already-scaled `powers` below. A disabled or never-energized
+            // element keeps its `nterms` zeros: `GetPhasePower`'s `Else … CZERO`
+            // arm (`Common/CktElement.pas:1071`) and the `n > 0` test are the
+            // same two zero paths.
+            let mut total_w = vec![num_complex::Complex64::ZERO; elem.cd().nterms];
             // Powers (and Losses, below) model the oracle's `Get_Powers` /
             // `Get_Losses`, which route through the cache-aware `ComputeIterminal`;
             // Currents model the fresh `CktElement.Currents` (`GetCurrents`,
@@ -1106,10 +1170,16 @@ impl Dss {
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.refresh_iterminal(&sys, &node_v);
                 let cd = elem.cd();
-                for ((p, &n), i) in powers
+                // Terminal-major / conductor-minor flat layout with
+                // `yorder = nterms · nconds` (`elements/ckt.rs:335`), so the
+                // conductor slot `k` belongs to terminal `k / nconds` — the
+                // `(j-1)*NConds+1 … NConds*j` window both engines sum over.
+                let width = cd.nconds.max(1);
+                for (k, ((p, &n), i)) in powers
                     .iter_mut()
                     .zip(&cd.node_ref[..yorder])
                     .zip(&cd.iterminal[..yorder])
+                    .enumerate()
                 {
                     if n > 0 {
                         // S = V*conj(I) at the present (per-harmonic, in harmonics
@@ -1120,6 +1190,7 @@ impl Dss {
                             // power (Willems, "...What and Why?", sec. V.A, p. 3).
                             s *= 3.0;
                         }
+                        total_w[k / width] += s;
                         // `* 0.001` on `Complex64` is componentwise
                         // (`Complex::new(re * s, im * s)`) — the same two
                         // multiplications the interleaved form did.
@@ -1127,6 +1198,8 @@ impl Dss {
                     }
                 }
             }
+            let total_powers: Vec<num_complex::Complex64> =
+                total_w.iter().map(|s| s * 0.001).collect();
             // The element's own losses path (`Get_Losses`) — the same cache-aware
             // `ComputeIterminal`, read BEFORE the currents refresh below so it
             // reuses the fresh current the Powers block just left in the cache
@@ -1286,6 +1359,20 @@ impl Dss {
             let mut seq_currents: Vec<f64> = Vec::with_capacity(3 * cd.nterms);
             let mut seq_voltages: Vec<f64> = Vec::with_capacity(3 * cd.nterms);
             let mut seq_powers: Vec<num_complex::Complex64> = Vec::with_capacity(3 * cd.nterms);
+            // The un-`Cabs`'d twins of the two magnitude arrays — the very
+            // values the transform below produces, kept instead of discarded:
+            // r4133 `DDLL/DCktElement.pas:931-975` (mode `14`) and `:885-928`
+            // (mode `13`) copy `CalcSeqCurrents`/`CalcSeqVoltages`' complex
+            // buffer out unchanged, as do capi's `Alt_CE_Get_ComplexSeq*`
+            // (`CAPI/CAPI_Alt.pas:898-925`, `:872-895`). Divergences 1 and 2
+            // above are `SeqPowers`-only: these modes take the shared helpers,
+            // whose positive-sequence slot is the correct `3t+1`, and their n/A
+            // sentinel is `(-1, 0)` on both engines (r4133 `:60`/`:106`, capi
+            // `:268`/`:324`).
+            let mut cplx_seq_currents: Vec<num_complex::Complex64> =
+                Vec::with_capacity(3 * cd.nterms);
+            let mut cplx_seq_voltages: Vec<num_complex::Complex64> =
+                Vec::with_capacity(3 * cd.nterms);
             {
                 let width = cd.nconds.max(1);
                 let mut term_currents = currents.chunks(width);
@@ -1317,6 +1404,8 @@ impl Dss {
                                 seq_currents.push(i.norm());
                                 seq_voltages.push(v.norm());
                                 seq_powers.push(v * i.conj() * 0.003);
+                                cplx_seq_currents.push(i);
+                                cplx_seq_voltages.push(v);
                             }
                         }
                         SeqArm::PosSeqSinglePhase => {
@@ -1328,6 +1417,16 @@ impl Dss {
                             seq_powers.extend([
                                 num_complex::Complex64::ZERO,
                                 v * i.conj() * 0.003,
+                                num_complex::Complex64::ZERO,
+                            ]);
+                            cplx_seq_currents.extend([
+                                num_complex::Complex64::ZERO,
+                                i,
+                                num_complex::Complex64::ZERO,
+                            ]);
+                            cplx_seq_voltages.extend([
+                                num_complex::Complex64::ZERO,
+                                v,
                                 num_complex::Complex64::ZERO,
                             ]);
                         }
@@ -1342,6 +1441,12 @@ impl Dss {
                             seq_currents.extend([1.0; 3]);
                             seq_voltages.extend([1.0; 3]);
                             seq_powers.extend([num_complex::Complex64::new(-1.0, 0.0); 3]);
+                            // The same `-1` the two magnitude arrays report as
+                            // `Cabs(-1 + 0j) = 1.0`, un-`Cabs`'d — and here
+                            // BOTH engines spell it `(-1, 0)`, so no channel
+                            // fold exists on this surface.
+                            cplx_seq_currents.extend([num_complex::Complex64::new(-1.0, 0.0); 3]);
+                            cplx_seq_voltages.extend([num_complex::Complex64::new(-1.0, 0.0); 3]);
                         }
                     }
                 }
@@ -1440,6 +1545,9 @@ impl Dss {
                 seq_currents,
                 seq_voltages,
                 seq_powers,
+                cplx_seq_currents,
+                cplx_seq_voltages,
+                total_powers,
             });
         }
         // NCIM needs **no** reporting override here any more (RP3.13). Two used

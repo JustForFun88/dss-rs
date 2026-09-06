@@ -81,6 +81,13 @@ pub type Polar3 = (Vec<f64>, Vec<f64>, Vec<f64>);
 /// `6 * NTerms` doubles on the wire), or `0` for a 0-terminal element.
 pub type Seq3 = (Vec<f64>, Vec<f64>, Vec<f64>);
 
+/// `CplxSeqCurrents` and `CplxSeqVoltages` — the un-`Cabs`'d output of the very
+/// helpers [`Seq3`]'s two magnitude arms take the modulus of, each flat complex
+/// `[re, im, …]` and `3 * NTerms` values long (so `6 * NTerms` doubles on the
+/// wire), for one **enabled** element — the GOLDEN_REBASE G1.3c complex
+/// sequence capture ([`Engine::element_cplx_seq`]), in that read order.
+pub type CplxSeq2 = (Vec<f64>, Vec<f64>);
+
 /// The nine unconditional discrete per-element scalars of the GOLDEN_REBASE
 /// G1.3d capture ([`Engine::element_extras`]): the four shape/name reads of
 /// part (i) and the five control-derived reads of part (ii). A named struct
@@ -857,6 +864,133 @@ impl Engine {
             let (errno, desc) = self.poll_error();
             if errno == 0 {
                 return Ok((seq_p, seq_i, seq_v));
+            }
+            if warn && USER_MODEL.contains(&errno) && attempt == 0 {
+                continue; // priming read fired + cleared the warning; retry once
+            }
+            return Err(EngineError::Dss {
+                errno,
+                desc,
+                ctx: ctx.to_string(),
+            });
+        }
+        unreachable!()
+    }
+
+    /// Read `TotalPowers` on the active element — the GOLDEN_REBASE G1.3c
+    /// per-terminal power totals — with the same single user-model retry as
+    /// [`Engine::element_pcl`], so an errno is attributed to its own element.
+    ///
+    /// `CktElementV(20)` (`DDLL/DCktElement.pas:1109-1139`) sums
+    /// `GetPhasePower`'s buffer over each terminal's own conductor block
+    /// (`myInit := (j-1)*NConds+1 … myEnd := NConds*j`, `:1126-1127`) and scales
+    /// the **total** by `0.001` once (`:1132`), so the returned flat
+    /// `[re, im, …]` is `NTerms` complex values in **kW/kvar**. capi's
+    /// `Alt_CE_Get_TotalPowers` (`CAPI/CAPI_Alt.pas:1108-1141`) is the same sum
+    /// with the same single scaling (`:1138-1139`).
+    ///
+    /// It is a group-**A** read — `GetPhasePower`'s first act on an enabled
+    /// element is `ComputeIterminal` (r4133 `Common/CktElement.pas:1049`) — and
+    /// is therefore issued from the head of the element capture, beside
+    /// [`Engine::element_phase_losses`] and ahead of [`Engine::element_pcl`]'s
+    /// group-B `Currents`. It is a helper of its own rather than a fourth
+    /// return of `element_pcl` precisely because it is conditional
+    /// (`derived`-only) while `element_pcl` is not.
+    ///
+    /// **Only ever called on an `Enabled` element**
+    /// ([`Engine::ckt_element_enabled`], checked at the one call site
+    /// `crate::capture::capture_all_elements`) — not for safety here (mode 20
+    /// has neither an `Enabled` nor a `NodeRef` guard, and `GetPhasePower`
+    /// takes its `Else … CZERO` branch at `Common/CktElement.pas:1071` without
+    /// touching `NodeRef`) but because the two channels' **shapes** disagree
+    /// there. Measured on `controls/fuse/midi_fuse.dss`'s never-enabled
+    /// `Line.tie` (`NTerms = 2`): this channel answers `NTerms` complex zeros,
+    /// `[0.0, 0.0, 0.0, 0.0]`, while capi returns the 1-complex
+    /// `[0.0, 0.0]` of its `NodeRef = NIL` early exit
+    /// (`CAPI/CAPI_Alt.pas:1119-1123`). Reading enabled elements only removes
+    /// that asymmetry instead of normalizing it — the rule the `derived` flag
+    /// has carried since G1.3a.
+    ///
+    /// The one shape gap the rule does **not** close is the 0-terminal element
+    /// (`UPFCControl` never assigns `Nterms` —
+    /// `Controls/UPFCControl.pas:230-246`), which is enabled and legitimate:
+    /// `setlength(myCmplxArray, Nterms)` (`:1118`) collapses to `0`, so this
+    /// channel answers `[]` where capi answers `[0.0, 0.0]` from that same
+    /// `NodeRef` guard (measured on `controls/upfc/upfc_dual.dss`,
+    /// `UPFCControl.myupfcctrl`). That remainder is the comparator's business,
+    /// not the capture's — the split `element_seq` already documents.
+    pub fn element_total_powers(&self, warn: bool, ctx: &str) -> Result<Vec<f64>, EngineError> {
+        for attempt in 0..2 {
+            let tp = self.ckt_element_total_powers()?; // capture-order: TotalPowers (A)
+            let (errno, desc) = self.poll_error();
+            if errno == 0 {
+                return Ok(tp);
+            }
+            if warn && USER_MODEL.contains(&errno) && attempt == 0 {
+                continue; // priming read fired + cleared the warning; retry once
+            }
+            return Err(EngineError::Dss {
+                errno,
+                desc,
+                ctx: ctx.to_string(),
+            });
+        }
+        unreachable!()
+    }
+
+    /// Read `CplxSeqCurrents` then `CplxSeqVoltages` on the active element —
+    /// the GOLDEN_REBASE G1.3c complex sequence capture, in D3 order
+    /// (`CplxSeqCurrents` runs `GetCurrents` into a scratch buffer and is group
+    /// **B** — [`modes::CKT_ELEMENT_CPLX_SEQ_CURRENTS`] `:931`, via
+    /// `CalcSeqCurrents` `DDLL/DCktElement.pas:56`; `CplxSeqVoltages` reads
+    /// `Solution.NodeV` only and is group **C**,
+    /// [`modes::CKT_ELEMENT_CPLX_SEQ_VOLTAGES`] `:885`) and with the same
+    /// single user-model retry as [`Engine::element_seq`].
+    ///
+    /// These are the **un-`Cabs`'d** values whose moduli [`Engine::element_seq`]
+    /// returns: modes 13/14 call the same shared `CalcSeqVoltages` /
+    /// `CalcSeqCurrents` helpers (`DDLL/DCktElement.pas:84-122` / `:30-80`)
+    /// that the magnitude modes take `Cabs` of, and copy `cValues^[1..3*NTerms]`
+    /// straight out (`:903-912` / `:949-958`). Both arrays are therefore
+    /// `3 * NTerms` complex values, terminal-major, in `(0, +, −)` order, amps
+    /// and volts. capi is the same code with the same 1-based `iV := 2`
+    /// positive-sequence slot (`CAPI/CAPI_Alt.pas:236-290` / `:294-338`), so —
+    /// unlike `SeqPowers` (`CktElementV(9)`, whose *inlined* copy carries the
+    /// 0-based `Count := 2` slot defect at `:760`) — the two channels agree
+    /// slot for slot here.
+    ///
+    /// The "not available" sentinel is `Cmplx(-1.0, 0.0)` on both channels
+    /// (r4133 `:60` / `:106`, capi `CAPI/CAPI_Alt.pas:268` / `:324`), so no
+    /// spelling normalization is owed either.
+    ///
+    /// **Only ever called on an `Enabled` element**
+    /// ([`Engine::ckt_element_enabled`], checked at the one call site
+    /// `crate::capture::capture_all_elements`). Modes 13/14 do guard `If
+    /// Enabled` (`:897` / `:943`), but they guard it *after* seeding a
+    /// 1-element `CZero` default (`:887-888` / `:933-934`), so a never-enabled
+    /// element answers the 1-complex `[0.0, 0.0]` where capi answers its own
+    /// 1-**double** `DefaultResult` `[0.0]` — measured on
+    /// `controls/fuse/midi_fuse.dss`'s `Line.tie`, and a shape difference the
+    /// enabled-only rule removes rather than normalizes. A 0-terminal element
+    /// (`UPFCControl` never assigns `Nterms` —
+    /// `Controls/UPFCControl.pas:230-246`) is enabled and legitimate:
+    /// `setlength(myCmplxArray, 3 * NTerms)` collapses to `0`, so this channel
+    /// answers `[]` on both modes where capi returns `CplxSeqCurrents = []`
+    /// (agreeing) but the 1-double `DefaultResult` `[0.0]` for
+    /// `CplxSeqVoltages`, whose extra `MissingSolution … or (NodeRef = NIL)`
+    /// guard (`CAPI/CAPI_Alt.pas:878`) `CplxSeqCurrents` does not carry
+    /// (`:906`); measured on `controls/upfc/upfc_dual.dss`. That remaining
+    /// difference is the comparator's business, not the capture's — the same
+    /// split `element_seq` already documents.
+    pub fn element_cplx_seq(&self, warn: bool, ctx: &str) -> Result<CplxSeq2, EngineError> {
+        for attempt in 0..2 {
+            // capture-order: CplxSeqCurrents (B)
+            let cseq_i = self.ckt_element_cplx_seq_currents()?;
+            // capture-order: CplxSeqVoltages (C)
+            let cseq_v = self.ckt_element_cplx_seq_voltages()?;
+            let (errno, desc) = self.poll_error();
+            if errno == 0 {
+                return Ok((cseq_i, cseq_v));
             }
             if warn && USER_MODEL.contains(&errno) && attempt == 0 {
                 continue; // priming read fired + cleared the warning; retry once
