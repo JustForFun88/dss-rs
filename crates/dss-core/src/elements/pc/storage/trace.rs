@@ -113,17 +113,23 @@ impl Storage {
             "t, Iteration, LoadMultiplier, Mode, LoadModel, StorageModel,  \
              Qnominalperphase, Pnominalperphase, CurrentType",
         );
-        for i in 1..=nphases {
-            header.push_str(&format!(", |Iinj{i}|"));
+        // The four header loops run 0-based like the rest of the engine; the
+        // `i + 1` written into each label — and into the `variable_name`
+        // argument, whose contract is 1-based
+        // ([`crate::elements::traits::CktElement::variable_name`]) — is the
+        // 1-based *user-API boundary*, the only place a 1-based index is
+        // allowed (DE_PASCALIZE P14).
+        for i in 0..nphases {
+            header.push_str(&format!(", |Iinj{}|", i + 1));
         }
-        for i in 1..=nphases {
-            header.push_str(&format!(", |Iterm{i}|"));
+        for i in 0..nphases {
+            header.push_str(&format!(", |Iterm{}|", i + 1));
         }
-        for i in 1..=nphases {
-            header.push_str(&format!(", |Vterm{i}|"));
+        for i in 0..nphases {
+            header.push_str(&format!(", |Vterm{}|", i + 1));
         }
-        for i in 1..=self.num_variables() {
-            header.push_str(&format!(", {}", self.variable_name(i)));
+        for i in 0..self.num_variables() {
+            header.push_str(&format!(", {}", self.variable_name(i + 1)));
         }
         // Pascal `Write(TraceFile, ',Vthev, Theta')` — two columns the record
         // writer never fills (its own write is commented out at `:2426`).
