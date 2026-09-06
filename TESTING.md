@@ -1213,9 +1213,21 @@ so five things about it are worth knowing:
   asserted to be exactly the upstream rule applied to our state. The comparator's
   committed offline drives are
   `compare_bus_at_bus_accepts_each_channels_own_walk_and_counts_the_divergence`
-  (positive control) and `each_channel_is_held_to_its_own_walk_not_the_other_ones`
+  (positive control), `each_channel_is_held_to_its_own_walk_not_the_other_ones`
   (feeding each channel the other one's answer must red — the drive a naive
-  "port == oracle" comparator would pass), in `harness::bus_at_bus_comparator_tests`.
+  "port == oracle" comparator would pass) and
+  `the_capi_walk_takes_its_name_test_fallback_on_a_node_less_bus` (the node-less
+  arm capi selects when `SetLength(nodes, 0)` leaves `NIL`, on a fixture of its
+  own so the arm's coverage does not depend on one corpus deck), in
+  `harness::bus_at_bus_comparator_tests`.
+* **One direction is the port's alone and is asserted per bus:** each oracle's
+  walk is a PROJECTION of the same attachment facts, so an element the port
+  silently dropped from its own list is missing from both sides of the mechanism
+  assertion and every case still passes (measured). `assert_port_at_bus_is_s4`
+  therefore recomputes S4 from the raw facts and requires exactly the published
+  list, driven offline by
+  `a_port_at_bus_list_that_drops_an_s4_element_reds_per_case` (G1.4d audit
+  settlement).
 * **Four run-wide fail-on-stale populations carry what is not equal**, printed on
   the gate's own `corpus_gate at-bus:` line, asserted exactly (a drop AND a growth
   fail) and identical in both lanes: `PDE_TERMINAL3_DECLINES = (279, 279)` (r4133
@@ -1230,7 +1242,18 @@ so five things about it are worth knowing:
   `Load`, since the corpus has no disabled PC element). Guards:
   `the_at_bus_guard_is_silent_on_the_measured_populations`,
   `the_at_bus_guard_fires_when_a_deck_stops_carrying_its_class`,
-  `the_at_bus_guard_fires_when_a_pce_divergence_appears`. All three upstream
+  `the_at_bus_guard_fires_when_a_pce_divergence_appears`,
+  `the_at_bus_guard_fires_when_the_terminal3_class_grows` and
+  `the_at_bus_guard_fires_when_a_stale_node_ref_stops_naming_an_element` (one
+  drive per tuple and direction — G1.4d audit settlement). The four are not
+  symmetric across channels: `PCE_AT_BUS_DECLINES` can only be reached from
+  `CapiV0145`, since r4133's replayed PCE predicate is the very property
+  `assert_port_at_bus_is_s4` asserts of the port's own list, and
+  `CAPI_NODEREF_DROPS` would also absorb capi's terminal-window arm
+  (`Min(High(Terminals), 2)`, `Circuit.pas:1750`) if the corpus ever grew a
+  4-winding transformer — re-measured 2026-09-06: **0** decks declare
+  `windings`/`wdg` ≥ 4, and one would earn its own deck and counter, never a
+  silent merge. All three upstream
   behaviours are reported at `investigations/to_opendss/69-…`, `70-…` and `71-…`.
   **Note the corollary:** "disabled elements are dropped" is *not* the capi rule
   (measured: of 223 (disabled element, own bus) pairs, 15 ARE listed), which
@@ -1393,7 +1416,7 @@ on the last checkpoint only, and the runner asserts exactly that before it compa
 anything. Port side: `Dss::meter_reliability` / `Dss::meter_totals`
 (`crates/dss-core/src/exec/view.rs:2878` / `:3007`) — `&self` reads of solved state,
 the reliability math itself untouched. Comparator: `harness::compare_reliability`
-(`crates/dss-core/tests/harness/mod.rs:14028`). The flag is **manifest-set, never
+(`crates/dss-core/tests/harness/mod.rs:14248`). The flag is **manifest-set, never
 forced** (six cases): "has an EnergyMeter" is not a manifest field, and forcing it
 circuit-wide would fire `28724 No EnergyMeter Objects Defined` on ~340 meterless
 decks — so there is no `FORCED_RELIABILITY_POPULATION` lock, deliberately. `large*`
@@ -1483,7 +1506,7 @@ Seven rules come with the surface.
   `CalcAllocationFactors` `:54-72` writes them, and its sole driver is
   `TExecHelper.DoAllocateLoadsCmd`, `Executive/ExecHelper.pas:2624-2683`) — measured
   denormal garbage that changes across processes, hence excluded per (channel, case,
-  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:13805`),
+  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:14025`),
   never enveloped, each row carrying its citation and a pin that a register test
   requires to name a real `#[test]`. The corpus's only `AllocateLoads` deck,
   `tests/corpus/controls/energymeter/midi_relcalc.dss` (`both`, three sections), is
