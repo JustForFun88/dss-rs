@@ -529,7 +529,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   `let allowed = abs_floor + rel * mag;` — it bands the **modulus** of the
   complex difference, `|Δz| ≤ abs + rel·|z|`. Node voltages reach the same
   function through `harness::assert_complex_close`
-  (`corpus_gate/runner.rs:733,508`). So the admitted error set is the closed
+  (`corpus_gate/runner.rs:927,930`). So the admitted error set is the closed
   **disc** `D(z, ρ)` with `ρ = abs + rel·|z|`, and derivations 1, 2 and 4 below
   are images of that disc.
   *Had* the gate banded `re` and `im` separately at `abs + rel·|component|`, the
@@ -569,7 +569,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
      element-by-element by `compare_element_channels`); `VoltagesMagAng` is the
      rendering of `NodeV[NodeRef[·]]` (`v_rel/v_abs`, gated node-by-node in
      `harness::assert_complex_close`,
-     `corpus_gate/runner.rs:733-736`). The two evaluations of `|·|` themselves
+     `corpus_gate/runner.rs:927-930`). The two evaluations of `|·|` themselves
      differ by at most an ulp each (`num_complex::norm` = hypot vs the naive FPC
      `Cabs`, proven equal on the whole reachable domain by
      `line_constants::tests::naive_modulus_equals_hypot_until_the_square_overflows`),

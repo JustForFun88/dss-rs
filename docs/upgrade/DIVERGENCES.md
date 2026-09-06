@@ -2693,8 +2693,14 @@ Transformer.TR1`, line 25) the r4133 channel's created-file set is 6 names and
 includes `testYgD_Transformer_tr1_PQ.DSV` + `testYgD_Transformer_tr1_PQ.dbl`; the
 capi channel's is 4 and the port's is 4.
 
-**Sources.** r4133 `Version8/Source/Executive/ExecHelper.pas:4071` writes the
-DSSView data pair for the external viewer. dss_capi 0.14.5 has no viewer: it fires
+**Sources.** r4133 `Version8/Source/Executive/ExecHelper.pas:3672`
+(`DoVisualizeCmd`) dispatches to `Plot/DSSPlot.pas:3642`
+(`TDSSPlot.DoVisualizationPlot`), which builds the `…_PQ.DSV` name (`:3746`)
+and calls `MakeNewGraph` (`:3758`); `Plot/DSSGraph.pas:109` rewrites that
+`.DSV` text file (`:114-115`) and creates its binary companion
+`ChangeFileExt(…, '.dbl')` (`:125`, `:128`) — the PAIR the viewer reads
+(the chain the ledger cause `visualize-dssview-file-pair` carries; `:4071`
+is an unrelated `FireOffEditor`, corrected by the G1.10a audit settlement). dss_capi 0.14.5 has no viewer: it fires
 a plot callback and writes nothing. The port builds a JSON plot payload
 (`crates/dss-core/src/exec/command.rs`) — one payload per `Visualize`, measured
 `{"ElementName":"tr1","ElementType":"Transformer","PlotType":"Visualize","Quantity":"Power"}`.

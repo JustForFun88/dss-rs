@@ -676,7 +676,7 @@ knowing:
   capture predicate, no sentinel normalization and **no `DoNotCall` row** is
   owed for this group. The runner's non-vacuity rail counts elements with a
   **non-empty** `pl_kw` (`require_capture`,
-  `crates/dss-core/tests/corpus_gate/runner.rs:935`) rather than key presence,
+  `crates/dss-core/tests/corpus_gate/runner.rs:1129`) rather than key presence,
   because r4133 omits the key on a 0-phase element while capi sends `[]`.
 * **Trap, measured while proving the r4133 rail non-vacuous:** `cargo test -p
   dss-core` recompiles the `dss-epri` *library* but does **not** rebuild the
@@ -743,7 +743,7 @@ copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and c
 `CktElement.Yprim` live on both channels (`tools/oracle/oracle_server.py:1149`,
 `crates/dss-epri/src/capture.rs:742` over `Engine::element_yprim`
 (`crates/dss-epri/src/dss.rs:706`), Rust side `compare_yprim` at
-`corpus_gate/runner.rs:786` → `harness::compare_yprim`
+`corpus_gate/runner.rs:980` → `harness::compare_yprim`
 (`crates/dss-core/tests/harness/mod.rs:1460`)), so a
 second `Lines`-shaped capture would add no information. **The honest residual is
 coverage, not spelling:** YPrim is compared only for a case's
@@ -1284,7 +1284,7 @@ the only compare flag that **drives a command**: on a flagged case the gate runs
 executive `RelCalc` once, on the **last** step, after the per-step error assert and
 after `Text.Result`/`GlobalResult` has been read (the command overwrites it) and
 before every capture of that checkpoint — on all three engines
-(the `RelCalc` drive, `crates/dss-core/tests/corpus_gate/runner.rs:636`;
+(the `RelCalc` drive, `crates/dss-core/tests/corpus_gate/runner.rs:830`;
 `tools/oracle/oracle_server.py:1079`, `Engine::relcalc`,
 `crates/dss-epri/src/dss.rs:510`). *Once*, because `RelCalc` is **not idempotent**: a
 second run re-accumulates `Bus.TotalMiles` (`13.825757575757578 →
@@ -1459,7 +1459,12 @@ a created entry still present after the sweep comes back as `sweep_failed` and t
 case with a *leaked dropping* message naming the producer
 (`guard::tests::a_created_file_the_sweep_cannot_remove_is_reported_as_sweep_failed`, the port-side
 twin `harness::run_files::tests::a_port_dropping_the_probe_cannot_remove_fails_the_case` through
-`RunFileProbe::finish_and_clean`). That rail exists because an order-coupling hid a real gap for a
+`RunFileProbe::finish_and_clean`; all three producers report it since the G1.10a audit settlement — the outer
+guard prints what its own sweep could not remove
+(`runner::the_outer_guard_reports_a_created_file_it_cannot_remove`), the only sweeper on a
+`kind=large*` case, and a transport reply that OMITS the report is a broken transport, not a clean
+sweep (`runner::a_transport_reply_without_a_sweep_report_fails_the_case`,
+`runner::a_transport_reporting_a_leaked_dropping_fails_the_case`)). That rail exists because an order-coupling hid a real gap for a
 while: dss_capi 0.14.5 opens the Storage `DebugTrace` stream at edit time and never closes it
 (`src/PCElements/Storage.pas:868-885`, freed only at `:871`/`:1199`), its guard's `os.remove` failed
 silently, and every later producer of the same case then snapshotted the leaked file as
