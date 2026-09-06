@@ -1081,7 +1081,10 @@ only; manifest-flagged).
 > every per-case assertion and are caught **only** by the fail-on-stale populations.
 > **0** ledger rows (55, unchanged, every entry still hit), **0** golden bytes, **0** new
 > tolerances (`tests/TOLERANCE_NOTES.md` §"Bus at-bus lists" records why there is no floor:
-> the wire carries element names). Three upstream reports:
+> the wire carries element names). Gate **7 892 / 0 / 5 ignored in both lanes** over 79
+> binaries, corpus **526/526**, ledger 55 entries / 1567 hits; `lane_diff` **PASS**, max
+> |Δ| = 0 (`exec/view.rs` moved); the audit settlement `dff755b5` — test and doc code only,
+> so no `lane_diff` owed — took both lanes to **7 940 / 0 / 5**. Three upstream reports:
 > `investigations/to_opendss/69-getpdeatbus-misses-windings-past-the-second.md`,
 > `70-allpdeatbus-fast-path-names-an-element-at-a-foreign-bus.md`,
 > `71-allpdeatbus-fast-path-drops-an-element-with-unset-noderefs.md`. Full record:
