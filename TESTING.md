@@ -2653,6 +2653,18 @@ mtime fingerprint and `engines.rs::epri_worker_bin` both then keep the *experime
 binary — measured while taking the numbers above, where a probe silently ran the
 un-suppressed worker. Touch the file (or `cargo clean -p dss-epri`) and re-verify.
 
+**And the bridge writes no file of its own** (GOLDEN_REBASE G1.10a, coordinator decision
+D30(1), 2026-09-06). `crates/dss-epri/src/capture.rs` issues **no** `export` command: the
+event-log capture reads `Solution.EventLog` in memory (`DDLL/DSolution.pas:518`, `:526-541`)
+instead of running `export eventlog`, which used to drop `<CircuitName>_EXP_EventLog.CSV` into
+the case directory — invisible to every model comparison, and the largest single class of red
+the moment G1.10a made the created-file set a compared surface. The two reads were measured
+byte-identical corpus-wide (0 mismatches over a full 526-case drive, 83 `evlog=1` cases) and the
+equivalence is pinned by `the_in_memory_event_log_equals_the_exported_file`; the behavioural half
+— the capture creates nothing — is `the_event_log_capture_creates_no_file`. If a future capture
+needs a surface only an `export` can reach, it belongs behind the same rule: read it in memory, or
+write it in a scratch directory the test cleans, never in the case directory.
+
 **Regenerate a golden** (manual, deliberate — never in CI): install the pinned
 venv from `tools/golden/PIN.txt`, then run the matching `tools/golden/gen_*.py`.
 Goldens pin intentional upstream inexactnesses (`TODO(compat)`), so improved
