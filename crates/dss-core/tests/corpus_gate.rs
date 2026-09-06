@@ -346,6 +346,23 @@ fn corpus_gate_all_cases_match_engines() {
         sv.r4133_vll_hang
     );
     harness::assert_seq_vll_populations();
+    // And for G1.4d's four at-bus divergence classes, for the SECOND reason
+    // again: none of them is excluded either — each channel's own walk is
+    // asserted POSITIVELY over the port's attachment facts, and where the port
+    // and a channel disagree the disagreement is COUNTED. A deck that stopped
+    // carrying its class would leave that assertion running over nothing, and
+    // one that started carrying it would go unnoticed, so the four
+    // `(walks, records)` pairs are re-derived on every run and asserted EXACTLY
+    // — failing on a drop AND on a growth. Invisible to
+    // `population.lock.json`, which fingerprints the manifest flag: this
+    // surface rides `compare_bus` and sets no flag of its own.
+    let ab = harness::at_bus_counters();
+    eprintln!(
+        "corpus_gate at-bus: PDE terminal-3 declines {:?}, capi node-ref drops {:?}, \
+         capi node-ref adds {:?}, PCE declines {:?} (walk(s), (bus, element) record(s))",
+        ab.pde_terminal3_declines, ab.capi_noderef_drops, ab.capi_noderef_adds, ab.pce_declines
+    );
+    harness::assert_at_bus_populations();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
@@ -543,6 +560,33 @@ const SC_READ_ORDER: [(&str, &str); 6] = [
     ("b.YscMatrix", "engine.bus_ysc_matrix()"),
     ("b.Isc", "engine.bus_isc()"),
     ("b.Voc", "engine.bus_voc()"),
+];
+
+/// The two per-bus AT-BUS reads (GOLDEN_REBASE G1.4d), same table shape: capi
+/// marker first, r4133 marker second. They close the ONE per-bus walk on both
+/// transports — read after every row of [`BUS_READ_ORDER`],
+/// [`SEQ_VLL_READ_ORDER`] and [`SC_READ_ORDER`] — so the four tables together
+/// are the whole per-bus read order.
+/// (`CAPI/CAPI_Bus.pas:773-788`/`:790-805` == r4133 `DDLL/DBus.pas:840`/`:867`.)
+///
+/// **Why last.** On the r4133 channel these are the block's only
+/// `ModeEffect::Impure` reads: `getP*atBus` drives `DSS_Class.First`/`Next`
+/// (`Common/Circuit.pas:1517-1527`, `:1563-1572`) and `TDSSClass.Get_First`/
+/// `Get_Next` (`Common/DSSClass.pas:342-371`) assign
+/// `ActiveCircuit.ActiveCktElement` plus each walked class's own cursor. They
+/// move neither `ActiveBusIndex` (`DBus.pas:849`, `:876` only pass
+/// `BusList.Get(ActiveBusIndex)` down — asserted live in
+/// `crates/dss-epri/tests/modes.rs`) nor any `Iterminal` cache, so the surface
+/// is still capture-group C
+/// ([`the_at_bus_surface_is_order_free_in_the_mode_table`] in
+/// `capture_order.rs` pins that from the mode table). The capi twin is pure —
+/// its `for elem in DSS_Class` is a `TDSSPointerEnumerator`
+/// (`Shared/DSSPointerList.pas:17-27`) with its own index — so the LAST
+/// placement is a cross-transport contract taken from the stricter channel,
+/// exactly like the rest of this table set.
+const AT_BUS_READ_ORDER: [(&str, &str); 2] = [
+    ("b.AllPCEatBus", "engine.bus_all_pce_at_bus()"),
+    ("b.AllPDEatBus", "engine.bus_all_pde_at_bus()"),
 ];
 
 /// Read a repo file (`rel` is repo-relative) for a source-order assertion.
@@ -939,6 +983,160 @@ fn the_sequence_and_line_to_line_capture_reads_in_one_fixed_order_on_both_transp
          — this transport's partner scan is bounded (`CAPI_Alt.pas:2512-2514`) and \
          cannot refuse"
     );
+}
+
+/// The AT-BUS capture order is a CONTRACT too, on both transports
+/// (GOLDEN_REBASE_PLAN.md G1.4d §2.3; the §1.1(a)/D3 partition).
+///
+/// `Bus.AllPCEatBus`/`Bus.AllPDEatBus` are the LAST two reads of the one
+/// per-bus walk on both channels. That placement is not cosmetic: on the r4133
+/// channel they are the block's only `ModeEffect::Impure` reads — `getP*atBus`
+/// drives `DSS_Class.First`/`Next` (`Common/Circuit.pas:1517-1527`,
+/// `:1563-1572`) and `TDSSClass.Get_First`/`Get_Next`
+/// (`Common/DSSClass.pas:342-371`) assign `ActiveCircuit.ActiveCktElement` plus
+/// each walked class's own `ActiveElement` cursor (measured live,
+/// `crates/dss-epri/tests/modes.rs::the_at_bus_reads_move_the_active_element`).
+/// They still move no `Iterminal` cache and no `ActiveBusIndex`, so the surface
+/// stays capture-group C — pinned from the mode table by
+/// `capture_order.rs::the_at_bus_surface_is_order_free_in_the_mode_table`.
+///
+/// Four things are asserted, all off the transports' own source text:
+/// 1. all **18** per-bus markers — [`BUS_READ_ORDER`], [`SEQ_VLL_READ_ORDER`],
+///    [`SC_READ_ORDER`], then [`AT_BUS_READ_ORDER`] — appear in that one order
+///    on both transports, so the two arms extend the single `capture_all_buses`
+///    walk and take no checkpoint slot and no request field of their own (the
+///    surface rides `compare_bus`, `manifest::Case::compare_bus`).
+/// 2. they are read **unconditionally**, not from inside the `zsc` block: their
+///    statement indentation is the walk's own, one level shallower than the
+///    short-circuit reads. A future edit that tucked them under `want_sc` would
+///    ship an empty list on every case whose deck runs no fault study.
+/// 3. the capi transport ships the reply **RAW** — the whole right-hand side is
+///    the identity comprehension over the accessor. The trailing `''` and the
+///    `['None']` substitution on that wire are the pinned dss-python facade's
+///    (`dss/IBus.py`), not dss_capi's, and normalizing them in the transport
+///    would erase exactly the per-channel convention the comparator asserts.
+/// 4. the r4133 transport instead carries its own two wire rails (no empty
+///    entry; the empty-answer word alone or not at all), because its DDLL arm
+///    filters `getP*atBus`' trailing slot and re-emits the word itself
+///    (`DBus.pas:853`, `:862-863`, `:880`, `:894-895`) — a violation there is
+///    this transport misreading the buffer, not a divergence of the list.
+#[test]
+fn the_at_bus_capture_reads_last_in_one_fixed_order_on_both_transports() {
+    // ---- capi transport: tools/oracle/oracle_server.py ---------------------
+    let py = repo_text("tools/oracle/oracle_server.py");
+    let py_body = fn_body(&py, "def capture_all_buses(", |l| l.starts_with("def "));
+    let py_code = strip_python_docstring(&py_body);
+    // (1) the whole per-bus read order in one pass: 6 voltage/scalar + 4
+    // sequence/L-L + 6 short-circuit + 2 at-bus.
+    let capi_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(c, _)| *c)
+        .chain(SEQ_VLL_READ_ORDER.iter().map(|(c, _)| *c))
+        .chain(SC_READ_ORDER.iter().map(|(c, _)| *c))
+        .chain(AT_BUS_READ_ORDER.iter().map(|(c, _)| *c))
+        .collect();
+    assert_eq!(
+        capi_markers.len(),
+        18,
+        "the per-bus read order is 6 voltage/scalar + 4 sequence/L-L + 6 short-circuit \
+         + 2 at-bus arms"
+    );
+    assert_source_order(
+        &py_code,
+        &capi_markers,
+        "oracle_server.py capture_all_buses (voltage, sequence/L-L, SC, then at-bus arms)",
+    );
+
+    // ---- r4133 transport: crates/dss-epri/src/capture.rs -------------------
+    let rs = repo_text("crates/dss-epri/src/capture.rs");
+    let rs_body = fn_body(&rs, "fn capture_all_buses(", |l| l == "}");
+    let rs_code = strip_rust_line_comments(&rs_body);
+    let epri_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(_, r)| *r)
+        .chain(SEQ_VLL_READ_ORDER.iter().map(|(_, r)| *r))
+        .chain(SC_READ_ORDER.iter().map(|(_, r)| *r))
+        .chain(AT_BUS_READ_ORDER.iter().map(|(_, r)| *r))
+        .collect();
+    assert_source_order(
+        &rs_code,
+        &epri_markers,
+        "capture.rs capture_all_buses (voltage, sequence/L-L, SC, then at-bus arms)",
+    );
+
+    // ---- (2) unconditional: shallower than the `zsc`-gated reads -----------
+    let indent_of = |code: &str, needle: &str, what: &str| -> usize {
+        let at = sole_offset(code, needle, what);
+        let line_start = code[..at].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        code[line_start..at].len() - code[line_start..at].trim_start().len()
+    };
+    for (what, code, at_bus, gated) in [
+        (
+            "oracle_server.py capture_all_buses",
+            py_code.as_str(),
+            AT_BUS_READ_ORDER[0].0,
+            SC_READ_ORDER[0].0,
+        ),
+        (
+            "capture.rs capture_all_buses",
+            rs_code.as_str(),
+            AT_BUS_READ_ORDER[0].1,
+            SC_READ_ORDER[0].1,
+        ),
+    ] {
+        let at_bus_indent = indent_of(code, at_bus, what);
+        let gated_indent = indent_of(code, gated, what);
+        assert!(
+            at_bus_indent < gated_indent,
+            "{what}: the at-bus arms are indented {at_bus_indent} and the `zsc`-gated \
+             short-circuit arms {gated_indent} — the at-bus pair must be read \
+             UNCONDITIONALLY in the walk's own scope (it rides `compare_bus`, not \
+             `zsc`), otherwise every case whose deck runs no fault study ships two \
+             empty lists the comparator would read as a real answer"
+        );
+    }
+
+    // ---- (3) the capi transport normalizes nothing -------------------------
+    for (key, accessor) in [
+        ("all_pce_at_bus", "b.AllPCEatBus"),
+        ("all_pde_at_bus", "b.AllPDEatBus"),
+    ] {
+        let raw = format!("cap[\"{key}\"] = [str(x) for x in {accessor}]");
+        assert!(
+            py_code.contains(&raw),
+            "oracle_server.py capture_all_buses: the `{key}` arm must be the RAW \
+             comprehension `{raw}` — the trailing `''` and the empty-answer \
+             substitution on this wire are the pinned dss-python facade's \
+             (`dss/IBus.py`), and a transport that filtered them would erase the \
+             per-channel convention the comparator asserts (GOLDEN_REBASE G1.4d)"
+        );
+    }
+
+    // ---- (4) the r4133 transport carries its own two wire rails ------------
+    let at = sole_offset(
+        &rs_code,
+        AT_BUS_READ_ORDER[0].1,
+        "capture.rs capture_all_buses",
+    );
+    let segment = &rs_code[at..];
+    for (rail, why) in [
+        (
+            "s.is_empty()",
+            "no entry may be empty — DBus.pas:853/:880 filter getP*atBus' trailing slot",
+        ),
+        (
+            "s == \"None\"",
+            "the empty-answer word may appear only alone — Circuit.pas:1505/:1551 seed it \
+             as the sole entry and DBus.pas:862-863/:894-895 re-emit it",
+        ),
+    ] {
+        assert!(
+            segment.contains(rail),
+            "capture.rs capture_all_buses: the at-bus segment must assert the rail \
+             `{rail}` ({why}); without it a misread buffer reaches the comparator as a \
+             divergence of the LIST instead of failing the case"
+        );
+    }
 }
 
 /// D2's cross-transport validation of the bus capture, live (G1.4a audit
@@ -1418,6 +1616,55 @@ fn the_distance_guard_fires_when_a_metered_case_arrives() {
     harness::check_distance_compare_ran(869, 79_141);
 }
 
+/// The at-bus surface's four fail-on-stale populations (GOLDEN_REBASE G1.4d),
+/// pinned in **both** directions offline for the reason their distance and
+/// short-circuit siblings above are: the shipped statics cannot be rewound once
+/// a gate run has moved them, so the rule is exercised through its
+/// injected-counter form.
+///
+/// The measured tuple is the one a completed full default-lane gate printed on
+/// its own `corpus_gate at-bus:` line (2026-09-06, 526/526 cases).
+#[test]
+fn the_at_bus_guard_is_silent_on_the_measured_populations() {
+    harness::check_at_bus_populations(harness::AtBusPopulation {
+        pde_terminal3_declines: (279, 279),
+        capi_noderef_drops: (18, 147),
+        capi_noderef_adds: (8, 11),
+        pce_declines: (0, 0),
+    });
+}
+
+/// …and fires when a class stops being carried — the regression neither the
+/// comparator nor `population.lock.json` can see, because the mechanism
+/// assertion is equally satisfied by a channel and a port that BOTH stopped
+/// listing the element, and the lock fingerprints the manifest flag (this
+/// surface rides `compare_bus` and sets none of its own).
+#[test]
+#[should_panic(expected = "`capi node-ref drops` came out (17, 146)")]
+fn the_at_bus_guard_fires_when_a_deck_stops_carrying_its_class() {
+    harness::check_at_bus_populations(harness::AtBusPopulation {
+        pde_terminal3_declines: (279, 279),
+        // one deck's single record gone
+        capi_noderef_drops: (17, 146),
+        capi_noderef_adds: (8, 11),
+        pce_declines: (0, 0),
+    });
+}
+
+/// …and on a GROWTH, including the `(0, 0)` PCE counterpart: a PC-class
+/// divergence must become a gate failure to be triaged, never a number that
+/// quietly grows.
+#[test]
+#[should_panic(expected = "`PCE at-bus declines` came out (1, 1)")]
+fn the_at_bus_guard_fires_when_a_pce_divergence_appears() {
+    harness::check_at_bus_populations(harness::AtBusPopulation {
+        pde_terminal3_declines: (279, 279),
+        capi_noderef_drops: (18, 147),
+        capi_noderef_adds: (8, 11),
+        pce_declines: (1, 1),
+    });
+}
+
 /// GOLDEN_REBASE G1.4b — the two `MakeBusList` decks of coordinator decision
 /// **D9**, pinned against the distances BOTH oracle channels measure.
 ///
@@ -1608,6 +1855,263 @@ fn the_reduced_midi_deck_reports_the_merged_lines_kft_distances() {
         assert_eq!(all_bus[i], km, "bus {name} AllBusDistances slot");
     }
     let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// GOLDEN_REBASE **G1.4d** — the port's own `AllPCEatBus` / `AllPDEatBus`
+/// answer on `modes:makeposseq/makeposseq_xfmr.dss`, the one corpus deck that
+/// carries all three divergence classes at once (coordinator decision D26).
+///
+/// The deck builds a substation transformer, a **3-winding** transformer, an
+/// `AutoTrans` and two 1-phase transformers, solves, runs `makeposseq` — which
+/// disables `Transformer.t1_off` because it is not on phase 1 (r4133
+/// `Version8/Source/PDElements/Transformer.pas:1698`) and rebuilds `BusList`
+/// from the ENABLED elements only, dropping `b6` — and solves again. That
+/// leaves one element disabled with pre-renumbering node references, which is
+/// exactly the state the two oracles read differently:
+///
+/// | bus | port (**S4**) `AllPDEatBus` | r4133 | capi 0.14.5 |
+/// |---|---|---|---|
+/// | `b1` | `sub, t3, at, t1_ok, t1_off` | **the same five** | the same **minus `t1_off`** — class B |
+/// | `b3` | `t3` (its THIRD winding) | `[]`, i.e. `['None']` — class A | `t3` |
+/// | `b4` | `at` | `at` | `t1_off, at` — an element that is NOT there, class C |
+///
+/// Both numbers, as the settlement requires; the oracle columns were measured
+/// live on 2026-09-06 through the real capture paths of both channels
+/// (`tmp/g14d/fixture_makeposseq_xfmr.json`) and are asserted against this
+/// port state by [`the_makeposseq_xfmr_at_bus_wires_are_each_channels_own_walk`].
+/// Each class is an upstream defect that the port does not reproduce:
+///
+/// * **A** — r4133 tests `StripExtension(GetBus(1))`/`GetBus(2)` only
+///   (`Common/Circuit.pas:1520-1522`), so no winding past the second is ever
+///   found, although the function's own header promises *"all PDE connected to
+///   the bus"* (`:1490-1492`).
+/// * **B**/**C** — capi's fast path intersects the element's `TermNodeRef` with
+///   the bus's node references (`Common/Circuit.pas:1746-1767`) instead of
+///   taking its own *"Original code as fallback"* name test (`:1778-1785`), so
+///   a disabled element is dropped from the bus it is wired to and named at the
+///   bus that inherited its stale reference.
+///
+/// The attachment facts are pinned beside the lists because they are what the
+/// live comparator replays each oracle's walk over — without them the three
+/// classes would be numbers with no mechanism behind them.
+#[test]
+fn the_makeposseq_xfmr_deck_reports_the_at_bus_lists_the_port_computes() {
+    let dss = makeposseq_xfmr_solved();
+
+    // The port's S4 answer, bus by bus, in `BusList` order. `b6` is absent:
+    // `makeposseq` disabled the transformer that named it and the rebuild kept
+    // only the buses enabled elements name.
+    #[rustfmt::skip]
+    let want: [(&str, &[&str], &[&str]); 6] = [
+        ("src", &["Vsource.source"], &["Transformer.sub"]),
+        ("b1",  &[],                 &["Transformer.sub", "Transformer.t3",
+                                       "AutoTrans.at", "Transformer.t1_ok",
+                                       "Transformer.t1_off"]),
+        ("b2",  &["Load.ld2"],       &["Transformer.t3"]),
+        ("b3",  &[],                 &["Transformer.t3"]),
+        ("b4",  &["Load.ld4"],       &["AutoTrans.at"]),
+        ("b5",  &["Load.ld5"],       &["Transformer.t1_ok"]),
+    ];
+    let got = dss.all_bus_elements();
+    assert_eq!(
+        got.iter().map(|v| v.name.as_str()).collect::<Vec<_>>(),
+        want.iter().map(|(n, ..)| *n).collect::<Vec<_>>(),
+        "the deck's BusList moved — this pin is keyed by it"
+    );
+    for (v, (name, pce, pde)) in got.iter().zip(want) {
+        assert_eq!(v.pce, pce, "bus {name} AllPCEatBus");
+        assert_eq!(v.pde, pde, "bus {name} AllPDEatBus");
+        // …and the single-bus accessor answers the same, case-insensitively.
+        let one = dss
+            .bus_elements(&name.to_ascii_uppercase())
+            .unwrap_or_else(|| panic!("bus {name} is in the BusList"));
+        assert_eq!(one.pce, v.pce, "bus {name}: bus_elements disagrees on PCE");
+        assert_eq!(one.pde, v.pde, "bus {name}: bus_elements disagrees on PDE");
+    }
+
+    // The mechanism, from the raw attachment facts the comparator reads.
+    let bus = |n: &str| {
+        got.iter()
+            .find(|v| v.name.eq_ignore_ascii_case(n))
+            .unwrap_or_else(|| panic!("bus {n}"))
+    };
+    let att = |n: &str, e: &str| {
+        bus(n)
+            .attachments
+            .iter()
+            .find(|a| a.name.eq_ignore_ascii_case(e))
+            .unwrap_or_else(|| panic!("{e} is not attached to {n}"))
+    };
+    // Class A: only the transformer's THIRD terminal names `b3`.
+    let t3_at_b3 = att("b3", "Transformer.t3");
+    assert_eq!(
+        t3_at_b3.by_name,
+        vec![3],
+        "b3: which terminal of t3 names it"
+    );
+    assert!(t3_at_b3.enabled && t3_at_b3.is_pd && t3_at_b3.series);
+    // Classes B and C: one disabled element, wired to `b1`, whose stale node
+    // reference now belongs to `b4`.
+    let off_at_b1 = att("b1", "Transformer.t1_off");
+    assert!(!off_at_b1.enabled, "makeposseq disables t1_off");
+    assert_eq!(off_at_b1.by_name, vec![1], "t1_off's winding 1 is on b1.2");
+    assert!(
+        off_at_b1.by_node_ref.is_empty(),
+        "b1 is where capi's fast path LOSES t1_off (class B): {:?}",
+        off_at_b1.by_node_ref
+    );
+    let off_at_b4 = att("b4", "Transformer.t1_off");
+    assert!(
+        off_at_b4.by_name.is_empty(),
+        "t1_off names b1 and b6, never b4"
+    );
+    assert!(
+        !off_at_b4.by_node_ref.is_empty(),
+        "b4 is where capi's fast path FINDS t1_off through a stale reference (class C)"
+    );
+}
+
+/// GOLDEN_REBASE **G1.4d** — the two oracles' RAW replies for the same deck,
+/// each accepted by its own channel's mechanism assertion, each divergence
+/// COUNTED (0 ledger rows).
+///
+/// The literals are what the two transports put on the wire, verbatim, measured
+/// live on 2026-09-06 (`tmp/g14d/fixture_makeposseq_xfmr.json`), so the pin also
+/// records the two wire CONVENTIONS the comparator asserts:
+///
+/// * **capi** ships one trailing `''` on every non-empty reply and `['None']`
+///   on an empty one — both are the pinned **dss-python facade's**
+///   (`dss/IBus.py`: `result.append('')` under *"added for full compatibility
+///   with COM"*, `else: result = ['None']`), not dss_capi's: the C API passes
+///   `useNone = False` (`CAPI/CAPI_Bus.pas:784`, `:801`) and returns `[]`.
+///   `src.AllPDEatBus` is therefore `['Transformer.sub', '']` on that wire.
+/// * **r4133** ships neither artifact — the DDLL filters `getP*atBus`' trailing
+///   empty slot and re-emits the lone `'None'` (`DDLL/DBus.pas:853`,
+///   `:862-863`, `:880`, `:894-895`) — so the same bus is `['Transformer.sub']`.
+///
+/// Both normalize to the one element the port lists. The counts are the
+/// per-class records of
+/// [`the_makeposseq_xfmr_deck_reports_the_at_bus_lists_the_port_computes`]:
+/// one class-A record on the r4133 channel (`b3`), one class-B and one class-C
+/// record on the capi channel (`b1` and `b4`). The deck gates on
+/// `capi_v0145` (`population.lock.json`), so the r4133 half of this pin is the
+/// only place its measured reply is held — which is exactly why it is here.
+#[test]
+fn the_makeposseq_xfmr_at_bus_wires_are_each_channels_own_walk() {
+    let dss = makeposseq_xfmr_solved();
+
+    /// `(bus, AllPCEatBus, AllPDEatBus)`, raw.
+    type Reply = (
+        &'static str,
+        &'static [&'static str],
+        &'static [&'static str],
+    );
+    #[rustfmt::skip]
+    const CAPI: [Reply; 6] = [
+        ("src", &["Vsource.source", ""], &["Transformer.sub", ""]),
+        ("b1",  &["None"],               &["Transformer.sub", "Transformer.t3",
+                                           "Transformer.t1_ok", "AutoTrans.at", ""]),
+        ("b2",  &["Load.ld2", ""],       &["Transformer.t3", ""]),
+        ("b3",  &["None"],               &["Transformer.t3", ""]),
+        ("b4",  &["Load.ld4", ""],       &["Transformer.t1_off", "AutoTrans.at", ""]),
+        ("b5",  &["Load.ld5", ""],       &["Transformer.t1_ok", ""]),
+    ];
+    #[rustfmt::skip]
+    const R4133: [Reply; 6] = [
+        ("src", &["Vsource.source"], &["Transformer.sub"]),
+        ("b1",  &["None"],           &["Transformer.sub", "Transformer.t3",
+                                       "Transformer.t1_ok", "Transformer.t1_off",
+                                       "AutoTrans.at"]),
+        ("b2",  &["Load.ld2"],       &["Transformer.t3"]),
+        ("b3",  &["None"],           &["None"]),
+        ("b4",  &["Load.ld4"],       &["AutoTrans.at"]),
+        ("b5",  &["Load.ld5"],       &["Transformer.t1_ok"]),
+    ];
+
+    let capture = |replies: &[Reply]| -> Vec<harness::BusCap> {
+        let views = dss.all_bus_voltages();
+        assert_eq!(
+            views.iter().map(|v| v.name.as_str()).collect::<Vec<_>>(),
+            replies.iter().map(|r| r.0).collect::<Vec<_>>(),
+            "the deck's BusList moved — the wire tables are keyed by it"
+        );
+        views
+            .iter()
+            .zip(replies)
+            .map(|(v, (_, pce, pde))| {
+                let mut nodes = v.nodes.clone();
+                nodes.sort_unstable();
+                harness::BusCap {
+                    name: v.name.clone(),
+                    kv_base: v.kv_base,
+                    distance: v.distance,
+                    nodes,
+                    pu_voltages: Vec::new(),
+                    vmag_angle: Vec::new(),
+                    pu_vmag_angle: Vec::new(),
+                    zsc1: Vec::new(),
+                    zsc0: Vec::new(),
+                    zsc: Vec::new(),
+                    ysc: Vec::new(),
+                    isc: Vec::new(),
+                    voc: Vec::new(),
+                    seq_voltages: Vec::new(),
+                    cplx_seq_voltages: Vec::new(),
+                    vll: Vec::new(),
+                    pu_vll: Vec::new(),
+                    vll_declined: false,
+                    all_pce_at_bus: pce.iter().map(|s| (*s).to_string()).collect(),
+                    all_pde_at_bus: pde.iter().map(|s| (*s).to_string()).collect(),
+                }
+            })
+            .collect()
+    };
+
+    assert_eq!(
+        harness::compare_bus_at_bus(
+            &dss,
+            &capture(&R4133),
+            harness::PropsChannel::R4133,
+            "G1.4d pin: makeposseq_xfmr on r4133",
+        ),
+        harness::AtBusCounts {
+            pde_terminal3_declines: 1,
+            capi_noderef_drops: 0,
+            capi_noderef_adds: 0,
+            pce_declines: 0,
+        },
+        "b3: r4133's name test cannot see the 3rd winding the port lists"
+    );
+    assert_eq!(
+        harness::compare_bus_at_bus(
+            &dss,
+            &capture(&CAPI),
+            harness::PropsChannel::CapiV0145,
+            "G1.4d pin: makeposseq_xfmr on capi_v0145",
+        ),
+        harness::AtBusCounts {
+            pde_terminal3_declines: 0,
+            capi_noderef_drops: 1,
+            capi_noderef_adds: 1,
+            pce_declines: 0,
+        },
+        "b1 loses t1_off and b4 gains it — one stale TermNodeRef, both directions"
+    );
+}
+
+/// `modes:makeposseq/makeposseq_xfmr.dss` compiled the way the gate runs it
+/// (the deck issues its own `solve`, `makeposseq` and second `solve`), in a
+/// scratch data directory so nothing is written beside the corpus.
+fn makeposseq_xfmr_solved() -> Dss {
+    let abs = family_file("modes", "makeposseq/makeposseq_xfmr.dss");
+    let scratch = ad_scratch("makeposseq-xfmr-at-bus");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("set datapath={:?}", scratch.display().to_string()));
+    dss.command(&format!("compile {abs:?}"));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let _ = std::fs::remove_dir_all(&scratch);
+    dss
 }
 
 /// The text of the function whose signature line contains `head`, up to the

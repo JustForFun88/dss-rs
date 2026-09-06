@@ -68,6 +68,98 @@ pub enum ElemKind {
     Sensor,
 }
 
+impl ElemKind {
+    /// r4133 `DSS_Class.ClassType.InheritsFrom(TPDClass)` — the PD-class test
+    /// `TDSSCircuit.getPDEatBus` runs over `DSSClassList`
+    /// (`Version8/Source/Common/Circuit.pas:1513`, capi `:1738`). Upstream the
+    /// set is the seven `class(TPDClass)` declarations under
+    /// `Version8/Source/PDElements/`: `Line`, `Transformer`, `AutoTrans`,
+    /// `Capacitor`, `Reactor`, `Fault`, `GICTransformer`.
+    ///
+    /// **This is NOT the port's [`Circuit::pd_elements`] membership**, which
+    /// follows Pascal `AddCktElement`'s `DSSObjType` dispatch instead: `Fault`
+    /// is `NON_PCPD` and joins neither kind list ([`Circuit::add_ckt_element`]),
+    /// while `Capacitor`/`Reactor` are on `pd_elements` only. The two questions
+    /// are genuinely different — "which per-kind list does the element join"
+    /// versus "which Pascal class does its class descend from" — so the at-bus
+    /// walk asks this predicate and never the lists.
+    ///
+    /// Exhaustive on purpose (no `_` arm): a new [`ElemKind`] must be classified
+    /// against the upstream class tree, not silently default to `false`.
+    pub fn is_power_delivery(self) -> bool {
+        match self {
+            ElemKind::Line
+            | ElemKind::Transformer
+            | ElemKind::AutoTrans
+            | ElemKind::Capacitor
+            | ElemKind::Reactor
+            | ElemKind::Fault
+            | ElemKind::GicTransformer => true,
+            ElemKind::Source
+            | ElemKind::Load
+            | ElemKind::Control
+            | ElemKind::Generator
+            | ElemKind::WindGen
+            | ElemKind::PVSystem
+            | ElemKind::Storage
+            | ElemKind::IndMach012
+            | ElemKind::VsConverter
+            | ElemKind::Vccs
+            | ElemKind::Upfc
+            | ElemKind::GicLine
+            | ElemKind::Meter
+            | ElemKind::EnergyMeter
+            | ElemKind::Sensor => false,
+        }
+    }
+
+    /// r4133 `TDSSCircuit.getPCEatBus`'s class test
+    /// (`Version8/Source/Common/Circuit.pas:1559`, capi `:1826`):
+    /// `InheritsFrom(TPCClass)` **or** the class is named `Capacitor` **or**
+    /// `Reactor`. The two shunts are therefore on **both** lists upstream, and
+    /// so they are here.
+    ///
+    /// Upstream's `TPCClass` set is the 16 `CLASS(TPCClass)` declarations under
+    /// `Version8/Source/PCElements/`; the port implements 12 of them — `Load`,
+    /// `Generator`, `WindGen`, `PVSystem`, `Storage`, `IndMach012`,
+    /// `VSConverter`, `VCCS`, `UPFC`, `GICLine` and, all three registered under
+    /// [`ElemKind::Source`], `VSource`, `ISource` and `GICSource`
+    /// (`exec/construct.rs`). It has no `Equivalent`, `Generic5OrderMach` or
+    /// `PCPrototype` class, and no corpus deck instantiates one.
+    ///
+    /// `Fault` is `class(TPDClass)` upstream
+    /// (`Version8/Source/PDElements/Fault.pas`) and is therefore PD **only**.
+    ///
+    /// Exhaustive on purpose — see [`ElemKind::is_power_delivery`].
+    pub fn is_power_conversion(self) -> bool {
+        match self {
+            ElemKind::Source
+            | ElemKind::Load
+            | ElemKind::Generator
+            | ElemKind::WindGen
+            | ElemKind::PVSystem
+            | ElemKind::Storage
+            | ElemKind::IndMach012
+            | ElemKind::VsConverter
+            | ElemKind::Vccs
+            | ElemKind::Upfc
+            | ElemKind::GicLine
+            // Matched by NAME upstream, not by inheritance (`Circuit.pas:1559`).
+            | ElemKind::Capacitor
+            | ElemKind::Reactor => true,
+            ElemKind::Line
+            | ElemKind::Transformer
+            | ElemKind::AutoTrans
+            | ElemKind::Fault
+            | ElemKind::GicTransformer
+            | ElemKind::Control
+            | ElemKind::Meter
+            | ElemKind::EnergyMeter
+            | ElemKind::Sensor => false,
+        }
+    }
+}
+
 /// Pascal `Circuit.pas` `TBusMarker` (decl :49, `Reset` :3098): one entry of
 /// the plot bus-marker list, populated by `AddBusMarker` and emitted into the
 /// plot-callback JSON's `BusMarkers[]`. Purely a GUI-plot annotation —

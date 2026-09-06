@@ -247,7 +247,7 @@ today:
 | 8 | run-produced files: **every** `*.csv` the deck emits under DataPath (fastdss archives and compares them all, incl. the forced `export profile phases=all` — DI CSVs are just the closedi subset); `save circuit` output **file set** (fastdss archives it but never compares — `compare_outputs.py:426-529` has no `.dss` branch — so our file-set + round-trip check is strictly stronger; state that, don't claim parity) | `di_*`/`save_*` goldens | G1.10 |
 | 9 | CktElement discrete extras: PhaseLosses, NodeOrder, EnergyMeter, OCPDevType, OCPDevIndex, HasVoltControl, HasSwitchControl, NumControls, NumTerminals/NumPhases/NumConductors; LineGeometries.Rmatrix/Xmatrix/Zmatrix (measure-first); Lines.Yprim (verify it is already witnessed by the per-element YPrim live compare, record in TESTING.md) | scattered `props/`/report goldens | G1.3d |
 | 10 | PDElements interface: AccumulatedL, ParentPDElement, FromTerminal, IsShunt, Numcustomers, SectionID, RepairTime, Totalcustomers, Lambda (**as executed 2026-09-04: 13 columns** — also FaultRate, TotalMiles, pctPermanent — plus `parent_name`; see §G1.6b) | `reliability` goldens (partially) | G1.6b |
-| 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 (VMagAngle: G1.4a; VLL/puVLL: G1.4c, landed 2026-09-05; AllPCEatBus/AllPDEatBus: **G1.4d**, split out of G1.4b by D26) |
+| 11 | Bus extras: VLL/puVLL, VMagAngle, AllPCEatBus/AllPDEatBus | `export_seq*`/`profile` goldens | G1.4 (VMagAngle: G1.4a; VLL/puVLL: G1.4c, landed 2026-09-05; AllPCEatBus/AllPDEatBus: **G1.4d**, split out of G1.4b by D26, landed 2026-09-06) |
 
 Where our gate is already stronger than fastdss (monitor channels, event log,
 control queue, full Y/YPrim/injection, discrete state, two channels at once,
@@ -999,18 +999,93 @@ only; manifest-flagged).
 > G1.4a → G1.5 → G1.4c → G1.4b → **G1.4d**). Criterion **S4** — the port computes the
 > physically correct answer, which is neither oracle's: a PD-class element with **any**
 > terminal at the bus under the `bus1 <> bus2` shunt filter; a PC-class element (plus
-> Capacitor/Reactor, Vsource/Isource, Fault, per r4133's own class sets) with terminal 1
-> at the bus; disabled elements **included**. Each channel is closed by a *positive*
-> mechanism assertion over the port's state in the D15/D16/D21 shape — r4133's list ==
-> the port's entries whose terminal 1 or 2 is at the bus; capi's == the capi fast-path
-> walk of the same state — with four fail-on-stale populations and **0** ledger rows.
-> Class C (capi naming a *disabled* element at a foreign bus through stale node refs, an
-> artifact that is not a function of port state) is closed two-sidedly with its own
-> population `CAPI_STALE_NODEREF_ADDS = (8, 11)` and a both-numbers pin, never an
-> exclusion. The `ModeEffect` correction (`crates/dss-epri/src/modes.rs`: `BUSV(18)`/`(19)`
-> are Impure — `DSSClass.pas:342-371`) lands there in its own commit ahead of the surface,
-> and three `investigations/to_opendss/` reports at the next free numbers. Brief:
-> `tmp/g14d/brief.md`. **This split is a plan amendment the user has not seen yet.**
+> Capacitor/Reactor and Vsource/Isource, per r4133's own class sets; `Fault` is
+> `TPDClass` upstream and is therefore PD-only) with terminal 1 at the bus; disabled
+> elements **included**. Each channel is closed by a *positive* mechanism assertion over
+> the port's state in the D15/D16/D21 shape, with four fail-on-stale populations and
+> **0** ledger rows. **This split is a plan amendment the user has not seen yet.**
+
+> **As executed — G1.4d (2026-09-06, lane `lane-b`, D7).** Landed whole, on both channels,
+> for every live non-`large*` case, riding `compare_bus`'s per-bus walk (**no** new
+> manifest flag, **no** new force rule, **no** request key, **no** `population.lock.json`
+> cell — regenerated, empty diff). Engine: `ElemKind::is_power_delivery` /
+> `is_power_conversion` (r4133's `InheritsFrom(TPDClass)` / `TPCClass` + Capacitor/Reactor
+> by name, `Common/Circuit.pas:1513`/`:1559` — the port's own `pd_elements`/`pc_elements`
+> lists could not serve: `Fault` is on neither and `Capacitor`/`Reactor` only on the PD
+> one), `BusElementsView`/`BusAttachment` and `Dss::all_bus_elements`/`bus_elements` in
+> `exec/view.rs` — one `O(elements · Yorder + buses)` walk publishing the S4 answer **and**
+> the raw attachment facts (`by_name`, `by_node_ref`, `series`, `enabled`) the comparator
+> replays each oracle's walk over. Comparator `harness::compare_bus_at_bus` (no
+> `Tolerances`, no `voltages_excluded`), called after `compare_bus`/`compare_bus_distances`/
+> `compare_bus_seq_and_vll`/`compare_bus_short_circuit`, mirroring the transports' order.
+>
+> Six things this section did not say:
+> **(1)** **D26's model of the capi channel is refuted by measurement.** D26 says capi
+> *"drops disabled elements"*; it does not — `probe_disabled.py` asked, for every disabled
+> PD/PC element of every case, whether capi lists it at its own bus, and **15 of 223 pairs
+> ARE listed**. The true rule has no `Enabled` term at all: capi answers from the element's
+> own `TermNodeRef`, which `ReProcessBusDefs` refreshes for **enabled** elements only
+> (capi `Common/Circuit.pas:2196-2202` == port `circuit/circuit.rs::reprocess_bus_defs`)
+> while `Set_Enabled` raises the rebuild flag unconditionally (capi
+> `Common/CktElement.pas:397-406` == port `elements/ckt.rs`). The port's `node_ref` is
+> stale in exactly the same way for exactly the same two reasons, which is what turns the
+> capi channel from an exclusion into an **equality**: the two populations are named for
+> the mechanism that is true (`CAPI_NODEREF_DROPS` / `CAPI_NODEREF_ADDS`, not
+> `CAPI_DISABLED_DROPS` / `CAPI_STALE_NODEREF_ADDS`), and D26's weaker two-sided fallback
+> for class C was **not needed and not implemented**.
+> **(2)** The three divergence classes, measured off a completed full default-lane gate and
+> confirmed identical on the parity lane (`corpus_gate at-bus:`, per (case, step, channel)
+> walk and per (bus, element) record): **`PDE_TERMINAL3_DECLINES = (279, 279)`** — the port
+> lists a PD element at a bus only its 3rd-or-later terminal names, where r4133's
+> `GetBus(1)`/`GetBus(2)` test cannot see it (`Circuit.pas:1520-1522`) although its own
+> header promises *"all PDE connected to the bus"* (`:1490-1492`); **`CAPI_NODEREF_DROPS =
+> (18, 147)`** and **`CAPI_NODEREF_ADDS = (8, 11)`** — capi's fast path
+> (`Common/Circuit.pas:1746-1767` / `:1833-1852`) missing an element whose references are
+> unset or stale, and naming one at the bus that inherited a stale reference; and
+> **`PCE_AT_BUS_DECLINES = (0, 0)`** — the PC criterion is r4133's own, so that list cannot
+> diverge, witnessed live in the growth direction by a scratch drive that adds one disabled
+> `Load` (the corpus has no disabled PC element). All four fail on a drop **and** on a
+> growth; `the_at_bus_guard_is_silent_on_the_measured_populations`,
+> `the_at_bus_guard_fires_when_a_deck_stops_carrying_its_class` and
+> `the_at_bus_guard_fires_when_a_pce_divergence_appears` pin the rule offline.
+> **(3)** capi's *"Original code as fallback"* name test (`:1778-1785` / `:1855-1861`) — its
+> stated intent — is **dead for every real element**: `TPowerTerminal.Init` allocates
+> `TermNodeRef` zero-filled (`Common/Terminal.pas:37-47`), so the guard at `:1746`/`:1833`
+> only fails for a bus with **no nodes**, where the comparator therefore expects the r4133
+> projection verbatim (two such decks: `Test/REACTORTest.DSS`, `Test/Source012Test.dss`).
+> **(4)** The wire conventions differ and are **asserted per channel in both directions**,
+> never normalized by a transport: the capi channel's trailing `''` and its `['None']`
+> substitution are the pinned **dss-python facade's** (`dss/IBus.py`), not dss_capi's — the
+> C API passes `useNone = False` (`CAPI/CAPI_Bus.pas:784`, `:801`) — while r4133's DDLL
+> filters `getP*atBus`' trailing slot and re-emits the lone `'None'` (`DDLL/DBus.pas:853`,
+> `:862-863`, `:880`, `:894-895`). Both pinned on one deck by
+> `the_makeposseq_xfmr_at_bus_wires_are_each_channels_own_walk`, whose sibling
+> `the_makeposseq_xfmr_deck_reports_the_at_bus_lists_the_port_computes` holds the port's
+> own answer and the attachment facts behind all three classes.
+> **(5)** The pair is read **LAST** in both transports' per-bus walk because on the r4133
+> channel it is that walk's only impure read: `getP*atBus` drives `DSS_Class.First`/`Next`
+> and `TDSSClass.Get_First`/`Get_Next` assign `ActiveCircuit.ActiveCktElement`
+> (`Common/DSSClass.pas:342-371`), measured live to move on **199 of 199** decks probed. The
+> two mode rows go `ModeEffect::Pure` → `Impure` in their own commit ahead of the surface
+> (`crates/dss-epri/src/modes.rs`, commit `62c616eb`); neither read moves `ActiveBusIndex`
+> or any `Iterminal`, so the surface stays capture-group `'C'` and the placement is a
+> cross-transport contract, asserted by
+> `the_at_bus_capture_reads_last_in_one_fixed_order_on_both_transports` and
+> `the_at_bus_surface_is_order_free_in_the_mode_table`.
+> **(6)** Non-vacuity was driven seven ways (armed in place, restored byte-exact, never
+> committed): a corrupted / dropped / invented name reds on **both** channels; dropping
+> `Transformer` from `is_power_delivery` reds both *through the mechanism assertion*;
+> `by_node_ref := by_name` reds the **capi** channel only (classes B and C); widening the
+> r4133 projection to terminals 1-3 reds the **r4133** channel only (class A); and the two
+> counter-only drives — a silently shortened port answer, and a new PC divergence — pass
+> every per-case assertion and are caught **only** by the fail-on-stale populations.
+> **0** ledger rows (55, unchanged, every entry still hit), **0** golden bytes, **0** new
+> tolerances (`tests/TOLERANCE_NOTES.md` §"Bus at-bus lists" records why there is no floor:
+> the wire carries element names). Three upstream reports:
+> `investigations/to_opendss/69-getpdeatbus-misses-windings-past-the-second.md`,
+> `70-allpdeatbus-fast-path-names-an-element-at-a-foreign-bus.md`,
+> `71-allpdeatbus-fast-path-drops-an-element-with-unset-noderefs.md`. Full record:
+> `docs/phase-records/golden-rebase.md` §"WP-G1 — records".
 
 ### G1.5 — short-circuit surface
 
