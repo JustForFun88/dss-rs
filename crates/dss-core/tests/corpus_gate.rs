@@ -343,6 +343,39 @@ fn corpus_gate_all_cases_match_engines() {
          {sc_buses} bus(es) compared full"
     );
     harness::assert_sc_study_compare_ran();
+    // And for G1.4b's distance surface, for the first reason once more: its
+    // comparator is an exact equality over `DistFromMeter`, which is `0.0` on
+    // every corpus case that defines no EnergyMeter — so a regression that
+    // stopped the zone walk from writing distances at all would leave the whole
+    // surface green (both sides reporting the meterless zero) on every case.
+    // The pair is re-derived on every run and asserted exactly, failing on a
+    // drop AND on a growth; `population.lock.json` cannot see it, because this
+    // surface rides `compare_bus` and sets no manifest flag of its own.
+    let (dist_walks, dist_buses) = harness::distance_counters();
+    eprintln!(
+        "corpus_gate distance: {dist_walks} walk(s) carrying a non-zero DistFromMeter, \
+         {dist_buses} bus(es) compared non-zero"
+    );
+    harness::assert_distance_compare_ran();
+    // And for G1.4c's four exception classes, for the SECOND reason: none of
+    // them is excluded — each is closed by a POSITIVE assertion of the upstream
+    // mechanism over the port's own state (`oracle == upstream_walk(port)`, the
+    // D15/D16 settlement shape). A deck that stopped carrying its class would
+    // leave that assertion running over nothing, and one that started carrying
+    // it would go unnoticed, so the four `(walks, buses)` pairs are re-derived
+    // on every run and asserted EXACTLY — failing on a drop AND on a growth.
+    // Invisible to `population.lock.json`, which fingerprints the manifest flag:
+    // this surface rides `compare_bus` and sets no flag of its own.
+    let sv = harness::seq_vll_counters();
+    eprintln!(
+        "corpus_gate seq/vll: r4133 sentinel {:?}, ground substitution {:?}, \
+         VLL pairing declines {:?}, r4133 hang refusals {:?} (walk(s), bus(es))",
+        sv.r4133_seq_sentinel,
+        sv.seq_ground_substitution,
+        sv.vll_upstream_pairing_declines,
+        sv.r4133_vll_hang
+    );
+    harness::assert_seq_vll_populations();
 }
 
 /// The property census (`R4133_PROPS_PLAN.md` RP0.2, `DSS_PROPS_CENSUS`): walk
@@ -485,16 +518,46 @@ fn write_gate_dump(path: &str, run: &GateRun) {
 // D3; TESTING.md §"Capture order is contractual on the capi channel").
 // ===========================================================================
 
-/// The five per-bus reads, capi marker first, r4133 marker second — ONE table,
+/// The six per-bus reads, capi marker first, r4133 marker second — ONE table,
 /// so the fixed order and the cross-transport correspondence are the same fact.
-/// (`CAPI_Alt.pas:2143`/`Bus.kVBase`/`:2251`/`:2573`/`:2540` == r4133
-/// `DDLL/DBus.pas:319`/`BUSF(0)`/`:399`/`:659`/`:690`.)
-const BUS_READ_ORDER: [(&str, &str); 5] = [
+/// (`CAPI_Alt.pas:2143`/`Bus.kVBase`/`:2071`/`:2251`/`:2573`/`:2540` == r4133
+/// `DDLL/DBus.pas:319`/`BUSF(0)`/`:122`/`:399`/`:659`/`:690`.)
+///
+/// `Distance` (GOLDEN_REBASE G1.4b) is read with the bus's other SCALAR
+/// attribute and ahead of the value arrays on both transports — it is group C
+/// like every other row here (`BUSF(5)` returns the stored `DistFromMeter` and
+/// touches nothing), so its position is a cross-transport contract, not a
+/// staleness rule.
+const BUS_READ_ORDER: [(&str, &str); 6] = [
     ("b.Nodes", "engine.bus_nodes()"),
     ("b.kVBase", "engine.bus_kvbase()"),
+    ("b.Distance", "engine.bus_distance()"),
     ("b.puVoltages", "engine.bus_pu_voltages()"),
     ("b.VMagAngle", "engine.bus_vmag_angle()"),
     ("b.puVmagAngle", "engine.bus_pu_vmag_angle()"),
+];
+
+/// The four per-bus SEQUENCE + LINE-TO-LINE reads (GOLDEN_REBASE G1.4c), same
+/// table shape: capi marker first, r4133 marker second. They are inserted
+/// BETWEEN the five voltage arms and the six short-circuit ones of the ONE
+/// per-bus walk [`BUS_READ_ORDER`] measures, so the three tables together are
+/// the whole per-bus read order on both transports.
+/// (`CAPI/CAPI_Alt.pas:2165`/`:2367`/`:2473`/`:2400` == r4133
+/// `DDLL/DBus.pas:284`/`:520`/`:549`/`:603`.)
+///
+/// The r4133 transport serves BOTH line-to-line arms from a single guarded
+/// call — `Engine::bus_vll_pair`, which re-reads `Bus.Nodes` itself and refuses
+/// `BUSV(11)`/`BUSV(12)` whole where `DBus.pas:580-584` would not terminate —
+/// so the `puVLL` row's r4133 marker is the destructuring that publishes
+/// `pu_vll` out of that one call, which is the position capi's `b.puVLL` read
+/// occupies. That the capture reaches the two arms ONLY through the guard is
+/// asserted by
+/// [`the_sequence_and_line_to_line_capture_reads_in_one_fixed_order_on_both_transports`].
+const SEQ_VLL_READ_ORDER: [(&str, &str); 4] = [
+    ("b.SeqVoltages", "engine.bus_seq_voltages()"),
+    ("b.CplxSeqVoltages", "engine.bus_cplx_seq_voltages()"),
+    ("b.VLL", "engine.bus_vll_pair()"),
+    ("b.puVLL", "Some((vll, pu_vll))"),
 ];
 
 /// The six per-bus SHORT-CIRCUIT reads (GOLDEN_REBASE G1.5), same table shape:
@@ -596,6 +659,12 @@ fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
             // gave it the `want_zsc` argument and the parenthesised form).
             "capture_all_buses(ckt, want_zsc)",
             "\"all_bus_vmag_pu\":",
+            // G1.4b: the two circuit-level `DistFromMeter` views take no slot of
+            // their own either — they sit inside the same order-free block,
+            // behind the same `want_buses` flag, still ahead of the property
+            // sweep that must stay last.
+            "\"all_bus_distances\":",
+            "\"all_node_distances\":",
             "\"all_properties\":",
         ],
         "oracle_server.py checkpoint slot",
@@ -656,6 +725,21 @@ fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
         rs_buses < rs_sc_call && rs_sc_call < rs_props,
         "capture.rs: the `zsc` arms must be captured inside the `req.buses` block          (offsets {rs_buses} < {rs_sc_call} < {rs_props})"
     );
+    // G1.4b, r4133 side of the same rule: the two circuit-level `DistFromMeter`
+    // views are captured inside the `req.buses` block, right after
+    // `AllBusVmagPu` and still before the property sweep — the mirror of the
+    // capi slot list above.
+    assert_source_order(
+        &rs,
+        &[
+            "req.buses",
+            "capture_all_bus_vmag_pu(engine)",
+            "capture_all_bus_distances(engine)",
+            "capture_all_node_distances(engine)",
+            "req.all_properties",
+        ],
+        "capture.rs run_case distance slot",
+    );
     let rs_body = fn_body(&rs, "fn capture_all_buses(", |l| l == "}");
     let rs_code = strip_rust_line_comments(&rs_body);
     let epri_markers: Vec<&str> = BUS_READ_ORDER.iter().map(|(_, r)| *r).collect();
@@ -704,7 +788,7 @@ fn the_bus_capture_reads_in_one_fixed_order_on_both_transports() {
 /// Three things are asserted, all off the transports' own source text:
 /// 1. the six SC markers appear in the same order on both transports
 ///    ([`SC_READ_ORDER`]);
-/// 2. they sit AFTER the five [`BUS_READ_ORDER`] reads, in the same
+/// 2. they sit AFTER the six [`BUS_READ_ORDER`] reads, in the same
 ///    `capture_all_buses` body — i.e. they extend the one per-bus walk instead
 ///    of opening a second `SetActiveBus` pass (the walk's checkpoint slot is
 ///    pinned by [`the_bus_capture_reads_in_one_fixed_order_on_both_transports`],
@@ -796,6 +880,108 @@ fn the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports() {
     }
 }
 
+/// The SEQUENCE + LINE-TO-LINE capture order is a CONTRACT too, on both
+/// transports (GOLDEN_REBASE_PLAN.md G1.4c §2.a/§4.2; the §1.1(a)/D3
+/// partition).
+///
+/// All four of `SeqVoltages`/`CplxSeqVoltages`/`VLL`/`puVLL` are **group C —
+/// order-free**: each one moves only `ActiveBusIndex` and then reads
+/// `Solution.NodeV` through the bus object (`CAPI/CAPI_Alt.pas:2190`, `:2386`,
+/// `:2532`, `:2464` == r4133 `DDLL/DBus.pas:305`, `:536`, `:588`, `:644`),
+/// never `ComputeIterminal` (group A) and never `GetCurrents` into a scratch
+/// buffer (group B). The order is pinned as a contract BETWEEN the two
+/// transports — the two captures must ship the same four quantities read the
+/// same way, so a divergence is the engines' and never the harness'.
+///
+/// Three things are asserted, all off the transports' own source text:
+/// 1. all **16** per-bus markers — [`BUS_READ_ORDER`], then
+///    [`SEQ_VLL_READ_ORDER`], then [`SC_READ_ORDER`] — appear in that one order
+///    on both transports. The four new arms therefore extend the single
+///    `capture_all_buses` walk whose checkpoint slot
+///    [`the_bus_capture_reads_in_one_fixed_order_on_both_transports`] pins;
+///    they take no slot and no request field of their own (the surface rides
+///    `compare_bus`, `manifest::Case::compare_bus`).
+/// 2. the claim specific to THIS surface on the r4133 side: the capture reaches
+///    `BUSV(11)`/`BUSV(12)` **only** through the guarded dispatcher
+///    `Engine::bus_vll_pair`. The raw `bus_vll`/`bus_pu_vll` accessors still
+///    exist for the mode-table proof walk, and a capture that called one of
+///    them directly would hang the whole gate on the `NEVTestCase`
+///    `double-1..6` buses (`dss-epri::modes::bus_vll_would_hang`,
+///    `DBus.pas:580-584`) instead of recording a refusal.
+/// 3. and on the capi side: that transport never claims a refusal — its
+///    `vll_declined` is the constant `False`, emitted after the two L-L arms.
+///    Its partner scan is bounded (`CAPI_Alt.pas:2512-2514`, `for k := 1 to 3`),
+///    and the comparator's `SecondLoopHang` cross-check of the harness' replay
+///    against the bridge's own predicate is only meaningful because exactly one
+///    transport is free to refuse.
+#[test]
+fn the_sequence_and_line_to_line_capture_reads_in_one_fixed_order_on_both_transports() {
+    // ---- capi transport: tools/oracle/oracle_server.py ---------------------
+    let py = repo_text("tools/oracle/oracle_server.py");
+    let py_body = fn_body(&py, "def capture_all_buses(", |l| l.starts_with("def "));
+    let py_code = strip_python_docstring(&py_body);
+    // (1) the whole per-bus read order in one pass: 6 voltage/scalar (the sixth
+    // is G1.4b's `Distance`) + 4 G1.4c + 6 SC.
+    let capi_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(c, _)| *c)
+        .chain(SEQ_VLL_READ_ORDER.iter().map(|(c, _)| *c))
+        .chain(SC_READ_ORDER.iter().map(|(c, _)| *c))
+        .collect();
+    assert_eq!(
+        capi_markers.len(),
+        16,
+        "the per-bus read order is 6 voltage/scalar (incl. G1.4b Distance) + 4 sequence/L-L          + 6 short-circuit arms"
+    );
+    assert_source_order(
+        &py_code,
+        &capi_markers,
+        "oracle_server.py capture_all_buses (voltage, sequence/L-L, then SC arms)",
+    );
+
+    // ---- r4133 transport: crates/dss-epri/src/capture.rs -------------------
+    let rs = repo_text("crates/dss-epri/src/capture.rs");
+    let rs_body = fn_body(&rs, "fn capture_all_buses(", |l| l == "}");
+    let rs_code = strip_rust_line_comments(&rs_body);
+    let epri_markers: Vec<&str> = BUS_READ_ORDER
+        .iter()
+        .map(|(_, r)| *r)
+        .chain(SEQ_VLL_READ_ORDER.iter().map(|(_, r)| *r))
+        .chain(SC_READ_ORDER.iter().map(|(_, r)| *r))
+        .collect();
+    assert_source_order(
+        &rs_code,
+        &epri_markers,
+        "capture.rs capture_all_buses (voltage, sequence/L-L, then SC arms)",
+    );
+
+    // ---- (2) the L-L arms go through the guard, never around it ------------
+    for raw in ["engine.bus_vll()", "engine.bus_pu_vll()"] {
+        assert!(
+            !rs_code.contains(raw),
+            "capture.rs capture_all_buses: {raw:?} is the UNGUARDED accessor — the \
+             capture must reach `BUSV(11)`/`BUSV(12)` only through \
+             `engine.bus_vll_pair()`, which refuses the pair on a bus whose partner \
+             scan would not terminate (GOLDEN_REBASE G1.4c; DBus.pas:580-584)"
+        );
+    }
+
+    // ---- (3) the capi transport never refuses ------------------------------
+    let declined = sole_offset(
+        &py_code,
+        "cap[\"vll_declined\"] = False",
+        "oracle_server.py capture_all_buses vll_declined",
+    );
+    let pu_vll = sole_offset(&py_code, "b.puVLL", "oracle_server.py capture_all_buses");
+    assert!(
+        declined > pu_vll,
+        "oracle_server.py capture_all_buses: `vll_declined` must be the constant \
+         `False` emitted alongside the two L-L arms (offsets {pu_vll} then {declined}) \
+         — this transport's partner scan is bounded (`CAPI_Alt.pas:2512-2514`) and \
+         cannot refuse"
+    );
+}
+
 /// D2's cross-transport validation of the bus capture, live (G1.4a audit
 /// settlement AC-3): the r4133 capture is compared against the capi capture on
 /// one gated `both` case, so a wiring defect on either transport — a swapped
@@ -878,6 +1064,16 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
                 "step {s}: bus {} kVBase differs",
                 ba.name
             );
+            // G1.4b: `DistFromMeter` is a zone-build output, not a solve
+            // output — no band, no `BaseFactor`, EXACT on both transports
+            // (measured bit-equal over four decks, `tmp/g14b/f1_probe.json`).
+            // `line_asym.dss` defines no EnergyMeter, so what this pins here is
+            // the shape both channels must agree on: neither invents a distance.
+            assert_eq!(
+                ba.distance, bb.distance,
+                "step {s}: bus {} Distance differs: capi {} vs r4133 {} km",
+                ba.name, ba.distance, bb.distance
+            );
             // `BaseFactor` (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414`): the pu arrays
             // are volts over this, so scaling a pu gap back by it puts every
             // comparison on the one physical band.
@@ -938,10 +1134,137 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
                 y * bfs[k],
             );
         }
+        // G1.4b: the two circuit-level `DistFromMeter` views, exactly. Their
+        // lengths carry the two orderings (`NumBuses` and `Σ NumNodesThisBus`),
+        // which is the same identity the per-bus walk above asserts from the
+        // other end.
+        assert_eq!(
+            (a.all_bus_distances.len(), a.all_node_distances.len()),
+            (a.buses.len(), bfs.len()),
+            "step {s}: the capi distance arrays disagree with its own bus walk"
+        );
+        assert_eq!(
+            a.all_bus_distances, b.all_bus_distances,
+            "step {s}: AllBusDistances differs between the transports"
+        );
+        assert_eq!(
+            a.all_node_distances, b.all_node_distances,
+            "step {s}: AllNodeDistances differs between the transports"
+        );
     }
     eprintln!(
         "cross-transport bus capture on asymmetric:line/line_asym.dss: \
          worst |capi − r4133| = {worst:.3e} V"
+    );
+}
+
+/// D2's cross-transport validation for the **distance** arm, on a case that
+/// actually has a meter zone (G1.4b audit settlement, AC-4).
+///
+/// The bus-capture check above rides `asymmetric:line/line_asym.dss`, which
+/// defines no EnergyMeter: every `Distance` it compares is `0.0` against `0.0`,
+/// so it pins the SHAPE (neither transport invents a distance) and not the
+/// quantity. `controls:energymeter/energymeter_sym.dss` gates on both channels
+/// and carries a real zone — `line.feed` (src→m1) and `line.lat` (m1→m2), each
+/// `length=1` with `units` unset, and `ConvertLineUnits` returns `1.0` whenever
+/// either side is `UNITS_NONE` (`Shared/LineUnits.pas:110-115`), so the walk's
+/// own sum is `src = 0`, `m1 = 1`, `m2 = 2` km. That makes this the place where
+/// the two transports are pinned against each other on a NON-ZERO
+/// `DistFromMeter`, exactly (`rel = abs = 0`, no band anywhere), across all 24
+/// daily steps — a stale `ActiveBusIndex` or a misindexed `CircuitV` mode on
+/// either side reds here instead of hiding behind an all-zero comparison.
+#[test]
+fn the_two_transports_agree_on_the_bus_distances_of_a_metered_both_case() {
+    let mut case = load_family("controls")
+        .into_iter()
+        .find(|c| c.path == "energymeter/energymeter_sym.dss")
+        .expect("controls:energymeter/energymeter_sym.dss must be in the family manifest");
+    assert_eq!(
+        case.engines, "both",
+        "the cross-transport check needs a case both channels gate"
+    );
+    case.compare_bus = true; // scheduler::force_bus
+    let abs = family_file("controls", &case.path);
+    let req = engines::build_run_request(&abs, &case);
+
+    let capi = Oracle::for_spec(None).run_case(&abs, &case);
+    let resp = engines::EpriOneShot::new().call(&req);
+    assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
+    let epri: engines::CaseResult =
+        serde_json::from_value(resp.result.expect("r4133 ok response missing result"))
+            .expect("r4133 malformed CaseResult");
+
+    assert_eq!(
+        capi.checkpoints.len(),
+        epri.checkpoints.len(),
+        "the transports disagree on the step count"
+    );
+    assert!(
+        !capi.checkpoints.is_empty(),
+        "the metered case captured no step"
+    );
+    let mut nonzero = 0usize;
+    for (s, (a, b)) in capi.checkpoints.iter().zip(&epri.checkpoints).enumerate() {
+        assert_eq!(
+            a.buses.len(),
+            b.buses.len(),
+            "step {s}: bus count differs between the transports"
+        );
+        // The zone walk's own numbers, by NAME — the deck's three buses, in
+        // whatever order the two BusLists report them.
+        let mut seen: Vec<(String, f64)> = Vec::new();
+        for (ba, bb) in a.buses.iter().zip(&b.buses) {
+            assert!(
+                ba.name.eq_ignore_ascii_case(&bb.name),
+                "step {s}: bus name differs: {} vs {}",
+                ba.name,
+                bb.name
+            );
+            assert_eq!(
+                ba.distance, bb.distance,
+                "step {s}: bus {} Distance differs: capi {} vs r4133 {} km \
+                 (a zone-build output — compared exactly on both transports)",
+                ba.name, ba.distance, bb.distance
+            );
+            if ba.distance != 0.0 {
+                nonzero += 1;
+            }
+            seen.push((ba.name.to_ascii_lowercase(), ba.distance));
+        }
+        seen.sort_by(|x, y| x.0.cmp(&y.0));
+        assert_eq!(
+            seen,
+            vec![
+                ("m1".to_string(), 1.0),
+                ("m2".to_string(), 2.0),
+                ("src".to_string(), 0.0),
+            ],
+            "step {s}: the meter zone's own km moved (both transports agree with each other, \
+             so a move here is upstream's, not a transport's)"
+        );
+        assert_eq!(
+            (a.all_bus_distances.len(), a.all_node_distances.len()),
+            (a.buses.len(), a.buses.iter().map(|bu| bu.nodes.len()).sum()),
+            "step {s}: the capi distance arrays disagree with its own bus walk"
+        );
+        assert_eq!(
+            a.all_bus_distances, b.all_bus_distances,
+            "step {s}: AllBusDistances differs between the transports"
+        );
+        assert_eq!(
+            a.all_node_distances, b.all_node_distances,
+            "step {s}: AllNodeDistances differs between the transports"
+        );
+    }
+    assert_eq!(
+        nonzero,
+        2 * capi.checkpoints.len(),
+        "the comparison is vacuous unless m1 and m2 carry a non-zero distance at every step"
+    );
+    eprintln!(
+        "cross-transport bus distances on controls:energymeter/energymeter_sym.dss: \
+         {} step(s), {nonzero} non-zero bus distance(s), capi == r4133 exactly",
+        capi.checkpoints.len()
     );
 }
 
@@ -1103,6 +1426,229 @@ fn the_short_circuit_study_guard_is_silent_on_the_measured_population() {
 fn the_short_circuit_study_guard_fires_when_a_deck_stops_solving_a_study() {
     // one deck's two channels gone: 10 - 2 walks, 646 - 2*3 buses
     harness::check_sc_study_compare_ran(8, 640);
+}
+
+/// The distance surface's fail-on-stale, pinned in **both** directions offline
+/// (GOLDEN_REBASE G1.4b), for the reason its short-circuit sibling above is:
+/// the shipped statics cannot be rewound once a gate run has moved them, so the
+/// rule is exercised through its injected-counter form.
+#[test]
+fn the_distance_guard_is_silent_on_the_measured_population() {
+    harness::check_distance_compare_ran(867, 79_137);
+}
+
+/// …and fires when a deck stops building its meter zone — the regression the
+/// comparator's own equality cannot see, because a port and an oracle that both
+/// forgot the zone agree on the meterless `0.0` bus for bus.
+#[test]
+#[should_panic(expected = "not (867, 79137)")]
+fn the_distance_guard_fires_when_a_deck_stops_building_its_meter_zone() {
+    // one 4-bus deck's two channels gone: 2 walks, 2*2 non-zero buses
+    harness::check_distance_compare_ran(865, 79_133);
+}
+
+/// ...and on a GROWTH — a new metered case, a new step or a channel that
+/// starts gating. Both directions are driven because both documents that
+/// describe the pair claim both (`TESTING.md`, and the constant's own doc):
+/// the rule is one `assert_eq!` over the tuple, so a growth must be
+/// re-derived off a completed run and moved deliberately, never absorbed.
+#[test]
+#[should_panic(expected = "not (867, 79137)")]
+fn the_distance_guard_fires_when_a_metered_case_arrives() {
+    // one 4-bus deck's two channels added: 2 walks, 2*2 non-zero buses
+    harness::check_distance_compare_ran(869, 79_141);
+}
+
+/// GOLDEN_REBASE G1.4b — the two `MakeBusList` decks of coordinator decision
+/// **D9**, pinned against the distances BOTH oracle channels measure.
+///
+/// D9 was a real port bug: r4133 runs `DoResetMeterZones` INSIDE
+/// `TDSSCircuit.ReProcessBusDefs` (`Common/Circuit.pas:2411`, capi `:2246`)
+/// while the port had hoisted it out, so a deck that issues `MakeBusList` after
+/// defining an EnergyMeter consumed the rebuild flag and kept EMPTY zones — no
+/// customers, no parent PD, no `DistFromMeter`. It was fixed on lane `lane-m`
+/// (G1.6b micro-part F0) and reached this lane with the `update` sync before
+/// G1.4b F1. These are the only two decks in the corpus that both issue
+/// `MakeBusList` and define a meter, so this is where the fix is observable on
+/// THIS surface: without it every number below would be `0.0` and the whole
+/// comparison would still be green, because the oracles would be compared
+/// against a port that simply reports nothing.
+///
+/// The expected values are the ORACLES', not the port's: measured live on
+/// 2026-09-05 through the real capture paths of both channels
+/// (`oracle_server.py` one-shot and `epri-worker`), bit-identical between them
+/// — `tmp/g14b/f2_pins.json`, the run recorded in the G1.4b handoff. They are
+/// exact `f64` equalities, the same `rel = abs = 0` the live comparator uses.
+///
+/// `1.609344` and `3.218688` are 1 and 2 international miles in km — the
+/// `len · ConvertLineUnits(units, UNITS_KM)` sum of the zone walk, over the
+/// identical `To_Meters(UNITS_MILES) = 1609.344` both engines carry (r4133
+/// `Version8/Source/Shared/LineUnits.pas:81`, capi `src/Shared/LineUnits.pas:108`;
+/// the `1609.3` of `Version7/Source/Deprecated_LazDSS` and
+/// `Version8/Source/CMD_Lazz` is in neither build).
+#[test]
+fn the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure() {
+    /// One pinned deck: its `BusList`, the oracles' own `DistFromMeter` per
+    /// bus (km) and the bus's node count — what the node array's run lengths
+    /// must reproduce.
+    struct DistPin {
+        rel: &'static str,
+        names: &'static [&'static str],
+        km: &'static [f64],
+        node_counts: &'static [usize],
+    }
+    #[rustfmt::skip]
+    let decks = [
+        DistPin {
+            rel: "Test/indmachtest/Master.DSS",
+            names: &["sourcebus", "b1", "b2", "b3"],
+            km: &[0.0, 0.0, 1.609344, 3.218688],
+            node_counts: &[4, 4, 3, 3],
+        },
+        DistPin {
+            rel: concat!(
+                "Version8/Distrib/Examples/ADiakoptics/IEEE_13_Bus/",
+                "Torn_Circuit/Master_Interconnected.dss"
+            ),
+            names: &[
+                "sourcebus", "rg60", "632", "670", "633", "645", "646", "634",
+                "650", "671", "692", "675", "684", "652", "611", "680",
+            ],
+            km: &[
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.406_298_400_000_000_06,
+                0.407_298_400_000_000_06,
+                0.559_698_4,
+                0.497_738_400_000_000_1,
+                0.741_578_400_000_000_1,
+                0.589_178_400_000_000_1,
+                0.711_098_4,
+            ],
+            node_counts: &[3, 3, 3, 3, 3, 2, 2, 3, 3, 3, 3, 3, 2, 1, 1, 3],
+        },
+    ];
+    for DistPin {
+        rel,
+        names,
+        km: want,
+        node_counts,
+    } in decks
+    {
+        let abs = corpus_file(rel);
+        let scratch = ad_scratch("dist");
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command(&format!("compile \"{abs}\""));
+        dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+        dss.command("solve");
+        let views = dss.all_bus_voltages();
+        let got: Vec<String> = views.iter().map(|v| v.name.clone()).collect();
+        assert_eq!(
+            got,
+            names.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            "{rel}: BusList order moved"
+        );
+        assert_eq!(
+            dss.all_bus_distances(),
+            want,
+            "{rel}: AllBusDistances is not what both oracles measure"
+        );
+        for (v, w) in views.iter().zip(want) {
+            assert_eq!(v.distance, *w, "{rel}: bus {} Distance", v.name);
+        }
+        // …and the node array is that vector expanded by `NumNodesThisBus`.
+        let expect_nodes: Vec<f64> = want
+            .iter()
+            .zip(node_counts)
+            .flat_map(|(d, n)| std::iter::repeat_n(*d, *n))
+            .collect();
+        assert_eq!(
+            dss.all_node_distances(),
+            expect_nodes,
+            "{rel}: AllNodeDistances is not the bus vector expanded by NumNodesThisBus"
+        );
+        // The D9 signal itself: the zone really was rebuilt after `MakeBusList`.
+        assert!(
+            want.iter().any(|d| *d != 0.0),
+            "{rel}: this pin is vacuous unless the deck's zone carries a distance"
+        );
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+}
+
+/// GOLDEN_REBASE G1.4b — the three merged-line distances of
+/// `modes:reduce/midi_reduce.dss`, the expected-value pin behind the ledger
+/// entry `reduce-merge-units-lost-midi-capi-distance` (coordinator decision
+/// D29 step 3).
+///
+/// `DoReduceDefault` merges three matrix-model line pairs here. The pinned
+/// dss_capi 0.14.5 loses the merged line's `LengthUnits` (cause
+/// `line-merge-length-units-reset`: r4133
+/// `Version8/Source/PDElements/Line.pas:1794-1796` re-applies the saved units
+/// AFTER the matrix edits, capi `src/PDElements/Line.pas:1806-1817` lets
+/// `ResetLengthUnits` wipe them one statement later), and
+/// `MakeMeterZoneLists` multiplies every line branch by
+/// `ConvertLineUnits(LengthUnits, UNITS_KM)`, which is `1.0` whenever either
+/// side is `UNITS_NONE` (`Shared/LineUnits.pas:110-115`). So capi consumes the
+/// merged 4 kft lines as 4 **km** and its `Bus.Distance` runs 4.0 km high on
+/// exactly these three buses, while the port (RP3.5, r4133's behaviour) reads
+/// `4 kft = 1.2192 km`:
+///
+/// | bus | port == r4133 | capi 0.14.5 |
+/// |---|---|---|
+/// | `l2e` | `2.7432` | `5.524` = `1.524 + 4.0` |
+/// | `l3e` | `3.3528000000000002` | `6.1335999999999995` = `2.1336 + 4.0` |
+/// | `l9e` | `10.364200000000004` | `13.145000000000003` = `9.145 + 4.0` |
+///
+/// Both numbers, as the ledger requires. Measured live on 2026-09-05 through
+/// the real capture paths of all three engines (`tmp/g14b/probe_reduce2.py`,
+/// the G1.4b F2 handoff); the capi column is what the ledger exclusion drops,
+/// and this pin is what keeps the port honest in its place — without it the
+/// three buses would be compared against nothing at all.
+///
+/// The `units`/`length` assertions tie the numbers to their cause: the
+/// distances are `1.2192 km` above their upstream bus precisely because the
+/// merged lines still answer `kft`.
+#[test]
+fn the_reduced_midi_deck_reports_the_merged_lines_kft_distances() {
+    let abs = family_file("modes", "reduce/midi_reduce.dss");
+    let scratch = ad_scratch("midi-reduce-dist");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile {abs:?}"));
+    dss.command(&format!("set datapath={:?}", scratch.display().to_string()));
+
+    // The deck reduces and re-solves itself; the three merges are its point.
+    for line in ["l2a~l2b", "l3a~l3b", "bb14_15~l9a"] {
+        dss.command(&format!("? line.{line}.units"));
+        assert_eq!(
+            dss.result(),
+            "kft",
+            "line.{line} lost the units DoReduceDefault saved (RP3.5)"
+        );
+        dss.command(&format!("? line.{line}.length"));
+        assert_eq!(dss.result(), "4", "line.{line} merged length");
+    }
+
+    let want = [
+        ("l2e", 2.7432),
+        ("l3e", 3.3528000000000002),
+        ("l9e", 10.364200000000004),
+    ];
+    let views = dss.all_bus_voltages();
+    let all_bus = dss.all_bus_distances();
+    for (name, km) in want {
+        let i = views
+            .iter()
+            .position(|v| v.name.eq_ignore_ascii_case(name))
+            .unwrap_or_else(|| panic!("bus {name} is not in the reduced BusList"));
+        assert_eq!(
+            views[i].distance, km,
+            "bus {name} Distance: the merged 4 kft line contributes 1.2192 km, not 4.0 (capi 0.14.5 reports the 4.0; see the ledger entry)"
+        );
+        assert_eq!(all_bus[i], km, "bus {name} AllBusDistances slot");
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 /// The text of the function whose signature line contains `head`, up to the

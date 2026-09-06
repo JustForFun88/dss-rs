@@ -470,7 +470,29 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   cache is stamped and neither engine recomputes). **Priority: low** — but it is a live
   read-that-mutates in the port, so it belongs to whoever owns the variables surface.
 
-### 1.19 `RelCalc` zone-boundary semantics — what `Bus.TotalMiles` and its siblings mean on a nested head bus
+### 1.19 `Export SeqVoltages` still substitutes ground for a phase the bus does not carry
+- **Deferred by:** `GOLDEN_REBASE_PLAN.md` §G1.4c audit settlement (2026-09-05, finding AC-2) —
+  the API surface stopped reproducing the defect in that sub-step; the report path was outside it.
+- **What.** `report/export/seq_voltages.rs:39-41` reads `node_v[bus.find(k)]` for `k = 1, 2, 3`,
+  and `Bus::find` returns `0` (= ground) for a node the bus does not carry — upstream's own
+  `Vph[j] := NodeV^[GetRef(FindIdx(j))]` conflation (r4133 `Common/ExportResults.pas:183`, the same
+  defect as `DDLL/DBus.pas:305` == `CAPI/CAPI_Alt.pas:2190`, reported upstream as
+  `investigations/to_opendss/66-bus-seqvoltages-node-count-and-ground-substitution.md`). On a bus
+  with >= 3 nodes and a phase missing (e.g. `[1, 2, 10]`) the export therefore publishes a V012
+  built on a fabricated 0 V phase. `report/show/voltages.rs:73-75` shares the read; its L-L half
+  (`:191-193`) does **not** share the pairing defect — it wraps first, r4133's own correct order.
+- **Why it is still here.** Not golden bytes: measured 2026-09-05, every voltage-report golden runs
+  `IEEETestCases/13Bus/IEEE13Nodeckt.dss`, whose bus specs carry only node numbers 1-3, so no bus
+  there reaches the substituting branch and fixing it would move **zero** golden bytes. What is
+  missing is the *decision* — what an export column set should print where symmetrical components
+  do not exist (the API surface answers "unavailable"; a CSV row has no such convention) — which is
+  report semantics, i.e. WP-G4/G5 territory, not WP-G1's.
+- **Blast radius today: zero golden cells and zero live cells** (no oracle channel compares
+  `Export SeqVoltages` text in the corpus gate). **Priority: low**, but it is a knowingly retained
+  upstream defect in shipped product code, which the 2026-08-02 policy does not allow to stay
+  unowned.
+
+### 1.20 `RelCalc` zone-boundary semantics — what `Bus.TotalMiles` and its siblings mean on a nested head bus
 - **Deferred by:** `GOLDEN_REBASE_PLAN.md` G1.6(i) (audit settlement AT-1, 2026-09-05) and handed on
   by G1.6(ii) (2026-09-05), whose gated population holds no witness: its only two-meter deck
   (`tests/corpus/controls/energymeter/midi_energymeter.dss`) aborts at 52902 before a section exists,

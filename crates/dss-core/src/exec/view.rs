@@ -8,6 +8,7 @@ use crate::report::export::json::{
     JsonOpts, build as json_build, circuit as json_circuit, serialize as json_serialize,
 };
 use crate::support::complexutil::{Polar, c_to_polar_deg};
+use crate::support::mathutil::SymComp;
 
 /// A monitor's recorded buffer for the golden/test harness (dss-python
 /// `Monitors.Header` / `SampleCount` / `Channel(i)` / `dblHour`).
@@ -607,16 +608,83 @@ pub struct PdElementView {
 /// `YNodeOrder` permutation nor the bus × internal-node-index order of
 /// [`Dss::all_bus_vmag_pu`]; the three conventions must never be mixed.
 ///
-/// `VLL` / `puVLL` are deliberately absent: the fastdss harness drops them in
-/// this configuration (`save_outputs.py:205-209`, `COM_VLL_BROKEN`), and the
-/// r4133 pairing loop has a state-dependent hang there — they land with the
-/// sequence quantities in GOLDEN_REBASE G1.4c.
+/// **The four quantities the two oracles do *not* share (GOLDEN_REBASE G1.4c).**
+/// Both engines publish `SeqVoltages`, `CplxSeqVoltages`, `VLL` and `puVLL`, but
+/// on any bus that is not exactly `1, 2, 3` they answer by three different rules,
+/// two of which are defective. The port answers for itself; the corpus gate
+/// replays each upstream walk over *this* view's own state as an assertion about
+/// the oracle, never as the port's answer.
+///
+/// * **S-SEQ** — [`Self::seq_voltages`] / [`Self::cplx_seq_voltages`] exist
+///   **iff the bus carries all three phase nodes 1, 2 and 3**, and are `None`
+///   otherwise. Symmetrical components are undefined without three phase
+///   voltages, which is exactly what r4133's own comment says (*"Signify seq
+///   voltages n/A for less then 3 phases"*, `DBus.pas:299` ==
+///   `CAPI_Alt.pas:2183`) — while both engines test the node *count* instead:
+///   capi clamps `Nvalues > 3` to 3 and answers on a 4-node bus
+///   (`CAPI_Alt.pas:2174-2186`), r4133 does not clamp and returns `-1` there
+///   (`DBus.pas:296-300`), and **both** substitute ground for a phase the bus
+///   does not carry (`Find(i) = 0 ⇒ NodeV[0]`, `DBus.pas:305` ==
+///   `CAPI_Alt.pas:2190`), fabricating a 0 V phase on e.g. a `[1, 2, 10]` bus.
+/// * **S-VLL** — [`Self::vll`] / [`Self::pu_vll`] are the line-to-line voltages
+///   **over the phase nodes actually present**: `[V1−V2, V2−V3, V3−V1]` with all
+///   three, the single pair with exactly two, `None` with fewer. Both engines
+///   instead walk `jj` forward and poll `FindIdx(jj)` *before* the `jj > 3 ⇒
+///   jj := 1` wrap (`DBus.pas:575-584` == `CAPI_Alt.pas:2500-2523`), which pairs
+///   phase 3 with node 4 on a `[1, 2, 3, 4]` bus, pairs a node with itself on
+///   `[1, 10]`, and emits `V2−V1` on `[1, 2, 10]`. r4133's own commented-out
+///   original (`DBus.pas:586-587`) and its own report path
+///   (`Common/ShowResults.pas:193-194`) both wrap *first*, so upstream
+///   contradicts itself inside one engine; capi's bounded `for k := 1 to 3`
+///   (`CAPI_Alt.pas:2508-2523`, comment *"(2020-03-01) Changed in DSS C-API to
+///   avoid some corner cases that resulted in infinite loops"*) is upstream's own
+///   acknowledgement that r4133's unbounded `repeat` hangs.
+///
+/// The engine's *report* paths still carry the upstream conventions, for two
+/// different reasons. `report/show/voltages.rs:191-193` wraps the phase number
+/// *before* the lookup, which is r4133's OWN correct order
+/// (`Common/ShowResults.pas:193-194`) — that path reproduces no defect. The
+/// ground substitution, on the other hand, IS the defect, and
+/// `report/export/seq_voltages.rs:39-41` (and `report/show/voltages.rs:73-75`)
+/// still reproduces it. It is **not** held in place by golden bytes: measured
+/// 2026-09-05, every voltage-report golden runs
+/// `IEEETestCases/13Bus/IEEE13Nodeckt.dss`, whose bus specs carry only node
+/// numbers 1-3, so no bus there can have >= 3 nodes with a phase missing and the
+/// substituting branch is never reached — fixing it would move zero golden
+/// bytes. It stays only because what an *export* should print instead is a
+/// report-semantics decision outside WP-G1's scope (which moves no golden byte
+/// at all); it is tracked, with that measurement, as `ORPHANED_GAPS.md` §1.19.
+/// Only this API surface carries the port's own semantics, and the two are
+/// pinned separately.
+///
+/// The fastdss harness drops `VLL`/`puVLL` from `IBus._columns` altogether in
+/// this configuration (`tests/save_outputs.py:205-207` on `origin/fastdss`,
+/// `COM_VLL_BROKEN`), so publishing them at all is *stronger* than fastdss
+/// parity; the sequence pair it keeps.
 #[derive(Debug, Clone)]
 pub struct BusVoltageView {
     /// The bus's (lowercased) name, `Circuit.AllBusNames` spelling.
     pub name: String,
     /// `TDSSBus.kVBase`, line-to-neutral kV; `0.0` = not set.
     pub kv_base: f64,
+    /// `Bus.Distance`: `TDSSBus.DistFromMeter`, the distance in **km** from
+    /// this bus back to the head of the EnergyMeter zone that owns it — the
+    /// zone walk's own accumulator, published verbatim by both engines
+    /// (r4133 `DDLL/DBus.pas:122-128`, `BUSF` mode 5, == capi
+    /// `CAPI/CAPI_Bus.pas:419-427` -> `CAPI/CAPI_Alt.pas:2071-2074`; fastdss
+    /// dumps it with the rest of `IBus._columns`, `dss/IBus.py:28` on
+    /// `origin/fastdss`).
+    ///
+    /// It is a **zone-build output, not a solve output**: it is written only by
+    /// `MakeMeterZoneLists` (r4133 `Meters/EnergyMeter.pas:1833-1838` == port
+    /// `solution/meters/zones/build.rs:240-251`, which adds
+    /// `len · ConvertLineUnits(units, UNITS_KM)` per *line* branch and carries
+    /// the parent's value across every non-line branch) and reset to `0.0` at
+    /// the zone origin (`build.rs:178`). A circuit with no EnergyMeter — or a
+    /// bus outside every meter's zone — therefore reports `0.0`, which is a
+    /// real assertion (the port must not invent a distance), not a missing
+    /// value. Neither engine has a sentinel for "no meter".
+    pub distance: f64,
     /// User node numbers on the bus (`Nodes`), **insertion** order.
     pub nodes: Vec<i32>,
     /// `Bus.puVoltages`: `NodeV / BaseFactor`, ascending node number.
@@ -625,6 +693,30 @@ pub struct BusVoltageView {
     pub vmag_angle: Vec<(f64, f64)>,
     /// `Bus.puVMagAngle`: `(|V|/BaseFactor, angle°)`, ascending node number.
     pub pu_vmag_angle: Vec<(f64, f64)>,
+    /// The bus's raw `Solution.NodeV` entries, ascending node number — the same
+    /// walk as [`Self::pu_voltages`], undivided.
+    ///
+    /// It is the ingredient a consumer needs to replay an upstream pairing or
+    /// ground substitution over the port's own state without re-deriving the
+    /// bus's node refs (the GOLDEN_REBASE D16 precedent: the oracle's walk is
+    /// asserted, not reproduced).
+    pub node_v: Vec<num_complex::Complex64>,
+    /// `Bus.SeqVoltages`: `|V012|` — `Cabs` of the symmetrical components of the
+    /// phase voltages — or `None` when the bus does not carry all three phase
+    /// nodes (**S-SEQ**, see the type doc).
+    pub seq_voltages: Option<[f64; 3]>,
+    /// `Bus.CplxSeqVoltages`: the same `V012`, complex. `None` under exactly the
+    /// S-SEQ rule of [`Self::seq_voltages`] — both come out of one transform, so
+    /// they can never disagree about availability or about a value.
+    pub cplx_seq_voltages: Option<[num_complex::Complex64; 3]>,
+    /// `Bus.VLL`: the line-to-line voltages over the phase nodes the bus carries
+    /// — 3 entries with nodes 1, 2 and 3 all present, 1 entry with exactly two of
+    /// them, `None` with fewer (**S-VLL**, see the type doc).
+    pub vll: Option<Vec<num_complex::Complex64>>,
+    /// `Bus.puVLL`: [`Self::vll`] over the line-to-line base
+    /// (`1000 · kVBase · √3`, or `1.0` — `bus_ll_base_factor`). `Some` exactly
+    /// when [`Self::vll`] is.
+    pub pu_vll: Option<Vec<num_complex::Complex64>>,
 }
 
 /// The `BaseFactor` both engines divide the per-unit bus quantities by:
@@ -638,6 +730,102 @@ fn bus_base_factor(bus: &crate::circuit::bus::Bus) -> f64 {
     } else {
         1.0
     }
+}
+
+/// The **line-to-line** `BaseFactor` both engines divide `puVLL` by:
+/// `1000 · kVBase · √3`, or `1.0` when the bus has no base
+/// (`DBus.pas:622-623` == `CAPI_Alt.pas:2427-2430`). Distinct from
+/// [`bus_base_factor`], which carries no `√3`.
+///
+/// `sqrt3` is `Sqrt(3.0)` on both sides (r4133 `Common/DSSGlobals.pas:2033` ==
+/// capi `Common/DSSGlobals.pas:733` == [`crate::util::sqrt3`]), so there is no
+/// precision-compat site here. The `1.0` arm is live on this surface too: the
+/// corpus's `Test/indmachtest/Master.DSS` reaches `Solve` with `kVBase = 0` on
+/// `sourcebus`, where both oracles report `puVLL == VLL` in volts.
+fn bus_ll_base_factor(bus: &crate::circuit::bus::Bus) -> f64 {
+    if bus.kv_base > 0.0 {
+        1000.0 * bus.kv_base * crate::util::sqrt3()
+    } else {
+        1.0
+    }
+}
+
+/// The `Solution.NodeV` refs of the bus's phase nodes 1, 2 and 3 — `None` in a
+/// slot whose node number the bus does not carry.
+///
+/// Presence is decided by `FindIdx` (`Bus::find_idx`), never by `Find`: `Find`
+/// answers `0` for an absent node, which is also `NodeV`'s ground slot, and it is
+/// that conflation both engines feed straight into the sequence transform
+/// (`DBus.pas:305` == `CAPI_Alt.pas:2190`) to fabricate a 0 V phase.
+fn phase_refs(bus: &crate::circuit::bus::Bus) -> [Option<usize>; 3] {
+    [1i32, 2, 3].map(|num| bus.find_idx(num).map(|idx| bus.get_ref(idx)))
+}
+
+/// **S-SEQ**: `V012` over the bus's phase nodes 1, 2 and 3, or `None` when the
+/// bus does not carry all three (see [`BusVoltageView`] for why, and for how the
+/// two oracles differ from this and from each other).
+///
+/// The transform is the engine default [`SymComp::precise`] — the pair
+/// `Phase2SymComp` runs on the pinned capi oracle (`Shared/mathutil.pas:548`
+/// ends initialization with `SelectAs2pVersion(False)`) and the pair
+/// `report/export/seq_voltages.rs:45` uses, so the two in-tree sequence surfaces
+/// cannot drift apart numerically. r4133 builds its `Ap2s` from the truncated
+/// `sin 60° = 0.866025403` and inverts it numerically, which is a measured
+/// ~5e-10 relative offset on `V1`/`V2`, not a semantic difference
+/// ([`SymComp::official`], pinned by
+/// `mathutil::tests::sym_comp_official_vs_precise_gap_is_the_truncated_sin60_constant`).
+fn bus_seq_voltages(
+    ckt: &Circuit,
+    bus: &crate::circuit::bus::Bus,
+    sc: &SymComp,
+) -> Option<[num_complex::Complex64; 3]> {
+    let [r1, r2, r3] = phase_refs(bus);
+    let vph = [
+        node_voltage(ckt, r1?),
+        node_voltage(ckt, r2?),
+        node_voltage(ckt, r3?),
+    ];
+    let mut v012 = [num_complex::Complex64::ZERO; 3];
+    sc.phase_to_sym(&vph, &mut v012);
+    Some(v012)
+}
+
+/// **S-VLL**: the line-to-line voltages over the phase nodes the bus actually
+/// carries — `[V1−V2, V2−V3, V3−V1]` with nodes 1, 2 and 3 all present, the one
+/// pair `Va−Vb` (ascending) with exactly two of them, `None` with fewer: a single
+/// phase has no line-to-line voltage, and neither has a bus of pure
+/// neutral/return nodes.
+///
+/// This is the pairing ORDER r4133's own report path uses
+/// (`Common/ShowResults.pas:193-194` wraps the phase number *before* looking the
+/// node up), which is why a `[1, 2, 3, 4]` bus closes on phase 1 there and on
+/// node 4 in the API. The report path is not identical to S-VLL on every bus —
+/// with a phase missing it still pairs against `GetRef(0)`, i.e. ground, where
+/// S-VLL declines. The two DDLL / C-API arms poll before wrapping and therefore
+/// pair phase 3 with node 4, or a node with itself — see [`BusVoltageView`].
+fn bus_line_to_line(
+    ckt: &Circuit,
+    bus: &crate::circuit::bus::Bus,
+) -> Option<Vec<num_complex::Complex64>> {
+    /// `(1,2) (2,3) (3,1)` as indices into the present-phase list.
+    const THREE_PHASE_PAIRS: [(usize, usize); 3] = [(0, 1), (1, 2), (2, 0)];
+    /// The single pair of a two-phase bus, in ascending phase order.
+    const TWO_PHASE_PAIR: [(usize, usize); 1] = [(0, 1)];
+
+    // `phase_refs` is already in ascending phase order, so filtering it keeps
+    // the pairs in ascending order too.
+    let present: Vec<usize> = phase_refs(bus).into_iter().flatten().collect();
+    let pairs: &[(usize, usize)] = match present.len() {
+        3 => &THREE_PHASE_PAIRS,
+        2 => &TWO_PHASE_PAIR,
+        _ => return None,
+    };
+    Some(
+        pairs
+            .iter()
+            .map(|&(a, b)| node_voltage(ckt, present[a]) - node_voltage(ckt, present[b]))
+            .collect(),
+    )
 }
 
 /// The bus's local node indices in ascending node-**number** order — the
@@ -666,19 +854,23 @@ fn node_voltage(ckt: &Circuit, node_ref: usize) -> num_complex::Complex64 {
         .unwrap_or_default()
 }
 
-/// Build one [`BusVoltageView`] over bus `bus_idx` (`BusList` index).
-fn bus_voltage_view(ckt: &Circuit, bus_idx: usize) -> BusVoltageView {
+/// Build one [`BusVoltageView`] over bus `bus_idx` (`BusList` index). `sc` is the
+/// sequence transform, hoisted into the caller so a whole-circuit sweep builds
+/// the two 3×3 matrices once instead of once per bus.
+fn bus_voltage_view(ckt: &Circuit, bus_idx: usize, sc: &SymComp) -> BusVoltageView {
     use crate::support::complexutil::c_to_polar_deg;
 
     let bus = &ckt.buses[bus_idx];
     let base_factor = bus_base_factor(bus);
     let n = bus.num_nodes_this_bus();
 
+    let mut node_v = Vec::with_capacity(n);
     let mut pu_voltages = Vec::with_capacity(n);
     let mut vmag_angle = Vec::with_capacity(n);
     let mut pu_vmag_angle = Vec::with_capacity(n);
     for i in ascending_node_indices(bus) {
         let v = node_voltage(ckt, bus.get_ref(i));
+        node_v.push(v);
         // capi divides the two components (`CAPI_Alt.pas:2277-2280`), r4133
         // calls `cdivreal` (`DBus.pas:423`) — the same componentwise divide.
         pu_voltages.push(num_complex::Complex64::new(
@@ -693,13 +885,38 @@ fn bus_voltage_view(ckt: &Circuit, bus_idx: usize) -> BusVoltageView {
         pu_vmag_angle.push((p.mag / base_factor, p.ang));
     }
 
+    let cplx_seq_voltages = bus_seq_voltages(ckt, bus, sc);
+    let vll = bus_line_to_line(ckt, bus);
+    let ll_base = bus_ll_base_factor(bus);
+
     BusVoltageView {
         name: bus.name.clone(),
         kv_base: bus.kv_base,
+        // Read by reference off the zone-build accumulator both oracles publish
+        // verbatim (`DBus.pas:127` == `CAPI_Alt.pas:2073`); nothing is derived
+        // here, so the report path (`report/export/profile.rs:132`) and this
+        // API surface can never disagree about a bus's distance.
+        distance: bus.dist_from_meter,
         nodes: bus.nodes.clone(),
         pu_voltages,
         vmag_angle,
         pu_vmag_angle,
+        node_v,
+        // Pascal `Cabs`, the naive modulus, proven bit-identical to
+        // `Complex::norm` on every reachable operand
+        // (`support/line_constants/tests.rs`,
+        // `naive_modulus_equals_hypot_until_the_square_overflows`).
+        seq_voltages: cplx_seq_voltages.map(|v| [v[0].norm(), v[1].norm(), v[2].norm()]),
+        cplx_seq_voltages,
+        // capi divides the two components (`CAPI_Alt.pas:2464-2467`), r4133
+        // calls `cdivreal` (`DBus.pas:644`): the same componentwise divide the
+        // pu voltages above take.
+        pu_vll: vll.as_ref().map(|v| {
+            v.iter()
+                .map(|z| num_complex::Complex64::new(z.re / ll_base, z.im / ll_base))
+                .collect()
+        }),
+        vll,
     }
 }
 
@@ -1591,7 +1808,7 @@ impl Dss {
     pub fn bus_voltages(&self, name: &str) -> Option<BusVoltageView> {
         let ckt = self.circuit.as_ref()?;
         let idx = ckt.bus_list.find(name)?;
-        Some(bus_voltage_view(ckt, idx))
+        Some(bus_voltage_view(ckt, idx, &SymComp::default()))
     }
 
     /// Every bus's [`BusVoltageView`] in `BusList` order — the order
@@ -1599,9 +1816,12 @@ impl Dss {
     /// `DCircuit.pas:439`). Empty when no circuit exists.
     pub fn all_bus_voltages(&self) -> Vec<BusVoltageView> {
         match self.circuit.as_ref() {
-            Some(ckt) => (0..ckt.buses.len())
-                .map(|i| bus_voltage_view(ckt, i))
-                .collect(),
+            Some(ckt) => {
+                let sc = SymComp::default();
+                (0..ckt.buses.len())
+                    .map(|i| bus_voltage_view(ckt, i, &sc))
+                    .collect()
+            }
             None => Vec::new(),
         }
     }
@@ -1634,6 +1854,63 @@ impl Dss {
                 // (`support/line_constants/tests.rs`,
                 // `naive_modulus_equals_hypot_until_the_square_overflows`).
                 out.push(node_voltage(ckt, bus.get_ref(j)).norm() / base_factor);
+            }
+        }
+        out
+    }
+
+    /// `Circuit.AllBusDistances`: every bus's [`BusVoltageView::distance`]
+    /// (`TDSSBus.DistFromMeter`, km) in `BusList` order — `for i := 0 to
+    /// NumBuses-1 do Result[i] := Buses[i+1].DistFromMeter`
+    /// (r4133 `DDLL/DCircuit.pas:566-580`, `CircuitV` mode 12, == capi
+    /// `CAPI/CAPI_Circuit.pas:671-688`; fastdss `dss/ICircuit.py:106`). Length
+    /// = `NumBuses`, aligned with `Circuit.AllBusNames`, which is what capi's
+    /// own comment promises (*"in an array that aligns with the buslist"*).
+    ///
+    /// Empty when no circuit exists. It publishes the zone-build accumulator
+    /// unchanged — see [`BusVoltageView::distance`] for who writes it and why a
+    /// meterless circuit's all-zero vector is an assertion rather than a gap.
+    ///
+    /// **The no-circuit reply is `[]`, not the oracles' `[0.0]`** (same for
+    /// [`Dss::all_node_distances`]): both Pascal arms pre-seed a ONE-element
+    /// zero buffer and return it when there is no active circuit — r4133
+    /// `DDLL/DCircuit.pas:568-569` (`setlength(myDBLArray, 1); myDBLArray[0]
+    /// := 0`) and capi's `DefaultResult` (`CAPI/CAPI_Utils.pas:212-221`,
+    /// itself `[]` when `DSS_CAPI_COM_DEFAULTS=0`). That sentinel is an FFI
+    /// artifact of returning a pointer + count, not a value: it makes "no
+    /// circuit" indistinguishable from a real one-bus reading. The port keeps
+    /// the empty vector every other `Dss::all_*` accessor returns; nothing
+    /// gated can see the difference (the gate always has a circuit, and
+    /// `capture_guard::require_capture` fails a 0-bus capture), so it is a
+    /// deliberate API convention, recorded in the G1.4b audit settlement.
+    pub fn all_bus_distances(&self) -> Vec<f64> {
+        match self.circuit.as_ref() {
+            Some(ckt) => ckt.buses.iter().map(|b| b.dist_from_meter).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// `Circuit.AllNodeDistances`: the owning bus's
+    /// [`BusVoltageView::distance`] repeated once per node, walked **bus ×
+    /// internal node index** — `for i := 1 to NumBuses do for j := 1 to
+    /// Buses[i].NumNodesThisBus do Result[k] := Buses[i].DistFromMeter`
+    /// (r4133 `DDLL/DCircuit.pas:582-604`, `CircuitV` mode 13, == capi
+    /// `CAPI/CAPI_Circuit.pas:697-722`, whose comment says *"Array sequence is
+    /// same as all bus Vmag and Vmagpu"*; fastdss `dss/ICircuit.py:113`).
+    /// Length = `NumNodes`.
+    ///
+    /// That is the SAME permutation as [`Dss::all_bus_vmag_pu`] (convention 2 —
+    /// the `AllNodeNames` order) and neither the ascending-node-number order of
+    /// [`BusVoltageView`] nor `YNodeOrder`; the value is constant across a
+    /// bus's nodes, so only the run *lengths* carry the ordering information.
+    pub fn all_node_distances(&self) -> Vec<f64> {
+        let Some(ckt) = self.circuit.as_ref() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(ckt.num_nodes);
+        for bus in &ckt.buses {
+            for _ in 0..bus.num_nodes_this_bus() {
+                out.push(bus.dist_from_meter);
             }
         }
         out
@@ -2980,6 +3257,445 @@ mod bus_voltage_tests {
         assert_eq!(views.len(), ckt.buses.len());
         let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(names, vec!["sourcebus", "b1", "b2", "b3"]);
+    }
+}
+
+/// `Bus.Distance` / `Circuit.AllBusDistances` / `Circuit.AllNodeDistances`
+/// (GOLDEN_REBASE_PLAN.md WP-G1 G1.4b) — the zone-build accumulator all three
+/// surfaces publish verbatim.
+#[cfg(test)]
+mod bus_distance_tests {
+    use super::*;
+
+    /// A radial 2-branch feeder with ONE EnergyMeter at the head, lengths
+    /// declared in km so the expected distances are the line lengths
+    /// themselves: `sourcebus = 0`, `b1 = 1`, `b2 = 1 + 2 = 3`, and the
+    /// meterless spur `b3` off `sourcebus` at `0`.
+    fn meter_deck() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.dist basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        );
+        dss.command("New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.3 c1=0 length=2 units=km");
+        // Outside the meter's zone: reached from `sourcebus`, which is upstream
+        // of the meter's terminal, so the zone walk never visits it.
+        dss.command(
+            "New Line.spur bus1=sourcebus bus2=b3 phases=3 r1=0.1 x1=0.3 c1=0 length=5 units=km",
+        );
+        dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95");
+        dss.command("New EnergyMeter.em element=Line.l1 terminal=1");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// The view publishes `TDSSBus.DistFromMeter` by reference — the same
+    /// number the zone walk wrote (`solution/meters/zones/build.rs:240-251`)
+    /// and the same one both oracles read (`DBus.pas:127` ==
+    /// `CAPI_Alt.pas:2073`). Line lengths in km sum EXACTLY here: 1 and 1+2.
+    #[test]
+    fn bus_distance_is_the_zone_walk_accumulator() {
+        let dss = meter_deck();
+        let ckt = dss.circuit().expect("circuit");
+        for (name, want) in [
+            ("sourcebus", 0.0),
+            ("b1", 1.0),
+            ("b2", 3.0),
+            // Never visited by the zone walk: still the `Bus::new` default.
+            ("b3", 0.0),
+        ] {
+            let v = dss
+                .bus_voltages(name)
+                .unwrap_or_else(|| panic!("bus {name}"));
+            assert_eq!(v.distance, want, "{name}.Distance");
+            let ib = ckt.bus_list.find(name).expect("bus index");
+            assert_eq!(
+                v.distance, ckt.buses[ib].dist_from_meter,
+                "{name}: the view must not derive its own distance"
+            );
+        }
+    }
+
+    /// The same feeder with the EnergyMeter line deleted from the deck.
+    fn meterless_deck() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.nodist basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+        dss.command(
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+        );
+        dss.command("New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.3 c1=0 length=2 units=km");
+        dss.command("New Load.ld bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95");
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// A circuit with no EnergyMeter reports 0 for every bus — both engines
+    /// publish the untouched field, and there is no "no meter" sentinel. The
+    /// port must not invent a distance from the line lengths it does know.
+    #[test]
+    fn a_meterless_circuit_has_no_distances() {
+        let dss = meterless_deck();
+        assert!(
+            dss.all_bus_distances().iter().all(|&d| d == 0.0),
+            "no EnergyMeter ⇒ every DistFromMeter is the 0.0 default"
+        );
+        assert!(dss.all_node_distances().iter().all(|&d| d == 0.0));
+        assert_eq!(
+            dss.all_bus_distances().len(),
+            dss.circuit().expect("circuit").buses.len(),
+            "the all-zero vector is still one entry per bus, not an empty reply"
+        );
+    }
+
+    /// `AllBusDistances` is `BusList` order (`DCircuit.pas:576-577` ==
+    /// `CAPI_Circuit.pas:684-687`), i.e. exactly the `all_bus_voltages` /
+    /// `AllBusNames` sequence.
+    #[test]
+    fn all_bus_distances_is_the_bus_list_order() {
+        let dss = meter_deck();
+        let views = dss.all_bus_voltages();
+        let all = dss.all_bus_distances();
+        assert_eq!(all.len(), views.len());
+        let names: Vec<&str> = views.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(names, vec!["sourcebus", "b1", "b2", "b3"]);
+        assert_eq!(all, vec![0.0, 1.0, 3.0, 0.0]);
+        for (v, &d) in views.iter().zip(all.iter()) {
+            assert_eq!(v.distance, d, "bus {}", v.name);
+        }
+    }
+
+    /// `AllNodeDistances` repeats each bus's value once per node, walked bus ×
+    /// INTERNAL node index (`DCircuit.pas:592-599` ==
+    /// `CAPI_Circuit.pas:713-720`) — the `AllNodeNames` permutation, the same
+    /// one [`Dss::all_bus_vmag_pu`] uses and NOT `YNodeOrder`.
+    #[test]
+    fn all_node_distances_repeats_each_bus_value_per_node() {
+        let dss = meter_deck();
+        let ckt = dss.circuit().expect("circuit");
+        let all = dss.all_node_distances();
+        assert_eq!(all.len(), ckt.num_nodes);
+        assert_eq!(
+            all.len(),
+            dss.all_bus_vmag_pu().len(),
+            "the two circuit arrays share one walk"
+        );
+        // 4 three-phase buses ⇒ 3 slots each, in bus-list order.
+        assert_eq!(
+            all,
+            vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 3.0, 3.0, 3.0, 0.0, 0.0, 0.0]
+        );
+        let mut k = 0;
+        for bus in &ckt.buses {
+            for _ in 0..bus.num_nodes_this_bus() {
+                assert_eq!(all[k], bus.dist_from_meter, "bus {}", bus.name);
+                k += 1;
+            }
+        }
+        assert_eq!(k, all.len());
+    }
+}
+
+#[cfg(test)]
+mod bus_seq_vll_tests {
+    use super::*;
+    use num_complex::Complex64;
+
+    /// One deck carrying every node-set class the corpus's exception buses have
+    /// (measured for GOLDEN_REBASE G1.4c over 209 211 corpus buses):
+    ///
+    /// * `b4` = `[1, 2, 3, 4]` — 107 corpus buses (`Test/indmachtest` `sourcebus`,
+    ///   `IEEETestCases/NEVTestCase` `13kvbus`, …): all three phases **plus** a
+    ///   fourth node.
+    /// * `bx` = `[1, 2, 10]` — 16 corpus buses (NEVTestCase `load1a`, …): three
+    ///   nodes, only two of them phases.
+    /// * `by` = `[1, 10]` — 52 corpus buses (NEVTestCase `ckt1-1-1`, …).
+    /// * `bz` = `[2, 3]` — the two-phase class (48 104 corpus buses with two
+    ///   phase nodes).
+    /// * `brot` = `[2, 1, 3]` — non-prefix insertion order, for the `node_v`
+    ///   ordering contract.
+    ///
+    /// The extra nodes are made real by shunt capacitors, so every node is in `Y`
+    /// and the deck solves.
+    fn seq_vll_deck() -> Dss {
+        let mut dss = Dss::new();
+        dss.command("New circuit.busseqvll basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
+        dss.command(
+            "New Line.l4 bus1=sourcebus.1.2.3 bus2=b4.1.2.3 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command("New Capacitor.c4 bus1=b4.4 phases=1 kv=7.2 kvar=100");
+        dss.command(
+            "New Line.lx bus1=sourcebus.1.2 bus2=bx.1.2 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command("New Capacitor.cx bus1=bx.10 phases=1 kv=7.2 kvar=100");
+        dss.command("New Line.ly bus1=sourcebus.1 bus2=by.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1");
+        dss.command("New Capacitor.cy bus1=by.10 phases=1 kv=7.2 kvar=100");
+        dss.command(
+            "New Line.lz bus1=sourcebus.2.3 bus2=bz.2.3 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command(
+            "New Line.lr bus1=sourcebus.1.2.3 bus2=brot.2.1.3 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+        );
+        dss.command("New Load.ld bus1=b4.1.2.3 phases=3 kv=12.47 kw=500 pf=0.95");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    fn solved_with_bases() -> Dss {
+        let mut dss = seq_vll_deck();
+        dss.command("Set voltagebases=[12.47]");
+        dss.command("CalcVoltageBases");
+        dss.command("Solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// The node numbers a bus ended up with, in `Bus::nodes` insertion order.
+    fn nodes_of(dss: &Dss, name: &str) -> Vec<i32> {
+        dss.bus_voltages(name).expect("bus").nodes
+    }
+
+    /// The port's `Bus.SeqVoltages` / `CplxSeqVoltages` exist **iff** the bus
+    /// carries all three phase nodes (S-SEQ), which is neither engine's rule:
+    /// capi tests `NumNodesThisBus` after clamping it to 3
+    /// (`CAPI_Alt.pas:2174-2186`), r4133 tests it unclamped
+    /// (`DBus.pas:296-300`), and both index the transform with `Find(i)`, whose
+    /// `0` for an absent phase is `NodeV`'s ground slot (`DBus.pas:305` ==
+    /// `CAPI_Alt.pas:2190`).
+    ///
+    /// The two directions of the disagreement, live on the corpus and pinned
+    /// against both channels by the gate: on NEVTestCase `13kvbus` (`[1,2,3,4,10]`)
+    /// capi answers `[93.76039163143575, 7698.828477395033, 30.49852433770403]`
+    /// and r4133 answers `[-1, -1, -1]` while the port computes the real V012;
+    /// on `load1a` (`[1,2,10]`) both oracles answer
+    /// `[18.35739…, 73.53445…, 64.45945…]` — the transform of `[V1, V2, 0 V]` —
+    /// while the port declines.
+    #[test]
+    fn bus_seq_voltages_need_all_three_phase_nodes() {
+        let dss = solved_with_bases();
+        let sc = SymComp::default();
+        let ckt = dss.circuit().expect("circuit");
+
+        // A bus with all three phases and a fourth node: available, and equal to
+        // the transform of its own three phase voltages.
+        assert_eq!(nodes_of(&dss, "b4"), vec![1, 2, 3, 4]);
+        let v4 = dss.bus_voltages("b4").expect("bus b4");
+        let bus4 = &ckt.buses[ckt.bus_list.find("b4").expect("b4")];
+        let vph = [
+            ckt.solution.node_v[bus4.find(1)],
+            ckt.solution.node_v[bus4.find(2)],
+            ckt.solution.node_v[bus4.find(3)],
+        ];
+        let mut want = [Complex64::ZERO; 3];
+        sc.phase_to_sym(&vph, &mut want);
+        assert_eq!(v4.cplx_seq_voltages, Some(want));
+        assert_eq!(
+            v4.seq_voltages,
+            Some([want[0].norm(), want[1].norm(), want[2].norm()]),
+            "the magnitude form is Cabs of the complex form, slot for slot"
+        );
+        // Physically a sequence answer, not a placeholder: a near-balanced bus
+        // puts everything in V1 and leaves V0/V2 tiny.
+        let m = v4.seq_voltages.expect("seq");
+        assert!(m[1] > 6_000.0, "V1 = {} V", m[1]);
+        assert!(m[0] < 0.01 * m[1] && m[2] < 0.01 * m[1], "V0/V2 = {m:?}");
+
+        // Three nodes, only two of them phases: the port declines, while both
+        // oracles publish the transform of a fabricated 0 V phase 3 — a number
+        // this test computes to show it is neither zero nor the port's answer.
+        assert_eq!(nodes_of(&dss, "bx"), vec![1, 2, 10]);
+        let vx = dss.bus_voltages("bx").expect("bus bx");
+        assert_eq!(vx.seq_voltages, None);
+        assert_eq!(vx.cplx_seq_voltages, None);
+        let busx = &ckt.buses[ckt.bus_list.find("bx").expect("bx")];
+        let ground_substituted = [
+            ckt.solution.node_v[busx.find(1)],
+            ckt.solution.node_v[busx.find(2)],
+            ckt.solution.node_v[busx.find(3)], // Find(3) = 0 = ground
+        ];
+        assert_eq!(
+            ground_substituted[2],
+            Complex64::ZERO,
+            "phase 3 is absent, so both oracles read NodeV[0]"
+        );
+        let mut fabricated = [Complex64::ZERO; 3];
+        sc.phase_to_sym(&ground_substituted, &mut fabricated);
+        assert!(
+            fabricated[0].norm() > 1_000.0,
+            "the oracles' V0 on this bus is a large fabricated number, not noise: {}",
+            fabricated[0].norm()
+        );
+
+        // Two phase nodes, and one phase node: no sequence answer either.
+        assert_eq!(nodes_of(&dss, "bz"), vec![2, 3]);
+        assert_eq!(dss.bus_voltages("bz").expect("bz").seq_voltages, None);
+        assert_eq!(nodes_of(&dss, "by"), vec![1, 10]);
+        assert_eq!(dss.bus_voltages("by").expect("by").cplx_seq_voltages, None);
+
+        // The ordinary three-phase bus is unaffected by all of this.
+        let vr = dss.bus_voltages("brot").expect("brot");
+        assert!(vr.seq_voltages.is_some(), "a [2,1,3] bus has all 3 phases");
+    }
+
+    /// The port's `Bus.VLL` pairs the phase nodes the bus actually carries
+    /// (S-VLL) — `[V1−V2, V2−V3, V3−V1]`, one pair, or nothing — where both
+    /// engines instead poll `FindIdx(jj)` *before* the `jj > 3 ⇒ jj := 1` wrap
+    /// (`DBus.pas:575-584` == `CAPI_Alt.pas:2500-2523`).
+    ///
+    /// Live on the corpus, and the number the gate pins against both channels:
+    /// on `Test/indmachtest/Master.DSS` `sourcebus` (`[1,2,3,4]`) both oracles'
+    /// third L-L entry is `V3 − V4 = (-33107.438616, 57475.919433)` while the
+    /// port reports `V3 − V1 = (-99436.757…, 57541.990…)`; on NEVTestCase
+    /// `ckt1-1-1` (`[1,10]`) capi returns its one-element `DefaultResult` `[0.0]`
+    /// and r4133 pairs node 1 with itself for `[0.0, 0.0]`, where the port has no
+    /// line-to-line voltage at all.
+    #[test]
+    fn bus_vll_pairs_only_the_phase_nodes_the_bus_carries() {
+        let dss = solved_with_bases();
+        let ckt = dss.circuit().expect("circuit");
+
+        // Three phases + a fourth node: three pairs, the last one closing the
+        // triangle on phase 1 — not on node 4, the way both oracles walk it.
+        let v4 = dss.bus_voltages("b4").expect("bus b4");
+        let bus4 = &ckt.buses[ckt.bus_list.find("b4").expect("b4")];
+        let v = |num: i32| ckt.solution.node_v[bus4.find(num)];
+        let ll = v4.vll.clone().expect("b4 has three phases");
+        assert_eq!(ll, vec![v(1) - v(2), v(2) - v(3), v(3) - v(1)]);
+        let upstream_third = v(3) - v(4);
+        assert!(
+            (ll[2] - upstream_third).norm() > 1_000.0,
+            "the two pairings are observably different: port {} vs upstream {}",
+            ll[2],
+            upstream_third
+        );
+        // A real line-to-line voltage: sqrt(3) times the phase magnitude.
+        assert!(
+            (ll[0].norm() / v(1).norm() - crate::util::sqrt3()).abs() < 0.05,
+            "|V1-V2| / |V1| = {}",
+            ll[0].norm() / v(1).norm()
+        );
+
+        // Exactly two phase nodes (plus a tenth): the single pair over the
+        // phases present, where upstream emits three entries starting with the
+        // same pair and continuing with its negative.
+        let vx = dss.bus_voltages("bx").expect("bus bx");
+        let busx = &ckt.buses[ckt.bus_list.find("bx").expect("bx")];
+        let vx_n = |num: i32| ckt.solution.node_v[busx.find(num)];
+        assert_eq!(vx.vll, Some(vec![vx_n(1) - vx_n(2)]));
+
+        // Two phase nodes that are not 1 and 2: still one pair, ascending.
+        let vz = dss.bus_voltages("bz").expect("bus bz");
+        let busz = &ckt.buses[ckt.bus_list.find("bz").expect("bz")];
+        assert_eq!(
+            vz.vll,
+            Some(vec![
+                ckt.solution.node_v[busz.find(2)] - ckt.solution.node_v[busz.find(3)]
+            ])
+        );
+
+        // One phase node: no line-to-line voltage exists.
+        let vy = dss.bus_voltages("by").expect("bus by");
+        assert_eq!(nodes_of(&dss, "by"), vec![1, 10]);
+        assert_eq!(vy.vll, None);
+        assert_eq!(vy.pu_vll, None);
+
+        // `pu_vll` is `Some` exactly when `vll` is, entry for entry.
+        for name in ["sourcebus", "b4", "bx", "by", "bz", "brot"] {
+            let view = dss.bus_voltages(name).expect("bus");
+            assert_eq!(
+                view.vll.as_ref().map(Vec::len),
+                view.pu_vll.as_ref().map(Vec::len),
+                "{name}"
+            );
+        }
+    }
+
+    /// `puVLL` divides by the **line-to-line** base `1000 · kVBase · √3`
+    /// (`DBus.pas:622-623` == `CAPI_Alt.pas:2427-2430`) — a different constant
+    /// from the line-to-neutral `BaseFactor` the other per-unit arrays use — and
+    /// falls back to `1.0` on a bus with no base, an arm the corpus reaches
+    /// (`Test/indmachtest/Master.DSS` `sourcebus`, `kVBase = 0`, where both
+    /// oracles report `puVLL == VLL` in volts).
+    #[test]
+    fn bus_pu_vll_divides_by_the_line_to_line_base() {
+        let dss = solved_with_bases();
+        let v4 = dss.bus_voltages("b4").expect("bus b4");
+        let ll_base = 1000.0 * v4.kv_base * crate::util::sqrt3();
+        assert!(ll_base > 0.0);
+        let ll = v4.vll.clone().expect("vll");
+        let pu = v4.pu_vll.clone().expect("pu_vll");
+        for (k, (z, p)) in ll.iter().zip(&pu).enumerate() {
+            assert_eq!(
+                *p,
+                Complex64::new(z.re / ll_base, z.im / ll_base),
+                "entry {k} is a componentwise divide"
+            );
+        }
+        assert!(
+            (0.5..1.5).contains(&pu[0].norm()),
+            "per-unit line-to-line, not per-kV: {}",
+            pu[0].norm()
+        );
+        // The line-to-neutral base would be sqrt(3) too large here.
+        assert!(
+            (pu[0].norm() * crate::util::sqrt3() - ll[0].norm() / (1000.0 * v4.kv_base)).abs()
+                < 1e-9,
+            "the two bases differ by exactly sqrt(3)"
+        );
+
+        // No `CalcVoltageBases`: every bus keeps `TDSSBus.Create`'s kVBase = 0
+        // and the line-to-line base falls back to 1.0.
+        let mut plain = seq_vll_deck();
+        plain.command("Solve");
+        assert!(plain.errors().is_empty(), "{:?}", plain.errors());
+        let v4 = plain.bus_voltages("b4").expect("bus b4");
+        assert_eq!(v4.kv_base, 0.0);
+        assert_eq!(v4.pu_vll, v4.vll, "BaseFactor = 1.0 gives raw volts");
+        assert!(
+            v4.pu_vll.expect("vll")[0].norm() > 1_000.0,
+            "unit base gives volts"
+        );
+    }
+
+    /// `node_v` is the raw `NodeV` behind the per-unit arrays, in the same
+    /// ascending node-**number** order — so a consumer can replay an upstream
+    /// pairing over the port's own state without re-deriving the bus's refs.
+    #[test]
+    fn bus_node_v_is_the_raw_voltage_behind_the_per_unit_arrays() {
+        let dss = solved_with_bases();
+        let ckt = dss.circuit().expect("circuit");
+
+        // A bus declared `.2.1.3`: `nodes` keeps insertion order, `node_v` does
+        // not — it is ordered 1, 2, 3 like `pu_voltages`.
+        let v = dss.bus_voltages("brot").expect("brot");
+        assert_eq!(v.nodes, vec![2, 1, 3], "declared .2.1.3");
+        let bus = &ckt.buses[ckt.bus_list.find("brot").expect("brot")];
+        assert_eq!(v.node_v.len(), v.pu_voltages.len());
+        let bf = 1000.0 * v.kv_base;
+        for (k, num) in [1i32, 2, 3].into_iter().enumerate() {
+            assert_eq!(v.node_v[k], ckt.solution.node_v[bus.find(num)]);
+            assert_eq!(
+                v.pu_voltages[k],
+                Complex64::new(v.node_v[k].re / bf, v.node_v[k].im / bf),
+                "slot {k} is node {num} in both arrays"
+            );
+            assert_eq!(v.vmag_angle[k].0, v.node_v[k].norm());
+        }
+
+        // A four-node bus carries all four raw voltages, node 4 included, even
+        // though only the three phases feed the sequence and L-L answers.
+        let v4 = dss.bus_voltages("b4").expect("b4");
+        assert_eq!(v4.node_v.len(), 4);
+        let bus4 = &ckt.buses[ckt.bus_list.find("b4").expect("b4")];
+        for (k, num) in [1i32, 2, 3, 4].into_iter().enumerate() {
+            assert_eq!(v4.node_v[k], ckt.solution.node_v[bus4.find(num)]);
+        }
+        assert_eq!(v4.vll.expect("vll").len(), 3, "node 4 is not a phase");
     }
 }
 
