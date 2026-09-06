@@ -151,19 +151,21 @@ new); **G1.3d(ii)** (`lane-e`, `e6d66d66` + `43108993` + `d8090b6b`), `PhaseLoss
 an `assert_power_close` floor, the first channel to join `LANE_SKIP_ELEM_POWERS`, with the per-edit control re-attach (`DIVERGENCES.md` L9) and
 defect A-1 behind a multi-control census (**0** new; **eight** widenings); **G1.8** (`lane-s`, `2cadc808` + `f3436c77` + `166bae9b`), the four
 flat incidence/Laplacian quantities read strictly last, the reactor row cursor **asserted, not excluded** (S-INC `(4, 5)`, **0** new); and
-**G1.10a** (`lane-s`, `11386d96` + `48af5a74` + `9029ec42` + `8a6f2e73` + the surface and audit-settlement commits, 2026-09-06), the **created-file SET** — forced on the same 443, one classification for all
-three producers, the two oracles' spellings ASCII-folded (`DIVERGENCES.md` §R-18), the harmonics scratch split off and counted
-(`SCRATCH_FILE_DECLINES = (9, 9)`), **1** new entry (the r4133 `Visualize` pair, a *product* divergence), plus **D25** editor suppression,
-**D30(1)** the in-memory event log, **D32(1)** the Storage `DebugTrace` **port gap** closed in its own commit and **D33** the loud leak report +
-one producer per case dir and **D35** (F4a's four trace-header loops rewritten 0-based — DE_PASCALIZE P14's ceiling stays 106; the two
-cross-transport tests take the claim). Corpus **526** cases / 522 live,
-`FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44) and `FORCED_DERIVED_POPULATION`
-= (445, 314, 87, 44); no golden byte, |Δ| = 0; `WP_G1_MODES` **103**, ledger **55** / 32 causes; G1.3b/c, G1.4b/c, G1.6(ii), G1.10b/c–G1.11c and
-WP-G3–G5 remain.
+**G1.10a** (`lane-s`, `11386d96` + `48af5a74` + `9029ec42` + `8a6f2e73` + `a6d7f1fd` + `728332b6` + docs, 2026-09-06), the **created-file SET** —
+forced on the same 443, one classification for all three producers, the two oracles' spellings ASCII-folded (`DIVERGENCES.md` §R-18), the harmonics
+scratch split off and counted (`SCRATCH_FILE_DECLINES = (9, 9)`), **1** new entry (the r4133 `Visualize` pair, a *product* divergence), plus **D25**
+editor suppression, **D30(1)** the in-memory event log, **D32(1)** the Storage `DebugTrace` **port gap** closed in its own commit, **D33** the loud
+leak report + one producer per case dir and **D35** (the four trace-header loops rewritten 0-based — DE_PASCALIZE P14's ceiling stays 106). Corpus
+**526** cases / 522 live, `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44) and
+`FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden byte; `WP_G1_MODES` **103**, ledger **55** / 32 causes. Audits 15 findings — **9 fixed / 5
+recorded / 1 refuted** (`728332b6` also fixed the parent-guard resurrect behind the `Test/AutoTrans` residue below); gate **8 371 / 0 / 5** per lane,
+`lane_diff` **max |Δ| = 0**. G1.3b/c, G1.4b/c, G1.6(ii), G1.10b/c–G1.11c and WP-G3–G5 remain.
 
-**Next.** `lane-s` **G1.10b** (the export cases' CSV contents; the two ORACLES disagree on the Storage trace's `%-.g` columns — split,
-never widen) → G1.10c; element lane **G1.3b** → G1.3c; `lane-m` **G1.6(ii)** (per-bus reliability + `Bus.Int_Duration`; owns the AT-1
-decision below); bus lane **G1.4c** (D8) → G1.4b; then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** `lane-s` **G1.10b** (the export cases' CSV contents; the two ORACLES disagree on the Storage trace's `%-.g` columns — split, never widen),
+preceded by the **D39** follow-up commit on `lane-s` (the bridge suppresses report auto-display with r4133's own
+`AllowForms`/`ShowReports`/`ShowExport` switches; `Set Editor=` stays only the safety net) → G1.10c; element lane **G1.3b** → G1.3c; `lane-m`
+**G1.6(ii)** (per-bus reliability + `Bus.Int_Duration`; owns the AT-1 decision below); bus lane **G1.4c** (D8) → G1.4b; then WP-G3–G5; queued:
+`WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape
@@ -320,30 +322,30 @@ each row's measured cost.
   so the r4133 channel re-lights instead of staying dark forever.
 - **`CorpusGuard` leaks deck-written artifacts under concurrency — mechanism MEASURED at GOLDEN_REBASE G1.6b (2026-09-04, audit settlement T5);
   still OPEN, owed a hygiene sub-step** (first seen at G1.2, 2026-08-29). Unfiltered `cargo test --workspace` runs intermittently leave untracked
-  deck-written exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*`
-  `.txt`, from the decks' own `export … file=` lines). **Thirty-eight sightings** 2026-08-29 … 2026-09-06 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2,
-  §RP3.13 ×2, §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1, G1.7 ×3 + merge ×1, G1.6(i) ×2 + merge ×1, the G1.5 merge ×2, the G1.3d(ii)
-  merge ×2, G1.8 ×3, G1.10a ×7; per-run file lists in the WP records, one 22-file set carrying a 0-byte `controls/gfm/DA3ABD.tmp`, a new shape),
-  1 … 36 files, varying between runs of the *same* tree (measured at §RP3.13) and once with an unreproducible `corpus_gate` `137 passed; 1
-  failed`; every set was removed before its commit and both lanes were green with the files present, no tracked corpus or golden byte ever
-  moving, so the leak costs hygiene only. **The drop-order race is FIXED (GOLDEN_REBASE G1.10a, D33(2), 2026-09-06); the item stays OPEN.**
-  `runner::CorpusGuard` now takes an exclusive claim on the *canonicalized* case dir (`dir_claim_key`, `corpus_gate/runner.rs:107`) held from
-  before the pre-run photograph until after the sweep **and** the restore (`impl Drop`, `:272`), so the window a sibling case photographed is
-  gone and the case-insensitive collision with it; the gate-contention measurement the fix owed came back negative — wall time 221.7 s → 188.6 /
-  186.8 / 165.8 s over three default-lane drives, 174.0 s on parity. **ROOT CAUSE FOUND AND FIXED (G1.10a audit settlement, 2026-09-06):** `Test/` holds 36 manifest cases and
-  `Test/AutoTrans/` five — two claim keys, concurrent by design — and the parent's guard photographed the child directory, so when the
-  child's guard swept its own export the parent's `restore` found it missing and wrote it back. Both Rust guards now leave a GONE entry
-  gone (an overwritten one is still restored; `corpus_guard.py` always did), pinned by
-  `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`; measured 9 leaked files before / 0 after. Residual history: measured 2026-09-06 (G1.10a F4f) one clean-tree
-  drive leaks **18** (`Auto3bus_*`, `AutoAuto_*`) — both decks are `kind=large*`, so `force_run_files` skips them and no `RunFileProbe` brackets
-  those port runs (a *bracketed* producer's leak now fails the case loudly, `sweep_failed`); a survivor then reads as *pre-existing* next run and
-  silently shrinks a created-file set (it red the `run_files_pins` Auto1bus fold pin once, 7 vs 9, cured by deleting the untracked files, no code
-  change). The second suspect is **closed** (D35(3), `48af5a74`): the two cross-transport tests (`corpus_gate.rs:821,984`) now take the case-dir
-  claim too — but the single-case flake it targeted recurred once on 2026-09-06 (a parity drive while three other lanes built on the same
-  machine, CPU 100 %: `espvlcontrol` "You must create a new circuit object first" plus a `ckt24` capi `oracle timeout after 120s`; both green
-  scoped and on the quiet re-drive), so that flake stays open too — with a rail that now diagnoses it: the G1.10a audit
-  settlement makes `run_rust_capture` assert the compile produced a circuit and print the deck's size on disk, since a compile that
-  leaves neither a circuit nor an error can only be a short read of the master file.
+  deck-written exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`,
+  from the decks' own `export … file=` lines). **Thirty-nine sightings** 2026-08-29 … 2026-09-06 (G1.2 ×2, §RP3.12 ×2, §RP4.1 ×2, §RP3.13 ×2,
+  §RP3.10 ×3, §RP5.1 ×1, G1.0 ×2, G1.9 ×2, G1.6b ×1, G1.7 ×3 + merge ×1, G1.6(i) ×2 + merge ×1, the G1.5 merge ×2, the G1.3d(ii) merge ×2, G1.8 ×3,
+  G1.10a ×8, the last on the settlement's own gate — the drive that exposed the root cause; per-run file lists in the WP records, one 22-file set
+  carrying a 0-byte `controls/gfm/DA3ABD.tmp`, a new shape), 1 … 36 files, varying between runs of the *same* tree (measured at §RP3.13) and once
+  with an unreproducible `corpus_gate` `137 passed; 1 failed`; every set was removed before its commit and both lanes were green with the files
+  present, no tracked corpus or golden byte ever moving, so the leak costs hygiene only. **The drop-order race is FIXED (GOLDEN_REBASE G1.10a,
+  D33(2), 2026-09-06); the item stays OPEN.** `runner::CorpusGuard` now takes an exclusive claim on the *canonicalized* case dir (`dir_claim_key`,
+  `corpus_gate/runner.rs:107`) held from before the pre-run photograph until after the sweep **and** the restore (`impl Drop`, `:272`), so the
+  window a sibling case photographed is gone and the case-insensitive collision with it; the gate-contention measurement the fix owed came back
+  negative — wall time 221.7 s → 188.6 / 186.8 / 165.8 s over three default-lane drives, 174.0 s on parity. **ROOT CAUSE FOUND AND FIXED (G1.10a
+  audit settlement, 2026-09-06):** `Test/` holds 36 manifest cases and `Test/AutoTrans/` five — two claim keys, concurrent by design — and the
+  parent's guard photographed the child directory, so when the child's guard swept its own export the parent's `restore` found it missing and wrote
+  it back. Both Rust guards now leave a GONE entry gone (an overwritten one is still restored; `corpus_guard.py` always did), pinned by
+  `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`; measured 9 leaked files before / 0 after. Residual history: measured 2026-09-06
+  (G1.10a F4f) one clean-tree drive leaks **18** (`Auto3bus_*`, `AutoAuto_*`) — both decks are `kind=large*`, so `force_run_files` skips them and no
+  `RunFileProbe` brackets those port runs (a *bracketed* producer's leak now fails the case loudly, `sweep_failed`); a survivor then reads as
+  *pre-existing* next run and silently shrinks a created-file set (it red the `run_files_pins` Auto1bus fold pin once, 7 vs 9, cured by deleting the
+  untracked files, no code change). The second suspect is **closed** (D35(3), `48af5a74`): the two cross-transport tests (`corpus_gate.rs:821,984`)
+  now take the case-dir claim too — but the single-case flake it targeted recurred once on 2026-09-06 (a parity drive while three other lanes built
+  on the same machine, CPU 100 %: `espvlcontrol` "You must create a new circuit object first" plus a `ckt24` capi `oracle timeout after 120s`; both
+  green scoped and on the quiet re-drive), so that flake stays open too — with a rail that now diagnoses it: the G1.10a audit settlement makes
+  `run_rust_capture` assert the compile produced a circuit and print the deck's size on disk, since a compile that leaves neither a circuit nor an
+  error can only be a short read of the master file.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
   (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `DoLambdaCalcs` zeroes only
   `BusFltRate`/`Bus_Num_Interrupt` circuit-wide (`ExecHelper.pas:4432-4441`);

@@ -3413,8 +3413,10 @@ row against the pre-fix lock.
   single-case capi red absent in four consecutive default-lane drives — it did recur once later, on
   a loaded machine (see the gate note below).
   Commits `11386d96` (F4a, Storage `DebugTrace`), `48af5a74` (D35), `9029ec42` (F0, bridge
-  editor), `8a6f2e73` (F2a, in-memory event log) and the surface commit of this sub-step. Gate, both lanes: `cargo fmt --all --check` rc 0,
-  clippy clean; `corpus_gate` **308 / 0 failed / 0 ignored** per lane with **526/526** cases green
+  editor), `8a6f2e73` (F2a, in-memory event log), `a6d7f1fd` (the surface), `728332b6` (the audit
+  settlement below) + docs. Gate at step 2, both lanes: `cargo fmt --all --check` rc 0,
+  clippy clean, **8 366 passed / 0 failed / 5 ignored** per lane over 81 binaries;
+  `corpus_gate` **308 / 0 failed / 0 ignored** per lane with **526/526** cases green
   (218.9 s default, 173.8 s parity), ledger **55** entries / **1 566** hits / 0 stale and no unhit
   entry, `SCRATCH_FILE_DECLINES` `(9, 9)` identical on both lanes, `run_files_pins` **238 / 0**,
   `capture_order` **34 / 0**, `oracle_parity_cfg_gate` **21 / 0**, `population_lock` **3 / 0**,
@@ -3431,7 +3433,7 @@ row against the pre-fix lock.
   the gate stage and passed: max |Δ| = **0.000e0** on all eight gated kinds (errs 522, iter 2 165, loss
   366 496, pow 1 170 182, v 375 842, y 1 738 268; 0 iteration counts drifted), and again after the
   settlement below.
-  **Audit settlement** (2026-09-06, own commit) — 15 rows (11 distinct): **9 fixed / 5 recorded / 1 refuted**
+  **Audit settlement** (2026-09-06, `728332b6`) — 15 rows (11 distinct): **9 fixed / 5 recorded / 1 refuted**
   (`tmp/g110a/settle.md`). Fixed: the two rails that could pass vacuously (the D30(1) protocol test
   `expect`s its `run_files` key; `CaseResult::sweep_failed` is an `Option` behind the presence rail,
   negative-driven by `a_transport_reply_without_a_sweep_report_fails_the_case` and

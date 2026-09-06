@@ -344,7 +344,8 @@ The module tree under `crates/dss-core/tests/corpus_gate/`:
   loadshape file handles — was proven to leak cross-deck otherwise).
 - **`runner.rs`** — `run_rust_capture` + `compare_capture`: the untouched
   `harness/mod.rs` comparators run on the ledger-unscoped remainder of every
-  comparison field; `CorpusGuard` restores each case dir (recursive; the
+  comparison field; `CorpusGuard` restores each case dir (recursive — an
+  overwritten entry is put back, a deleted one stays deleted; the
   `crates/dss-epri/src/guard.rs` port covers the r4133 side).
 - **`scheduler.rs`** — task = case-dir group (cases sequential inside, so no
   two threads ever touch one dir), pre-sorted longest-first, drained by
@@ -1589,6 +1590,20 @@ over three post-change default-lane drives (−33.1 / −34.9 / −55.9 s, −15
 on the parity lane; the claim removed work rather than adding it (contaminated cases used to fail
 late, and the guards no longer photograph each other's output). Read the sign, not the third digit
 — other lanes were building on the same machine.
+
+**A guard restores what was overwritten; it never resurrects what was deleted** (G1.10a audit
+settlement, 2026-09-06). `Test/` holds 36 manifest cases and `Test/AutoTrans/` five — two claim
+keys, so a parent-directory case and a child-directory case run concurrently by design — and the
+parent's recursive photograph covers the child's directory too. Restoring every buffered entry
+whose bytes no longer match therefore wrote back files the child's own guard had just **swept**,
+which is the mechanism behind the long-standing `Test/AutoTrans/*` residue and behind "a survivor
+reads as pre-existing next run and silently shrinks a created-file set". Both Rust guards
+(`corpus_gate/runner.rs`, `crates/dss-epri/src/guard.rs`) now leave a `NotFound` entry gone, restore
+an entry that still exists and differs (`corpus_guard_restores_case_dir_recursively`) and still
+attempt an unreadable one; `corpus_guard.py` always behaved this way, so the three producers agree.
+Pinned by `runner::a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output` (a deterministic
+child-writes / parent-photographs / child-sweeps / parent-restores interleaving, red before the
+fix); measured 9 leaked files before, **0** over four consecutive full drives after.
 
 **The run-file read is per-RUN, and strictly last.** It is not an A/B/C capture group: the
 classification is one read of the filesystem for the whole run, and
