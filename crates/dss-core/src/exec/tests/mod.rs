@@ -28,6 +28,7 @@ mod exec_tail;
 mod fault_study;
 mod force_hooks;
 mod harmonics;
+mod inc_matrix;
 mod lifecycle;
 mod line_fetch;
 mod live_ctx;

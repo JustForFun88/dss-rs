@@ -944,6 +944,24 @@ pub trait DssObject: Send {
         Vec::new()
     }
 
+    /// Create the debug-trace file a `DebugTrace=yes` property hook queued
+    /// during the last edit (Storage: r4133 `PCElements/Storage.pas:1073-1085`
+    /// opens `GetOutputDirectory + 'STOR_'+Name+'.CSV'` inside the property
+    /// `CASE` arm and writes its header there).
+    ///
+    /// The port's hook cannot reach `OutputDirectory` — the [`ShapeSave`]
+    /// precedent — so it queues the header and the executive hands the resolved
+    /// directory here, before `end_edit`. The object writes the header, closes
+    /// the file and keeps the path for its later per-record appends. Default:
+    /// no object queues one.
+    fn open_debug_traces(
+        &mut self,
+        output_directory: &std::path::Path,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        let _ = (output_directory, errors);
+    }
+
     /// Drain the generic file-backed numeric-array directives (WPG.19) queued on
     /// this object's [`DssObjData`]. Read through `data_mut()`, so the default
     /// works for every class — even the shape classes that override

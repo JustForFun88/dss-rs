@@ -376,3 +376,261 @@ fn storage_gfm_micro_op_point_isc1_invariant() {
         "islanded load power {p_kw} kW must stay at the Isc1-invariant 400 kW op-point"
     );
 }
+
+/// The literal Pascal `DebugTrace` header of a 3-phase Storage with the 34
+/// classic state variables — r4133 `PCElements/Storage.pas:1077-1084`, and byte
+/// for byte the first line of the pinned oracle's own `STOR_storage1.csv`
+/// (dss-python 0.15.7 / dss_capi 0.14.5 on a scratch copy of
+/// `…/StorageTechNote/Example_9_3_Price/Storage_price.dss`; the oracle's Pascal
+/// text mode ends the line with CRLF, the port with `\n` like every other port
+/// writer).
+const STORAGE_TRACE_HEADER_3PH: &str = "t, Iteration, LoadMultiplier, Mode, LoadModel, StorageModel,  Qnominalperphase, \
+     Pnominalperphase, CurrentType, |Iinj1|, |Iinj2|, |Iinj3|, |Iterm1|, |Iterm2|, |Iterm3|, \
+     |Vterm1|, |Vterm2|, |Vterm3|, kWh, State, kWOut, kWIn, kvarOut, DCkW, kWTotalLosses, \
+     kWInvLosses, kWIdlingLosses, kWChDchLosses, kWh Chng, InvEff, InverterON, Vref, \
+     Vavg (DRC), VV Oper, VW Oper, DRC Oper, VV_DRC Oper, WP Oper, WV Oper, kWDesired, \
+     kW VW Limit, Limit kWOut Function, kVA Exceeded, Grid voltage, di/dt, it, it History, \
+     Rated VDC, Avg duty cycle, Target (Amps), Series L, Max. Amps (phase),Vthev, Theta\n";
+
+/// A scratch output directory for one trace test, removed by the caller.
+fn trace_scratch(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("dss_stor_trace_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    dir
+}
+
+/// GOLDEN_REBASE G1.10a F4a — Storage `DebugTrace`, the **edit-time** half
+/// (`elements/pc/storage/trace.rs`; r4133 `PCElements/Storage.pas:1073-1085`).
+///
+/// The file is created by the `New`/`Edit` itself, before any solve, under the
+/// output directory and with r4133's `STOR_<name>.CSV` spelling (capi writes the
+/// same name with a lowercase extension, `src/PCElements/Storage.pas:872` — one
+/// member after the corpus run-file comparator's ASCII fold), and carries the
+/// Pascal header. Nothing holds it open: r4133 closes after every write
+/// (`:1085`, `:2429`) where capi keeps its `TBufferedFileStream` for the life of
+/// the object, which is what defeated the corpus guards' `os.remove` (G1.10a F4).
+#[test]
+fn storage_debugtrace_opens_the_trace_file_at_edit_time() {
+    let scratch = trace_scratch("edit");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("New circuit.t basekv=0.48 phases=3 bus1=a pu=1");
+    dss.command(
+        "New Storage.storage1 phases=3 bus1=a kv=0.48 pf=1 kWrated=50 %reserve=20 \
+         kWhrated=500 %stored=50 state=idling debugtrace=yes model=1",
+    );
+
+    let trace = scratch.join("STOR_storage1.CSV");
+    assert!(
+        trace.is_file(),
+        "`debugtrace=yes` must create {} at edit time, before any solve",
+        trace.display()
+    );
+    assert_eq!(
+        std::fs::read_to_string(&trace).expect("trace readable"),
+        STORAGE_TRACE_HEADER_3PH,
+        "the header must be Pascal's, column for column"
+    );
+
+    // A held handle would make this fail on Windows — the property the run-file
+    // guards depend on.
+    std::fs::remove_file(&trace).expect("the trace file must not be held open");
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// GOLDEN_REBASE G1.10a F4a — Storage `DebugTrace`, the **record** half
+/// (r4133 `Storage.pas:2401-2429` `WriteTraceRecord`, written from `InjCurrents`
+/// `:2888` with the tag `Injection`), on the one corpus deck that enables it
+/// (`Version8/Distrib/Examples/StorageTechNote/Example_9_3_Price/Storage_price.dss`,
+/// copied out of the corpus so the run writes into a scratch directory).
+///
+/// **Both numbers.** The pinned oracle (dss-python 0.15.7 / dss_capi 0.14.5) writes
+/// 48 records for this deck's daily solve — 24 steps x 2 injection passes — and its
+/// first one is the literal asserted below; the port writes the same 48 records into
+/// `STOR_storage1.CSV`. Measured over the whole file (`tmp/g110a/f_F4a.md`): in the
+/// **parity** lane the two files are byte-identical except the `kvarOut` column, a
+/// numerical zero (oracle `-2.8E-17`, port `6.6E-27` — 1e-17 of a 50 kW rating), which
+/// is why that one field is compared as a magnitude here; in the **default** lane two
+/// further cells of 8 later records differ (`kWTotalLosses` `5.5`/`5.4`,
+/// `kWChDchLosses` `5`/`4.9`) purely because FPC's two-stage decimal round-up renders a
+/// 2-significant-digit boundary upward where the correctly rounded kernel does not
+/// ([`crate::util::fmt_g`]) — the live f64 state variables agree with the oracle to
+/// 1 ULP (`Dss::element_variables` vs `ActiveCktElement.AllVariableValues`).
+///
+/// The r4133 DLL writes the same 48 records into `STOR_storage1.CSV` on a clean
+/// directory (measured through `epri-worker`) with an identical header, but its
+/// Delphi `Format` renders `%-.g` at ~15 significant digits where FPC renders 2
+/// (`250` vs `2.5E2`, `9999` vs `1E4`, `5.45` vs `5.5`), so no single spelling
+/// matches both oracles; the port keeps the FPC one every other port writer uses
+/// (see `elements/pc/storage/trace.rs::TRACE_G_SIG`).
+#[test]
+fn storage_debugtrace_record_matches_the_oracle_line() {
+    let scratch = trace_scratch("record");
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../../tests/corpus/electricdss-tst/Version8/Distrib/Examples/StorageTechNote/\
+         Example_9_3_Price/Storage_price.dss",
+    );
+    let deck = scratch.join("Storage_price.dss");
+    std::fs::copy(&src, &deck).expect("copy the deck out of the corpus");
+
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", deck.display()));
+
+    // The whole created-file set of the run — the G1.10a run-file surface. capi
+    // creates `STOR_storage1.csv`, r4133 `STOR_storage1.CSV` (both measured on a
+    // clean scratch copy); the three sets are one member after the comparator's
+    // ASCII fold.
+    let mut created: Vec<String> = std::fs::read_dir(&scratch)
+        .expect("scratch readable")
+        .map(|e| {
+            e.expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|n| n != "Storage_price.dss")
+        .collect();
+    created.sort();
+    assert_eq!(created, vec!["STOR_storage1.CSV".to_string()]);
+
+    let trace = scratch.join("STOR_storage1.CSV");
+    let text = std::fs::read_to_string(&trace).expect("trace file written");
+    let mut lines = text.lines();
+    assert_eq!(
+        format!("{}\n", lines.next().expect("header line")),
+        STORAGE_TRACE_HEADER_3PH
+    );
+    let records: Vec<&str> = lines.collect();
+    assert_eq!(
+        records.len(),
+        48,
+        "24 daily steps x 2 injection passes, exactly what the oracle writes"
+    );
+
+    // The oracle's first record, field for field (dss_capi 0.14.5, measured).
+    let oracle = concat!(
+        "1, 1, 1, Daily, PowerFlow, 1,    -0.00,    -0.00, Injection, ",
+        "     0.6,      0.6,      0.6,      0.6,      0.6,      0.6, ",
+        "   277.1,    277.1,    277.1, 2.5E2, 0, 0, 0.5, -2.8E-17, ",
+        "-0.5, 0.5, 0, 0.5, 0, -2.5E2, 1, 1, 1E4, 1E4, 1E4, 1E4, 1E4, ",
+        "1E4, 1E4, 1E4, 0, 1E4, 50, 0, 0, 0, 0, 0, 8E3, 0, 0, 0, 0, ",
+    );
+    // `kvarOut` (the 5th state variable) is a cancellation zero on both engines;
+    // compare it as a magnitude and every other field literally.
+    const KVAR_OUT: usize = 22;
+    let want: Vec<&str> = oracle.split(", ").collect();
+    let got: Vec<&str> = records[0].split(", ").collect();
+    assert_eq!(got.len(), want.len(), "field count: {}", records[0]);
+    for (i, (w, g)) in want.iter().zip(got.iter()).enumerate() {
+        if i == KVAR_OUT {
+            let v: f64 = g.trim().parse().expect("kvarOut parses");
+            assert!(
+                v.abs() < 1e-12,
+                "kvarOut must be a numerical zero like the oracle's -2.8E-17, got {g}"
+            );
+        } else {
+            assert_eq!(g, w, "field {i} of the first record");
+        }
+    }
+
+    std::fs::remove_file(&trace).expect("the trace file must not be held open");
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// GOLDEN_REBASE G1.10a F4a — the third trace site: the dynamics record at the
+/// tail of `IntegrateStates` (r4133 `Storage.pas:3676-3683`,
+/// `Format('t=%-.5g ')` + `Format(' Flag=%d ')`), written once per integration
+/// call on the built-in (non-`DynaModel`) path.
+#[test]
+fn storage_debugtrace_writes_the_dynamics_record() {
+    let scratch = trace_scratch("dyn");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("New Circuit.gfm_dyn basekv=4.16 phases=3 bus1=sourcebus");
+    dss.command(
+        "New Line.feeder bus1=sourcebus bus2=mainbus phases=3 r1=0.3 x1=0.6 c1=0 \
+         length=1 units=km",
+    );
+    dss.command(
+        "New Storage.batt phases=3 bus1=mainbus kV=4.16 kva=800 kWrated=800 \
+         kWhrated=6000 %stored=100 %reserve=20 State=DISCHARGING debugtrace=yes",
+    );
+    dss.command("New Load.l phases=3 bus1=mainbus kV=4.16 kW=400 kvar=80 model=1");
+    dss.command("Set voltagebases=[4.16]");
+    dss.command("Calcvoltagebases");
+    dss.command("solve");
+    dss.command("Set mode=dynamics stepsize=0.001 number=2 maxiterations=30");
+    dss.command("solve");
+
+    let trace = scratch.join("STOR_batt.CSV");
+    let text = std::fs::read_to_string(&trace).expect("trace file written");
+    let dyn_lines: Vec<&str> = text.lines().filter(|l| l.starts_with("t=")).collect();
+    assert!(
+        !dyn_lines.is_empty(),
+        "the dynamics record must be written once per IntegrateStates call"
+    );
+    assert_eq!(
+        dyn_lines[0], "t=0.001  Flag=0 ",
+        "Pascal `t=%-.5g ` + ` Flag=%d ` (IterationFlag 0 = new time step)"
+    );
+    std::fs::remove_file(&trace).expect("the trace file must not be held open");
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// GOLDEN_REBASE G1.10a audit settlement (finding AC-4) — the JSON model reader
+/// creates the trace file too.
+///
+/// Pascal opens it inside the property side effect itself (dss_capi
+/// `src/PCElements/Storage.pas:765` `TStorageObj.PropertySideEffects` → the
+/// `ord(TProp.debugtrace)` arm at `:868-885`), which `FillObjFromJSON` reaches
+/// like every other write path. The port queues the header in the hook and
+/// drains it in the executive, so EVERY edit path has to drain: before this fix
+/// `exec/json_import.rs` called `end_edit` without the drain, and a Storage
+/// imported with `DebugTrace: true` kept a queued header forever and traced
+/// nothing — silently, because `write_trace_record` early-returns without a path.
+#[test]
+fn storage_debugtrace_survives_a_json_model_round_trip() {
+    let built = trace_scratch("json-src");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", built.display()));
+    dss.command("New circuit.t basekv=0.48 phases=3 bus1=a pu=1");
+    dss.command(
+        "New Storage.storage1 phases=3 bus1=a kv=0.48 pf=1 kWrated=50 %reserve=20          kWhrated=500 %stored=50 state=idling debugtrace=yes model=1",
+    );
+    dss.command("makebuslist");
+    let json = dss
+        .circuit_to_json(crate::report::export::json::JsonOpts::default())
+        .expect("the built circuit exports");
+    assert!(
+        json.contains("\"DebugTrace\""),
+        "the property must survive the export, or this test would prove nothing"
+    );
+    drop(dss);
+    let _ = std::fs::remove_dir_all(&built);
+
+    // Re-import into a fresh engine whose output directory is a clean scratch.
+    let scratch = trace_scratch("json");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.circuit_from_json(&json).expect("the model imports");
+    assert!(
+        dss.errors().is_empty(),
+        "unexpected errors: {:?}",
+        dss.errors()
+    );
+
+    let trace = scratch.join("STOR_storage1.CSV");
+    assert!(
+        trace.is_file(),
+        "`DebugTrace: true` must create {} on the JSON import path too",
+        trace.display()
+    );
+    assert_eq!(
+        std::fs::read_to_string(&trace).expect("trace readable"),
+        STORAGE_TRACE_HEADER_3PH,
+        "the header is the same Pascal one the command path writes"
+    );
+    std::fs::remove_file(&trace).expect("the trace file must not be held open");
+    let _ = std::fs::remove_dir_all(&scratch);
+}

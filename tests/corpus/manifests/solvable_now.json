@@ -124,7 +124,8 @@
    "path": "Test/CableParameters.dss",
    "kind": "feeder",
    "n_steps": 1,
-   "engines": "both"
+   "engines": "both",
+   "compare_inc_matrix": true
   },
   {
    "path": "Test/Cable_constants.DSS",
@@ -168,7 +169,8 @@
    "path": "Test/DistanceRelayTest.DSS",
    "engines": "r4133",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_run_files": true
   },
   {
    "path": "Test/Dynamic_Kundur.dss",
@@ -278,7 +280,8 @@
    "path": "Test/REACTORTest.DSS",
    "engines": "both",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_run_files": true
   },
   {
    "path": "Test/ReactorConfigs.dss",
@@ -620,7 +623,9 @@
    "engines": "capi_v0145",
    "kind": "feeder",
    "n_steps": 1,
-   "compare_topology": true
+   "compare_topology": true,
+   "compare_inc_matrix": true,
+   "compare_run_files": true
   },
   {
    "path": "Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
@@ -1288,7 +1293,8 @@
    "kind": "feeder",
    "n_steps": 1,
    "isolate": true,
-   "note": "UNIFIED_GATE Phase D: EnergyMeter DI_Totals CSV file-handle contention — a persistent oracle worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits → handle released), serializing the writes (R2/§3.3)."
+   "note": "UNIFIED_GATE Phase D: EnergyMeter DI_Totals CSV file-handle contention — a persistent oracle worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits → handle released), serializing the writes (R2/§3.3).",
+   "compare_run_files": true
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
@@ -1623,6 +1629,7 @@
    ],
    "n_steps": 24,
    "compare_topology": true,
+   "compare_inc_matrix": true,
    "selected_elements": [
     "line.650632",
     "transformer.reg1"
@@ -1806,7 +1813,8 @@
    "path": "Version8/Distrib/IEEETestCases/NEVTestCase/Run_NEV.dss",
    "engines": "both",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_run_files": true
   },
   {
    "path": "Version8/Distrib/IEEETestCases/ShortCircuitCases/IEEE123Master-SC.dss",
@@ -2051,7 +2059,8 @@
    "path": "Version8/Distrib/Examples/CIM/IEEE13_CDPSM.dss",
    "engines": "both",
    "kind": "large",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_run_files": true
   },
   {
    "path": "Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_GFMSnap.dss",

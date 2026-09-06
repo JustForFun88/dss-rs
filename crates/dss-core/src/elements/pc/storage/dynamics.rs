@@ -141,7 +141,8 @@ impl Storage {
     /// by one trapezoidal half-step (GFL current tracking or GFM black-start
     /// droop, per `gfm_mode`), dispatching to `integrate_dyn_eq_phase` per phase
     /// when a `DynamicExp` is linked. The `DynaModel` branch runs first via
-    /// `dyna_model_fintegrate` (WM.4); DebugTrace is unported.
+    /// `dyna_model_fintegrate` (WM.4); the `DebugTrace` record closes the body
+    /// ([`Storage::write_dynamics_trace_record`], `trace.rs`).
     pub(super) fn integrate_states_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
 
@@ -291,6 +292,12 @@ impl Storage {
                 self.base.dyn_vars.it[i] = off_val;
             }
         }
+
+        // r4133 `IntegrateStates`' trailing "Write Dynamics Trace Record" block
+        // (`Storage.pas:3676-3683`): once per call, after the per-phase loop, on
+        // the built-in (non-`DynaModel`) path only — the `DynaModel.Integrate`
+        // branch returns above, exactly as Pascal's `If Dynamodel.Exists` does.
+        self.write_dynamics_trace_record(sys);
     }
 
     /// Pascal `TStorageObj.IntegrateStates`'s `DynamicEqObj <> NIL` body for one

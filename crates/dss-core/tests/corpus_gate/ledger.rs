@@ -551,8 +551,8 @@ impl LedgerRuntime {
 /// it (or a typo'd field) would silently never apply, so loading rejects
 /// anything outside this list loudly (pre-E/F audit UGA-T4).
 ///
-/// The last seven — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
-/// `reliability`, `distance` — are
+/// The last eight — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
+/// `reliability`, `distance`, `run_files` — are
 /// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]). The first four name a whole
 /// compared artifact rather than a value with a natural envelope, so the only
 /// thing the ledger can say about them is "this (case, channel) does not
@@ -603,7 +603,19 @@ impl LedgerRuntime {
 /// and nothing else. It is consulted only AFTER that equality has failed, which
 /// is what makes its per-scope `hit` mean "masked something" rather than
 /// "matched a name" (see [`PER_VALUE_EXCLUSION_FIELDS`]).
-const LEDGER_FIELDS: [&str; 16] = [
+///
+/// `run_files` (`GOLDEN_REBASE_PLAN.md` G1.10a) is the fourth per-VALUE field:
+/// the key is one member of the run's created-file SET — a `/`-joined,
+/// ASCII-case-folded, case-dir-relative name, a trailing `/` marking a created
+/// directory (`harness::run_files::compare_run_files`). The set is discrete and
+/// compared at `rel = abs = 0`, so — like `variables` and `reliability` — there
+/// is no envelope a `divergence` could re-assert; and because the exclusion
+/// removes the matched name from BOTH sides, it can never hide a second
+/// divergence on the same case. Everything the comparator asserts around the
+/// set (the presence rail, the ASCII refusal, the D25/Q2 symmetric
+/// engine-scratch split and its census) stays unconditional whatever the ledger
+/// says.
+const LEDGER_FIELDS: [&str; 17] = [
     "iterations",
     "voltages",
     "injection",
@@ -620,12 +632,13 @@ const LEDGER_FIELDS: [&str; 16] = [
     "variables",
     "reliability",
     "distance",
+    "run_files",
 ];
 
 /// Fields an entry may name only with `kind: "exclusion"` — see
 /// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
 /// nothing re-asserts.
-const EXCLUSION_ONLY_FIELDS: [&str; 7] = [
+const EXCLUSION_ONLY_FIELDS: [&str; 8] = [
     "y",
     "y_fingerprint",
     "yprim",
@@ -633,6 +646,7 @@ const EXCLUSION_ONLY_FIELDS: [&str; 7] = [
     "variables",
     "reliability",
     "distance",
+    "run_files",
 ];
 
 /// Fields an `exclusion` entry may name — the mirror obligation of
@@ -656,7 +670,17 @@ const EXCLUSION_ONLY_FIELDS: [&str; 7] = [
 /// assertion unconditional whatever the ledger says, and asserts for every
 /// index an exclusion drops that both engines spell that variable the same —
 /// a mask selected by name must not be able to slide onto a clean channel.
-const EXCLUSION_FIELDS: [&str; 12] = [
+///
+/// `run_files` (`GOLDEN_REBASE_PLAN.md` G1.10a) is served by
+/// [`LedgerView::excluded`] the same way, keyed on the normalized created-file
+/// name the runner passes (`corpus_gate/runner.rs`, e.g.
+/// `testygd_transformer_tr1_pq.dsv`), so
+/// `every_exclusion_field_is_honoured_by_the_runtime` covers it with no new
+/// drive. `compare_run_files` keeps the presence rail, the ASCII refusal and
+/// the D25/Q2 scratch split unconditional whatever the ledger says, and an
+/// excluded name leaves BOTH sides, so a mask can never absorb a second
+/// divergence on the same case.
+const EXCLUSION_FIELDS: [&str; 13] = [
     "voltages",
     "element",
     "injection",
@@ -669,6 +693,7 @@ const EXCLUSION_FIELDS: [&str; 12] = [
     "variables",
     "reliability",
     "distance",
+    "run_files",
 ];
 
 /// Fields whose [`Scope::channels`] selects **sub-channels** of a multi-part
@@ -2729,15 +2754,16 @@ const EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER: [&str; 2] = ["voltages", "elem
 /// whole artifact, and which therefore need their own per-SCOPE liveness in
 /// [`LedgerRuntime::assert_all_hit`]: `applied`/`exceeded_floor` are per ENTRY,
 /// so a dead selector on an entry that also excludes something coarse would
-/// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i) and by
-/// G1.4b's `distance`, whose selector is a BUS name).
-const PER_VALUE_EXCLUSION_FIELDS: [&str; 3] = ["variables", "reliability", "distance"];
+/// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i), by
+/// G1.4b's `distance`, whose selector is a BUS name, and by G1.10a's
+/// `run_files`, whose scopes select one created-file NAME).
+const PER_VALUE_EXCLUSION_FIELDS: [&str; 4] = ["variables", "reliability", "distance", "run_files"];
 
 /// Every field [`EXCLUSION_FIELDS`] lets an `exclusion` name must actually be
 /// honoured at runtime — the same guarantee [`LEDGER_FIELDS`] gives one level
 /// up, at the kind granularity `GOLDEN_REBASE_PLAN.md` G2.5 introduced.
 ///
-/// This is a **synthetic** drive because two of the twelve (`probe`, `meter`)
+/// This is a **synthetic** drive because two of the thirteen (`probe`, `meter`)
 /// have no live entry in `tests/corpus/ledger.json` today: without it they would be
 /// whitelisted, pass `assert_structural`, and then be reachable only by a future
 /// author who has no way to know whether the branch works. The drive also pins

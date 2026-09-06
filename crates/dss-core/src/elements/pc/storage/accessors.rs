@@ -251,6 +251,10 @@ impl CktElement for Storage {
             }
             ctx.errors.push(d);
         }
+        // r4133 `TStorageObj.InjCurrents` (`Storage.pas:2888`): the trace record
+        // is written after `CalcInjCurrentArray` and before the inherited add
+        // into the system injection array (the caller's scatter here).
+        self.write_trace_record("Injection", sys, node_v);
         y_changed
     }
 
@@ -317,6 +321,12 @@ impl CktElement for Storage {
             cd.iterminal_updated = true;
         }
         self.cd.mark_iterminal_solved(sys.solution_count);
+        // r4133 `TStorageObj.GetTerminalCurrents` (`Storage.pas:2874`): the record
+        // is written after the inherited body, so only on the path that actually
+        // reaches it — never on the `LastSolutionWasDirect` shortcut (which
+        // returns inside `TPCElement.GetCurrents`) and never on the GFM branch
+        // (`TStorageObj.GetCurrents` `:2898-2930` never calls `inherited`).
+        self.write_trace_record("TotalCurrent", sys, node_v);
     }
 }
 
@@ -785,8 +795,24 @@ impl DssObject for Storage {
             DYNA_DATA => {
                 self.queue_user_model_edit(UserModelSlot::Dyna, self.dyna_model_edit.clone())
             }
+            // r4133 `propDEBUGTRACE` (`Storage.pas:1073-1085`): opening the trace
+            // file needs `OutputDirectory`, unreachable from the hook, so queue
+            // the header (built here, with this instant's phase/variable counts)
+            // for the executive's `open_debug_traces` drain.
+            DEBUGTRACE => self.queue_debug_trace(),
             _ => {}
         }
+    }
+
+    /// Create the `DebugTrace=yes` file queued by [`Self::side_effects`], now
+    /// that the executive can supply `OutputDirectory` (r4133
+    /// `Storage.pas:1073-1085`).
+    fn open_debug_traces(
+        &mut self,
+        output_directory: &std::path::Path,
+        errors: &mut crate::diag::ErrorLog,
+    ) {
+        self.open_queued_debug_trace(output_directory, errors);
     }
 
     /// Pascal `TStorage.EndEdit`: `RecalcElementData` + Yprim invalidation. `sys`
