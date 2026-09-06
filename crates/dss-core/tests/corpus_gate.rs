@@ -215,6 +215,15 @@ fn corpus_gate_all_cases_match_engines() {
     harness::inc_matrix::assert_declines_are_the_pinned_population(
         scheduler::inc_matrix_requested_channels(),
     );
+    // And for G1.10a's D25/Q2 settlement, which writes no ledger rows either:
+    // the population where an ORACLE reports the Pascal engines' harmonics disk
+    // round-trip (`<CircuitName_>SavedVoltages.dbl`, r4133
+    // `Common/Utilities.pas:1512-1521`) and the comparator splits that name off
+    // BOTH sides — the port keeps that state in memory and writes no such file.
+    // Re-derived from this run and pinned in both directions; the arming
+    // predicate is read off the manifests, so a re-masked `compare_run_files`
+    // request reds here instead of silently emptying the census.
+    scheduler::assert_scratch_declines_are_the_pinned_population();
     // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
     // two per-row asserts BELOW say nothing when NO row was visited, which is
     // exactly what a re-mask of the r4133 property request would produce — a
@@ -802,6 +811,15 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
     let abs = family_file("asymmetric", &case.path);
     let req = engines::build_run_request(&abs, &case);
 
+    // Coordinator decision D35(3): this test drives BOTH oracle transports on a
+    // corpus deck, so it is a producer in that case directory exactly like the
+    // scheduler's own run and must hold the same exclusive claim — otherwise it
+    // races the gate's cases (and the `#[test]`s that compile decks in place) in
+    // the same binary, which is the shape the one-off
+    // `espvlcontrol.dss [capi] "You must create a new circuit object first"` red
+    // took (`runner::CorpusGuard`, D33(2)/D35(2)).
+    let _guard = runner::CorpusGuard::new(&abs);
+
     let capi = Oracle::for_spec(None).run_case(&abs, &case);
     let resp = engines::EpriOneShot::new().call(&req);
     assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
@@ -959,6 +977,11 @@ fn the_two_transports_agree_on_the_short_circuit_capture_of_a_gated_both_case() 
     case.compare_bus = true; // scheduler::force_bus; `compare_zsc` implies it
     let abs = family_file("modes", &case.path);
     let req = engines::build_run_request(&abs, &case);
+
+    // The same D35(3) claim its bus-surface sibling takes: a two-transport
+    // producer in a corpus case directory holds the directory for the whole
+    // case (`runner::CorpusGuard`).
+    let _guard = runner::CorpusGuard::new(&abs);
 
     let capi = Oracle::for_spec(None).run_case(&abs, &case);
     let resp = engines::EpriOneShot::new().call(&req);
