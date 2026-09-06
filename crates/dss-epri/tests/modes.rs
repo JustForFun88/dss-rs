@@ -87,12 +87,15 @@ fn solved_ieee13() -> Engine {
 }
 
 /// Re-select the fixture the family rows read from. Called before **every**
-/// mode: fifteen rows are [`ModeEffect::Impure`] and move a cursor or a memoized
-/// structure (`PDElements.ParentPDElement` moves `ActiveCktElement` itself; the
-/// five `Circuit` loss/power rows, the two `CktElement.Has*Control` rows and
-/// `Meters.Totals` walk a `PointerList` to exhaustion or re-totalize; the six
-/// `Topology` rows build and memoize `GetTopology` and move its cursor), so
-/// without this a later row would silently read a different object.
+/// mode: twenty rows are [`ModeEffect::Impure`] and move a cursor or a memoized
+/// structure (the three `PDElements` rows — `First`, `Next` and
+/// `ParentPDElement` — move `ActiveCktElement` itself, and so do the two
+/// `Bus.AllP*atBus` rows, which drive every PD/PC class's
+/// `DSS_Class.First`/`Next`; the five `Circuit` loss/power rows, the two
+/// `CktElement.Has*Control` rows, `Meters.Totals` and `Meters.SetActiveSection`
+/// walk a `PointerList` to exhaustion, re-totalize or move the section cursor;
+/// the six `Topology` rows build and memoize `GetTopology` and move its cursor),
+/// so without this a later row would silently read a different object.
 fn select_fixture(e: &Engine) {
     // `Meters.First` (`MetersI(0)`, `DMeters.pas:32-52`) sets `ActiveCktElement`
     // to the meter object itself, so it must run BEFORE the element selection —
@@ -122,6 +125,7 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     distinguishing_readings_separate_same_shape_modes_within_a_family(&e);
     r4133_solution_flags_are_zero_one_ints(&e);
     the_parent_read_hijacks_the_active_element_and_the_capture_reads_it_last(&e);
+    the_at_bus_reads_move_the_active_element(&e);
     // LAST: this phase runs `RelCalc` and adds elements to the circuit.
     the_relcalc_protocol_and_the_section_cursor(&e);
     the_bus_reliability_columns_are_live_after_relcalc(&e);
@@ -645,6 +649,58 @@ fn the_five_circuit_aggregate_rows_are_impure() {
     }
 }
 
+/// `Bus.AllPCEatBus`/`Bus.AllPDEatBus` are reads that move `ActiveCktElement`
+/// (GOLDEN_REBASE G1.4d, coordinator decision D26).
+///
+/// r4133 answers both from `TDSSCircuit.getPCEatBus`/`getPDEatBus`
+/// (`Common/Circuit.pas:1540-1581` / `:1493-1535`), which drive
+/// `DSS_Class.First`/`Next` over every PC/PD class's element list; those two
+/// entry points (`Common/DSSClass.pas:342-371`) assign
+/// `ActiveCircuit.ActiveCktElement` (`:352`, `:367`) — so a caller that reads
+/// either row mid-element-walk and trusts a `Pure` label reads the wrong object.
+/// Its capi twin (`CAPI/CAPI_Bus.pas:773-805` over a `TDSSPointerEnumerator`,
+/// `Shared/DSSPointerList.pas:17-27`) is genuinely pure; only the r4133 channel
+/// carries this hazard, which is why the label lives on the mode row and not in
+/// the capture. The behavioural half is
+/// [`the_at_bus_reads_move_the_active_element`].
+///
+/// Needs no DLL: it is a statement about [`modes`]' own table.
+#[test]
+fn the_two_at_bus_rows_are_impure() {
+    let rows: [(&str, &ModeSpec); 2] = [
+        ("TPCClass", &modes::BUS_ALL_PCE_AT_BUS),
+        ("TPDClass", &modes::BUS_ALL_PDE_AT_BUS),
+    ];
+    for (class_set, row) in rows {
+        let ModeEffect::Impure(why) = row.effect else {
+            panic!(
+                "{row} walks every {class_set} element list through DSS_Class.First/Next (r4133 \
+                 Common/Circuit.pas), and TDSSClass.Get_First/Get_Next assign \
+                 ActiveCircuit.ActiveCktElement (Common/DSSClass.pas:342-371), so it cannot be \
+                 ModeEffect::Pure"
+            );
+        };
+        assert!(
+            why.contains(class_set),
+            "{row}: the Impure payload must name the {class_set} element lists it walks, got: {why}"
+        );
+        assert!(
+            why.contains("Common/DSSClass.pas:342-371"),
+            "{row}: the Impure payload must cite the Get_First/Get_Next site, got: {why}"
+        );
+        assert!(
+            why.contains("ActiveCktElement"),
+            "{row}: the Impure payload must name ActiveCktElement, got: {why}"
+        );
+        assert_eq!(
+            row.effect.capture_group(),
+            'C',
+            "{row}: Impure is order-free (it moves a cursor, not the Iterminal cache) — it demands \
+             a fixture re-selection, not a place in the A-before-B order"
+        );
+    }
+}
+
 /// The behavioural half of GOLDEN_REBASE G1.6b's read-order contract: the
 /// `ParentPDElement` trap is real on this DLL, and
 /// [`dss_epri::capture::capture_pd_elements`] does not fall into it.
@@ -1084,5 +1140,82 @@ fn the_bus_reliability_columns_are_live_after_relcalc(e: &Engine) {
     assert!(
         table.iter().all(|(_, i)| i[1] >= 0),
         "an unstamped SectionID (-1) would collide with the I sentinel"
+    );
+}
+
+/// The behavioural half of [`the_two_at_bus_rows_are_impure`]: the clobber is
+/// real on this DLL, and it moves nothing the rest of the bus walk reads.
+///
+/// `getPCEatBus`/`getPDEatBus` (`Common/Circuit.pas:1563-1572` / `:1517-1527`)
+/// drive `DSS_Class.First`/`Next` over every PC/PD class's element list, and
+/// those assign `ActiveCircuit.ActiveCktElement` (`Common/DSSClass.pas:352`,
+/// `:367`) — so each read ends on the last element of the last non-empty class
+/// it walked. On this fixture that is `Capacitor.cap2` for **both** reads:
+/// `Capacitor` is the last non-empty class of either set here (it is a
+/// `TPDClass` and is added to the PC set by name, `Common/Circuit.pas:1559`),
+/// and `cap2` is its second and last element. The fixture is therefore
+/// re-selected between the two reads, so each row is proven impure on its own
+/// rather than the second one inheriting the first one's damage.
+///
+/// What the reads do **not** move is `ActiveBusIndex` — `DBus.pas:849`/`:876`
+/// only pass `BusList.Get(ActiveBusIndex)` down — which is what lets
+/// [`dss_epri::capture::capture_all_buses`] read this pair last inside the
+/// per-bus record instead of paying a bus re-selection per bus.
+///
+/// Every literal below was read off the vendored r4133 DLL on this fixture
+/// (2026-09-06, GOLDEN_REBASE G1.4d).
+fn the_at_bus_reads_move_the_active_element(e: &Engine) {
+    // (1) `Bus.AllPCEatBus`, live. Bus 671 carries one PC element: the 3-phase
+    // delta load. The PC set is `TPCClass` + Capacitor + Reactor by name, and
+    // the criterion is terminal 1 only (`Common/Circuit.pas:1566-1567`).
+    select_fixture(e);
+    let own = e.pd_elements_name().unwrap();
+    assert_eq!(own, "Line.650632", "the fixture's active element");
+    let nodes = e.bus_nodes().unwrap();
+    assert_eq!(nodes, vec![1, 2, 3], "bus 671 is the 3-phase bus of IEEE13");
+
+    assert_eq!(e.bus_all_pce_at_bus().unwrap(), vec!["Load.671"]);
+    let after_pce = e.pd_elements_name().unwrap();
+    assert_eq!(
+        after_pce, "Capacitor.cap2",
+        "the read ends on the last element of the last non-empty PC class walked"
+    );
+    assert_ne!(
+        after_pce, own,
+        "the read must move ActiveCktElement, or this test proves nothing"
+    );
+    assert_eq!(
+        (
+            e.ckt_element_num_terminals().unwrap(),
+            e.ckt_element_num_phases().unwrap()
+        ),
+        (2, 1),
+        "Capacitor.cap2 is the 1-phase capacitor at 611, not the 3-phase Line.650632"
+    );
+
+    // (2) `Bus.AllPDEatBus` from a freshly selected fixture, so it is proven
+    // impure on its own. Bus 671 carries four lines; the `bus1 <> bus2` shunt
+    // filter (`Common/Circuit.pas:1522`) is what keeps `Capacitor.cap1`/`cap2`
+    // off every PD list, and `Line.632670` ends at 670, not 671.
+    select_fixture(e);
+    assert_eq!(e.pd_elements_name().unwrap(), own, "the fixture is back");
+    assert_eq!(
+        e.bus_all_pde_at_bus().unwrap(),
+        vec!["Line.670671", "Line.671680", "Line.671684", "Line.671692"]
+    );
+    let after_pde = e.pd_elements_name().unwrap();
+    assert_eq!(after_pde, "Capacitor.cap2");
+    assert_ne!(
+        after_pde, own,
+        "the read must move ActiveCktElement, or this test proves nothing"
+    );
+
+    // (3) The bus cursor survived both reads — the property the capture's
+    // read-last placement depends on.
+    assert_eq!(e.bus_nodes().unwrap(), nodes, "ActiveBusIndex is untouched");
+    assert_eq!(
+        e.bus_kvbase(),
+        2.4017771198288433,
+        "bus 671 is still the active bus (4.16 kV / sqrt(3))"
     );
 }

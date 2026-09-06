@@ -1023,12 +1023,40 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
     at index 1 (the node the 1-phase shunt is on), which ascending order would
     have put at index 0.
 
+    G1.4d appends the LAST two arms of this same walk — read after the
+    short-circuit block on both transports:
+
+    * `all_pce_at_bus` / `all_pde_at_bus` — `Bus.AllPCEatBus` / `Bus.AllPDEatBus`
+      (`CAPI/CAPI_Bus.pas:773-788` / `:790-805`, both with `useNone = False`,
+      -> `Common/Circuit.pas:1797-1870` / `:1712-1794` == r4133
+      `DDLL/DBus.pas:840-866` / `:867-898` -> `Common/Circuit.pas:1540-1583` /
+      `:1493-1536`). The fastdss harness has both in `dss/IBus.py:51-52`
+      `_columns` but DROPS them in the Oddie configuration
+      (`origin/fastdss` `tests/save_outputs.py:208-209`, under
+      `COM_VLL_BROKEN`), so this surface is strictly stronger than the parity
+      target.
+
+      Shipped **raw**, and the wire shape here is NOT dss_capi's: the C API
+      returns `[]` for an empty answer and appends nothing, while the pinned
+      dss-python facade substitutes `['None']` and appends one `''` to a
+      non-empty reply — `dss/IBus.py`, `result.append('')` under
+      `# TODO: remove this -- added for full compatibility with COM`. r4133's
+      DDLL emits its own `'None'` (`DBus.pas:862-863`, `:894-895`) and filters
+      the empty trailing slot `getP*atBus` appends (`:853`, `:880`), so the two
+      channels' conventions differ by construction. Normalizing here would hide
+      exactly the fact the comparator asserts per channel, so this transport
+      does not touch the reply.
+
     Capture-order class: **group C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
     coordinator decision D3). Every read goes straight to `Solution.NodeV`
     (`CAPI_Alt.pas:2276`) and touches neither `ComputeIterminal` nor
-    `ActiveCktElement`; only `ActiveBusIndex` moves. The fixed per-bus read
-    order below is therefore a contract the capture-order test asserts, not a
-    staleness hazard.
+    `ActiveCktElement`; only `ActiveBusIndex` moves. That holds for the two
+    at-bus arms too on THIS channel: `for elem in DSS_Class` is a
+    `TDSSPointerEnumerator` (`Shared/DSSPointerList.pas:17-27`) carrying its own
+    index, so no global cursor moves — unlike r4133, whose `DSS_Class.First`/
+    `Next` walk is `ModeEffect::Impure` (`dss_epri::modes::BUS_ALL_PCE_AT_BUS`).
+    The fixed per-bus read order below is therefore a contract the capture-order
+    test asserts, not a staleness hazard.
 
     Shapes are asserted, never assumed: a `2·len(nodes)` mismatch fails the case
     loudly instead of shipping a short row the comparator would misread as a
@@ -1121,6 +1149,14 @@ def capture_all_buses(ckt, want_sc: bool) -> list:
                         f"expected one of {want} for nodes {nodes} (see "
                         "capture_all_buses' docstring for each arm's Pascal shape)"
                     )
+        # G1.4d — the two at-bus lists, read LAST in the per-bus walk on BOTH
+        # transports (`crates/dss-epri/src/capture.rs::capture_all_buses` reads
+        # them in the same slot, in the same order). Shipped RAW: the trailing
+        # `''` and the `['None']` substitution are the pinned dss-python
+        # facade's, not dss_capi's, and the comparator asserts that convention
+        # rather than letting a transport quietly erase it (see the docstring).
+        cap["all_pce_at_bus"] = [str(x) for x in b.AllPCEatBus]
+        cap["all_pde_at_bus"] = [str(x) for x in b.AllPDEatBus]
         out.append(cap)
     return out
 

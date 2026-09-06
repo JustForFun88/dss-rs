@@ -514,6 +514,40 @@ Oracle-backed pin without a new capture: the `est8` deck minus its
   engine change. **Priority: low**: no gated case reaches it today, and R-14(d) kept G1.6(i)/(ii) out
   of `solution/meters/reliability.rs`.
 
+### 1.21 The `AllPCEatBus` / `AllPDEatBus` **executive commands** have a name and help text but no dispatch
+- **Deferred by:** `GOLDEN_REBASE_PLAN.md` §G1.4d (2026-09-06, coordinator decision **D34**) — that
+  sub-step ported the *API* surface (`Bus.AllPCEatBus`/`AllPDEatBus`, live on both oracle channels)
+  and did not touch the command registry, so D34's "port it if the engine part touches the same
+  registry, else record it with an owner" resolves to this entry.
+- **What.** `EXEC_COMMANDS` carries both names (`crates/dss-core/src/exec/tables.rs:129-130`) and the
+  help catalog carries their upstream help strings
+  (`crates/dss-core/src/report/help_catalog.rs:515-519`), but `exec/command.rs` has no dispatch arm,
+  so both fall through to `not_ported_command` (`:353` → `:425`). Upstream they are
+  `TDSSCircuit.ReportPCEatBus` / `ReportPDEatBus`
+  (r4133 `Version8/Source/Common/Circuit.pas:1586-1600` / `:1601-1615`), which format the SAME two
+  lists this sub-step now computes into `GlobalResult` as a comma-separated string.
+- **What is already there.** The lists themselves exist and are gated:
+  `Dss::all_bus_elements` / `Dss::bus_elements` → `BusElementsView`
+  (`crates/dss-core/src/exec/view.rs`), compared live on both channels by
+  `harness::compare_bus_at_bus`. Only the *text* surface is missing, so the work is a formatter plus
+  a dispatch arm, not a walk.
+- **A second consumer, not just the command.** r4133 calls `ReportPDEatBus` from its own A-Diakoptics
+  zone setup to find the feeder-head branch (`Common/Circuit.pas:1683`, `'New EnergyMeter.myEMZoneFH
+  element=' + first entry`), so the ordering of that string is observable there too — a port of the
+  command should keep the class-walk order upstream emits rather than the port's creation order.
+- **Why it is still here.** No corpus deck issues either command, and WP-G1 gates API surfaces, not
+  report text; wiring it inside G1.4d would have shipped an unwitnessed feature. **Priority: low.**
+  Whoever ports it owes a `modes:` micro deck that issues both commands, and must decide the empty
+  answer's spelling (upstream prints the `None` seed).
+- **Owner (D34, settled at the G1.4d audit settlement 2026-09-06).** D34 asked for this entry to be
+  recorded "with an owner", but no live plan covers unported *executive commands* today, so §2 —
+  "a live plan tracks them" — would be a false claim (checked: GOLDEN_REBASE WP-G3/G4/G5 are goldens
+  and docs, UPGRADE_PLAN is properties/semantics, WASM_USERMODELS is user models). It is therefore
+  **scheduled instead of owned**: `GOLDEN_REBASE_PLAN.md` §G5.2 (the closing record, which already
+  owes the same "add a named WP row … and record it in `ORPHANED_GAPS.md` until that row exists"
+  treatment for the model-6 `FInit` deferral, plan §1.3) either names a WP row for these two commands
+  or ratifies this entry as a standing orphan. Until G5.2 rules, this bullet is the record.
+
 ---
 
 ## 2. Owned deferrals — NOT orphans (a live plan tracks them; do not re-port here)

@@ -1072,6 +1072,29 @@ fn check_signal_match(
 /// criterion: a PD element is included when it touches the bus and `bus1 != bus2`;
 /// a PC element when its `bus1` is the bus. Creation order (see
 /// [`Ieee1547Controller::find_signal_terminals`]).
+///
+/// **Not the same walk as [`Dss::all_bus_elements`]**
+/// (`exec/view.rs::build_bus_elements`), which publishes the port's
+/// `Bus.AllPCEatBus`/`AllPDEatBus` surface, and the two must not be merged:
+///
+/// * this one walks the port's own [`Circuit::pd_elements`] /
+///   [`Circuit::pc_elements`] membership, so it never sees a `Fault` (on
+///   neither list) and puts `Capacitor`/`Reactor` on the PD side only; the
+///   at-bus surface asks the **upstream class tree**
+///   ([`ElemKind::is_power_delivery`] / [`ElemKind::is_power_conversion`],
+///   which adds `Fault` to PD and the two shunts to both);
+/// * this one keeps r4133's own terminal-1/2 name test, which is what the CIM
+///   `IEEE1547` signal scan wants; the at-bus surface answers **any** terminal
+///   (GOLDEN_REBASE D26 `S4`).
+///
+/// Re-pointing this function at the at-bus walk would widen the signal scan
+/// (`Ieee1547Controller::find_signal_terminals` → `scan_bus_for_signal`) to
+/// `Fault`/`Vsource`/`Isource` and could move CIM export bytes, which WP-G1
+/// does not do.
+///
+/// [`Dss::all_bus_elements`]: crate::exec::Dss::all_bus_elements
+/// [`ElemKind::is_power_delivery`]: crate::circuit::ElemKind::is_power_delivery
+/// [`ElemKind::is_power_conversion`]: crate::circuit::ElemKind::is_power_conversion
 fn elements_at_bus(ckt: &Circuit, classes: &[DssClass], bus_idx: usize, pd: bool) -> Vec<ElemId> {
     let want = ckt.buses[bus_idx].name.to_ascii_lowercase();
     let strip = |s: &str| s.split('.').next().unwrap_or(s).to_ascii_lowercase();

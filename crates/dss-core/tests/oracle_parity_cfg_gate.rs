@@ -5855,3 +5855,117 @@ fn the_g1_10_pins_the_docs_cite_exist_exactly_once() {
         );
     }
 }
+
+/// The GOLDEN_REBASE **G1.4d** (bus at-bus lists) names the operational docs and
+/// the phase record cite, with the number of definitions each must have.
+///
+/// Same contract as [`G1_4B_PINS`]: the sub-step's surface is described BY these
+/// names in four documents, and nothing but this registry would notice a rename
+/// or a deletion. G1.4d adds **0** ledger entries — every divergence from either
+/// oracle is closed by a positive mechanism assertion plus a counted, run-wide
+/// fail-on-stale population — so these tests are the entire written record of
+/// the surface, and losing one silently would leave the prose describing a gate
+/// that no longer exists.
+const G1_4D_PINS: [(&str, usize); 21] = [
+    // the comparator (`tests/harness/mod.rs`)
+    ("compare_bus_at_bus", 1),
+    // the completeness direction the channel assertions cannot state, added by
+    // the G1.4d audit settlement (`tests/harness/mod.rs`)
+    ("assert_port_at_bus_is_s4", 1),
+    // the two both-numbers pins on `modes:makeposseq/makeposseq_xfmr.dss`
+    // (`tests/corpus_gate.rs`)
+    (
+        "the_makeposseq_xfmr_deck_reports_the_at_bus_lists_the_port_computes",
+        1,
+    ),
+    (
+        "the_makeposseq_xfmr_at_bus_wires_are_each_channels_own_walk",
+        1,
+    ),
+    // the four fail-on-stale populations, both directions (`tests/corpus_gate.rs`)
+    ("the_at_bus_guard_is_silent_on_the_measured_populations", 1),
+    (
+        "the_at_bus_guard_fires_when_a_deck_stops_carrying_its_class",
+        1,
+    ),
+    ("the_at_bus_guard_fires_when_a_pce_divergence_appears", 1),
+    ("the_at_bus_guard_fires_when_the_terminal3_class_grows", 1),
+    (
+        "the_at_bus_guard_fires_when_a_stale_node_ref_stops_naming_an_element",
+        1,
+    ),
+    // the capture-order contract (`tests/corpus_gate.rs`, `tests/capture_order.rs`)
+    (
+        "the_at_bus_capture_reads_last_in_one_fixed_order_on_both_transports",
+        1,
+    ),
+    ("the_at_bus_surface_is_order_free_in_the_mode_table", 1),
+    // the r4133 bridge's `ModeEffect::Impure` correction (`dss-epri/tests/modes.rs`)
+    ("the_two_at_bus_rows_are_impure", 1),
+    ("the_at_bus_reads_move_the_active_element", 1),
+    // the engine-side identities without an oracle (`src/exec/tests/bus_elements.rs`)
+    ("the_two_class_predicates_are_the_upstream_class_sets", 1),
+    ("at_bus_lists_follow_the_s4_rule", 1),
+    (
+        "attachments_publish_the_raw_terminal_facts_both_upstream_walks_read",
+        1,
+    ),
+    ("bus_elements_answers_one_bus_and_agrees_with_the_sweep", 1),
+    // the comparator's own offline drives (`tests/harness/mod.rs`)
+    (
+        "compare_bus_at_bus_accepts_each_channels_own_walk_and_counts_the_divergence",
+        1,
+    ),
+    ("each_channel_is_held_to_its_own_walk_not_the_other_ones", 1),
+    (
+        "a_port_at_bus_list_that_drops_an_s4_element_reds_per_case",
+        1,
+    ),
+    (
+        "the_capi_walk_takes_its_name_test_fallback_on_a_node_less_bus",
+        1,
+    ),
+];
+
+/// The documents that cite the G1.4d names, same rule as [`G1_4B_PIN_DOCS`].
+const G1_4D_PIN_DOCS: [&str; 4] = [
+    "TESTING.md",
+    "tests/TOLERANCE_NOTES.md",
+    "GOLDEN_REBASE_PLAN.md",
+    "docs/phase-records/golden-rebase.md",
+];
+
+#[test]
+fn the_g1_4d_pins_the_docs_cite_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let docs: Vec<String> = G1_4D_PIN_DOCS
+        .iter()
+        .map(|rel| {
+            fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the G1.4d doc surface: {e}"))
+        })
+        .collect();
+
+    for (pin, want) in G1_4D_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the G1.4d name `{pin}` is defined {defs} times in the tree, expected \
+             exactly {want} — {} cite it by name, so a rename, a deletion or an \
+             undocumented second copy must red here instead of leaving them stale",
+            G1_4D_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(pin)),
+            "the G1.4d name `{pin}` is in this registry but no longer named by any \
+             of {} — either restore the citation or drop it from the list",
+            G1_4D_PIN_DOCS.join(" / ")
+        );
+    }
+}

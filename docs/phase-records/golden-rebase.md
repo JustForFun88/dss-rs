@@ -3699,3 +3699,49 @@ row against the pre-fix lock.
   G1.10b (STOPPED at spec), G1.10c, the G1.11′ docs close-out and WP-G3 open the next session.
 
   merge: lane lane-s -> update, see git log
+
+- **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**; commits
+  `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface, `dff755b5` the
+  settlement, + docs) — the bus **at-bus lists** (`Bus.AllPCEatBus`/`AllPDEatBus`) live on both channels
+  on G1.4a's per-bus walk. The port answers **S4**, neither oracle's criterion (r4133
+  `Common/Circuit.pas:1513`/`:1559`, capi `:1746-1767`): `Dss::all_bus_elements` publishes the answer AND
+  the raw terminal facts, over which `harness::compare_bus_at_bus` replays each channel's own walk
+  (**D15**/**D16**/**D21**) and COUNTS the residue into four fail-on-stale populations — **(279, 279)** /
+  **(18, 147)** / **(8, 11)** / **(0, 0)**. D26's premise that capi drops disabled elements is refuted by
+  measurement (15 of 223 (disabled element, own bus) pairs ARE listed), which is what makes that channel
+  an equality. **0** ledger rows (55 / 31 causes), no flag, no lock cell, no golden byte; pins in
+  `G1_4D_PINS`, details in `TESTING.md` §"The bus at-bus surface" and `to_opendss/` 69-71. Both lanes
+  **7 892 / 0 / 5 ignored** over 79 binaries, corpus **526/526**, ledger **55** / **1 567** hits / 0
+  stale, `lane_diff` **PASS** max |Δ| = 0.
+
+  **Audit settlement** (2026-09-06, `dff755b5`; 13 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted): the
+  comparator gained the one direction no channel assertion can state (`assert_port_at_bus_is_s4` — each
+  oracle's walk is a projection of the same facts, so a silently shortened port list vanished from both
+  sides of it; armed in a scratch copy it now reds 3/3 cases, where the same corruption left F4's full run
+  526/526 green), an offline drive for capi's node-less fallback arm (its reply re-measured on a fixture of
+  its own), one drive per remaining population direction, and D34's owner for `ORPHANED_GAPS.md` §1.21
+  (scheduled at the plan's §G5.2). Recorded: r4133's terminal-1/2 shunt filter and capi's terminal-window
+  arm (corpus exposure re-measured **0** for both), the deliberate order-insensitivity, the
+  prose-vs-constant check **D37(1)** defers to G1.11′, and two spec claims the landed code refutes.
+  Test-only change (no product file moved, so no `lane_diff` owed): both lanes **7 940 / 0 / 5 ignored**
+  over 79 binaries, corpus **526/526**, the four populations and the ledger (55 / 1567 hits) unmoved.
+
+  Merged-tree checks (2026-09-06 landing into `update`, which had gained G1.3c, G1.8 and G1.10a since the
+  base): `fmt` + clippy clean in both lanes, `oracle_parity_cfg_gate` **25/25** (every pin registry from
+  G1.7/G1.8/G1.9/G1.4b/G1.10/G1.4d plus the citation walker), `population_lock` 37 / `golden_lock` 4 /
+  `capture_order` 3, and the full default-lane `corpus_gate` **452 passed / 0 failed**, **526/526** cases in
+  175.5 s. Nothing of G1.4d moved on the bigger population: at-bus **(279, 279) / (18, 147) / (8, 11) /
+  (0, 0)** exactly as the lane measured, `WP_G1_MODES` **111** with **20** `ModeEffect::Impure` rows (the
+  census the lane corrected, re-derived here over the eleven rows G1.8/G1.10a added), ledger **57** entries
+  / 33 causes / **1 573** hits / 0 unhit / 0 stale (G1.4d adds none, so the union is `update`'s), and the
+  neighbouring populations all re-derived unchanged — sequence-arm `(297 867, 78, 4)`, distance
+  `(867, 79 137)`, D15 `(16, 135)` / D16 `(8, 96)`, S-INC `(4, 5)`, `SCRATCH_FILE_DECLINES (9, 9)`,
+  short-circuit `(10, 646)`, seq/VLL `(10, 129)`/`(4, 54)`/`(16, 196)`/`(2, 12)`. `population.lock.json`
+  regenerated with an empty diff (the surface sets no manifest flag); `golden.lock.json` and `tests/golden/`
+  untouched. Two documents met at the merge: `ORPHANED_GAPS.md` §1.20 was already taken by G1.6(i)'s
+  zone-boundary deferral, so G1.4d's executive-command entry landed as **§1.21** and its two citations (the
+  plan's §G5.2 duty line and this record) were re-pointed; the 43 `file.rs:LINE` citations the merge shifted
+  were re-pointed by diff-mapping and re-checked by
+  `operational_docs_line_citations_point_at_the_line_they_name`.
+
+  merge: lane lane-b -> update, see git log
