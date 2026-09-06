@@ -206,11 +206,18 @@ pub(crate) struct SolvableCase {
     /// at `:117`; r4133 `DDLL/DSolution.pas`).
     #[serde(default)]
     pub(crate) compare_inc_matrix: bool,
-    /// G1.10a: the **run-produced file set** — every non-monitor `*.csv` the deck
-    /// emits under DataPath plus the `save circuit` output file set
-    /// (`origin/fastdss` `tests/save_outputs.py:597-609`, which archives every
-    /// `*.csv` under the run dir; the `.dss` set is archived but never compared —
-    /// our file-set + round-trip check is strictly stronger).
+    /// G1.10a: the **run-produced file SET** — the filesystem entries the run
+    /// (`clear → compile → post → n_steps × solve`) creates under the case
+    /// directory, as `/`-joined case-dir-relative names, ASCII-case-folded, a
+    /// trailing `/` marking a created directory; contents are NOT read here
+    /// (G1.10b/c). Monitor CSVs contribute their NAMES — discrete metadata
+    /// (circuit, monitor, channel index) — while their data stays out of the
+    /// gate (TESTING.md's unsampled-monitor rule). Upstream never gated this:
+    /// `origin/fastdss` `tests/save_outputs.py:597-609` archives every `*.csv`
+    /// under the run dir and `tests/compare_outputs.py:412-421` *skips* a name
+    /// missing on the other side — new coverage, not catch-up. `save circuit`
+    /// has no corpus surface (no `save` command in the reachable corpus); its
+    /// gate stays the fixture `save_roundtrip.rs::save_forms_structural_file_set`.
     #[serde(default)]
     pub(crate) compare_run_files: bool,
     /// G1.10b: the **demand-interval tree** — the `closedi` subset of the CSV set
@@ -652,10 +659,19 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
         wired: true,
         get: |c| c.compare_inc_matrix,
     },
+    // Wired by G1.10a (2026-09-05) — request key `run_files` in
+    // `engines::build_run_request`, capture on both transports from the very
+    // `CorpusGuard` that sweeps the case dir (`tools/oracle/corpus_guard.py`'s
+    // `CorpusGuard.created` + its Rust twin `crates/dss-epri/src/guard.rs`,
+    // read strictly last of the run), comparator
+    // `harness::run_files::compare_run_files` behind
+    // `capture_guard::require_capture_opt` in `runner::compare_with_result`
+    // (an empty created set is a legitimate answer, a missing capture is not).
+    // G1.10b/c read the CONTENTS of what this row lists; the row stays as it is.
     G1Flag {
         name: "compare_run_files",
         sub_step: "G1.10a",
-        wired: false,
+        wired: true,
         get: |c| c.compare_run_files,
     },
     G1Flag {

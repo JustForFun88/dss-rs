@@ -1207,6 +1207,74 @@ set** (names) vs the oracle's and keep our round-trip gate as the content check
 (byte-matching the oracle's Save is explicitly not a goal — `PHASE8_PLAN.md §2.4`;
 fastdss itself never compares this surface, so this is strictly stronger).
 
+> **G1.10 is SPLIT, and part a is as executed (2026-09-06, lane `lane-s`).** The two-line text
+> above is one sub-step's worth of prose over four surfaces, so it runs as **a** the created-file
+> SET (this note), **b** the contents of the non-monitor export cases, **c** the DI tree on the six
+> `CloseDI` cases, plus two doc-sized riders — **d** the `save circuit` disposition (settled here)
+> and **e** the forced `export profile` (settled in b). **A6 re-scopes the flag away from monitor
+> DATA:** 230 of the 273 `export` occurrences in the reachable corpus are `export monitors`, and
+> re-importing that f32 surface through the filesystem is exactly what TESTING.md forbids — so
+> monitor CSV *names* are members of the SET (discrete metadata, decision D25/Q3) and their bytes
+> are not. **C2, stated because the plan's own §0 row overclaims it:** fastdss archives the CSVs
+> (`origin/fastdss` `tests/save_outputs.py:597-609`) but never *gates* them — a missing name is
+> skipped (`tests/compare_outputs.py:412-421`) and a mismatch is printed (`:517-524`) — so this is
+> **new coverage, not catch-up**. **Rider d (C3):** there are **zero** `save` commands in the
+> reachable corpus, so `save circuit` has no corpus surface at all; its gate stays the hardcoded
+> 14-entry fixture `save_roundtrip.rs::save_forms_structural_file_set`, recorded as a fixture test
+> and deliberately left as one (a live oracle fetch would mean a second oracle transport for one
+> test; inventing a deck would mean a synthetic surface with no upstream provenance).
+> **What part a landed.** `compare_run_files` flipped to `wired: true` and **forced on every live
+> non-`large` case** — 443 = 312 `both` / 87 `r4133` / 44 `capi_v0145`, re-derived each run as
+> `FORCED_RUN_FILES_POPULATION` and asserted equal to the property/topology/incidence populations —
+> with six decks also declaring it (`RUN_FILES_DECLARED_IN_MANIFEST`, all three channels, one of
+> them `kind=large` so the declaration is the only thing that reaches it); the lock moved by six
+> `runf=0 → runf=1` tokens plus one `ledger=` digest. **0** golden bytes, **no floor** (the surface
+> is a set of names; `tests/TOLERANCE_NOTES.md` §G1.10a records the derivation), **one** ledger
+> entry. **R-18 is struck as written and replaced by measurement:** the claim was "`.CSV` (oracles)
+> vs `.csv` (port)", but the two ORACLES disagree with each other (r4133
+> `Executive/ExportOptions.pas:333-356` upper, capi `src/Executive/ExportOptions.pas:314,343,345`
+> lower, and r4133 also lowercases deck-supplied stems), so the port keeps capi's spelling and the
+> comparator folds ASCII case on all three producers — a normalization with a literal pin
+> (`the_two_oracle_spellings_of_auto1bus_fold_to_one_member`), recorded in `DIVERGENCES.md`.
+> Five things the text above did not foresee, each measured and each costing 0 ledger rows.
+> (1) **The surface had to be defined against concurrency before it could be compared**: the
+> classification stops at a pre-existing subdirectory ("the case dir's own entries, plus everything
+> under a directory the run created"), because every member found deeper belonged to a
+> *concurrently running sibling case* (9 unique members over two full drives, all under another
+> manifest case's directory) — and the same change closes the sibling-case *deletion* hazard on all
+> three guards, which now share one classification (`classify_created`, its Python twin, and the
+> gate's outer guard). (2) **Serialization, not a ledger row, is the answer to cases that share a
+> directory** (D33(2)): `runner::CorpusGuard` claims the canonical case dir across both oracle
+> captures and the port run; the concurrent producer was not the scheduler (whose task unit is
+> already the dir group) but a sibling `#[test]`, `corpus_ad_matches_normal_mode`, compiling
+> `ad_sweep` decks in place. It *removed* work — the gate's wall time went 221.7 s to
+> 188.6 / 186.8 / 165.8 s over three post-change drives. (3) **A hygiene guard may not swallow a
+> failed removal**: a dropping that survives the sweep is now a case failure naming its producer,
+> and the capi transport releases the circuit before sweeping — without that, dss_capi's
+> never-closed Storage trace handle made the file "pre-existing" for every later producer and hid a
+> real gap. (4) **That gap was ours** (D32(1), CLAUDE.md "port gaps immediately"): Storage
+> `DebugTrace` was unported while both oracles create `STOR_<name>.CSV` at edit time (r4133
+> `PCElements/Storage.pas:1073-1085`), so it was ported in its own commit ahead of the surface —
+> name compared here, contents handed to **b**, where the two ORACLES disagree with each other in
+> 16 columns (FPC `%-.g` = 2 significant digits, the Delphi-built r4133 ~15). (5) **The bridge
+> stopped writing two files of its own**: `Set Editor=rundll32.exe` at init (D25 — r4133 fires
+> `FireOffEditor` on every `Show`/`Dump` with no `NoFormsAllowed` guard, ~900 orphaned Notepads
+> across the lanes), and the event-log capture reads `Solution.EventLog` in memory instead of
+> running `export eventlog` (D30(1) — 59 of the first drive's 61 reds), each in its own commit and
+> each pinned by a `dss-epri` protocol test. The one landed exclusion is the r4133 `Visualize`
+> DSSView `.DSV`/`.dbl` pair on `Test/YgD-Test.dss` — a **product** divergence, so `DIVERGENCES.md`
+> and not `investigations/to_opendss/`. Coordinator decisions applied: **D7** (lane `lane-s`),
+> **D25** (editor suppression, the engine-scratch normalization `SCRATCH_FILE_DECLINES = (9, 9)`,
+> monitor names in the SET), **D30** (in-memory event log; no descent into a pre-existing
+> subdirectory), **D32** (Storage `DebugTrace` ported; the leak closed loudly; the outer guard
+> re-based), **D33** (the guarded teardown `clear`; one producer per case directory), **D35** (the
+> one gate red the sub-step produced: the Storage trace header's four `for … in 1..=` loops go
+> 0-based rather than nudge DE_PASCALIZE **P14**'s ceiling — it stays 106 — and the two
+> cross-transport `#[test]`s, the last producers running in a case directory without a claim, take
+> the `CorpusGuard` too).
+> **Tier as executed:** §0's `opus-high+` row held; the five coordinator STOPs it took were
+> scope questions, not tier questions.
+
 ### G1.11a — r4133 channel: CktElement families
 
 Extend `crates/dss-epri/src/families.rs` + `capture.rs` with the CktElement reads

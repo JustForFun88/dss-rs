@@ -1286,6 +1286,18 @@ def run_case(d, req: dict) -> dict:
     # -> every checkpoint carries `None`; on -> only the LAST one carries the
     # payload (`harness::capture_guard::require_capture_opt`).
     want_rel = bool(req.get("reliability", False))
+    # G1.10a: the run-produced FILE SET under the case's DataPath
+    # (`OutputDirectory := DataDirectory := <case dir>`, set by `Compile` ->
+    # `DSSGlobals.SetDataPath`). Not a model read at all: it is the run's
+    # filesystem effect, classified by the SAME `_CorpusGuard` pass that sweeps
+    # the corpus clean (`corpus_guard.CorpusGuard.created`), so the reported set
+    # can never disagree with the swept set. Read STRICTLY LAST of the whole run
+    # — after every step's model read and after `autoadd_log`, which reads a file
+    # off disk — and inside the guard scope, because the guard's exit deletes
+    # exactly those files. Off -> the response carries `None`, not `[]`, so
+    # `harness::capture_guard::require_capture_opt` can tell "not requested"
+    # apart from "requested, and this deck creates nothing" (most decks do not).
+    want_run_files = bool(req.get("run_files", False))
     # CF-C Port 2 user-model decks: tolerate the `_USER_MODEL_ERRNOS` at compile
     # AND at every solve (EarlyAbort is turned off around this call in main()).
     warn_and_continue = bool(req.get("warn_and_continue", False))
@@ -1293,7 +1305,7 @@ def run_case(d, req: dict) -> dict:
         _USER_MODEL_ERRNOS if warn_and_continue else set()
     )
 
-    with _CorpusGuard(case_path):
+    with _CorpusGuard(case_path) as guard:
         for attempt in range(1, _RUN_ATTEMPTS + 1):
             node_order = None
             checkpoints = []
@@ -1544,11 +1556,66 @@ def run_case(d, req: dict) -> dict:
                 with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
                     autoadd_log = fh.read()
 
+        # G1.10a: STRICTLY LAST inside the guard scope — every file the run
+        # wrote (including the AutoAddLog just read) is still on disk, and the
+        # `__exit__` below removes exactly what this call classifies.
+        # `created()` returns None when it cannot report honestly (incomplete
+        # pre-run snapshot / failed listing); the gate's presence rail turns that
+        # into a failed case rather than "nothing was created".
+        run_files = guard.created() if want_run_files else None
+
+        # D32(2)(a): release the circuit BEFORE the guard sweeps. dss_capi opens
+        # a Storage `debugtrace` file at edit time and NEVER closes the stream
+        # for the life of the object (`src/PCElements/Storage.pas:872`;
+        # `FreeAndNil(TraceFile)` only at `:871` on a re-edit and `:1199` in
+        # `TStorageObj.Destroy`), so with the circuit still alive the guard's
+        # `os.remove` raises, the file survives, and the NEXT producer of the
+        # same case snapshots it as pre-existing and reports an empty created
+        # set — the artifact G1.10a F4 measured (`tmp/g110a/probe_f4e.py`). One
+        # `clear` runs every element's destructor, which closes those handles.
+        # It is a TEARDOWN, not a read: it comes after `created()`, so the
+        # reported surface is still exactly the run
+        # `clear -> compile -> post -> n x solve` on both transports, and the
+        # r4133 bridge (whose engines close their trace files immediately, r4133
+        # `Version8/Source/PCElements/Storage.pas:1085`) needs no counterpart.
+        #
+        # D33(1): the teardown is GUARDED. The pinned dss_capi 0.14.5 raises on
+        # this second `clear` on the two AutoAdd decks (`modes:autoadd/autoadd.dss`
+        # and `autoadd_cap.dss`: `DSSException (#303) ... clear ... Access
+        # violation` - the same backend whose AutoAdd solve already segfaults at
+        # process exit, `GAPS_PLAN.md` 2.2). The compared surface is captured
+        # ABOVE this point, so the fault cannot corrupt it: the exception is
+        # recorded as `teardown_error` (reported in the reply and surfaced by
+        # `corpus_gate::runner::compare_with_result` without failing the case),
+        # the guard below still sweeps and still reports `sweep_failed`, and
+        # `main` exits a PERSISTENT worker after replying so the pool respawns it
+        # - a raised access violation may have poisoned the process. Recorded,
+        # never swallowed.
+        teardown_error = None
+        try:
+            d.Text.Command = "clear"
+        except Exception as e:
+            teardown_error = f"{type(e).__name__}: {e}"
+            log(f"teardown clear raised for {case_path}: {teardown_error}")
+
+    # D32(2): whatever the guard could not remove. Read AFTER the `with` block
+    # (`__exit__` fills it) and reported unconditionally — the hygiene contract
+    # does not depend on the run-file request flag. The gate's runner fails the
+    # case on a non-empty list
+    # (`crates/dss-core/tests/corpus_gate/runner.rs::compare_with_result`); the
+    # r4133 twin is `CaseResult::sweep_failed` in `crates/dss-epri/src/capture.rs`.
+    # A raise inside the block skips this line — `__exit__` still sweeps, and that
+    # case has already failed on the error itself (same as the Rust `?` path).
+    sweep_failed = guard.sweep_failed
+
     return {
         "node_order": node_order,
         "n_steps": n_steps,
         "checkpoints": checkpoints,
         "autoadd_log": autoadd_log,
+        "run_files": run_files,
+        "sweep_failed": sweep_failed,
+        "teardown_error": teardown_error,
     }
 
 
@@ -1620,10 +1687,28 @@ def main() -> None:
         if warn:
             _set_early_abort(d, False)
         try:
-            reply({"ok": True, "result": run_case(d, req)})
+            result = run_case(d, req)
+            reply({"ok": True, "result": result})
         except Exception as e:  # one bad case must not kill the server
             log("case failed:\n" + traceback.format_exc())
             reply({"ok": False, "error": f"{type(e).__name__}: {e}"})
+        else:
+            # D33(1): this case's teardown `clear` raised inside the pinned
+            # oracle (see `run_case`). The reply is already written and flushed,
+            # so the case keeps the surface it captured before the teardown -
+            # but a raised access violation may have left this process in an
+            # undefined state, and a PERSISTENT worker must not serve another
+            # case on it. Exit instead: the pool kills, respawns and retries
+            # once on a worker whose pipe EOFs
+            # (`corpus_gate::engines::WorkerPool::call` / `checkin`). A one-shot
+            # request already has stdin closed and would exit on the next
+            # `readline()` anyway.
+            if result.get("teardown_error"):
+                log(
+                    "exiting after a failed teardown clear "
+                    f"({result['teardown_error']}) - the pool respawns this worker"
+                )
+                break
         finally:
             if warn and prev_ea is not None:
                 _set_early_abort(d, prev_ea)

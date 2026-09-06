@@ -2651,3 +2651,90 @@ latch answered `3` there, so the accessors recompute from the derived list with
 no `Enabled` filter anywhere — pinned by
 `a_disabled_ocp_control_still_wins_the_ocp_scan`, and the same live scan replaced
 the latch in the reliability sweep (`Meters/EnergyMeter.pas:2538`).
+
+## R-18 — the two gating oracles spell a created file's name differently; the port keeps capi's spelling and the gate folds ASCII case — GOLDEN_REBASE G1.10a, 2026-09-06
+
+**Observable.** G1.10a compares the SET of files a run creates under the case
+directory. Un-case-folded, the two oracles disagree on **most** decks that write
+anything: capi `NEV_EXP_Y.csv` against r4133 `NEV_EXP_Y.CSV`, capi
+`..._VLN_Node.txt` against r4133 `..._VLN_Node.Txt`, capi
+`IEEE13Nodeckt_CIM100x.xml` against r4133 `...CIM100x.XML`; and on
+`Test/AutoTrans/Auto1bus.dss` r4133 lowercases the **whole deck-supplied stem**
+(`auto1bus_hl_current.txt` against capi's `Auto1bus_HL_current.txt`).
+
+**Sources.** r4133 `Version8/Source/Executive/ExportOptions.pas:333-356` writes
+`FileName := 'EXP_VOLTAGES.CSV'` and its siblings in upper case; dss_capi 0.14.5
+writes the same switch in lower case,
+`.inputs/dss_capi/src/Executive/ExportOptions.pas:314,343,345,381,437`. The port
+follows capi (`crates/dss-core/src/exec/report.rs:314,370,399,1411`).
+
+**Decision — the port keeps its (capi) spelling; the comparator folds ASCII
+case.** Four reasons, none of them "it does not matter". (i) There is no single
+"r4133 spelling" to adopt: the two gating channels disagree with each other, so
+matching one is diverging from the other. (ii) Matching r4133 fully would mean
+*destroying* deck-supplied case (the `Auto1bus` stem), i.e. losing information the
+user wrote. (iii) NTFS is case-insensitive, so no observable behaviour anywhere
+depends on the choice — this is a spelling, not a semantic. (iv) The executive
+echoes the filename into `GlobalResult`, which the gate already compares on the
+`compare_global_result` cases, so flipping the spelling would move that string for
+zero behavioural gain. The fold is therefore a documented cross-oracle
+*normalization* — not a tolerance, `tests/TOLERANCE_NOTES.md` §G1.10a says so —
+applied identically to all three producers, ASCII-only so a non-ASCII name is
+refused loudly instead of being folded by one language's locale rule, and pinned
+literally (both spellings written out) by
+`run_files_pins::the_two_oracle_spellings_of_auto1bus_fold_to_one_member`. It
+admits case and nothing else. 0 ledger rows. Not an upstream defect and not an
+upstream report: two engines chose two conventions.
+
+## `Visualize` writes a DSSView `.DSV`/`.dbl` file pair on r4133; the port emits a JSON plot payload — GOLDEN_REBASE G1.10a, 2026-09-06
+
+**Observable.** On `solvable_now:Test/YgD-Test.dss` (`Visualize powers
+Transformer.TR1`, line 25) the r4133 channel's created-file set is 6 names and
+includes `testYgD_Transformer_tr1_PQ.DSV` + `testYgD_Transformer_tr1_PQ.dbl`; the
+capi channel's is 4 and the port's is 4.
+
+**Sources.** r4133 `Version8/Source/Executive/ExecHelper.pas:4071` writes the
+DSSView data pair for the external viewer. dss_capi 0.14.5 has no viewer: it fires
+a plot callback and writes nothing. The port builds a JSON plot payload
+(`crates/dss-core/src/exec/command.rs`) — one payload per `Visualize`, measured
+`{"ElementName":"tr1","ElementType":"Transformer","PlotType":"Visualize","Quantity":"Power"}`.
+
+**Decision — this is a PRODUCT divergence, not an upstream defect.** Nothing is
+wrong with r4133 here; we deliberately do not write a Windows-viewer file format.
+So no `investigations/to_opendss/` report is owed, and it is handled the way every
+deliberate divergence is: one `r4133` ledger `exclusion`
+(`r4133-visualize-writes-a-dssview-file-pair`, cause `visualize-dssview-file-pair`)
+scoped by `name_re` to the two `_pq` names — never the whole case, never the whole
+channel — plus the both-numbers pin
+`run_files_pins::visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port`,
+which asserts r4133's 6 against the port's 4 and the payload non-empty, and proves
+the exclusion does not widen (dropping an unrelated name still fails).
+
+## The pinned dss_capi 0.14.5 faults on a `clear` after an AutoAdd solve — recorded, guarded, never reproduced — GOLDEN_REBASE G1.10a (D33(1)), 2026-09-06
+
+**Observable.** G1.10a's capi transport issues one `clear` as the last statement of
+its hygiene-guard scope, to run the element destructors that release dss_capi's
+never-closed Storage `DebugTrace` stream (`src/PCElements/Storage.pas:868-885`,
+freed only at `:871`/`:1199`) before the guard sweeps. On the two AutoAdd decks —
+`modes:autoadd/autoadd.dss` and `modes:autoadd/autoadd_cap.dss` — that `clear`
+raises, deterministically: `DSSException (#303) Error 303 Reported From OpenDSS
+Intrinsic Function: ProcessCommand: Exception Raised While Processing DSS Command:
+clear Error Description: Access violation`, and the one-shot process then exits
+`0xC0000005`. r4133 is unaffected (it needs no teardown `clear` at all — it closes
+its own trace file as it writes the header,
+`Version8/Source/PCElements/Storage.pas:1085`). It is the same
+process-exit fault family the AutoAdd work already recorded (`GAPS_PLAN.md` §2.2)
+and it belongs to the **outdated numeric oracle**, not to the behavioural
+authority.
+
+**Decision — record and guard, never reproduce, never a ledger row.** The teardown
+stays (it is what closes the leak), but it is wrapped: the exception is caught and
+reported in a run-level `teardown_error` reply key that the runner prints without
+failing the case — every compared surface is already captured when it raises,
+since the classification is the statement before it — the sweep still runs and
+still reports a leaked dropping, and a persistent worker whose teardown raised
+replies in full and then exits so the pool respawns it. Pinned in both directions
+by `engines::a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_respawn`:
+if a future dss_capi stops faulting, the test says the guard can be retired. Not
+reported upstream — the pinned 0.14.5 is four releases old and is a numeric oracle
+only.

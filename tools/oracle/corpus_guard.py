@@ -2,14 +2,30 @@
 
 Lifted move-only from oracle_server.py into its own module (a Rust port,
 `crates/dss-epri/src/guard.rs`, guards the r4133 bridge) — see the class
-docstring for the snapshot-failure war story. The snapshot is RECURSIVE (WP8.8):
-run-created
-files inside pre-existing subdirectories and run-created directory trees (the
-`<CircuitName>/DI_yr_*` demand-interval tree) are both detected and removed.
+docstring for the snapshot-failure war story. The snapshot is RECURSIVE (WP8.8),
+and since GOLDEN_REBASE G1.10a (decision D30(2)) the CLASSIFICATION covers the
+case dir's own entries plus everything under a directory the run created (the
+`<CircuitName>/DI_yr_*` demand-interval tree, removed as one tree). A
+PRE-EXISTING subdirectory is deliberately NOT descended into — nothing this run
+writes can land there, and what does land there belongs to a concurrently
+running sibling case (citations + measurement:
+`crates/dss-epri/src/guard.rs::CorpusGuard::classify`).
 Writes OUTSIDE the case-dir tree (e.g. a manual `dss-cli` run from elsewhere)
 remain uncoverable here — sweep workflows must still end with a
 `git status tests/corpus` check (recovery: `git restore tests/corpus` /
 `git clean`).
+
+GOLDEN_REBASE G1.10a added the *reporting* half: the same classification that
+decides what to delete is also the gate's `compare_run_files` surface (the set
+of filesystem entries a run created under the case dir). One classification,
+two consumers — see `CorpusGuard.created`. And since decision D32(2) the sweep
+is no longer allowed to fail quietly: whatever it could not remove is left in
+`CorpusGuard.sweep_failed` for the caller to report (`oracle_server.py` puts it
+in the reply, and the gate's runner fails the case), so a producer that leaks an
+open file handle can never again silence a LATER producer's created set by
+leaving the file behind as "pre-existing". Run
+`python corpus_guard.py --self-test` for the shared synthetic fixture the Rust
+twin asserts as well — including the leak fixture.
 """
 
 from __future__ import annotations
@@ -18,6 +34,99 @@ import os
 import shutil
 
 _RESTORE_MAX = 2 * 1024 * 1024  # buffer files up to 2 MiB for overwrite-restore
+
+
+# --- GOLDEN_REBASE G1.10a: the created-file SET ------------------------------
+#
+# Three producers report this set — this guard (capi channel), its Rust twin
+# `crates/dss-epri/src/guard.rs` (r4133 channel) and the port-side probe in the
+# corpus gate — and the comparator compares them as an exact discrete set at
+# `rel = abs = 0`. They must therefore agree on ONE spelling of a name, so the
+# canonical form is defined here and mirrored byte-for-byte in Rust
+# (`normalize_created_name`).
+#
+# The case fold is a CROSS-ORACLE NORMALIZATION, not a tolerance: r4133 writes
+# 'EXP_VOLTAGES.CSV' (`Version8/Source/Executive/ExportOptions.pas:333-356`)
+# while dss_capi 0.14.5 writes 'EXP_VOLTAGES.csv'
+# (`src/Executive/ExportOptions.pas:314,343,345,381,437`), and r4133
+# additionally lowercases deck-supplied stems
+# ('Auto1bus_HL_current.txt' -> 'auto1bus_hl_current.txt'), so no single
+# spelling can satisfy both gating channels. NTFS is case-insensitive, so
+# nothing observable depends on the case (the R-18 decision, recorded in
+# DIVERGENCES.md).
+#
+# Provenance: the upstream harness never compared this set at all — fastdss's
+# `tests/compare_outputs.py` walks the reference zip file list and silently
+# skips a name missing on the other side (`except KeyError: ... continue`,
+# :416-421), and its CSV comparison prints instead of failing
+# (`except: print("COMPARE CSV ERROR:", fn)`, :517-524). New coverage, not
+# catch-up.
+
+
+# Engine-internal scratch files. The Pascal engines round-trip the fundamental
+# solution through DISK when harmonics is initialized: `SavePresentVoltages`
+# writes '<CircuitName_>SavedVoltages.dbl' (r4133
+# `Version8/Source/Common/Utilities.pas:1512-1521`, reached only from
+# `InitializeForHarmonics` :1599-1608; read back by `RetrieveSavedVoltages`
+# :1554-1564, consumed at `Common/SolutionAlgs.pas:1056,1131`; dss_capi 0.14.5
+# twin `src/Common/Utilities.pas:883` / :914-923, consumed at
+# `src/Common/SolutionAlgs.pas:1030,1110`). The port keeps that vector in memory
+# (`crates/dss-core/src/solution/solution/state.rs:329-331`,
+# `solution/solution/harmonics.rs:222`) and writes no such file, so the name is
+# split off SYMMETRICALLY on every channel (coordinator decision D25/Q2)
+# instead of becoming one ledger row per harmonics deck.
+#
+# NOT scratch: '<CircuitName_>SavedVoltages.Txt', the user-visible
+# `Save Voltages` output that `VDIFF` reads back (r4133
+# `Common/Solution.pas:3973` + `Executive/ExecHelper.pas:3321`, capi
+# `src/Common/Solution.pas:2288` + `src/Executive/ExecHelper.pas:3387`, port
+# `crates/dss-core/src/exec/report.rs:2490-2522`) — all three engines write it,
+# so it stays a compared member of the set.
+ENGINE_SCRATCH_SUFFIXES = ("savedvoltages.dbl",)
+
+
+def ascii_lower(name: str) -> str:
+    """ASCII-only lowercase — the exact twin of Rust `str::to_ascii_lowercase`.
+
+    `str.lower()` is Unicode-aware and would fold code points that Rust leaves
+    alone, which would make the two guards disagree on a name no corpus deck
+    produces today. Writing the fold out keeps them identical."""
+    return "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in name)
+
+
+def normalize_created_name(rel: str, is_dir: bool) -> str:
+    """Canonical member of the created-file set: `/`-joined, `./`-stripped,
+    ASCII-case-folded, with a trailing `/` marking a run-created DIRECTORY (its
+    contents are separate members). Idempotent, so a consumer may re-apply
+    it."""
+    s = rel.replace("\\", "/")
+    while s.startswith("./"):
+        s = s[2:]
+    while "//" in s:
+        s = s.replace("//", "/")
+    s = ascii_lower(s.rstrip("/"))
+    return f"{s}/" if is_dir else s
+
+
+def is_engine_scratch_file(name: str) -> bool:
+    """True for an engine-internal scratch file (see `ENGINE_SCRATCH_SUFFIXES`):
+    one the Pascal engines write only to read back within the same run."""
+    folded = ascii_lower(name)
+    return any(folded.endswith(sfx) for sfx in ENGINE_SCRATCH_SUFFIXES)
+
+
+def split_engine_scratch(names) -> tuple[list[str], list[str]]:
+    """Partition a created-file set into (compared, engine-internal scratch).
+
+    The structural normalization of decision D25/Q2, applied SYMMETRICALLY to
+    every channel: the caller compares the first list and counts the second (the
+    gate's fail-on-stale `SCRATCH_FILE_DECLINES` population constant), so the
+    decline stays visible instead of being silently masked."""
+    kept: list[str] = []
+    scratch: list[str] = []
+    for n in names:
+        (scratch if is_engine_scratch_file(n) else kept).append(n)
+    return kept, scratch
 
 
 class CorpusGuard:
@@ -42,7 +151,13 @@ class CorpusGuard:
         # `/`-joined paths relative to `self.dir`, files AND directories.
         self.names: set[str] = set()
         self.buf: dict[str, bytes] = {}
+        # Filled by `__exit__` (G1.10a, decision D32(2)): the normalized names of
+        # created entries the sweep could not remove. Read it AFTER the `with`
+        # block; `None` until the scope closes, so a caller can never mistake
+        # "not swept yet" for "swept clean".
+        self.sweep_failed: list[str] | None = None
         self._snapshot_ok = False
+        self._exited = False
 
     def _snapshot(self, d: str, prefix: str) -> bool:
         """Recursively track every entry under `d`. Returns False if any
@@ -75,25 +190,121 @@ class CorpusGuard:
         self._snapshot_ok = self._snapshot(self.dir, "")
         return self
 
-    def _sweep_created(self, d: str, prefix: str) -> None:
-        """Delete entries whose relative path is absent from the pre-run
-        snapshot. A run-created directory is removed wholesale; a pre-existing
-        one is recursed to find run-created files inside it."""
+    def _classify(self, d: str, prefix: str, roots: list, out: list) -> bool:
+        """The ONE created-entry classification (G1.10a): an entry of the case
+        directory ITSELF is run-created iff its `/`-joined relative path is
+        absent from the pre-run snapshot. The surface is the case dir's own
+        entries, plus everything under a directory the run created — a
+        PRE-EXISTING subdirectory is never descended into (decision D30(2),
+        measured by G1.10a micro-part F2b; the r4133/capi citations and the
+        measurement live on the Rust twin
+        `crates/dss-epri/src/guard.rs::CorpusGuard::classify`).
+
+        Fills `roots` with the `(abs path, is_dir)` of every created entry —
+        exactly what the sweep removes — and `out` with the normalized name of
+        every created entry, recursing into a created directory so its contents
+        are members of the set too.
+
+        Returns False if any directory listing failed: an incomplete
+        classification may still be SWEPT (the sweep removes only what it did
+        classify, never more) but must never be REPORTED as the created set."""
         try:
             current = os.listdir(d)
         except OSError:
-            return
+            return False
+        ok = True
         for name in current:
             p = os.path.join(d, name)
             rel = f"{prefix}/{name}" if prefix else name
             is_dir = os.path.isdir(p) and not os.path.islink(p)
             if rel in self.names:
-                if is_dir:
-                    self._sweep_created(p, rel)  # pre-existing fixture subdir
+                # Pre-existing. A pre-existing DIRECTORY is deliberately not
+                # descended into: nothing this run writes can land there, and
+                # what does land there belongs to a concurrently running
+                # sibling case (see this method's docstring).
                 continue
+            out.append(normalize_created_name(rel, is_dir))
+            roots.append((p, is_dir))
+            if is_dir:
+                # Run-created directory (the DI `<CircuitName>/` tree): every
+                # entry below it is run-created too, and the whole tree is one
+                # removal root.
+                ok = self._collect_tree(p, rel, out) and ok
+        return ok
+
+    def _collect_tree(self, d: str, prefix: str, out: list) -> bool:
+        """List a run-created directory: every entry under it is run-created."""
+        try:
+            current = os.listdir(d)
+        except OSError:
+            return False
+        ok = True
+        for name in current:
+            p = os.path.join(d, name)
+            rel = f"{prefix}/{name}"
+            is_dir = os.path.isdir(p) and not os.path.islink(p)
+            out.append(normalize_created_name(rel, is_dir))
+            if is_dir:
+                ok = self._collect_tree(p, rel, out) and ok
+        return ok
+
+    def created(self) -> list[str] | None:
+        """The run-created set, sorted and normalized — the gate's
+        `compare_run_files` surface (GOLDEN_REBASE G1.10a).
+
+        `None` means "cannot be reported honestly" (an incomplete pre-run
+        snapshot, or a failed listing now); the gate's presence rail
+        (`harness::capture_guard::require_capture_opt`) turns that into a failed
+        case. An empty list is a legitimate answer — most decks create nothing.
+
+        Read it as the LAST statement inside the `with CorpusGuard(...)` block:
+        it must see every file the run wrote, and the guard's exit sweeps them
+        away. Calling it afterwards is a protocol error and raises."""
+        if self._exited:
+            raise RuntimeError(
+                "CorpusGuard.created() called after the guard scope closed; the "
+                "created-file set must be read as the last statement inside "
+                "`with CorpusGuard(...)`, before the sweep removes the files"
+            )
+        if not self._snapshot_ok:
+            return None
+        roots: list = []
+        out: list = []
+        if not self._classify(self.dir, "", roots, out):
+            return None
+        return sorted(set(out))
+
+    def _sweep_created(self) -> list[str]:
+        """Delete what `_classify` classified — the same classification the
+        `created()` report is built from, so the reported set can never disagree
+        with the swept set. A run-created directory is removed wholesale; a
+        pre-existing one keeps its pre-existing contents.
+
+        Returns the normalized names of created entries the case directory STILL
+        lists afterwards — the `sweep_failed` report of decision D32(2). A failed
+        removal used to be swallowed (`except OSError: pass`), and that is how
+        the leak G1.10a F4 measured could hide: dss_capi never closes its Storage
+        trace stream (`src/PCElements/Storage.pas:872`, freed only at
+        `:871`/`:1199`), so this `os.remove` raised, the file survived, and the
+        NEXT producer of the same case snapshotted it as pre-existing and
+        reported an empty created set.
+
+        The presence test is a fresh `os.listdir` of the case directory (every
+        removal root is a direct child of it), not `os.path.exists`: it is the
+        very listing the next producer's snapshot takes. A failed re-listing
+        reports every root — an unprovable removal is never reported as a clean
+        sweep. Twin: `crates/dss-epri/src/guard.rs::CorpusGuard::sweep_created`.
+        """
+        roots: list = []
+        out: list = []
+        # The completeness flag is deliberately ignored here: an incomplete walk
+        # still removes every dropping it *did* classify (all of them absent
+        # from the pre-run snapshot), which is strictly better hygiene than
+        # skipping the sweep.
+        self._classify(self.dir, "", roots, out)
+        for p, is_dir in roots:
             try:
                 if is_dir:
-                    # Run-created directory (the DI `<CircuitName>/` tree).
                     # The engines never create junctions/links here, and only
                     # paths absent from the pre-run snapshot are removed.
                     shutil.rmtree(p, ignore_errors=True)
@@ -101,11 +312,28 @@ class CorpusGuard:
                     os.remove(p)
             except OSError:
                 pass
+        if not roots:
+            return []
+        try:
+            still = set(os.listdir(self.dir))
+        except OSError:
+            still = None
+        return sorted(
+            normalize_created_name(os.path.basename(p), is_dir)
+            for p, is_dir in roots
+            if still is None or os.path.basename(p) in still
+        )
 
     def __exit__(self, *exc) -> bool:
+        self._exited = True
         if not self._snapshot_ok:
+            # No sweep is attempted at all ("incomplete snapshot = never
+            # delete"), so nothing leaked THROUGH a sweep; `created()` already
+            # returned None, which fails the case through the gate's presence
+            # rail.
+            self.sweep_failed = []
             return False
-        self._sweep_created(self.dir, "")
+        self.sweep_failed = self._sweep_created()
         for rel, data in self.buf.items():  # overwritten by the run
             p = os.path.join(self.dir, rel)
             try:
@@ -117,3 +345,141 @@ class CorpusGuard:
             except OSError:
                 pass
         return False
+
+
+# --- the shared synthetic fixture (GOLDEN_REBASE G1.10a) ---------------------
+#
+# `python corpus_guard.py --self-test` builds it in a temp dir, prints the
+# classification as JSON and asserts the expected sets. The Rust twin
+# (`crates/dss-epri/src/guard.rs`, `classifies_the_shared_synthetic_fixture`)
+# builds the identical tree and asserts the identical lists, so the two guards
+# are provably one classification written twice.
+
+SELF_TEST_PRE_EXISTING = ("case.dss", "root.txt", "pre/keep.txt")
+SELF_TEST_RUN_WRITES = (
+    "EXP_Y.CSV",
+    "pre/New_Report.Txt",
+    "DI_yr_0/Totals_1.CSV",
+    "DI_yr_0/Sub/deep.DBL",
+    "NEV_SavedVoltages.dbl",
+)
+# `pre/new_report.txt` is deliberately ABSENT: it sits under the pre-existing
+# `pre/`, which the classification does not descend into (D30(2)) — it stands
+# for a concurrently running sibling case's live report file.
+SELF_TEST_CREATED = [
+    "di_yr_0/",
+    "di_yr_0/sub/",
+    "di_yr_0/sub/deep.dbl",
+    "di_yr_0/totals_1.csv",
+    "exp_y.csv",
+    "nev_savedvoltages.dbl",
+]
+SELF_TEST_SCRATCH = ["nev_savedvoltages.dbl"]
+# What the case dir holds after the sweep: the pre-existing files, plus the one
+# write under the pre-existing subdirectory the guard must neither report nor
+# delete.
+SELF_TEST_AFTER_SWEEP = sorted(SELF_TEST_PRE_EXISTING + ("pre/New_Report.Txt",))
+
+# The D32(2) leak fixture, shared with the Rust twin
+# (`guard.rs::a_created_file_the_sweep_cannot_remove_is_reported_as_sweep_failed`):
+# a run creates an ordinary report and a trace file, and a producer is still
+# holding the trace file open when the guard sweeps (the capi Storage stream,
+# `src/PCElements/Storage.pas:872`). Python's `open` uses the Windows
+# `_SH_DENYNO` share mode, which shares read and write but NOT delete, so
+# `os.remove` raises exactly as it does for the real leak.
+SELF_TEST_LEAK_RUN_WRITES = ("EXP_Y.CSV", "STOR_s1.CSV")
+SELF_TEST_LEAK_CREATED = ["exp_y.csv", "stor_s1.csv"]
+SELF_TEST_LEAK_FAILED = ["stor_s1.csv"]
+SELF_TEST_LEAK_AFTER_SWEEP = ["STOR_s1.CSV", "case.dss"]
+
+
+def _write(path: str, text: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="ascii") as fh:
+        fh.write(text)
+
+
+def _self_test() -> int:
+    import json
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for rel in SELF_TEST_PRE_EXISTING:
+            _write(os.path.join(tmp, rel.replace("/", os.sep)), "pre-existing\n")
+
+        with CorpusGuard(os.path.join(tmp, "case.dss")) as g:
+            for rel in SELF_TEST_RUN_WRITES:
+                _write(os.path.join(tmp, rel.replace("/", os.sep)), "run-written\n")
+            # the run also OVERWRITES a pre-existing file
+            _write(os.path.join(tmp, "root.txt"), "clobbered\n")
+            created = g.created()
+            kept, scratch = split_engine_scratch(created or [])
+
+        after = []
+        for d, _dirs, files in os.walk(tmp):
+            rel_d = os.path.relpath(d, tmp).replace(os.sep, "/")
+            for f in files:
+                after.append(f if rel_d == "." else f"{rel_d}/{f}")
+        after.sort()
+        with open(os.path.join(tmp, "root.txt"), encoding="ascii") as fh:
+            restored = fh.read()
+
+        try:
+            g.created()
+            after_scope = "NO RAISE"
+        except RuntimeError:
+            after_scope = "raises"
+        sweep_failed = g.sweep_failed
+
+    # D32(2): the leak fixture — a created file still held open when the guard
+    # sweeps is REPORTED, never swallowed.
+    with tempfile.TemporaryDirectory() as tmp2:
+        _write(os.path.join(tmp2, "case.dss"), "pre-existing\n")
+        with CorpusGuard(os.path.join(tmp2, "case.dss")) as g2:
+            for rel in SELF_TEST_LEAK_RUN_WRITES:
+                _write(os.path.join(tmp2, rel), "run-written\n")
+            leak_created = g2.created()
+            held = open(os.path.join(tmp2, "STOR_s1.CSV"), "rb")
+        leak_failed = g2.sweep_failed
+        leak_after = sorted(os.listdir(tmp2))
+        held.close()
+
+    print(
+        json.dumps(
+            {
+                "created": created,
+                "kept": kept,
+                "scratch": scratch,
+                "after_sweep": after,
+                "restored": restored,
+                "created_after_scope": after_scope,
+                "sweep_failed": sweep_failed,
+                "leak_created": leak_created,
+                "leak_sweep_failed": leak_failed,
+                "leak_after_sweep": leak_after,
+            },
+            indent=1,
+        )
+    )
+    assert created == SELF_TEST_CREATED, created
+    assert scratch == SELF_TEST_SCRATCH, scratch
+    assert kept == [n for n in SELF_TEST_CREATED if n not in SELF_TEST_SCRATCH], kept
+    assert after == SELF_TEST_AFTER_SWEEP, after
+    assert sweep_failed == [], sweep_failed
+    assert leak_created == SELF_TEST_LEAK_CREATED, leak_created
+    assert leak_failed == SELF_TEST_LEAK_FAILED, leak_failed
+    assert leak_after == SELF_TEST_LEAK_AFTER_SWEEP, leak_after
+    assert restored == "pre-existing\n", restored
+    assert after_scope == "raises", after_scope
+    assert normalize_created_name("./A\\B//C.CSV", False) == "a/b/c.csv"
+    assert normalize_created_name("di_yr_0/", True) == "di_yr_0/"  # idempotent
+    print("OK corpus_guard self-test")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    if sys.argv[1:] == ["--self-test"]:
+        raise SystemExit(_self_test())
+    raise SystemExit("usage: python corpus_guard.py --self-test")
