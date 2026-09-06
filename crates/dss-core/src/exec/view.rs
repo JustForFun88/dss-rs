@@ -945,6 +945,98 @@ pub struct BusVoltageView {
     pub pu_vll: Option<Vec<num_complex::Complex64>>,
 }
 
+/// One bus's `Bus.AllPCEatBus` / `Bus.AllPDEatBus` answer, plus the raw
+/// attachment facts an upstream walk can be replayed over.
+///
+/// Upstream (r4133 `Common/Circuit.pas:1493-1535` `getPDEatBus` /
+/// `:1540-1581` `getPCEatBus`, reached through `DDLL/DBus.pas:840-865` and
+/// `:867-897`; capi `Common/Circuit.pas:1712-1794` / `:1797-1870` through
+/// `CAPI/CAPI_Bus.pas:773-805`) answers each list by walking every
+/// power-delivery / power-conversion class and testing each element against
+/// the bus. The two oracles use **different tests** and each one's test is a
+/// defect against its own stated intent, so the port answers the physically
+/// correct question and publishes the raw facts beside it (GOLDEN_REBASE D26;
+/// the D15/D16/D21 shape — the oracle's walk is *asserted* over port state,
+/// never reproduced).
+///
+/// The port's rule (**S4**, D26):
+///
+/// * [`Self::pde`] — a power-delivery-class element ([`ElemKind::is_power_delivery`])
+///   with **any** terminal whose bus name is this bus, and whose `bus1 <> bus2`
+///   (r4133's own shunt filter, `Circuit.pas:1522`). r4133's header promises
+///   *"all PDE connected to the bus"* (`:1490-1492`) but its body only tests
+///   `GetBus(1)`/`GetBus(2)`, so it misses every winding past the second — the
+///   port keeps the header's promise.
+/// * [`Self::pce`] — a power-conversion-class element
+///   ([`ElemKind::is_power_conversion`], which includes `Capacitor`/`Reactor`
+///   exactly as `Circuit.pas:1559` does) whose **terminal 1** bus name is this
+///   bus. Identical to r4133's own criterion.
+///
+/// Neither list looks at `Enabled`: a disabled element stays on the list of the
+/// bus its name still points at, in both oracles and here.
+///
+/// Names are `Class.name` in the port's own creation order — r4133 emits
+/// `DSS_Class.Name + '.' + ActiveCktElement.Name`, capi `elem.FullName`; both
+/// are compared case-insensitively as sets.
+///
+/// The empty answer is `[]`. Both oracles report `['None']` instead
+/// (`Circuit.pas:1504`/`:1550` seed it; capi's `useNone` is `False` in the C
+/// API and the pinned dss-python facade substitutes it back, `dss/IBus.py`),
+/// which makes "no element here" indistinguishable from an element literally
+/// named `None`; that sentinel is a transport convention and is normalized at
+/// the comparator, not invented here.
+#[derive(Debug, Clone)]
+pub struct BusElementsView {
+    /// The bus's (lowercased) name, `Circuit.AllBusNames` spelling.
+    pub name: String,
+    /// `Bus.AllPCEatBus` under **S4** — see the type doc.
+    pub pce: Vec<String>,
+    /// `Bus.AllPDEatBus` under **S4** — see the type doc.
+    pub pde: Vec<String>,
+    /// **Not** the port's answer: the raw attachment facts of every PD/PC-class
+    /// element that touches this bus by name or by node reference, in creation
+    /// order. A consumer replays an upstream walk over these instead of
+    /// re-deriving the bus's node refs (the GOLDEN_REBASE D16 precedent).
+    pub attachments: Vec<BusAttachment>,
+}
+
+/// One PD/PC-class element's attachment to one bus — the ingredients both
+/// upstream walks consume, published raw (see [`BusElementsView::attachments`]).
+#[derive(Debug, Clone)]
+pub struct BusAttachment {
+    /// `Class.name`, the same spelling [`BusElementsView::pde`] uses.
+    pub name: String,
+    /// [`ElemKind::is_power_delivery`] — r4133 `InheritsFrom(TPDClass)`.
+    pub is_pd: bool,
+    /// [`ElemKind::is_power_conversion`] — r4133 `InheritsFrom(TPCClass)` plus
+    /// `Capacitor`/`Reactor` by name. `Capacitor`/`Reactor` carry **both** flags.
+    pub is_pc: bool,
+    /// `TDSSCktElement.Enabled`. Neither at-bus walk tests it; it is published
+    /// because it is what explains a stale or empty [`Self::by_node_ref`]
+    /// (`reprocess_bus_defs` redoes only enabled elements —
+    /// `circuit/circuit.rs`, == capi `Common/Circuit.pas:2195-2201`).
+    pub enabled: bool,
+    /// `StripExtension(GetBus(1)) <> StripExtension(GetBus(2))` — r4133's shunt
+    /// filter (`Circuit.pas:1522`, capi `:1760`), computed on terminals 1 and 2
+    /// only even for a 3+-terminal element, and with `GetBus(2)` reading `""`
+    /// on a 1-terminal element (Pascal `GetBus` is out-of-range tolerant).
+    pub series: bool,
+    /// The 1-based terminals whose **bus name** is this bus — the quantity both
+    /// oracles' name tests read (r4133 always; capi only on its fallback arm).
+    pub by_name: Vec<usize>,
+    /// The 1-based terminals at least one of whose `NodeRef` conductors is one
+    /// of this bus's own node references — the quantity capi's *fast path* reads
+    /// (`Common/Circuit.pas:1746-1767` / `:1833-1852`).
+    ///
+    /// It is **empty** for an element that was never enabled (the port leaves
+    /// `node_ref` unallocated; capi allocates it zero-filled in
+    /// `TPowerTerminal.Init`, `Common/Terminal.pas:37-45`, and node reference 0
+    /// is ground, so neither can match a bus node) and it can point at a
+    /// **foreign** bus for an element disabled before a renumbering — the port's
+    /// own image of the staleness both engines carry.
+    pub by_node_ref: Vec<usize>,
+}
+
 /// The `BaseFactor` both engines divide the per-unit bus quantities by:
 /// `1000 · kVBase`, or `1.0` when the bus has no base
 /// (`CAPI_Alt.pas:2262-2265` == `DBus.pas:413-414` == `CAPI_Circuit.pas:538-541`
@@ -1144,6 +1236,144 @@ fn bus_voltage_view(ckt: &Circuit, bus_idx: usize, sc: &SymComp) -> BusVoltageVi
         }),
         vll,
     }
+}
+
+/// One PD/PC-class element's hit list for one sweep: `(bus index, by_name
+/// terminals, by_node_ref terminals)`, appended in first-touch order.
+type ElemBusHits = Vec<(usize, Vec<usize>, Vec<usize>)>;
+
+/// Index of `bus` in `hits`, appending an empty row on first touch. Linear —
+/// an element touches at most `NTerms` distinct buses (2 for all but
+/// transformers), so a map would cost more than it saves.
+fn hit_slot(hits: &mut ElemBusHits, bus: usize) -> usize {
+    match hits.iter().position(|h| h.0 == bus) {
+        Some(i) => i,
+        None => {
+            hits.push((bus, Vec::new(), Vec::new()));
+            hits.len() - 1
+        }
+    }
+}
+
+/// Every bus's [`BusElementsView`] in `BusList` order, built in **one** pass
+/// over `CktElements` (`O(elements · Yorder + buses)`): both upstream walks are
+/// per-bus loops over every element, which would be `O(buses · elements)`.
+///
+/// The node-reference map is the port's image of capi's fast-path comparison
+/// `elem.Terminals[t].TermNodeRef[n] = Buses[busIdx].GetRef(i)`
+/// (`Common/Circuit.pas:1751`): a node reference that is stale but still in
+/// range resolves to the bus that owns it **today** — exactly what that
+/// equality does — and one past `NumNodes` resolves to nothing, which is what
+/// the failed comparison does. Ground (`0`) is never a bus node reference.
+///
+/// The CIM `IEEE1547` signal scan carries a second, deliberately different bus
+/// walk (`cim/ieee1547.rs::elements_at_bus`): it uses the port's own
+/// `pd_elements`/`pc_elements` membership and r4133's terminal-1/2 name test.
+/// The two are documented at each other and are **not** merged — see that
+/// function's doc for why (WP-G1 moves no golden byte).
+fn build_bus_elements(ckt: &Circuit, classes: &[DssClass]) -> Vec<BusElementsView> {
+    use crate::report::format::strip_extension;
+
+    let mut ref_to_bus: Vec<Option<usize>> = vec![None; ckt.num_nodes + 1];
+    for (bi, bus) in ckt.buses.iter().enumerate() {
+        for j in 0..bus.num_nodes_this_bus() {
+            let r = bus.get_ref(j);
+            if r != 0
+                && let Some(slot) = ref_to_bus.get_mut(r)
+            {
+                *slot = Some(bi);
+            }
+        }
+    }
+
+    let mut per_bus: Vec<Vec<BusAttachment>> = vec![Vec::new(); ckt.buses.len()];
+    for &r in &ckt.ckt_elements {
+        // `ckt_elements` only ever holds circuit-element classes, which all
+        // carry a kind; the `else` arm is a total-function guard, not a filter.
+        let Some(kind) = classes[r.class_ord()].kind else {
+            continue;
+        };
+        let is_pd = kind.is_power_delivery();
+        let is_pc = kind.is_power_conversion();
+        if !is_pd && !is_pc {
+            continue;
+        }
+        let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index()) else {
+            continue;
+        };
+        let cd = elem.cd();
+        let name = format!(
+            "{}.{}",
+            classes[r.class_ord()].props.class_name(),
+            cd.obj.name()
+        );
+        // r4133 `Circuit.pas:1520-1522` == capi `:1758-1760`: the shunt filter
+        // reads terminals 1 and 2 only, and `GetBus` answers `""` past `NTerms`.
+        let series = strip_extension(cd.get_bus(1)) != strip_extension(cd.get_bus(2));
+
+        let mut hits: ElemBusHits = Vec::new();
+        for t in 1..=cd.nterms {
+            if let Some(bi) = ckt.bus_list.find(&strip_extension(cd.get_bus(t))) {
+                let i = hit_slot(&mut hits, bi);
+                hits[i].1.push(t);
+            }
+        }
+        if cd.nconds > 0 && !cd.node_ref.is_empty() {
+            for t in 1..=cd.nterms {
+                let base = (t - 1) * cd.nconds;
+                for c in 0..cd.nconds {
+                    let Some(&nref) = cd.node_ref.get(base + c) else {
+                        continue;
+                    };
+                    let Some(Some(bi)) = ref_to_bus.get(nref).copied() else {
+                        continue;
+                    };
+                    let i = hit_slot(&mut hits, bi);
+                    // `t` grows monotonically per bus, so this dedupes the
+                    // conductors of one terminal onto one entry.
+                    if hits[i].2.last() != Some(&t) {
+                        hits[i].2.push(t);
+                    }
+                }
+            }
+        }
+
+        for (bi, by_name, by_node_ref) in hits {
+            per_bus[bi].push(BusAttachment {
+                name: name.clone(),
+                is_pd,
+                is_pc,
+                enabled: cd.enabled,
+                series,
+                by_name,
+                by_node_ref,
+            });
+        }
+    }
+
+    per_bus
+        .into_iter()
+        .zip(ckt.buses.iter())
+        .map(|(attachments, bus)| {
+            // S4 (GOLDEN_REBASE D26) — see [`BusElementsView`].
+            let pde = attachments
+                .iter()
+                .filter(|a| a.is_pd && a.series && !a.by_name.is_empty())
+                .map(|a| a.name.clone())
+                .collect();
+            let pce = attachments
+                .iter()
+                .filter(|a| a.is_pc && a.by_name.contains(&1))
+                .map(|a| a.name.clone())
+                .collect();
+            BusElementsView {
+                name: bus.name.clone(),
+                pce,
+                pde,
+                attachments,
+            }
+        })
+        .collect()
 }
 
 /// Flatten a bus short-circuit matrix the way both oracles publish it —
@@ -2104,6 +2334,37 @@ impl Dss {
             }
             None => Vec::new(),
         }
+    }
+
+    /// Every bus's [`BusElementsView`] in `BusList` order — the order
+    /// `Circuit.AllBusNames` reports, the same order [`Dss::all_bus_voltages`]
+    /// uses. Empty when no circuit exists.
+    ///
+    /// This is the port's `Bus.AllPCEatBus` / `Bus.AllPDEatBus` surface
+    /// (r4133 `DDLL/DBus.pas:840-865`/`:867-897` over
+    /// `Common/Circuit.pas:1493-1581`; capi `CAPI/CAPI_Bus.pas:773-805` over
+    /// `Common/Circuit.pas:1712-1870`). Both oracles answer one bus per call by
+    /// re-walking every element; this builds all of them in one pass — see
+    /// [`build_bus_elements`] for the cost and the node-reference map.
+    pub fn all_bus_elements(&self) -> Vec<BusElementsView> {
+        match self.circuit.as_ref() {
+            Some(ckt) => build_bus_elements(ckt, &self.classes),
+            None => Vec::new(),
+        }
+    }
+
+    /// One bus's [`BusElementsView`] by name (case-insensitive, `BusList`
+    /// lookup), `None` when there is no circuit or no such bus.
+    ///
+    /// It runs the same whole-circuit builder and keeps one row, so asking for
+    /// every bus one at a time costs `O(buses · elements)` — use
+    /// [`Dss::all_bus_elements`] for a sweep. Answering a single bus cheaply
+    /// would need a second, differently-shaped walk, and one walk that both
+    /// callers share cannot drift from itself.
+    pub fn bus_elements(&self, name: &str) -> Option<BusElementsView> {
+        let ckt = self.circuit.as_ref()?;
+        let idx = ckt.bus_list.find(name)?;
+        build_bus_elements(ckt, &self.classes).into_iter().nth(idx)
     }
 
     /// `Circuit.AllBusVmagPu`: `|NodeV| / BaseFactor` for every node, walked as

@@ -925,6 +925,31 @@ fn the_distance_surface_is_order_free_in_the_mode_table() {
     }
 }
 
+/// G1.4d: the two at-bus lists are **group C** in the ONE mode table — "impure
+/// but order-free".
+///
+/// `crates/dss-core/tests/corpus_gate.rs::AT_BUS_READ_ORDER` pins that both
+/// transports read them LAST in the per-bus walk, and that placement is chosen
+/// because on the r4133 channel they are the block's only
+/// [`dss_epri::modes::ModeEffect::Impure`] reads: `getP*atBus` drives
+/// `DSS_Class.First`/`Next` and `TDSSClass.Get_First`/`Get_Next`
+/// (`Common/DSSClass.pas:342-371`) assign `ActiveCircuit.ActiveCktElement`.
+/// What that impurity does NOT touch is any `Iterminal` cache, which is exactly
+/// what keeps the whole bus block order-free — so `Impure` must map to `'C'`
+/// here ([`dss_epri::modes::ModeEffect::capture_group`]). A future re-class of
+/// either row to `'A'`/`'B'` would make the bus block's slot matter and fails
+/// here, where the claim has its single home, instead of silently in the gate.
+#[test]
+fn the_at_bus_surface_is_order_free_in_the_mode_table() {
+    for name in ["AllPCEatBus", "AllPDEatBus"] {
+        assert_eq!(
+            capture_group_of("Bus", name),
+            Some('C'),
+            "`Bus.{name}` is captured inside an order-free block (the tail of `corpus_gate.rs::AT_BUS_READ_ORDER`'s per-bus walk), but the mode table gives it another capture group — the table wins: re-class the read or move it out of the group-C block"
+        );
+    }
+}
+
 /// Both live channels must capture the *same* quantities in the *same* order —
 /// otherwise the two oracles are compared against the Rust snapshot through
 /// different read paths and a divergence could be an artefact of the capture.
