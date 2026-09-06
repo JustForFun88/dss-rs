@@ -3343,7 +3343,7 @@ row against the pre-fix lock.
   surface" and `to_opendss/` 69-71. Both lanes **7 892 / 0 / 5 ignored**, corpus **526/526**, `lane_diff`
   **PASS** max |Δ| = 0.
 
-  **Audit settlement** (2026-09-06; 13 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted): the
+  **Audit settlement** (2026-09-06, `dff755b5`; 13 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted): the
   comparator gained the one direction no channel assertion can state (`assert_port_at_bus_is_s4` — each
   oracle's walk is a projection of the same facts, so a silently shortened port list vanished from both
   sides of it; armed in a scratch copy it now reds 3/3 cases, where the same corruption left F4's full run
