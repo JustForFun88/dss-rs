@@ -6170,7 +6170,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     r4133. The exclusion is a statement about the 0.14.5 capture and
     //     nothing else — r4133 IS the rev the port took the signed default from
     //     (`Version8/Source/Controls/RegControl.pas`), and
-    //     `tests/TOLERANCE_NOTES.md:1971-1976` pins the r4133-side values and
+    //     `tests/TOLERANCE_NOTES.md:2140-2145` pins the r4133-side values and
     //     forbids masking them there.
     //     What the r4133 channel then SEES is an echo, and the RP2.1 probe
     //     census measured it: **888 cells** of Rust `'-100'` against r4133
@@ -6199,7 +6199,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //
     //     r4133 DISPOSITION (RP2.1, [`SKIP_PROPS_CAPI_ONLY`]): both rows
     //     **compare** on r4133 — same argument as (e), and
-    //     `tests/TOLERANCE_NOTES.md:1971-1976` says it outright ("The r4133 values
+    //     `tests/TOLERANCE_NOTES.md:2140-2145` says it outright ("The r4133 values
     //     are pinned on the r4133 side …, never masked there"). r4133 is where
     //     the new defaults come from, so masking them on that channel would mask
     //     the only channel that can witness them live. Measured (the RP2.1 probe
@@ -6263,7 +6263,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     **compare** on r4133. The exclusion is a statement about the 0.14.5
     //     capture and nothing else, and r4133 is the engine the render was
     //     ported from, so masking it there would mask the only channel that can
-    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:1971-1976`
+    //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:2140-2145`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
     //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
@@ -6309,7 +6309,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///
 /// Three causes, all spelled out at the rows themselves:
 ///  * the three **changed-default** rows (e)/(f) — the mismatch is 0.14.5 vs
-///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:1971-1976` forbids
+///    r4133 by construction, and `tests/TOLERANCE_NOTES.md:2140-2145` forbids
 ///    masking the r4133 side;
 ///  * the two `pctperm` rows of (d) — the uninitialized read is the dss_capi
 ///    oracle's, and r4133 answers a deterministic `'100'` that MATCHES the
@@ -6502,7 +6502,7 @@ mod skip_props_disposition_tests {
     }
 
     /// The capi-only rows COMPARE on r4133 — the three changed defaults, whose
-    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:1971-1976`
+    /// r4133 values (`RevThreshold`, Fuse) `tests/TOLERANCE_NOTES.md:2140-2145`
     /// forbids masking there, plus the two `pctperm` rows RP2.1 measured clean.
     #[test]
     fn capi_only_rows_compare_on_r4133() {
@@ -9927,16 +9927,30 @@ mod pd_elements_tests {
 /// [`compare_bus_short_circuit`], which therefore must NOT sort — see its doc
 /// block for how that order is itself pinned.
 ///
-/// The divergent bus quantities (`SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`)
-/// are G1.4c's and are deliberately absent (coordinator decision D8); they
-/// arrive as further `#[serde(default)]` fields, so an older capture stays
-/// readable.
+/// The four divergent bus quantities (`SeqVoltages`/`CplxSeqVoltages`,
+/// `VLL`/`puVLL`, G1.4c) are the LAST block, also `#[serde(default)]`. They
+/// follow neither convention: the sequence pair is indexed by symmetrical
+/// component and the line-to-line pair by the pairs UPSTREAM's own walk
+/// produced, which is not always the port's (see [`compare_bus_seq_and_vll`]).
 #[derive(Debug, Deserialize)]
 pub struct BusCap {
     /// `Bus.Name`, in `Circuit.AllBusNames` (= `BusList`) order.
     pub name: String,
     /// `Bus.kVBase` in kV; `<= 0` = not set.
     pub kv_base: f64,
+    /// `Bus.Distance` — `TDSSBus.DistFromMeter` in km, the EnergyMeter zone
+    /// walk's own accumulator published verbatim (capi `CAPI/CAPI_Bus.pas:419-427`
+    /// -> `CAPI/CAPI_Alt.pas:2071-2074` == r4133 `DDLL/DBus.pas:122-128`,
+    /// `BUSF` 5). G1.4b — compared by [`compare_bus_distances`], not by
+    /// [`compare_bus`], which owns the voltage half of the same walk.
+    ///
+    /// Deliberately **required** (no `#[serde(default)]`, unlike every optional
+    /// field below): both transports ship it unconditionally behind the
+    /// `compare_bus` flag, so a transport that stopped emitting it must fail
+    /// deserialization instead of silently deserializing as `0.0` — the value a
+    /// meterless circuit legitimately reports, which would leave the whole
+    /// surface green over nothing.
+    pub distance: f64,
     /// `Bus.Nodes` — the bus's node NUMBERS, ascending
     /// (`CAPI_Alt.pas:2143-2163` == r4133 `DBus.pas:319-345`).
     pub nodes: Vec<i32>,
@@ -9976,6 +9990,34 @@ pub struct BusCap {
     /// (`CAPI_Alt.pas:2227-2249` == `DBus.pas:351-372`).
     #[serde(default)]
     pub voc: Vec<f64>,
+    /// `Bus.SeqVoltages` — `|V012|`, THREE doubles on both channels, always:
+    /// the n/A reply is three `-1.0`s, not a short array
+    /// (`CAPI_Alt.pas:2165-2200` == `DBus.pas:286-317`). G1.4c.
+    #[serde(default)]
+    pub seq_voltages: Vec<f64>,
+    /// `Bus.CplxSeqVoltages` — the same `V012`, complex: SIX doubles always,
+    /// the n/A reply six `-1.0`s (`CAPI_Alt.pas:2367-2398` == `DBus.pas:520-547`,
+    /// where `cmplx(-1,-1) x 3` is those six doubles).
+    #[serde(default)]
+    pub cplx_seq_voltages: Vec<f64>,
+    /// `Bus.VLL` — `2 * pairs` doubles, where the pairs are the ones upstream's
+    /// own walk produced; or the 1-phase sentinel `[-99999.0, 0.0]`, or capi's
+    /// one-double `DefaultResult` (`CAPI_Alt.pas:2473-2537` == `DBus.pas:549-601`).
+    /// EMPTY when the r4133 bridge refused the call — see [`Self::vll_declined`].
+    #[serde(default)]
+    pub vll: Vec<f64>,
+    /// `Bus.puVLL` — [`Self::vll`] over `1000 * kVBase * sqrt3`, same shape rule
+    /// (`CAPI_Alt.pas:2400-2470` == `DBus.pas:603-658`).
+    #[serde(default)]
+    pub pu_vll: Vec<f64>,
+    /// The **r4133 bridge** refused to call `BUSV(11)`/`BUSV(12)` on this bus
+    /// because `DBus.pas:580-584`'s unbounded partner `repeat` would not
+    /// terminate (`dss-epri::modes::bus_vll_would_hang`, the state-dependent
+    /// refusal register). Always `false` on the capi channel, whose partner scan
+    /// is the bounded `for k := 1 to 3` (`CAPI_Alt.pas:2512-2524`) — asserted by
+    /// [`compare_bus_seq_and_vll`].
+    #[serde(default)]
+    pub vll_declined: bool,
 }
 
 /// The `BaseFactor` both engines divide the per-unit bus quantities by:
@@ -10240,6 +10282,523 @@ pub fn compare_all_bus_vmag_pu(
              (|diff| = {:.3e} > allowed {allowed:.3e})",
             (a - e).abs()
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE_PLAN.md WP-G1 sub-step G1.4b: the bus DISTANCE surface.
+//
+// `Bus.Distance`, `Circuit.AllBusDistances` and `Circuit.AllNodeDistances` —
+// three views of the ONE field `TDSSBus.DistFromMeter` (capi
+// `CAPI/CAPI_Bus.pas:419-427` -> `CAPI/CAPI_Alt.pas:2071-2074`,
+// `CAPI/CAPI_Circuit.pas:671-688` and `:697-722`; r4133 `DDLL/DBus.pas:122-128`
+// `BUSF` 5, `DDLL/DCircuit.pas:566-580` `CircuitV` 12 and `:582-604`
+// `CircuitV` 13; fastdss dumps all three with the rest of the `IBus`/`ICircuit`
+// `_columns`, `dss/IBus.py:28` and `dss/ICircuit.py:106`/`:113` on
+// `origin/fastdss`). They ride the `compare_bus` flag and the ONE per-bus
+// `SetActiveBus` walk `compare_bus` already pays for — no second flag, no
+// second capture.
+//
+// **This surface is not a solve output.** `DistFromMeter` is written only by
+// the EnergyMeter zone build (r4133 `Meters/EnergyMeter.pas:1833-1838` == port
+// `solution/meters/zones/build.rs:240-251`, which adds
+// `len · ConvertLineUnits(units, UNITS_KM)` per *line* branch and carries the
+// parent's value across every other branch) and reset to `0.0` at the zone
+// origin (`build.rs:178`). It is therefore NOT an image of `Solution.NodeV`,
+// so `compare_bus`'s `voltages_excluded` rule does not reach it: a `voltages`
+// ledger cause cannot explain a distance divergence, and suppressing it there
+// would hide a real zone-build bug behind an unrelated triage.
+//
+// **Tolerance: none — `rel = abs = 0`.** Derivation and the measurement that
+// backs it: tests/TOLERANCE_NOTES.md §"Bus distance surface (GOLDEN_REBASE
+// G1.4b)". A measured upstream divergence is therefore never absorbed by a
+// band: it is excluded bus by bus through the `distance` ledger field
+// (coordinator decision D29 step 3) and pinned by an expected-value test —
+// `the_reduced_midi_deck_reports_the_merged_lines_kft_distances` in
+// `corpus_gate.rs` for the one case that has one.
+// ---------------------------------------------------------------------------
+
+/// Gating distance compares that carried at least one NON-ZERO distance — one
+/// per [`compare_bus_distances`] call made from the corpus gate's runner.
+static DISTANCE_WALKS: AtomicUsize = AtomicUsize::new(0);
+/// …and the buses those walks compared a non-zero distance on.
+static DISTANCE_BUSES: AtomicUsize = AtomicUsize::new(0);
+
+/// What a full-population gate run must reach: `(walks, buses)` over which a
+/// non-zero `DistFromMeter` was compared, re-derived on every run and asserted
+/// EXACTLY, so the number fails on a drop **and** on a growth.
+///
+/// It is this surface's fail-on-stale, and it exists because the comparator is
+/// an equality over a field that is `0.0` on the ~370 forced cases with no
+/// EnergyMeter (a static scan following `Redirect`/`Compile` finds one in
+/// **70** of the 443 — `TESTING.md`): on those the whole surface is the
+/// (real, but trivial) shape assertion "the port invents no distance", and a
+/// regression that stopped the zone walk from writing distances at all would
+/// leave every one of them green.
+/// `population.lock.json` cannot see it either — it fingerprints the manifest
+/// FLAG (this surface sets none of its own, it rides `compare_bus`) and
+/// `MODES_REQUIRED` the deck PATH, never that a deck still builds a meter zone.
+///
+/// Read off a COMPLETED full default-lane gate on 2026-09-05 (526/526 cases
+/// passed, 223.6 s — the run's own `corpus_gate distance:` line), once micro-part
+/// F2's one measured divergence was settled by the `distance` ledger exclusion
+/// (coordinator decision D29 step 3). Never guessed: 867 gating compares over
+/// both channels and every gated step carried at least one non-zero
+/// `DistFromMeter`, and 79 137 individual buses did — the 70 metered cases
+/// times their channels, steps and bus counts.
+const DISTANCE_POPULATION: (usize, usize) = (867, 79_137);
+
+/// Record one gating distance compare that saw `nonzero_buses` non-zero
+/// distances.
+///
+/// The single caller is `corpus_gate/runner.rs`'s `compare_bus` block. The
+/// harness' own unit drives ([`bus_distance_comparator_tests`]) call
+/// [`compare_bus_distances`] directly and are deliberately NOT counted, for the
+/// reason [`record_sc_study_compare`] gives: they run in this same test binary
+/// and would make the population unstable.
+pub fn record_distance_compare(nonzero_buses: usize) {
+    if nonzero_buses > 0 {
+        DISTANCE_WALKS.fetch_add(1, AtomicOrd::Relaxed);
+        DISTANCE_BUSES.fetch_add(nonzero_buses, AtomicOrd::Relaxed);
+    }
+}
+
+/// What [`record_distance_compare`] has counted in this process, as
+/// `(walks, buses)`.
+pub fn distance_counters() -> (usize, usize) {
+    (
+        DISTANCE_WALKS.load(AtomicOrd::Relaxed),
+        DISTANCE_BUSES.load(AtomicOrd::Relaxed),
+    )
+}
+
+/// **Fail-on-stale for the distance surface**, called once from the corpus
+/// gate's epilogue. Silent under `DSS_GATE_ONLY` — a filtered run legitimately
+/// holds no metered deck — exactly like its neighbour
+/// [`assert_sc_study_compare_ran`].
+pub fn assert_distance_compare_ran() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let (walks, buses) = distance_counters();
+    check_distance_compare_ran(walks, buses);
+}
+
+/// The rule itself, over **injected** counters — split off for the reason
+/// [`check_sc_study_compare_ran`]'s twin is: the shipped statics cannot be
+/// rewound once the gate has moved them, so both directions are pinned offline
+/// in `corpus_gate.rs`.
+pub fn check_distance_compare_ran(walks: usize, buses: usize) {
+    assert_eq!(
+        (walks, buses),
+        DISTANCE_POPULATION,
+        "the distance surface compared {walks} walk(s) / {buses} bus(es) carrying a \
+         non-zero DistFromMeter, not {DISTANCE_POPULATION:?}. Fewer means a deck stopped \
+         building a meter zone (or lost a step, or a channel) — which the comparator's \
+         own equality survives, because both sides then report the meterless 0.0; more \
+         means a new metered case arrived. Re-derive the pair from the run's own \
+         `corpus_gate distance:` line and move it deliberately (GOLDEN_REBASE G1.4b)."
+    );
+}
+
+/// Compare the three `DistFromMeter` views against the engine's, in `BusList`
+/// order (GOLDEN_REBASE_PLAN.md G1.4b). Returns the number of buses whose
+/// distance was non-zero, for [`record_distance_compare`].
+///
+/// Runs AFTER [`compare_bus`], which pins the bus count and the name sequence
+/// first; the name is re-checked here per bus so the function is honest when
+/// called alone, as the offline drives in [`bus_distance_comparator_tests`] do.
+///
+/// Structure, strongest first:
+/// * every LENGTH — the oracle's two arrays against the port's, and both
+///   against the port's own per-bus walk (`Σ nodes`). This is what makes the
+///   two circuit-level walks and the per-bus walk unable to drift apart
+///   silently;
+/// * the port-internal identity `all_bus_distances[i] == buses[i].distance` and
+///   `all_node_distances[k] == that same value` for every node of bus `i` — the
+///   run-length structure is the only ordering information the node array
+///   carries (its values are constant across a bus), so it is asserted
+///   explicitly rather than inferred;
+/// * the ORACLE-internal form of the same two identities. Both oracles publish
+///   the identical field through three entry points, so this pins that the
+///   oracle's `AllBusDistances` really is in `BusList` order — the assumption
+///   the per-bus comparison rests on;
+/// * the values themselves, **exactly** (`rel = abs = 0`): the two oracles are
+///   bit-identical to each other and to the port on this quantity, because all
+///   three run the same zone walk over the same `len · ConvertLineUnits` sum
+///   and never touch the solver. See tests/TOLERANCE_NOTES.md;
+/// * "the port invents no distance": a non-zero distance requires the circuit
+///   to hold an EnergyMeter object. The converse is deliberately NOT asserted —
+///   a meter whose zone is a single bus, or whose zone was never built,
+///   legitimately leaves every distance at `0.0`.
+///
+/// `excluded(bus_name)` is the `distance` ledger field
+/// (`GOLDEN_REBASE_PLAN.md` G1.4b, coordinator decision D29 step 3), and it is
+/// consulted **only after the exact equality has already failed** on that bus.
+/// That order is the whole point: `LedgerView::excluded` sets the scope's `hit`
+/// flag when it answers, so asking it lazily makes a hit mean *masked a real
+/// divergence* rather than *matched a name*, and a scope whose upstream cause
+/// got fixed goes unhit and fails the gate as STALE
+/// (`corpus_gate::ledger::PER_VALUE_EXCLUSION_FIELDS`). Nothing else is
+/// suppressed: an excluded bus keeps its name check, both internal identities
+/// and every length, and it still counts toward the run-wide population.
+pub fn compare_bus_distances(
+    dss: &Dss,
+    exp: &[BusCap],
+    exp_all_bus: &[f64],
+    exp_all_node: &[f64],
+    excluded: &dyn Fn(&str) -> bool,
+    ctx: &str,
+) -> usize {
+    let views = dss.all_bus_voltages();
+    let all_bus = dss.all_bus_distances();
+    let all_node = dss.all_node_distances();
+    assert_eq!(
+        views.len(),
+        exp.len(),
+        "{ctx}: bus count differs ({} vs {})",
+        views.len(),
+        exp.len()
+    );
+    let nodes_total: usize = views.iter().map(|v| v.nodes.len()).sum();
+    for (what, port, oracle, want) in [
+        (
+            "AllBusDistances",
+            all_bus.len(),
+            exp_all_bus.len(),
+            views.len(),
+        ),
+        (
+            "AllNodeDistances",
+            all_node.len(),
+            exp_all_node.len(),
+            nodes_total,
+        ),
+    ] {
+        assert_eq!(
+            port, want,
+            "{ctx}: the port's {what} has {port} entries but its own bus-list walk saw {want}"
+        );
+        assert_eq!(
+            oracle, want,
+            "{ctx}: the oracle's {what} has {oracle} entries but the bus-list walk saw {want}"
+        );
+    }
+
+    let mut nonzero = 0usize;
+    let mut k = 0usize;
+    for (i, (v, e)) in views.iter().zip(exp).enumerate() {
+        assert!(
+            v.name.eq_ignore_ascii_case(&e.name),
+            "{ctx}: bus {i} name differs: {} vs {}",
+            v.name,
+            e.name
+        );
+        if v.distance != e.distance {
+            assert!(
+                excluded(&e.name),
+                "{ctx}: bus {} Distance differs: {} vs {} km (compared exactly — the zone \
+                 walk is the same sum on both engines and never touches the solver). \
+                 No `distance` ledger exclusion covers this bus on this \
+                 channel",
+                e.name,
+                v.distance,
+                e.distance
+            );
+        }
+        assert_eq!(
+            all_bus[i], v.distance,
+            "{ctx}: bus {} — the port's AllBusDistances[{i}] ({}) is not its own \
+             Bus.Distance ({}); the two accessors publish one field",
+            e.name, all_bus[i], v.distance
+        );
+        assert_eq!(
+            exp_all_bus[i], e.distance,
+            "{ctx}: bus {} — the oracle's AllBusDistances[{i}] ({}) is not its own \
+             Bus.Distance ({}), so its array is not in BusList order",
+            e.name, exp_all_bus[i], e.distance
+        );
+        for node in &v.nodes {
+            assert_eq!(
+                all_node[k], v.distance,
+                "{ctx}: bus {} node {node} — the port's AllNodeDistances[{k}] ({}) is not \
+                 the bus's own distance ({})",
+                e.name, all_node[k], v.distance
+            );
+            assert_eq!(
+                exp_all_node[k], e.distance,
+                "{ctx}: bus {} node {node} — the oracle's AllNodeDistances[{k}] ({}) is not \
+                 the bus's own distance ({}); the node array is the bus array expanded by \
+                 NumNodesThisBus",
+                e.name, exp_all_node[k], e.distance
+            );
+            k += 1;
+        }
+        if v.distance != 0.0 {
+            nonzero += 1;
+        }
+    }
+    if nonzero > 0 {
+        assert!(
+            dss.circuit().is_some_and(|c| !c.energy_meters.is_empty()),
+            "{ctx}: {nonzero} bus(es) report a non-zero distance from a circuit that holds \
+             no EnergyMeter — `DistFromMeter` is written only by the zone build \
+             (`solution/meters/zones/build.rs:240-251`), so the port invented one"
+        );
+    }
+    nonzero
+}
+
+/// Committed offline drives for [`compare_bus_distances`] — the negative
+/// controls §1.1(f) asks every G1 comparator for, in the shape its three
+/// per-bus siblings use ([`bus_comparator_tests`], [`bus_short_circuit_tests`],
+/// [`bus_seq_vll_comparator_tests`]).
+///
+/// G1.4b shipped the surface with the plan-sanctioned *scratch* corruption only
+/// (a corrupted `exec/view.rs`, run once and reverted), so nothing in the tree
+/// held the comparator's failing direction, and its own doc claimed drives that
+/// did not exist (G1.4b audit AC-1 / AT-1, settled 2026-09-06). These are those
+/// drives: they perturb the ORACLE side of a live port capture, so no product
+/// code is touched, and each rail is pinned by its own panic message.
+///
+/// The one assertion no offline drive can reach is the "port invents no
+/// distance" guard — it fires on the PORT's own state (a non-zero distance from
+/// a circuit that holds no EnergyMeter), unreachable without corrupting the
+/// engine; its evidence stays the scratch drive logged in the G1.4b handoff.
+#[cfg(test)]
+mod bus_distance_comparator_tests {
+    use super::{BusCap, compare_bus_distances};
+    use dss_core::exec::Dss;
+
+    /// The metered radial of `exec/view.rs::bus_distance_tests` (G1.4b F1):
+    /// lengths in km, so the zone walk's `Σ len · ConvertLineUnits` is exactly
+    /// `sourcebus = 0`, `b1 = 1`, `b2 = 1 + 2 = 3`, and the spur `b3` sits
+    /// outside the meter's zone at `0`. Two non-zero buses — enough for a nudge
+    /// to be a real divergence and for the return value to be non-trivial.
+    fn metered() -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "New circuit.dist basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km",
+            "New Line.l2 bus1=b1 bus2=b2 phases=3 r1=0.1 x1=0.3 c1=0 length=2 units=km",
+            "New Line.spur bus1=sourcebus bus2=b3 phases=3 r1=0.1 x1=0.3 c1=0 length=5 units=km",
+            "New Load.ld bus1=b2 phases=3 kv=12.47 kw=500 pf=0.95",
+            "New EnergyMeter.em element=Line.l1 terminal=1",
+            "Set voltagebases=[12.47]",
+            "CalcVoltageBases",
+            "Solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// The capture both transports send for this deck, built from the port's
+    /// own view — the positive control every drive below perturbs. Only the
+    /// fields [`compare_bus_distances`] reads are filled (`name`, `distance`,
+    /// and `kv_base`/`nodes` for the shape); the voltage and short-circuit
+    /// arrays belong to the other comparators' drives.
+    fn capture(dss: &Dss) -> (Vec<BusCap>, Vec<f64>, Vec<f64>) {
+        let caps = dss
+            .all_bus_voltages()
+            .iter()
+            .map(|v| {
+                let mut nodes = v.nodes.clone();
+                nodes.sort_unstable();
+                BusCap {
+                    name: v.name.clone(),
+                    kv_base: v.kv_base,
+                    distance: v.distance,
+                    nodes,
+                    pu_voltages: Vec::new(),
+                    vmag_angle: Vec::new(),
+                    pu_vmag_angle: Vec::new(),
+                    zsc1: Vec::new(),
+                    zsc0: Vec::new(),
+                    zsc: Vec::new(),
+                    ysc: Vec::new(),
+                    isc: Vec::new(),
+                    voc: Vec::new(),
+                    seq_voltages: Vec::new(),
+                    cplx_seq_voltages: Vec::new(),
+                    vll: Vec::new(),
+                    pu_vll: Vec::new(),
+                    vll_declined: false,
+                }
+            })
+            .collect();
+        (caps, dss.all_bus_distances(), dss.all_node_distances())
+    }
+
+    /// The ledger closure of a case with no `distance` entry: nothing excluded.
+    fn nothing(_: &str) -> bool {
+        false
+    }
+
+    /// Positive control: the comparator accepts the engine's own surface, the
+    /// fixture really carries the two non-zero distances the drives perturb,
+    /// and the returned count is the one `record_distance_compare` receives.
+    #[test]
+    fn compare_bus_distances_accepts_the_engines_own_surface() {
+        let dss = metered();
+        let (exp, all_bus, all_node) = capture(&dss);
+        assert_eq!(
+            all_bus,
+            vec![0.0, 1.0, 3.0, 0.0],
+            "the drives below are vacuous unless the zone walk really wrote km"
+        );
+        let nonzero = compare_bus_distances(
+            &dss,
+            &exp,
+            &all_bus,
+            &all_node,
+            &nothing,
+            "positive control",
+        );
+        assert_eq!(nonzero, 2, "b1 and b2 carry a non-zero DistFromMeter");
+        assert_eq!(all_node.len(), 12, "4 three-phase buses × 3 nodes");
+    }
+
+    /// A wrong oracle distance on ONE bus reds — the surface's whole point, and
+    /// the compare is `rel = abs = 0`, so a 1-ULP nudge is already a divergence.
+    #[test]
+    #[should_panic(expected = "bus b1 Distance differs")]
+    fn a_nudged_oracle_distance_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp[1].distance = f64::from_bits(exp[1].distance.to_bits() + 1);
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "nudge");
+    }
+
+    /// …and the `distance` ledger field covers exactly the bus it names: the
+    /// divergence on `b1` is masked, and the closure is consulted ONLY for the
+    /// bus that actually diverged (which is what makes a ledger hit mean
+    /// "masked a real divergence" rather than "matched a name").
+    #[test]
+    fn a_distance_exclusion_covers_only_the_bus_it_names() {
+        let dss = metered();
+        let (mut exp, all_bus, mut all_node) = capture(&dss);
+        exp[1].distance = 42.0;
+        // The oracle's own two identities must still hold on the excluded bus.
+        let mut oracle_all_bus = all_bus.clone();
+        oracle_all_bus[1] = 42.0;
+        all_node[3] = 42.0;
+        all_node[4] = 42.0;
+        all_node[5] = 42.0;
+        let asked = std::cell::RefCell::new(Vec::<String>::new());
+        let only_b1 = |name: &str| {
+            asked.borrow_mut().push(name.to_string());
+            name.eq_ignore_ascii_case("b1")
+        };
+        compare_bus_distances(
+            &dss,
+            &exp,
+            &oracle_all_bus,
+            &all_node,
+            &only_b1,
+            "exclusion",
+        );
+        assert_eq!(
+            asked.into_inner(),
+            vec!["b1".to_string()],
+            "the ledger is consulted lazily, only for a bus that already failed the equality"
+        );
+    }
+
+    /// An exclusion that names another bus does NOT cover this one — the scope
+    /// is per bus name, never per case.
+    #[test]
+    #[should_panic(expected = "bus b1 Distance differs")]
+    fn a_distance_exclusion_naming_another_bus_still_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp[1].distance = 42.0;
+        let only_b2 = |name: &str| name.eq_ignore_ascii_case("b2");
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &only_b2, "wrong scope");
+    }
+
+    /// The ORACLE-internal identity `AllBusDistances[i] == Bus.Distance` — what
+    /// pins that the oracle's array really is in `BusList` order. An exclusion
+    /// must not silence it: an entry masks a VALUE, never the oracle's shape.
+    #[test]
+    #[should_panic(expected = "is not in BusList order")]
+    fn an_oracle_all_bus_distances_out_of_bus_list_order_reds() {
+        let dss = metered();
+        let (exp, all_bus, all_node) = capture(&dss);
+        let mut oracle_all_bus = all_bus.clone();
+        oracle_all_bus.swap(1, 2);
+        let everything = |_: &str| true;
+        compare_bus_distances(
+            &dss,
+            &exp,
+            &oracle_all_bus,
+            &all_node,
+            &everything,
+            "shuffled",
+        );
+    }
+
+    /// …and the same identity on the node array, whose run lengths are the only
+    /// ordering information it carries.
+    #[test]
+    #[should_panic(expected = "node array is the bus array expanded")]
+    fn a_nudged_oracle_node_entry_reds() {
+        let dss = metered();
+        let (exp, all_bus, mut all_node) = capture(&dss);
+        all_node[4] = 99.0;
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "node nudge");
+    }
+
+    /// The length rails: a transport that shipped a short node array — or, via
+    /// `#[serde(default)]`, none at all — fails instead of being compared over
+    /// the prefix. Drive C of the G1.4b handoff, made permanent.
+    #[test]
+    #[should_panic(expected = "the oracle's AllNodeDistances has 11 entries")]
+    fn a_short_oracle_node_array_reds() {
+        let dss = metered();
+        let (exp, all_bus, mut all_node) = capture(&dss);
+        all_node.pop();
+        compare_bus_distances(
+            &dss,
+            &exp,
+            &all_bus,
+            &all_node,
+            &nothing,
+            "short node array",
+        );
+    }
+
+    /// …and the same for the bus-level array.
+    #[test]
+    #[should_panic(expected = "the oracle's AllBusDistances has 0 entries")]
+    fn an_empty_oracle_bus_array_reds() {
+        let dss = metered();
+        let (exp, _all_bus, all_node) = capture(&dss);
+        compare_bus_distances(&dss, &exp, &[], &all_node, &nothing, "empty bus array");
+    }
+
+    /// The per-bus name check — what makes the index-for-index pairing honest
+    /// even when this comparator is called alone.
+    #[test]
+    #[should_panic(expected = "bus 1 name differs")]
+    fn a_renamed_bus_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp[1].name = "b9".to_string();
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "renamed");
+    }
+
+    /// A capture with a bus missing fails on the count before anything is
+    /// compared — the pairing is never silently truncated.
+    #[test]
+    #[should_panic(expected = "bus count differs")]
+    fn a_short_capture_reds() {
+        let dss = metered();
+        let (mut exp, all_bus, all_node) = capture(&dss);
+        exp.pop();
+        compare_bus_distances(&dss, &exp, &all_bus, &all_node, &nothing, "short capture");
     }
 }
 
@@ -10833,6 +11392,7 @@ mod bus_comparator_tests {
                 BusCap {
                     name: v.name.clone(),
                     kv_base: v.kv_base,
+                    distance: v.distance,
                     nodes,
                     pu_voltages: v.pu_voltages.iter().flat_map(|c| [c.re, c.im]).collect(),
                     vmag_angle: v.vmag_angle.iter().flat_map(|p| [p.0, p.1]).collect(),
@@ -10847,6 +11407,15 @@ mod bus_comparator_tests {
                     ysc: Vec::new(),
                     isc: Vec::new(),
                     voc: Vec::new(),
+                    // …and no G1.4c sequence / line-to-line arrays: those are
+                    // `compare_bus_seq_and_vll`'s rows, tested in their own
+                    // module, and `#[serde(default)]` keeps a G1.4a payload
+                    // readable.
+                    seq_voltages: Vec::new(),
+                    cplx_seq_voltages: Vec::new(),
+                    vll: Vec::new(),
+                    pu_vll: Vec::new(),
+                    vll_declined: false,
                 }
             })
             .collect()
@@ -10914,6 +11483,8 @@ mod bus_comparator_tests {
                 BusCap {
                     name: e.name.clone(),
                     kv_base: e.kv_base,
+                    // Exactly compared and not part of this drive: copied.
+                    distance: e.distance,
                     nodes: e.nodes.clone(),
                     // The complex band is on |Δ|, so split the nudge over re/im.
                     pu_voltages: e
@@ -10939,6 +11510,15 @@ mod bus_comparator_tests {
                     ysc: Vec::new(),
                     isc: Vec::new(),
                     voc: Vec::new(),
+                    // …and no G1.4c sequence / line-to-line arrays: those are
+                    // `compare_bus_seq_and_vll`'s rows, tested in their own
+                    // module, and `#[serde(default)]` keeps a G1.4a payload
+                    // readable.
+                    seq_voltages: Vec::new(),
+                    cplx_seq_voltages: Vec::new(),
+                    vll: Vec::new(),
+                    pu_vll: Vec::new(),
+                    vll_declined: false,
                 }
             })
             .collect();
@@ -11178,6 +11758,7 @@ mod bus_short_circuit_tests {
                 BusCap {
                     name: v.name.clone(),
                     kv_base: 0.0,
+                    distance: 0.0,
                     nodes,
                     pu_voltages: Vec::new(),
                     vmag_angle: Vec::new(),
@@ -11188,6 +11769,11 @@ mod bus_short_circuit_tests {
                     ysc: mat(&v.ysc),
                     isc: node_arr(&v.isc),
                     voc: node_arr(&v.vbus),
+                    seq_voltages: Vec::new(),
+                    cplx_seq_voltages: Vec::new(),
+                    vll: Vec::new(),
+                    pu_vll: Vec::new(),
+                    vll_declined: false,
                 }
             })
             .collect()
@@ -11327,6 +11913,7 @@ mod bus_short_circuit_tests {
                     BusCap {
                         name: e.name.clone(),
                         kv_base: e.kv_base,
+                        distance: 0.0,
                         nodes: e.nodes.clone(),
                         pu_voltages: Vec::new(),
                         vmag_angle: Vec::new(),
@@ -11346,6 +11933,11 @@ mod bus_short_circuit_tests {
                         },
                         isc: bump(&e.isc, tol.i_abs, tol.i_rel),
                         voc: bump(&e.voc, tol.v_abs, tol.v_rel),
+                        seq_voltages: Vec::new(),
+                        cplx_seq_voltages: Vec::new(),
+                        vll: Vec::new(),
+                        pu_vll: Vec::new(),
+                        vll_declined: false,
                     }
                 })
                 .collect();
@@ -11705,6 +12297,1572 @@ mod bus_short_circuit_tests {
         assert_eq!((f.v_abs, f.v_rel), (1e-6, 1e-8));
         assert_eq!((f.y_abs, f.y_rel), (1e-6, 1e-8));
         assert_eq!((f.i_abs, f.i_rel), (1e-5, 1e-7));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE_PLAN.md WP-G1 sub-step G1.4c: the per-bus SEQUENCE and
+// LINE-TO-LINE voltage surface.
+//
+// `Bus.SeqVoltages`, `Bus.CplxSeqVoltages`, `Bus.VLL` and `Bus.puVLL` — the
+// four `IBus._columns` entries G1.4a deliberately left out because the two
+// oracles do NOT compute them alike, and neither computes them correctly.
+// Captured by the same per-bus walk `compare_bus` and
+// `compare_bus_short_circuit` ride (`tools/oracle/oracle_server.py`'s and
+// `dss-epri`'s `capture_all_buses`, four reads inserted after the five voltage
+// ones and before the six short-circuit ones) and read back from the engine
+// through `Dss::all_bus_voltages` (`crates/dss-core/src/exec/view.rs`).
+//
+// **Three engines, three answers.** For a bus whose nodes are exactly 1, 2, 3
+// all three agree and this comparator is a plain value compare (34 081 of the
+// corpus' 209 211 buses). Everywhere else:
+//
+// * `SeqVoltages`/`CplxSeqVoltages` — capi clamps `Nvalues > 3` to 3 and then
+//   answers on a 4-node bus (`CAPI/CAPI_Alt.pas:2174-2186`), r4133 does not
+//   clamp and returns the `-1` sentinel there (`DDLL/DBus.pas:296-300`), and
+//   **both** substitute ground for a phase the bus does not carry
+//   (`Find(i) = 0 => NodeV[0]`, `DBus.pas:305` == `CAPI_Alt.pas:2190`),
+//   fabricating a 0 V phase on e.g. a `[1, 2, 10]` bus. The port answers under
+//   **S-SEQ** (all three phase nodes or nothing — r4133's own stated intent,
+//   `DBus.pas:299` *"Signify seq voltages n/A for less then 3 phases"*).
+// * `VLL`/`puVLL` — both engines poll `FindIdx(jj)` BEFORE the `jj > 3 =>
+//   jj := 1` wrap (`DBus.pas:580-584` == `CAPI_Alt.pas:2514-2524`), so they
+//   pair phase 3 with node 4, pair a node with itself, or walk off the phase
+//   set entirely; where the walk finds nothing capi bails to `DefaultResult`
+//   after three tries (`CAPI_Alt.pas:2512-2529`, comment *"(2020-03-01) Changed
+//   in DSS C-API to avoid some corner cases that resulted in infinite loops"*)
+//   while r4133's unbounded `repeat` HANGS. The port answers under **S-VLL**
+//   (line-to-line over the phase nodes actually present), which is what
+//   r4133's own report path computes (`Common/ShowResults.pas:193-194` wraps
+//   first) and what its own commented-out original did (`DBus.pas:586-587`).
+//
+// **Shape of the compare (coordinator decisions D4 / D8 / D21, the D15/D16
+// settlement shape).** Nothing is excluded and no ledger row is spent. Each bus
+// is classified from its own NODE SET — never from a value — and then either
+// value-compared against the port's accessor (209 091 of 209 211 buses) or
+// closed by a POSITIVE assertion of the upstream mechanism over the port's own
+// `node_v`: `oracle == upstream_walk(port state)`. The four exceptional classes
+// are counted into run-wide populations that fail on stale in both directions,
+// so a bus that quietly changes class is a finding.
+//
+// **Tolerances: one shared constant, [`SEQ_C012`]**, and no existing band
+// moves. The r4133 channel transforms 012 quantities with a measurably
+// different matrix (truncated `sin 60°`, numerically inverted), and the term
+// this surface adds on rows 1 and 2 is the SAME one lane-e's G1.3b element
+// sequence surface adds — deduped to one definition at the 2026-09-06 merge
+// (D7/D21), reconciled by the analytic ceiling
+// `2 · (0.8660254037844387 − 0.866025403) / 3 = 5.229591574599605e-10` and kept
+// at the *tight* row-sum value [`SEQ_C012`] derived from `SymComp::official()`,
+// never at the larger `5.30e-10` this sub-step had rounded it up to. The row
+// sum is an upper bound on every gap this surface can measure
+// (`|Δ·Vph|_k ≤ (Σ_j |Δ_kj|)·max_j |Vph_j|`), and it is attained, so the
+// measured live worst `5.229587392548124e-10` (`0.99999948 ×` the kept value)
+// could never have exceeded it. Derivations:
+// tests/TOLERANCE_NOTES.md §"Bus sequence and line-to-line voltages
+// (GOLDEN_REBASE G1.4c)" and §G1.3b for the constant itself.
+// ---------------------------------------------------------------------------
+
+/// How many of the phase nodes 1, 2 and 3 the bus carries. The criterion S-SEQ
+/// and S-VLL are stated in — never the node COUNT the two oracles test.
+fn phase_nodes_present(nodes: &[i32]) -> usize {
+    nodes.iter().filter(|n| (1..=3).contains(*n)).count()
+}
+
+/// Does this oracle channel decline the sequence pair on a bus with `n` nodes?
+///
+/// * **capi**: `n < 3` — `Nvalues > 3` is clamped to 3 first
+///   (`CAPI_Alt.pas:2174-2176` for `SeqVoltages`, `:2373-2375` for the complex
+///   arm), so the `<> 3` test only ever fires below three nodes.
+/// * **r4133**: `n != 3` — no clamp at all (`DBus.pas:296-297` == `:530-531`),
+///   so a 4-node bus gets the sentinel where capi computes a value.
+///
+/// The reply itself is the same three/six `-1.0` doubles on both channels
+/// (`CAPI_Alt.pas:2181-2186`/`:2379-2381` == `DBus.pas:299`/`:531`, where
+/// `cmplx(-1,-1) x 3` is those six doubles), which is what makes the split
+/// recognizable structurally rather than by value.
+fn seq_channel_declines(channel: PropsChannel, n: usize) -> bool {
+    match channel {
+        PropsChannel::CapiV0145 => n < 3,
+        PropsChannel::R4133 => n != 3,
+    }
+}
+
+/// What upstream's `VLL`/`puVLL` walk does on a bus with these (ascending) node
+/// numbers — the literal transcription of `CAPI_Alt.pas:2479-2537` (`bounded`)
+/// and `DBus.pas:558-597` (unbounded), used ONLY to build the oracle's
+/// expectation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum UpstreamVll {
+    /// `Nvalues <= 1`: both engines return the two-double `[-99999.0, 0.0]`
+    /// without looking at a voltage (`CAPI_Alt.pas:2485-2492` ==
+    /// `DBus.pas:594-596`).
+    OnePhase,
+    /// The `(node_i, node_j)` pairs the walk produced, by node NUMBER.
+    Pairs(Vec<(i32, i32)>),
+    /// capi's `DefaultResult` — the bounded `for k := 1 to 3` found no partner,
+    /// which abandons the WHOLE array and returns the single `0.0`
+    /// (`CAPI_Alt.pas:2525-2530`).
+    CapiDefault,
+    /// The first `repeat` (`CAPI_Alt.pas:2507-2510` == `DBus.pas:575-578`) never
+    /// terminates: it walks `jj` upward without a bound, so a bus whose node
+    /// numbers are all below `i` hangs BOTH engines. Defensive — no corpus bus
+    /// reaches it (`crates/dss-epri/src/modes.rs`'s independent predicate
+    /// measures the same 0).
+    FirstLoopHang,
+    /// r4133's second `repeat` (`DBus.pas:580-584`) never terminates: its probe
+    /// set is `{jj0} + {1, 2, 3, 4}` and the bus carries none of them.
+    /// Live-proven on `NEVTestCase` `double-1..6` (`[10, 31, 32, 33, 41, 42,
+    /// 43]`).
+    SecondLoopHang,
+}
+
+/// Replay the upstream `VLL` walk over `nodes` (ascending node numbers).
+/// `bounded` selects capi's `for k := 1 to 3` partner scan; `false` is r4133's
+/// unbounded `repeat`.
+///
+/// This is the harness' own transcription; `dss-epri`'s
+/// `modes::bus_vll_would_hang` is an independent one, and the comparator asserts
+/// the two agree on every bus of every gated case (a refusal here must meet a
+/// refusal there, and vice versa).
+fn upstream_vll(nodes: &[i32], bounded: bool) -> UpstreamVll {
+    // `Nvalues := NumNodesThisBus; if > 3 then 3; if <= 1 then bail;
+    //  if = 2 then 1` — `CAPI_Alt.pas:2481-2495` == `DBus.pas:559-563`.
+    let nvalues = match nodes.len().min(3) {
+        0 | 1 => return UpstreamVll::OnePhase,
+        2 => 1,
+        k => k,
+    };
+    // Both `repeat`s are unbounded upward in the Pascal; a terminating first
+    // loop can only stop on a node number the bus carries, so `max(nodes)`
+    // bounds it and anything past that is the hang itself.
+    let ceiling = nodes.iter().copied().max().unwrap_or(0);
+    let mut pairs = Vec::with_capacity(nvalues);
+    for i in 1..=(nvalues as i32) {
+        let mut jj = i;
+        // `repeat NodeIdxi := FindIdx(jj); inc(jj) until NodeIdxi > 0` — `jj`
+        // is left one PAST the node that matched.
+        let node_i = loop {
+            if jj > ceiling {
+                return UpstreamVll::FirstLoopHang;
+            }
+            let hit = nodes.contains(&jj);
+            jj += 1;
+            if hit {
+                break jj - 1;
+            }
+        };
+        // The partner scan. `NodeIdxj := FindIdx(jj)` is evaluated BEFORE the
+        // `if jj > 3 then jj := 1 else inc(jj)` wrap, so the probe sequence is
+        // `jj0, then 1, 2, 3, 4, 1, 2, 3, 4, ...` — the pre-wrap poll is the
+        // whole defect (`DBus.pas:581-583` == `CAPI_Alt.pas:2516-2520`).
+        let mut node_j = None;
+        // capi runs the body at most three times; r4133 cycles forever, and
+        // five probes exhaust the reachable set `{jj0} + {1, 2, 3, 4}`.
+        let tries = if bounded { 3 } else { 5 };
+        for _ in 0..tries {
+            let probe = jj;
+            jj = if jj > 3 { 1 } else { jj + 1 };
+            if nodes.contains(&probe) {
+                node_j = Some(probe);
+                break;
+            }
+        }
+        match node_j {
+            Some(j) => pairs.push((node_i, j)),
+            None if bounded => return UpstreamVll::CapiDefault,
+            None => return UpstreamVll::SecondLoopHang,
+        }
+    }
+    UpstreamVll::Pairs(pairs)
+}
+
+/// The port's own **S-VLL** pairing, by node number — a second implementation of
+/// `exec::view::bus_line_to_line`, kept here so the comparator decides "did
+/// upstream reproduce S-VLL?" without asking the code under test. `None` = the
+/// port publishes no line-to-line voltage for this bus.
+fn port_vll_pairs(nodes: &[i32]) -> Option<Vec<(i32, i32)>> {
+    let present: Vec<i32> = (1..=3).filter(|k| nodes.contains(k)).collect();
+    match present.len() {
+        3 => Some(vec![(1, 2), (2, 3), (3, 1)]),
+        2 => Some(vec![(present[0], present[1])]),
+        _ => None,
+    }
+}
+
+/// The bus's `Solution.NodeV` entry for node NUMBER `num`, or ground when the
+/// bus does not carry it.
+///
+/// `nodes` is the bus's ascending node-number list and `node_v` the port's
+/// `BusVoltageView::node_v`, which is ordered by the same ascending walk — so
+/// position `k` of one indexes the other. The ground fallback is exactly
+/// upstream's `Find(i) = 0 => NodeV[0]` conflation (`DBus.pas:305` ==
+/// `CAPI_Alt.pas:2190`) and is reached only by the sequence replay; the VLL
+/// replay only ever asks for node numbers its own walk just found.
+fn bus_node_voltage(nodes: &[i32], node_v: &[Complex64], num: i32) -> Complex64 {
+    match nodes.iter().position(|x| *x == num) {
+        Some(k) => node_v[k],
+        None => Complex64::ZERO,
+    }
+}
+
+/// Apply an upstream pairing to the port's own bus state.
+fn expected_vll(nodes: &[i32], node_v: &[Complex64], pairs: &[(i32, i32)]) -> Vec<Complex64> {
+    pairs
+        .iter()
+        .map(|&(a, b)| bus_node_voltage(nodes, node_v, a) - bus_node_voltage(nodes, node_v, b))
+        .collect()
+}
+
+/// The **line-to-line** `BaseFactor` both engines divide `puVLL` by:
+/// `1000 * kVBase * sqrt3`, or `1.0` when the bus has no base
+/// (`DBus.pas:622-623` == `CAPI_Alt.pas:2427-2430`). Distinct from
+/// [`bus_base_factor`], which carries no `sqrt3`; `sqrt3` is `Sqrt(3.0)` on
+/// every engine (r4133 `Common/DSSGlobals.pas:2033` == capi `:733` ==
+/// `dss_core::util::sqrt3`), an IEEE-exact operation, so the divide contributes
+/// no error of its own. Taken from the ORACLE's `kv_base`, which
+/// [`compare_bus`] has already pinned exactly against the port's.
+fn bus_ll_base_factor(kv_base: f64) -> f64 {
+    if kv_base > 0.0 {
+        1000.0 * kv_base * 3.0f64.sqrt()
+    } else {
+        1.0
+    }
+}
+
+/// The four exceptional classes one [`compare_bus_seq_and_vll`] call met, plus
+/// the buses it classified at all.
+///
+/// Every field is DISCRETE — derived from the bus's node set and the channel,
+/// never from a value — so `voltages_excluded` cannot move it and the run-wide
+/// populations below stay stable under a ledger suppression.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SeqVllCounts {
+    /// Buses this call classified. Equals the bus count on every call: the
+    /// classification is total, which is the blindness guard — no bus can be
+    /// silently unwitnessed on either channel.
+    pub buses: usize,
+    /// r4133 declined the sequence pair (`n > 3`) while capi answers.
+    pub r4133_seq_sentinel: usize,
+    /// The channel answered the sequence pair over a GROUND-substituted phase
+    /// (`n >= 3` with one of 1/2/3 missing) where the port declines.
+    pub seq_ground_substitution: usize,
+    /// The upstream `VLL` walk did not reproduce S-VLL's pairing — the port's
+    /// accessor is not the direct witness and the mechanism is asserted
+    /// instead. Includes capi's `DefaultResult` bail.
+    pub vll_upstream_pairing_declines: usize,
+    /// The r4133 bridge refused the `VLL` call because the walk would hang.
+    pub r4133_vll_hang: usize,
+}
+
+// `AtomicUsize` itself comes from the file-header import (the element lane's
+// G1.3d(ii) control census added it); only the `Relaxed` alias these counters
+// spell is local.
+use std::sync::atomic::Ordering::Relaxed as AtomicRelaxed;
+
+/// Gating comparator calls that met each exception class at all, and the buses
+/// they met it on — one `(walks, buses)` pair per class, in the same shape and
+/// for the same reason as [`SC_STUDY_WALKS`]/[`SC_STUDY_BUSES`].
+static SEQ_SENTINEL_WALKS: AtomicUsize = AtomicUsize::new(0);
+static SEQ_SENTINEL_BUSES: AtomicUsize = AtomicUsize::new(0);
+static SEQ_GROUND_WALKS: AtomicUsize = AtomicUsize::new(0);
+static SEQ_GROUND_BUSES: AtomicUsize = AtomicUsize::new(0);
+static VLL_PAIRING_WALKS: AtomicUsize = AtomicUsize::new(0);
+static VLL_PAIRING_BUSES: AtomicUsize = AtomicUsize::new(0);
+static VLL_HANG_WALKS: AtomicUsize = AtomicUsize::new(0);
+static VLL_HANG_BUSES: AtomicUsize = AtomicUsize::new(0);
+
+/// The four run-wide populations as `(walks, buses)`: how many gating
+/// comparator calls met the class at all, and how many buses they met it on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeqVllPopulation {
+    pub r4133_seq_sentinel: (usize, usize),
+    pub seq_ground_substitution: (usize, usize),
+    pub vll_upstream_pairing_declines: (usize, usize),
+    pub r4133_vll_hang: (usize, usize),
+}
+
+/// r4133 answers `-1` where capi computes a real `V012`: the buses with `n > 3`
+/// on the r4133 channel. Re-derived on every full-population run and asserted
+/// EXACTLY, so the number fails on a drop AND on a growth (the D15/D16 shape:
+/// the class is not excluded, it is counted).
+///
+/// The live run prints all four on its own `corpus_gate seq/vll:` line; move
+/// them only deliberately. **Measured** (G1.4c F5, full gate 2026-09-05): ten
+/// decks carry this one — the two `NEVTestCase` masters (55 buses each),
+/// `Examples/GICExample/GIC_Example` (7), the two `asymmetric:gic` micro decks
+/// (3 each), `Test/indmachtest/Master` (2), and one bus each in
+/// `Test/MultiCircuitTest`, `Test/YgD-Test`, `epri_dpv/K1/Master_NoPV` and
+/// `4Bus-YD-Bal`. `modes:makeposseq/makeposseq_gic` declares `busNH=b1.4.4.4`
+/// and so LOOKS like an eleventh, but its deck ends `makeposseq; solve`: the
+/// positive-sequence reduction leaves `src` and `b1` carrying a single node
+/// each at the gated step, so the case reaches none of the four classes
+/// (probed, `tmp/g14c/f5_c012.py gic`).
+const R4133_SEQ_SENTINEL_POPULATION: (usize, usize) = (10, 129);
+
+/// The channel transformed a ground-substituted phase where the port declines:
+/// `n >= 3` with one of the phase nodes 1/2/3 missing, on a channel that
+/// answers there. The two `NEVTestCase` decks carry all of it — 19 buses per
+/// deck on capi (which also answers at `n > 3`) and 8 on r4133.
+const SEQ_GROUND_SUBSTITUTION_POPULATION: (usize, usize) = (4, 54);
+
+/// The upstream walk paired differently from S-VLL (capi's `DefaultResult`
+/// included), per channel — the buses whose `VLL`/`puVLL` are closed by the
+/// mechanism assertion instead of the port's own accessor.
+const VLL_UPSTREAM_PAIRING_DECLINES: (usize, usize) = (16, 196);
+
+/// The calls the r4133 bridge refused because `DBus.pas:580-584` would not
+/// terminate (`NEVTestCase` `double-1..6` on both NEV decks).
+const R4133_VLL_HANG_POPULATION: (usize, usize) = (2, 12);
+
+/// Record one **gating** sequence/line-to-line compare's class counts.
+///
+/// The single caller is `corpus_gate/runner.rs`' `compare_bus` block — the
+/// gate's one entry point into this comparator. The harness' own unit drives
+/// call [`compare_bus_seq_and_vll`] directly and are deliberately NOT counted:
+/// they run in the same process as the gate in this test binary, and counting
+/// them would make the exact populations above unstable (and green under
+/// exactly the corpus regression they exist to catch) — the reason
+/// [`record_sc_study_compare`]'s doc gives.
+pub fn record_seq_vll_populations(counts: SeqVllCounts) {
+    for (n, walks, buses) in [
+        (
+            counts.r4133_seq_sentinel,
+            &SEQ_SENTINEL_WALKS,
+            &SEQ_SENTINEL_BUSES,
+        ),
+        (
+            counts.seq_ground_substitution,
+            &SEQ_GROUND_WALKS,
+            &SEQ_GROUND_BUSES,
+        ),
+        (
+            counts.vll_upstream_pairing_declines,
+            &VLL_PAIRING_WALKS,
+            &VLL_PAIRING_BUSES,
+        ),
+        (counts.r4133_vll_hang, &VLL_HANG_WALKS, &VLL_HANG_BUSES),
+    ] {
+        if n > 0 {
+            walks.fetch_add(1, AtomicRelaxed);
+            buses.fetch_add(n, AtomicRelaxed);
+        }
+    }
+}
+
+/// What [`record_seq_vll_populations`] has counted in this process.
+pub fn seq_vll_counters() -> SeqVllPopulation {
+    let pair = |w: &AtomicUsize, b: &AtomicUsize| (w.load(AtomicRelaxed), b.load(AtomicRelaxed));
+    SeqVllPopulation {
+        r4133_seq_sentinel: pair(&SEQ_SENTINEL_WALKS, &SEQ_SENTINEL_BUSES),
+        seq_ground_substitution: pair(&SEQ_GROUND_WALKS, &SEQ_GROUND_BUSES),
+        vll_upstream_pairing_declines: pair(&VLL_PAIRING_WALKS, &VLL_PAIRING_BUSES),
+        r4133_vll_hang: pair(&VLL_HANG_WALKS, &VLL_HANG_BUSES),
+    }
+}
+
+/// **Fail-on-stale for the four G1.4c exception classes**, called once from the
+/// corpus gate's epilogue. Silent under `DSS_GATE_ONLY` — a filtered run
+/// legitimately holds none of the eleven carrying decks — exactly like its
+/// neighbours [`assert_sc_study_compare_ran`] and
+/// [`props_norm::assert_r4133_props_compare_ran`].
+///
+/// [`props_norm::assert_r4133_props_compare_ran`]: props_norm::assert_r4133_props_compare_ran
+pub fn assert_seq_vll_populations() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    check_seq_vll_populations(seq_vll_counters());
+}
+
+/// The rule itself, over **injected** counters — split off for the reason
+/// [`check_sc_study_compare_ran`]'s twin is: the shipped statics cannot be
+/// rewound from a test once the gate has moved them, so both directions are
+/// pinned offline.
+pub fn check_seq_vll_populations(got: SeqVllPopulation) {
+    for (what, have, want, why) in [
+        (
+            "r4133 sequence sentinel (n > 3)",
+            got.r4133_seq_sentinel,
+            R4133_SEQ_SENTINEL_POPULATION,
+            "r4133's missing `Nvalues > 3` clamp (`DBus.pas:296-297`)",
+        ),
+        (
+            "sequence ground substitution",
+            got.seq_ground_substitution,
+            SEQ_GROUND_SUBSTITUTION_POPULATION,
+            "both oracles' `Find(i) = 0 => NodeV[0]` conflation (`DBus.pas:305`)",
+        ),
+        (
+            "VLL upstream pairing declines",
+            got.vll_upstream_pairing_declines,
+            VLL_UPSTREAM_PAIRING_DECLINES,
+            "the pre-wrap `FindIdx(jj)` poll (`DBus.pas:581-583`)",
+        ),
+        (
+            "r4133 VLL hang refusals",
+            got.r4133_vll_hang,
+            R4133_VLL_HANG_POPULATION,
+            "the unbounded partner `repeat` (`DBus.pas:580-584`)",
+        ),
+    ] {
+        assert_eq!(
+            have, want,
+            "the G1.4c population `{what}` came out {have:?}, not {want:?} — {why}. \
+             Fewer means a deck stopped carrying the class (and its positive mechanism \
+             assertion now runs over nothing); more means a new deck reached it. \
+             Re-derive the pair from the run's own `corpus_gate seq/vll:` line and move \
+             it deliberately (GOLDEN_REBASE G1.4c)."
+        );
+    }
+}
+
+/// Compare every bus's captured sequence and line-to-line voltages against the
+/// engine's, in `BusList` order (GOLDEN_REBASE_PLAN.md G1.4c).
+///
+/// Structure per bus, **strongest first**:
+/// 1. **availability**, discrete and two-sided. The sequence pair: the channel's
+///    own rule ([`seq_channel_declines`]) against the payload — a decline must
+///    be the exact `-1.0` sentinel, an answer must carry no negative magnitude
+///    (`Cabs` is never negative, so the two are provably disjoint). `VLL`: the
+///    replayed walk class ([`upstream_vll`]) against the payload — `OnePhase`
+///    against the two-double `[-99999.0, 0.0]`, `CapiDefault` against the
+///    one-double `[0.0]`, `SecondLoopHang` against the bridge's own
+///    `vll_declined`. That last one is a cross-check of **two independent
+///    transcriptions** of the same Pascal loop (this one and
+///    `dss-epri::modes::bus_vll_would_hang`); `vll_declined` must be `false` on
+///    the capi channel always, whose partner scan is bounded.
+/// 2. **lengths** — `3` and `6` for the sequence arms, `2 * pairs` for `VLL`
+///    and `puVLL`, and `len(vll) == len(pu_vll)` (one loop over one node set
+///    writes both, so a mismatch is a transport defect).
+/// 3. **values**, only where the channel answered. Where the port answers too,
+///    against the port's own accessor. Where it declines (S-SEQ's ground
+///    substitution, S-VLL's pairing), against the upstream walk replayed over
+///    the port's own `node_v` — a positive assertion of the oracle's mechanism,
+///    never a skip, and the bus is counted into the matching run-wide
+///    population ([`check_seq_vll_populations`]).
+///
+/// `voltages_excluded` is the caller's D11(2) flag, **narrowed** exactly as in
+/// [`compare_bus_short_circuit`]: it drops step 3 only. Every availability
+/// classification, every sentinel and every length stays compared, so a case
+/// whose node voltages the ledger already triaged still gates the whole
+/// structure of this surface.
+///
+/// Returns the classes this call met, for [`record_seq_vll_populations`].
+pub fn compare_bus_seq_and_vll(
+    dss: &Dss,
+    exp: &[BusCap],
+    tol: &Tolerances,
+    channel: PropsChannel,
+    voltages_excluded: bool,
+    ctx: &str,
+) -> SeqVllCounts {
+    let mut counts = SeqVllCounts::default();
+    let views = dss.all_bus_voltages();
+    assert_eq!(
+        views.len(),
+        exp.len(),
+        "{ctx}: bus count differs ({} vs {})",
+        views.len(),
+        exp.len()
+    );
+    let sym = dss_core::support::mathutil::SymComp::precise();
+    for (i, (v, e)) in views.iter().zip(exp).enumerate() {
+        assert!(
+            v.name.eq_ignore_ascii_case(&e.name),
+            "{ctx}: bus {i} name differs: {} vs {}",
+            v.name,
+            e.name
+        );
+        let mut nodes = v.nodes.clone();
+        nodes.sort_unstable();
+        assert_eq!(
+            nodes, e.nodes,
+            "{ctx}: bus {} nodes differ (port insertion order {:?})",
+            e.name, v.nodes
+        );
+        let n = nodes.len();
+        assert_eq!(
+            v.node_v.len(),
+            n,
+            "{ctx}: bus {} port node_v has {} entries, not {n}",
+            e.name,
+            v.node_v.len()
+        );
+        // `compare_bus` pins this exactly too; repeated here so `puVLL`'s
+        // line-to-line base is well founded WITHOUT depending on the order the
+        // runner calls the two comparators in.
+        assert_eq!(v.kv_base, e.kv_base, "{ctx}: bus {} kVBase differs", e.name);
+
+        // ---- the sequence pair --------------------------------------------
+        assert_eq!(
+            e.seq_voltages.len(),
+            3,
+            "{ctx}: bus {} SeqVoltages length {} is not 3",
+            e.name,
+            e.seq_voltages.len()
+        );
+        assert_eq!(
+            e.cplx_seq_voltages.len(),
+            6,
+            "{ctx}: bus {} CplxSeqVoltages length {} is not 6",
+            e.name,
+            e.cplx_seq_voltages.len()
+        );
+        let declines = seq_channel_declines(channel, n);
+        if declines {
+            assert_eq!(
+                e.seq_voltages,
+                vec![-1.0; 3],
+                "{ctx}: bus {} ({n} nodes): the {} oracle should have published the \
+                 n/A sentinel for SeqVoltages",
+                e.name,
+                channel.tag()
+            );
+            assert_eq!(
+                e.cplx_seq_voltages,
+                vec![-1.0; 6],
+                "{ctx}: bus {} ({n} nodes): the {} oracle should have published the \
+                 n/A sentinel for CplxSeqVoltages",
+                e.name,
+                channel.tag()
+            );
+            if channel == PropsChannel::R4133 && n > 3 {
+                // The class the missing clamp creates: capi computes a real
+                // V012 on this very bus, and so does the port when it carries
+                // all three phases.
+                counts.r4133_seq_sentinel += 1;
+            }
+        } else {
+            // `Cabs` is never negative, so a non-sentinel payload is provably
+            // an answer — this is the other direction of the availability rule,
+            // not a value compare.
+            assert!(
+                e.seq_voltages.iter().all(|x| *x >= 0.0),
+                "{ctx}: bus {} ({n} nodes): the {} oracle answers here, but SeqVoltages \
+                 carries a negative magnitude {:?}",
+                e.name,
+                channel.tag(),
+                e.seq_voltages
+            );
+        }
+        // The three phase voltages upstream feeds its transform, ground
+        // substituted — identical to the port's own three when it answers.
+        let vph = [1i32, 2, 3].map(|k| bus_node_voltage(&nodes, &v.node_v, k));
+        let max_vph = vph.iter().fold(0.0f64, |m, c| m.max(c.norm()));
+        if !declines && v.cplx_seq_voltages.is_none() {
+            // The only reason S-SEQ declines where a channel answers: the bus
+            // has >= 3 nodes but not all three PHASE nodes, so upstream's
+            // `Find(i) = 0 => NodeV[0]` fabricated a 0 V phase.
+            assert!(
+                phase_nodes_present(&nodes) < 3 && n >= 3,
+                "{ctx}: bus {} (nodes {nodes:?}): the port declines the sequence pair on a                  bus that carries all three phase nodes",
+                e.name
+            );
+            counts.seq_ground_substitution += 1;
+        }
+        // Port-internal identities — not oracle comparisons, so they hold on a
+        // ledger-suppressed case too (the G1.4a audit settlement AC-7 rule):
+        // the port's two sequence arms come out of ONE transform, and that
+        // transform is `Ap2s * Vph` over the port's own `node_v`.
+        if let Some(x) = v.cplx_seq_voltages {
+            let mags = v.seq_voltages.unwrap_or_else(|| {
+                panic!(
+                    "{ctx}: bus {}: the port has CplxSeqVoltages but no SeqVoltages",
+                    e.name
+                )
+            });
+            for (k, (m, c)) in mags.iter().zip(&x).enumerate() {
+                assert_eq!(
+                    *m,
+                    c.norm(),
+                    "{ctx}: bus {} SeqVoltages[{k}] is not |CplxSeqVoltages[{k}]|",
+                    e.name
+                );
+            }
+            let mut replay = [Complex64::ZERO; 3];
+            sym.phase_to_sym(&vph, &mut replay);
+            assert_eq!(
+                x, replay,
+                "{ctx}: bus {}: the port's CplxSeqVoltages is not `Ap2s * Vph` over its own                  node_v",
+                e.name
+            );
+        }
+        if !declines && !voltages_excluded {
+            // Where S-SEQ declines and the channel does not, the expectation is
+            // the transform of the GROUND-SUBSTITUTED phases — a positive
+            // assertion of the oracle's mechanism (the D15/D16 shape), never a
+            // skip.
+            let port012 = v.cplx_seq_voltages.unwrap_or_else(|| {
+                let mut replay = [Complex64::ZERO; 3];
+                sym.phase_to_sym(&vph, &mut replay);
+                replay
+            });
+            // Band: `sum_j |Ap2s[i][j]| = 1` maps the node-voltage band onto
+            // every V012 component unchanged, driven by the PHASE magnitude
+            // (V0/V2 are near-total cancellations of three ~equal phasors and
+            // carry no relative band of their own). The r4133 channel adds
+            // `SEQ_C012` on rows 1 and 2. tests/TOLERANCE_NOTES.md §"Bus sequence
+            // and line-to-line voltages (GOLDEN_REBASE G1.4c)".
+            let base = tol.v_abs + tol.v_rel * max_vph;
+            let extra = if channel == PropsChannel::R4133 {
+                SEQ_C012 * max_vph
+            } else {
+                0.0
+            };
+            let oracle_cplx = deinterleave(&e.cplx_seq_voltages);
+            for k in 0..3 {
+                let allowed = base + if k == 0 { 0.0 } else { extra };
+                let d = (port012[k] - oracle_cplx[k]).norm();
+                assert!(
+                    d <= allowed,
+                    "{ctx}: bus {} CplxSeqVoltages[{k}] differs: {} vs {} \
+                     (|diff| = {d:.3e} > allowed {allowed:.3e}, max|Vph| = {max_vph:e} V)",
+                    e.name,
+                    port012[k],
+                    oracle_cplx[k]
+                );
+                // `||a| - |b|| <= |a - b|`, so the magnitude arm takes the same
+                // absolute band.
+                let dm = (port012[k].norm() - e.seq_voltages[k]).abs();
+                assert!(
+                    dm <= allowed,
+                    "{ctx}: bus {} SeqVoltages[{k}] differs: {} vs {} \
+                     (|diff| = {dm:.3e} > allowed {allowed:.3e})",
+                    e.name,
+                    port012[k].norm(),
+                    e.seq_voltages[k]
+                );
+            }
+        }
+
+        // ---- the line-to-line pair -----------------------------------------
+        assert_eq!(
+            e.vll.len(),
+            e.pu_vll.len(),
+            "{ctx}: bus {} VLL and puVLL lengths differ ({} vs {}) — one loop over one \
+             node set writes both",
+            e.name,
+            e.vll.len(),
+            e.pu_vll.len()
+        );
+        if channel == PropsChannel::CapiV0145 {
+            assert!(
+                !e.vll_declined,
+                "{ctx}: bus {}: the capi transport declined a VLL read, but its partner \
+                 scan is bounded (`CAPI_Alt.pas:2512-2524`) and cannot hang",
+                e.name
+            );
+        }
+        let ll_base = bus_ll_base_factor(e.kv_base);
+        // Port-internal identities for the L-L arm — the twin of the sequence
+        // arm's above, and like it UNCONDITIONAL: the port's own S-VLL shape,
+        // its `V_a − V_b` values and the `puVLL = VLL / BaseFactor_LL` identity
+        // are asserted on EVERY bus, on both channels, whatever the oracle's
+        // walk did and whether or not values are excluded. They used to run only
+        // inside the `direct` branch below, which left `exec::view`'s accessor
+        // unwitnessed by the live gate on exactly the buses where the two walks
+        // disagree — the buses this sub-step exists for (G1.4c audit-code AC-1).
+        match port_vll_pairs(&nodes) {
+            None => assert!(
+                v.vll.is_none() && v.pu_vll.is_none(),
+                "{ctx}: bus {} (nodes {nodes:?}): the port published a line-to-line \
+                 voltage for a bus with fewer than two phase nodes",
+                e.name
+            ),
+            Some(port_pairs) => {
+                let port_vll = v.vll.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "{ctx}: bus {} (nodes {nodes:?}): S-VLL pairs {port_pairs:?} but \
+                         the port published no VLL",
+                        e.name
+                    )
+                });
+                assert_eq!(
+                    *port_vll,
+                    expected_vll(&nodes, &v.node_v, &port_pairs),
+                    "{ctx}: bus {}: the port's VLL is not `V_a − V_b` over its own node_v \
+                     for the pairs {port_pairs:?}",
+                    e.name
+                );
+                let port_pu = v.pu_vll.as_ref().unwrap_or_else(|| {
+                    panic!("{ctx}: bus {}: the port has VLL but no puVLL", e.name)
+                });
+                let scaled: Vec<Complex64> = port_vll.iter().map(|c| *c / ll_base).collect();
+                assert_eq!(
+                    *port_pu, scaled,
+                    "{ctx}: bus {}: the port's puVLL is not its VLL over the line-to-line \
+                     base {ll_base}",
+                    e.name
+                );
+            }
+        }
+        let walk = upstream_vll(&nodes, channel == PropsChannel::CapiV0145);
+        match &walk {
+            UpstreamVll::FirstLoopHang => {
+                // Defensive — no corpus bus reaches it. `dss-epri`'s independent
+                // predicate refuses this shape too (`modes::VLL_HANG_FIRST_LOOP`),
+                // so a *refusal* here is the two transcriptions AGREEING and only
+                // an ANSWER contradicts the Pascal (G1.4c audit-code AC-4). On the
+                // capi channel `vll_declined` is already asserted false above —
+                // that transport carries no guard at all.
+                assert!(
+                    e.vll_declined,
+                    "{ctx}: bus {} (nodes {nodes:?}): the {} oracle ANSWERED a VLL read \
+                     whose FIRST `repeat` (`DBus.pas:575-578` == \
+                     `CAPI_Alt.pas:2507-2510`) cannot terminate — the capture and the \
+                     Pascal disagree",
+                    e.name,
+                    channel.tag()
+                );
+                assert!(
+                    e.vll.is_empty() && e.pu_vll.is_empty(),
+                    "{ctx}: bus {}: the bridge refused the VLL read but published {} / {} \
+                     doubles",
+                    e.name,
+                    e.vll.len(),
+                    e.pu_vll.len()
+                );
+                counts.r4133_vll_hang += 1;
+            }
+            UpstreamVll::SecondLoopHang => {
+                assert_eq!(
+                    channel,
+                    PropsChannel::R4133,
+                    "{ctx}: bus {}: only r4133's partner scan is unbounded",
+                    e.name
+                );
+                assert!(
+                    e.vll_declined,
+                    "{ctx}: bus {} (nodes {nodes:?}): this harness' replay says \
+                     `DBus.pas:580-584` would not terminate, but the bridge did NOT refuse \
+                     the call — the two transcriptions disagree",
+                    e.name
+                );
+                assert!(
+                    e.vll.is_empty() && e.pu_vll.is_empty(),
+                    "{ctx}: bus {}: the bridge refused the VLL read but published {} / {} \
+                     doubles",
+                    e.name,
+                    e.vll.len(),
+                    e.pu_vll.len()
+                );
+                counts.r4133_vll_hang += 1;
+            }
+            UpstreamVll::OnePhase => {
+                assert!(
+                    !e.vll_declined,
+                    "{ctx}: bus {}: the bridge refused a VLL read that never enters the \
+                     loop (`DBus.pas:594-596`)",
+                    e.name
+                );
+                for (arr, what) in [(&e.vll, "VLL"), (&e.pu_vll, "puVLL")] {
+                    assert_eq!(
+                        arr.as_slice(),
+                        [-99999.0f64, 0.0].as_slice(),
+                        "{ctx}: bus {} ({n} nodes) {what}: the {} oracle should have \
+                         published the 1-phase sentinel",
+                        e.name,
+                        channel.tag()
+                    );
+                }
+                // (the port's own `None` here is asserted unconditionally above)
+            }
+            UpstreamVll::CapiDefault => {
+                assert_eq!(
+                    channel,
+                    PropsChannel::CapiV0145,
+                    "{ctx}: bus {}: only capi bails to `DefaultResult`",
+                    e.name
+                );
+                for (arr, what) in [(&e.vll, "VLL"), (&e.pu_vll, "puVLL")] {
+                    assert_eq!(
+                        arr.as_slice(),
+                        [0.0f64].as_slice(),
+                        "{ctx}: bus {} (nodes {nodes:?}) {what}: the bounded partner scan \
+                         found nothing, so capi should have published `DefaultResult`",
+                        e.name
+                    );
+                }
+                counts.vll_upstream_pairing_declines += 1;
+            }
+            UpstreamVll::Pairs(pairs) => {
+                assert!(
+                    !e.vll_declined,
+                    "{ctx}: bus {}: the bridge refused a VLL read this replay resolves to \
+                     {pairs:?}",
+                    e.name
+                );
+                for (arr, what) in [(&e.vll, "VLL"), (&e.pu_vll, "puVLL")] {
+                    assert_eq!(
+                        arr.len(),
+                        2 * pairs.len(),
+                        "{ctx}: bus {} {what} length {} is not 2*{} (the walk's pairs \
+                         {pairs:?})",
+                        e.name,
+                        arr.len(),
+                        pairs.len()
+                    );
+                }
+                // Where upstream's pairing IS the port's, the unconditional
+                // block above has already pinned the port's accessor against
+                // this harness' independent replay, so "compared against the
+                // port" cannot mean "compared against a rewritten pairing";
+                // where it is not, the class is counted and the mechanism
+                // asserted below.
+                if port_vll_pairs(&nodes).as_deref() != Some(pairs.as_slice()) {
+                    counts.vll_upstream_pairing_declines += 1;
+                }
+                if !voltages_excluded {
+                    // Either way the numbers compared are the pairs UPSTREAM
+                    // walked, applied to the port's own state: identical to the
+                    // port's accessor in the `direct` case (asserted above), the
+                    // mechanism assertion otherwise.
+                    let expect = expected_vll(&nodes, &v.node_v, pairs);
+                    let oracle_vll = deinterleave(&e.vll);
+                    let oracle_pu = deinterleave(&e.pu_vll);
+                    for (k, &(a, b)) in pairs.iter().enumerate() {
+                        // `V_ij = Vph_i - Vph_j`: two node bands add.
+                        let va = bus_node_voltage(&nodes, &v.node_v, a).norm();
+                        let vb = bus_node_voltage(&nodes, &v.node_v, b).norm();
+                        let allowed = 2.0 * tol.v_abs + tol.v_rel * (va + vb);
+                        let d = (expect[k] - oracle_vll[k]).norm();
+                        assert!(
+                            d <= allowed,
+                            "{ctx}: bus {} VLL[{k}] (nodes {a}-{b}) differs: {} vs {} \
+                             (|diff| = {d:.3e} > allowed {allowed:.3e})",
+                            e.name,
+                            expect[k],
+                            oracle_vll[k]
+                        );
+                        // `puVLL` is the same difference over the exact
+                        // line-to-line base.
+                        let dpu = (expect[k] / ll_base - oracle_pu[k]).norm();
+                        let allowed_pu = allowed / ll_base;
+                        assert!(
+                            dpu <= allowed_pu,
+                            "{ctx}: bus {} puVLL[{k}] (nodes {a}-{b}) differs: {} vs {} \
+                             (|diff| = {dpu:.3e} > allowed {allowed_pu:.3e})",
+                            e.name,
+                            expect[k] / ll_base,
+                            oracle_pu[k]
+                        );
+                    }
+                }
+            }
+        }
+        counts.buses += 1;
+    }
+    // The blindness guard. What actually makes the classification total is that
+    // every branch of the `match walk` either asserts or panics, plus the two
+    // unconditional port-internal blocks above, which run before it on every
+    // bus: a bus the comparator could not name cannot reach this line. The
+    // count below is the tripwire for the ONE way that could change — a future
+    // `continue` in the loop — and, as its own audit finding records
+    // (G1.4c audit-code AC-7 / audit-tests), it cannot fail at HEAD, so it is
+    // never a second, independent guarantee.
+    assert_eq!(
+        counts.buses,
+        exp.len(),
+        "{ctx}: {} of {} buses were classified",
+        counts.buses,
+        exp.len()
+    );
+    counts
+}
+
+#[cfg(test)]
+mod bus_seq_vll_comparator_tests {
+    use super::{
+        BusCap, PropsChannel, R4133_SEQ_SENTINEL_POPULATION, R4133_VLL_HANG_POPULATION, SEQ_C012,
+        SEQ_GROUND_SUBSTITUTION_POPULATION, SeqVllCounts, SeqVllPopulation, UpstreamVll,
+        VLL_UPSTREAM_PAIRING_DECLINES, bus_ll_base_factor, bus_node_voltage,
+        check_seq_vll_populations, compare_bus_seq_and_vll, expected_vll, interleave,
+        phase_nodes_present, port_vll_pairs, seq_channel_declines, tol_for, upstream_vll,
+    };
+    use dss_core::exec::Dss;
+    use dss_core::support::mathutil::SymComp;
+    use num_complex::Complex64;
+
+    /// The ten bus classes the corpus actually holds, measured live on both
+    /// channels for the G1.4c spec (§3.1, 209 211 buses / 511 live cases) and
+    /// re-probed at HEAD on 2026-09-05. `capi` = the bounded partner scan,
+    /// `r4133` = the unbounded one.
+    ///
+    /// This is the harness' half of the two-transcription cross-check: the same
+    /// Pascal loop is transcribed independently in
+    /// `dss-epri::modes::bus_vll_would_hang`, and the live comparator asserts
+    /// the two never disagree about a refusal.
+    #[test]
+    fn the_upstream_vll_walk_reproduces_the_ten_measured_bus_classes() {
+        let pairs = |v: &[(i32, i32)]| UpstreamVll::Pairs(v.to_vec());
+        let cases: Vec<(&[i32], UpstreamVll, UpstreamVll)> = vec![
+            // 126 818 buses: a single phase node — neither engine enters the loop.
+            (&[1], UpstreamVll::OnePhase, UpstreamVll::OnePhase),
+            (&[3], UpstreamVll::OnePhase, UpstreamVll::OnePhase),
+            // 2 buses: no nodes at all (`Test/REACTORTest.DSS` `loadbus2`).
+            (&[], UpstreamVll::OnePhase, UpstreamVll::OnePhase),
+            // 48 104 buses: exactly two phase nodes — one L-L pair, agreed.
+            (&[1, 2], pairs(&[(1, 2)]), pairs(&[(1, 2)])),
+            (&[2, 3], pairs(&[(2, 3)]), pairs(&[(2, 3)])),
+            (&[1, 3], pairs(&[(1, 3)]), pairs(&[(1, 3)])),
+            // 34 081 buses: the healthy three-phase bus.
+            (
+                &[1, 2, 3],
+                pairs(&[(1, 2), (2, 3), (3, 1)]),
+                pairs(&[(1, 2), (2, 3), (3, 1)]),
+            ),
+            // 21 buses: node 4 present — the pre-wrap poll pairs phase 3 with it.
+            (
+                &[1, 2, 3, 4],
+                pairs(&[(1, 2), (2, 3), (3, 4)]),
+                pairs(&[(1, 2), (2, 3), (3, 4)]),
+            ),
+            // 86 buses: a neutral at 10 does not disturb the walk.
+            (
+                &[1, 2, 3, 10],
+                pairs(&[(1, 2), (2, 3), (3, 1)]),
+                pairs(&[(1, 2), (2, 3), (3, 1)]),
+            ),
+            // 9 buses: `[1..5]`, `[1,2,3,4,10]`, … — node 4 again (`13kvbus`).
+            (
+                &[1, 2, 3, 4, 10],
+                pairs(&[(1, 2), (2, 3), (3, 4)]),
+                pairs(&[(1, 2), (2, 3), (3, 4)]),
+            ),
+            // 52 buses: `[1, 10]` — capi gives up after three probes, r4133
+            // wraps onto node 1 and pairs it with ITSELF (`ckt1-1-1`: `[0, 0]`).
+            (&[1, 10], UpstreamVll::CapiDefault, pairs(&[(1, 1)])),
+            // 16 buses: `[1, 2, 10]` — the duplicate negative and the neutral
+            // pair both engines agree on (`load1a`).
+            (
+                &[1, 2, 10],
+                pairs(&[(1, 2), (2, 1), (10, 1)]),
+                pairs(&[(1, 2), (2, 1), (10, 1)]),
+            ),
+            // 10 buses: the 13-node NEV `quad-*` — the same pair three times.
+            (
+                &[10, 11, 12, 13, 21, 22, 23, 31, 32, 33, 41, 42, 43],
+                pairs(&[(10, 11), (10, 11), (10, 11)]),
+                pairs(&[(10, 11), (10, 11), (10, 11)]),
+            ),
+            // 12 buses: the NEV `double-*` — capi bails, r4133 HANGS.
+            (
+                &[10, 31, 32, 33, 41, 42, 43],
+                UpstreamVll::CapiDefault,
+                UpstreamVll::SecondLoopHang,
+            ),
+        ];
+        for (nodes, capi, r4133) in cases {
+            assert_eq!(upstream_vll(nodes, true), capi, "capi walk over {nodes:?}");
+            assert_eq!(
+                upstream_vll(nodes, false),
+                r4133,
+                "r4133 walk over {nodes:?}"
+            );
+        }
+
+        // The defensive first-loop arm: a bus whose node numbers are all below
+        // `i` hangs BOTH engines' unbounded `repeat`. No corpus bus reaches it
+        // (`dss-epri`'s independent sweep measures the same 0), so it is proven
+        // here rather than live.
+        assert_eq!(upstream_vll(&[-1, 0], true), UpstreamVll::FirstLoopHang);
+        assert_eq!(upstream_vll(&[-1, 0], false), UpstreamVll::FirstLoopHang);
+
+        // …and the pre-wrap poll is what decides: give the hanging class a node
+        // the pre-wrap probe can see (11 == jj0) and r4133 terminates on it…
+        assert_eq!(
+            upstream_vll(&[10, 11, 31, 32, 33, 41, 42, 43], false),
+            pairs(&[(10, 11), (10, 11), (10, 11)])
+        );
+        // …while a node 4 — the one number the wrap cycle can reach — makes it
+        // terminate by pairing that node with ITSELF (the `[1, 10]` defect at
+        // another node number), because the first loop already consumed it.
+        assert_eq!(
+            upstream_vll(&[4, 10, 31, 32, 33, 41, 42, 43], false),
+            pairs(&[(4, 4), (4, 4), (4, 4)])
+        );
+    }
+
+    /// The port's own S-VLL / S-SEQ criteria are the phase-node SET, and each
+    /// oracle's is its own node COUNT rule.
+    #[test]
+    fn the_port_and_the_two_channels_state_their_availability_differently() {
+        assert_eq!(phase_nodes_present(&[1, 2, 3, 4, 10]), 3);
+        assert_eq!(phase_nodes_present(&[1, 2, 10]), 2);
+        assert_eq!(phase_nodes_present(&[10, 31, 32]), 0);
+
+        assert_eq!(
+            port_vll_pairs(&[1, 2, 3, 4]),
+            Some(vec![(1, 2), (2, 3), (3, 1)])
+        );
+        assert_eq!(port_vll_pairs(&[1, 2, 10]), Some(vec![(1, 2)]));
+        assert_eq!(port_vll_pairs(&[2, 3]), Some(vec![(2, 3)]));
+        assert_eq!(port_vll_pairs(&[1, 10]), None);
+        assert_eq!(port_vll_pairs(&[10, 11, 12]), None);
+
+        // capi clamps `Nvalues > 3` and only declines below three nodes; r4133
+        // does not clamp, so it declines on four.
+        for n in [0, 1, 2] {
+            assert!(seq_channel_declines(PropsChannel::CapiV0145, n));
+            assert!(seq_channel_declines(PropsChannel::R4133, n));
+        }
+        assert!(!seq_channel_declines(PropsChannel::CapiV0145, 3));
+        assert!(!seq_channel_declines(PropsChannel::R4133, 3));
+        for n in [4, 5, 13] {
+            assert!(!seq_channel_declines(PropsChannel::CapiV0145, n));
+            assert!(seq_channel_declines(PropsChannel::R4133, n));
+        }
+    }
+
+    /// The four run-wide populations fail on stale in BOTH directions, over
+    /// injected counters (the shipped statics cannot be rewound once the gate
+    /// has moved them — [`check_sc_study_compare_ran`]'s reason).
+    ///
+    /// [`check_sc_study_compare_ran`]: super::check_sc_study_compare_ran
+    #[test]
+    fn the_seq_vll_population_rules_fail_in_both_directions() {
+        let good = SeqVllPopulation {
+            r4133_seq_sentinel: R4133_SEQ_SENTINEL_POPULATION,
+            seq_ground_substitution: SEQ_GROUND_SUBSTITUTION_POPULATION,
+            vll_upstream_pairing_declines: VLL_UPSTREAM_PAIRING_DECLINES,
+            r4133_vll_hang: R4133_VLL_HANG_POPULATION,
+        };
+        check_seq_vll_populations(good);
+
+        let bump = |mut p: SeqVllPopulation, which: usize, by: i64| {
+            let slot = match which {
+                0 => &mut p.r4133_seq_sentinel,
+                1 => &mut p.seq_ground_substitution,
+                2 => &mut p.vll_upstream_pairing_declines,
+                _ => &mut p.r4133_vll_hang,
+            };
+            slot.1 = (slot.1 as i64 + by) as usize;
+            p
+        };
+        let names = [
+            "r4133 sequence sentinel (n > 3)",
+            "sequence ground substitution",
+            "VLL upstream pairing declines",
+            "r4133 VLL hang refusals",
+        ];
+        for (which, name) in names.iter().enumerate() {
+            for by in [-1, 1] {
+                let bad = bump(good, which, by);
+                let msg = reds(|| check_seq_vll_populations(bad));
+                assert!(
+                    msg.contains(name),
+                    "population `{name}` moved by {by} and the rule did not name it: {msg:?}"
+                );
+            }
+        }
+    }
+
+    /// [`SEQ_C012`] is the truncated-`sin 60°` gap this surface shares with the
+    /// element sequence surface — one definition since the 2026-09-06 merge
+    /// (D7/D21). It is the **tight** L1 row-sum norm of the two 012 matrices'
+    /// difference, which the analytic triangle-inequality ceiling `2·Δsin60/3`
+    /// bounds from above; the merge kept it in preference to this sub-step's
+    /// rounded-up `5.30e-10`, which is a widening with no evidence behind it.
+    /// The line-to-line base factor is the `√3` one, with the live `1.0` arm.
+    #[test]
+    fn the_seq_and_line_to_line_bands_are_the_documented_images() {
+        let ceiling = 2.0 * (0.8660254037844387_f64 - 0.866025403) / 3.0;
+        assert!(
+            (ceiling - 5.2296e-10).abs() < 1e-14,
+            "the ceiling moved: {ceiling:e}"
+        );
+        // The kept constant is the row sum r4133's NUMERICALLY inverted matrix
+        // actually carries, so it sits a hair BELOW the triangle bound (which
+        // assumes both differing entries are off by exactly `Δsin60/3`) and
+        // inside that inversion's own rounding of it. Above the ceiling would be
+        // a bug in the transform or the transport; far below would mean the
+        // constant is no longer this gap.
+        assert!(
+            SEQ_C012 <= ceiling,
+            "SEQ_C012 {SEQ_C012:e} exceeds its own analytic ceiling {ceiling:e}"
+        );
+        assert!(
+            SEQ_C012 > ceiling * (1.0 - 1e-6),
+            "SEQ_C012 {SEQ_C012:e} is no longer the truncated-sin60 gap {ceiling:e}"
+        );
+        // …and it really is the gap between the two transforms: the in-engine
+        // pin measures 4.50e-10 relative on its own sample, inside the ceiling.
+        let vph = [
+            Complex64::new(7199.5578, 0.0),
+            Complex64::new(-3599.7789, -6235.0),
+            Complex64::new(-3599.7789, 6235.0),
+        ];
+        let (mut a, mut b) = ([Complex64::ZERO; 3], [Complex64::ZERO; 3]);
+        SymComp::precise().phase_to_sym(&vph, &mut a);
+        SymComp::official().phase_to_sym(&vph, &mut b);
+        let max_vph = vph.iter().fold(0.0f64, |m, c| m.max(c.norm()));
+        for k in 1..3 {
+            let ratio = (a[k] - b[k]).norm() / max_vph;
+            assert!(
+                ratio <= SEQ_C012,
+                "row {k} gap {ratio:e} exceeds SEQ_C012 {SEQ_C012:e}"
+            );
+        }
+        // …and it is a CEILING, not one lucky sample: 2 000 pseudo-random phase
+        // triples (a fixed LCG, so the sweep is deterministic) at feeder scale.
+        // The worst ratio must stay under `SEQ_C012` and must actually approach it
+        // — a sweep that never exercises the gap would make the constant
+        // vacuous.
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut rnd = || {
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            ((seed >> 11) as f64 / (1u64 << 53) as f64) * 2.0 - 1.0
+        };
+        let mut worst = 0.0f64;
+        for _ in 0..2000 {
+            let vph = [
+                Complex64::new(7200.0 * rnd(), 7200.0 * rnd()),
+                Complex64::new(7200.0 * rnd(), 7200.0 * rnd()),
+                Complex64::new(7200.0 * rnd(), 7200.0 * rnd()),
+            ];
+            let (mut x, mut y) = ([Complex64::ZERO; 3], [Complex64::ZERO; 3]);
+            SymComp::precise().phase_to_sym(&vph, &mut x);
+            SymComp::official().phase_to_sym(&vph, &mut y);
+            let scale = vph.iter().fold(0.0f64, |m, c| m.max(c.norm()));
+            for k in 1..3 {
+                worst = worst.max((x[k] - y[k]).norm() / scale);
+            }
+            // Row 0 takes no `SEQ_C012` term at all: the two variants' first row is
+            // `[1/3, 1/3, 1/3]` to within the numerical `Invert`'s own ulps.
+            assert!(
+                (x[0] - y[0]).norm() / scale < 1e-15,
+                "row 0 carries a truncation gap: {:e}",
+                (x[0] - y[0]).norm() / scale
+            );
+        }
+        assert!(worst <= SEQ_C012, "sweep worst {worst:e} exceeds SEQ_C012");
+        assert!(
+            worst > 4.0e-10,
+            "the sweep never exercised the gap: {worst:e}"
+        );
+
+        assert_eq!(bus_ll_base_factor(0.0), 1.0);
+        assert_eq!(bus_ll_base_factor(-1.0), 1.0);
+        assert_eq!(bus_ll_base_factor(7.2), 1000.0 * 7.2 * 3.0f64.sqrt());
+    }
+
+    /// A deck that carries six of the ten bus classes at once: `b4` = `[1,2,3,4]`
+    /// (the `(3,4)` pairing and, on r4133, the sequence sentinel), `bx` =
+    /// `[1,2,10]` (the ground substitution and the duplicate negative), `by` =
+    /// `[1,10]` (capi's `DefaultResult` vs r4133's self-pair), `bz` = `[2,3]`
+    /// (one honest pair), `bh` = `[10,31,32]` (r4133's hang), `b1n` = `[1]` (the
+    /// one-phase sentinel), and `sourcebus` = `[1,2,3]` (everything agrees).
+    fn solved() -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "New circuit.seqvll basekv=12.47 pu=1.0 phases=3 bus1=sourcebus",
+            "New Line.l1 bus1=sourcebus.1.2.3 bus2=b4.1.2.3 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l1b bus1=sourcebus.1 bus2=b4.4 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l2 bus1=sourcebus.1.2 bus2=bx.1.2 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l2b bus1=sourcebus.3 bus2=bx.10 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l3 bus1=sourcebus.1 bus2=by.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l3b bus1=sourcebus.2 bus2=by.10 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l4 bus1=sourcebus.2.3 bus2=bz.2.3 phases=2 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l5 bus1=sourcebus.1.2.3 bus2=bh.10.31.32 phases=3 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Line.l6 bus1=sourcebus.1 bus2=b1n.1 phases=1 r1=0.1 x1=0.3 c1=0 length=1",
+            "New Load.ld bus1=b4.1.2.3 phases=3 kv=12.47 kw=500 pf=0.95",
+            "Set voltagebases=[12.47]",
+            "CalcVoltageBases",
+            "Solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// Build the capture THAT channel's transport would send for this deck out
+    /// of the port's own view, reproducing each transport's Pascal shape rule
+    /// (the rules `oracle_server.py::capture_all_buses` and
+    /// `dss-epri::capture::capture_all_buses` assert against live payloads).
+    /// The G1.4a/G1.5 fields are left empty — they are the other comparators'
+    /// rows and nothing here reads them.
+    fn capture(dss: &Dss, channel: PropsChannel) -> Vec<BusCap> {
+        dss.all_bus_voltages()
+            .iter()
+            .map(|v| {
+                let mut nodes = v.nodes.clone();
+                nodes.sort_unstable();
+                let n = nodes.len();
+                let (seq_voltages, cplx_seq_voltages) = if seq_channel_declines(channel, n) {
+                    (vec![-1.0; 3], vec![-1.0; 6])
+                } else {
+                    let vph = [1i32, 2, 3].map(|k| bus_node_voltage(&nodes, &v.node_v, k));
+                    let mut v012 = [Complex64::ZERO; 3];
+                    // Each channel's OWN transform: r4133 builds `Ap2s` from the
+                    // truncated `sin 60` and inverts it numerically, so the
+                    // positive control below runs through the `SEQ_C012` term
+                    // rather than assuming it (G1.4c audit-tests, `capture`).
+                    let sc = match channel {
+                        PropsChannel::CapiV0145 => SymComp::precise(),
+                        PropsChannel::R4133 => SymComp::official(),
+                    };
+                    sc.phase_to_sym(&vph, &mut v012);
+                    (v012.iter().map(|c| c.norm()).collect(), interleave(&v012))
+                };
+                let (vll, pu_vll, vll_declined) =
+                    match upstream_vll(&nodes, channel == PropsChannel::CapiV0145) {
+                        UpstreamVll::OnePhase => (vec![-99999.0, 0.0], vec![-99999.0, 0.0], false),
+                        UpstreamVll::CapiDefault => (vec![0.0], vec![0.0], false),
+                        UpstreamVll::SecondLoopHang => (Vec::new(), Vec::new(), true),
+                        UpstreamVll::FirstLoopHang => unreachable!("no such bus in this deck"),
+                        UpstreamVll::Pairs(p) => {
+                            let ex = expected_vll(&nodes, &v.node_v, &p);
+                            let base = bus_ll_base_factor(v.kv_base);
+                            let pu: Vec<Complex64> = ex.iter().map(|c| *c / base).collect();
+                            (interleave(&ex), interleave(&pu), false)
+                        }
+                    };
+                BusCap {
+                    name: v.name.clone(),
+                    kv_base: v.kv_base,
+                    distance: 0.0,
+                    nodes,
+                    pu_voltages: Vec::new(),
+                    vmag_angle: Vec::new(),
+                    pu_vmag_angle: Vec::new(),
+                    zsc1: Vec::new(),
+                    zsc0: Vec::new(),
+                    zsc: Vec::new(),
+                    ysc: Vec::new(),
+                    isc: Vec::new(),
+                    voc: Vec::new(),
+                    seq_voltages,
+                    cplx_seq_voltages,
+                    vll,
+                    pu_vll,
+                    vll_declined,
+                }
+            })
+            .collect()
+    }
+
+    fn bus_mut<'a>(exp: &'a mut [BusCap], name: &str) -> &'a mut BusCap {
+        exp.iter_mut()
+            .find(|b| b.name == name)
+            .unwrap_or_else(|| panic!("bus {name} missing from the capture"))
+    }
+
+    /// Run a compare that is expected to fail and return the panic message.
+    /// The silencing hook is scoped to this thread and delegates every other
+    /// panic to the previous hook — `bus_short_circuit_tests::reds`' pattern,
+    /// for its reason (this module compiles into the corpus-gate binary).
+    fn reds<T: std::fmt::Debug>(f: impl FnOnce() -> T) -> String {
+        thread_local! {
+            static SILENCE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        static HOOK: std::sync::Once = std::sync::Once::new();
+        HOOK.call_once(|| {
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                if !SILENCE.with(|s| s.get()) {
+                    prev(info);
+                }
+            }));
+        });
+        SILENCE.with(|s| s.set(true));
+        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        SILENCE.with(|s| s.set(false));
+        let err = out.expect_err("the drive was expected to red");
+        err.downcast_ref::<String>()
+            .cloned()
+            .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default()
+    }
+
+    /// Positive control on BOTH channels, with the classes the deck reaches
+    /// pinned exactly — so every negative drive below perturbs a live rule and
+    /// the class accounting itself is asserted, not narrated.
+    #[test]
+    fn the_comparator_accepts_the_engines_own_surface_and_names_every_class() {
+        let dss = solved();
+        let tol = tol_for("feeder");
+
+        let capi = compare_bus_seq_and_vll(
+            &dss,
+            &capture(&dss, PropsChannel::CapiV0145),
+            &tol,
+            PropsChannel::CapiV0145,
+            false,
+            "positive control capi",
+        );
+        assert_eq!(
+            capi,
+            SeqVllCounts {
+                buses: 7,
+                // capi clamps, so it never declines the sequence pair here.
+                r4133_seq_sentinel: 0,
+                // `bx` = [1,2,10] and `bh` = [10,31,32]: n >= 3, a phase missing.
+                seq_ground_substitution: 2,
+                // `b4` (3,4), `bx` (2,1)+(10,1), `by` DefaultResult, `bh` DefaultResult.
+                vll_upstream_pairing_declines: 4,
+                r4133_vll_hang: 0,
+            }
+        );
+
+        let r4133 = compare_bus_seq_and_vll(
+            &dss,
+            &capture(&dss, PropsChannel::R4133),
+            &tol,
+            PropsChannel::R4133,
+            false,
+            "positive control r4133",
+        );
+        assert_eq!(
+            r4133,
+            SeqVllCounts {
+                buses: 7,
+                // `b4` = [1,2,3,4]: r4133's missing clamp.
+                r4133_seq_sentinel: 1,
+                // `bh` still answers on capi but not on r4133 (n = 3 there, so
+                // it IS the ground-substituted arm); `bx` likewise.
+                seq_ground_substitution: 2,
+                // `b4`, `bx`, `by` (the self-pair) — `bh` is the hang instead.
+                vll_upstream_pairing_declines: 3,
+                r4133_vll_hang: 1,
+            }
+        );
+    }
+
+    /// Non-vacuity, values: a sequence magnitude and a line-to-line entry moved
+    /// by ten times their own band each red their own row.
+    #[test]
+    fn a_perturbed_sequence_or_line_to_line_value_reds_the_comparator() {
+        let dss = solved();
+        let tol = tol_for("feeder");
+
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        // 10x the band at |Vph| ~ 7.2 kV is ~7e-4 V — far below the value and
+        // far above the floor, so this is the band talking, not a typo.
+        let step = 10.0 * (tol.v_abs + tol.v_rel * 7200.0);
+        bus_mut(&mut exp, "b4").seq_voltages[1] += step;
+        let msg = reds(|| {
+            compare_bus_seq_and_vll(
+                &dss,
+                &exp,
+                &tol,
+                PropsChannel::CapiV0145,
+                false,
+                "seq drive",
+            )
+        });
+        assert!(msg.contains("SeqVoltages[1] differs"), "{msg:?}");
+
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        bus_mut(&mut exp, "b4").vll[4] += step;
+        let msg = reds(|| {
+            compare_bus_seq_and_vll(
+                &dss,
+                &exp,
+                &tol,
+                PropsChannel::CapiV0145,
+                false,
+                "vll drive",
+            )
+        });
+        assert!(msg.contains("VLL[2] (nodes 3-4) differs"), "{msg:?}");
+
+        // The same two arms on the OTHER channel, and the `puVLL` arm on both:
+        // before the G1.4c audit settlement no drive anywhere reddened a `puVLL`
+        // cell, and every `VLL` red on record was `[CapiV0145]`, so the §1.1(f)
+        // acceptance was argued rather than measured there (audit-tests).
+        // `puVLL` is the same difference over `BaseFactor_LL`, so the drive is
+        // the same step divided by that base.
+        for channel in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let mut exp = capture(&dss, channel);
+            bus_mut(&mut exp, "b4").vll[4] += step;
+            let msg =
+                reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, channel, false, "vll drive"));
+            assert!(msg.contains("VLL[2] (nodes 3-4) differs"), "{msg:?}");
+
+            let mut exp = capture(&dss, channel);
+            let b = bus_mut(&mut exp, "b4");
+            let ll_base = bus_ll_base_factor(b.kv_base);
+            assert!(ll_base > 1.0, "b4 must carry a line-to-line base");
+            b.pu_vll[4] += step / ll_base;
+            let msg =
+                reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, channel, false, "pu drive"));
+            assert!(msg.contains("puVLL[2] (nodes 3-4) differs"), "{msg:?}");
+        }
+
+        // The GROUND-SUBSTITUTION mechanism assertion: on `bx` = [1,2,10] the
+        // port declines and the expectation is the replay over the fabricated
+        // 0 V phase, so this is the only drive that reds THAT arm.
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        bus_mut(&mut exp, "bx").cplx_seq_voltages[2] += step;
+        let msg = reds(|| {
+            compare_bus_seq_and_vll(
+                &dss,
+                &exp,
+                &tol,
+                PropsChannel::CapiV0145,
+                false,
+                "ground substitution drive",
+            )
+        });
+        assert!(msg.contains("CplxSeqVoltages[1] differs"), "{msg:?}");
+    }
+
+    /// Non-vacuity, the S-VLL pairing: swapping the walk's wrap order — the
+    /// upstream defect itself — reds the `[1,2,3,4]` bus, because the port's own
+    /// `(3,1)` answer is NOT what either oracle publishes there.
+    #[test]
+    fn the_wrap_before_probe_pairing_reds_the_four_node_bus() {
+        let dss = solved();
+        let view = dss
+            .all_bus_voltages()
+            .into_iter()
+            .find(|v| v.name == "b4")
+            .expect("b4");
+        let mut exp = capture(&dss, PropsChannel::CapiV0145);
+        // What upstream WOULD publish if it wrapped before probing (its own
+        // `ShowResults.pas:193-194` and the commented-out `DBus.pas:586-587`):
+        // the port's S-VLL answer.
+        let wrap_first = interleave(view.vll.as_ref().expect("b4 carries three phases"));
+        assert_ne!(wrap_first, bus_mut(&mut exp, "b4").vll);
+        bus_mut(&mut exp, "b4").vll = wrap_first;
+        let msg = reds(|| {
+            compare_bus_seq_and_vll(
+                &dss,
+                &exp,
+                &tol_for("feeder"),
+                PropsChannel::CapiV0145,
+                false,
+                "wrap-order drive",
+            )
+        });
+        assert!(msg.contains("VLL[2] (nodes 3-4) differs"), "{msg:?}");
+    }
+
+    /// Non-vacuity, availability: each of the four discrete classifications reds
+    /// when the payload stops matching the class the node set names — including
+    /// the two-transcription cross-check on `vll_declined`.
+    #[test]
+    fn a_payload_that_contradicts_its_own_bus_class_reds_the_comparator() {
+        let dss = solved();
+        let tol = tol_for("feeder");
+        let capi = PropsChannel::CapiV0145;
+        let r4133 = PropsChannel::R4133;
+
+        // (1) a channel that stops answering where its own rule says it answers.
+        let mut exp = capture(&dss, capi);
+        bus_mut(&mut exp, "sourcebus").seq_voltages = vec![-1.0; 3];
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, false, "seq answer"));
+        assert!(msg.contains("carries a negative magnitude"), "{msg:?}");
+
+        // (2) …and one that starts answering where it should decline.
+        let mut exp = capture(&dss, r4133);
+        bus_mut(&mut exp, "b4").seq_voltages = vec![1.0, 2.0, 3.0];
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, r4133, false, "seq decline"));
+        assert!(msg.contains("n/A sentinel for SeqVoltages"), "{msg:?}");
+
+        // (3) the bridge refuses a call the harness' replay resolves…
+        let mut exp = capture(&dss, r4133);
+        {
+            let b = bus_mut(&mut exp, "b4");
+            b.vll_declined = true;
+            b.vll.clear();
+            b.pu_vll.clear();
+        }
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, r4133, false, "false refusal"));
+        assert!(
+            msg.contains("refused a VLL read this replay resolves"),
+            "{msg:?}"
+        );
+
+        // (4) …and the converse: it answers where the replay says the loop hangs.
+        let mut exp = capture(&dss, r4133);
+        {
+            let b = bus_mut(&mut exp, "bh");
+            b.vll_declined = false;
+            b.vll = vec![0.0; 6];
+            b.pu_vll = vec![0.0; 6];
+        }
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, r4133, false, "missed hang"));
+        assert!(msg.contains("the two transcriptions disagree"), "{msg:?}");
+
+        // (5) the capi transport can never decline — its scan is bounded.
+        let mut exp = capture(&dss, capi);
+        bus_mut(&mut exp, "bh").vll_declined = true;
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, false, "capi refusal"));
+        assert!(msg.contains("its partner scan is bounded"), "{msg:?}");
+
+        // (6) the one-phase sentinel is asserted, not assumed.
+        let mut exp = capture(&dss, capi);
+        {
+            let b = bus_mut(&mut exp, "b1n");
+            b.vll = vec![0.0, 0.0];
+            b.pu_vll = vec![0.0, 0.0];
+        }
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, false, "one phase"));
+        assert!(msg.contains("published the 1-phase sentinel"), "{msg:?}");
+
+        // (7) so is capi's `DefaultResult`.
+        let mut exp = capture(&dss, capi);
+        {
+            let b = bus_mut(&mut exp, "by");
+            b.vll = vec![0.0, 0.0];
+            b.pu_vll = vec![0.0, 0.0];
+        }
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, false, "default result"));
+        assert!(
+            msg.contains("should have published `DefaultResult`"),
+            "{msg:?}"
+        );
+    }
+
+    /// `voltages_excluded` drops the VALUES only: every availability
+    /// classification, every sentinel, every length and the `vll_declined`
+    /// cross-check stay compared — the D11(2) narrowing, proven in both
+    /// directions.
+    #[test]
+    fn the_voltage_exclusion_drops_values_and_keeps_the_structure() {
+        let dss = solved();
+        let tol = tol_for("feeder");
+        let capi = PropsChannel::CapiV0145;
+        let step = 10.0 * (tol.v_abs + tol.v_rel * 7200.0);
+
+        // A value drive that reds unexcluded passes under the exclusion…
+        let mut exp = capture(&dss, capi);
+        {
+            let b = bus_mut(&mut exp, "b4");
+            b.seq_voltages[1] += step;
+            b.vll[4] += step;
+        }
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, false, "not excluded"));
+        assert!(msg.contains("differs"), "{msg:?}");
+        let counts = compare_bus_seq_and_vll(&dss, &exp, &tol, capi, true, "excluded");
+        assert_eq!(counts.buses, 7);
+        // …and the class accounting is unchanged by the exclusion.
+        assert_eq!(
+            counts,
+            compare_bus_seq_and_vll(&dss, &capture(&dss, capi), &tol, capi, false, "control")
+        );
+
+        // …while a length, a sentinel and the availability rule still red.
+        let mut exp = capture(&dss, capi);
+        bus_mut(&mut exp, "b4").vll.pop();
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, true, "length"));
+        assert!(msg.contains("VLL and puVLL lengths differ"), "{msg:?}");
+
+        let mut exp = capture(&dss, capi);
+        bus_mut(&mut exp, "sourcebus").seq_voltages = vec![-1.0; 3];
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, true, "sentinel"));
+        assert!(msg.contains("carries a negative magnitude"), "{msg:?}");
+
+        let mut exp = capture(&dss, capi);
+        bus_mut(&mut exp, "b1n").vll = vec![-99999.0, 0.0, 0.0, 0.0];
+        bus_mut(&mut exp, "b1n").pu_vll = vec![-99999.0, 0.0, 0.0, 0.0];
+        let msg = reds(|| compare_bus_seq_and_vll(&dss, &exp, &tol, capi, true, "one-phase shape"));
+        assert!(msg.contains("published the 1-phase sentinel"), "{msg:?}");
     }
 }
 

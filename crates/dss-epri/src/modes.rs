@@ -26,6 +26,12 @@
 //! [`ModeEffect`] (`GOLDEN_REBASE_PLAN.md` §1.1(a), coordinator decision D3) and
 //! pinned by `the_capture_order_partition_is_the_one_d3_names`.
 //!
+//! Two more are unsafe only in *some* engine states: r4133's `Bus.VLL` /
+//! `Bus.puVLL` pairing loop does not terminate on certain bus node sets, so
+//! they are held in [`STATE_DEPENDENT_REFUSALS`] and cleared per call by the
+//! offline predicate [`bus_vll_would_hang`] instead — a mode the bridge
+//! serves, minus the buses on which serving it would hang.
+//!
 //! This module performs **no FFI** — it is pure classification plus two static
 //! registers, so it needs no `// SAFETY` invariant of its own; the calling side
 //! ([`crate::dss`]) carries one.
@@ -322,6 +328,117 @@ pub fn check_callable(family: &str, kind: ModeKind, mode: i32) -> Option<ModeSta
         .iter()
         .find(|(f, k, m, _)| *k == kind && *m == mode && f.eq_ignore_ascii_case(family))
         .map(|(_, _, _, why)| ModeStatus::DoNotCall(why))
+}
+
+// ---- the state-dependent refusal register (G1.4c) ------------------------
+
+/// [`bus_vll_would_hang`]'s verdict when the **first** `repeat` of the pairing
+/// loop cannot terminate.
+const VLL_HANG_FIRST_LOOP: &str = "Bus.VLL/puVLL: the first `repeat` (DBus.pas:575-578, :631-634) \
+     climbs `jj` upward from `i` with no bound until `FindIdx(jj) > 0`, so a bus with no node \
+     numbered >= i spins forever — reachable only if the node-number invariant BUS_NODES \
+     documents (distinct, >= 1) is violated";
+
+/// [`bus_vll_would_hang`]'s verdict when the **second** `repeat` cannot
+/// terminate — the shape measured live.
+const VLL_HANG_SECOND_LOOP: &str = "Bus.VLL/puVLL: the second `repeat` (DBus.pas:580-584, \
+     :636-640) probes `jj` and only then wraps (`if jj > 3 then jj := 1 else inc(jj)`), so it \
+     cycles over `{jj0} u {1,2,3,4}` forever on a bus whose node numbers miss that set — \
+     MEASURED as a worker TIMEOUT on NEVTestCase `double-1..6` (nodes 10,31,32,33,41,42,43)";
+
+/// Would r4133's `Bus.VLL` / `Bus.puVLL` pairing loop **fail to terminate** on a
+/// bus whose node numbers are `nodes`? `Some(reason)` = the bridge must not
+/// dispatch `BUSV(11)`/`BUSV(12)` for this bus; `None` = the call is bounded.
+///
+/// A pure transcription of the `BUSV(11)` arm (`DDLL/DBus.pas:557-591`; the
+/// `BUSV(12)` arm `:611-645` is the identical loop with a `cdivreal`), evaluated
+/// **offline** over the node numbers `Bus.Nodes` reports ([`BUS_NODES`],
+/// `DBus.pas:319-345`): that arm writes exactly `NumNodesThisBus` entries, so
+/// `nodes.len()` IS the `Nvalues` the pairing arm reads (`:559`, `:613`), and
+/// its own `jj` scan is bounded (see [`BUS_NODES`]) — the guard can therefore
+/// read the state it needs without risking the hang it exists to prevent.
+///
+/// The transcription, arm by arm:
+/// * `Nvalues > 3 => 3`, `Nvalues <= 1 =>` the `ELSE` branch at `:594` / `:650`
+///   (one `cmplx(-99999, 0)`, no loop at all), `Nvalues = 2 => 1` (`:563`, `:617`).
+/// * first `repeat` (`:575-578`): `jj` starts at `i` and only increments, so it
+///   stops at `min { m in nodes : m >= i }` and hangs when there is none.
+/// * second `repeat` (`:580-584`): it probes `jj` **before** the wrap, starting
+///   from `jj0 = found_i + 1`; the update `if jj > 3 then jj := 1 else inc(jj)`
+///   makes the probe sequence settle into `{1,2,3,4}`, so the reachable set is
+///   exactly `{jj0} u {1,2,3,4}` and the loop hangs iff no node number is in it.
+///
+/// (r4133's own commented-out original at `:586-587` — and its sibling report
+/// path `Common/ShowResults.pas:193-194` — wrap *first*, which cannot hang; capi
+/// 0.14.5 replaced the loop with a bounded `for k := 1 to 3`
+/// (`CAPI/CAPI_Alt.pas:2473-2537`, comment "to avoid some corner cases that
+/// resulted in infinite loops"). The defect is r4133-only.)
+///
+/// No FFI, no allocation, no DLL state — this module's stated contract.
+pub fn bus_vll_would_hang(nodes: &[i32]) -> Option<&'static str> {
+    // `Nvalues := NumNodesThisBus; If Nvalues > 3 Then Nvalues := 3;
+    //  If Nvalues > 1 Then ... ELSE <the -99999 branch>` (DBus.pas:559-563).
+    if nodes.len() <= 1 {
+        return None;
+    }
+    // `If Nvalues = 2 Then Nvalues := 1` (:563) — one L-L voltage on 2 phases.
+    let n_values: i32 = if nodes.len() == 2 { 1 } else { 3 };
+    for i in 1..=n_values {
+        let Some(found_i) = nodes.iter().copied().filter(|&m| m >= i).min() else {
+            return Some(VLL_HANG_FIRST_LOOP);
+        };
+        let probes = [found_i.saturating_add(1), 1, 2, 3, 4];
+        if !probes.iter().any(|p| nodes.contains(p)) {
+            return Some(VLL_HANG_SECOND_LOOP);
+        }
+    }
+    None
+}
+
+/// `(family, kind, mode, reason)` rows this bridge dispatches only after a
+/// **state-dependent** predicate has cleared them.
+///
+/// [`DO_NOT_CALL`] means *unsafe in every state* and is enforced by
+/// [`check_callable`] inside [`crate::dss::Engine::read_mode`]; this register
+/// means *unsafe for some engine states*, so its rows cannot be refused there
+/// without losing the mode entirely. Each row instead names the predicate and
+/// the single accessor that owns it, and the accessor refuses to dispatch when
+/// its row is missing — so deleting a row here breaks the capture loudly rather
+/// than quietly restoring the hang.
+///
+/// The two registers are disjoint (asserted by a unit test): a mode is either
+/// never callable or callable under a predicate, never both.
+pub const STATE_DEPENDENT_REFUSALS: &[(&str, ModeKind, i32, &str)] = &[
+    (
+        "Bus",
+        ModeKind::V,
+        11,
+        "Bus.VLL: DBus.pas:575-584 pairs phases with two unbounded `repeat` loops and can spin \
+         forever (live-measured TIMEOUT on NEVTestCase `double-1`); guarded per bus by \
+         `bus_vll_would_hang` over `Bus.Nodes`, dispatched only by `Engine::bus_vll_pair`",
+    ),
+    (
+        "Bus",
+        ModeKind::V,
+        12,
+        "Bus.PuVLL: DBus.pas:631-640 is the same pairing loop divided by `BaseFactor_LL` and \
+         hangs on exactly the same buses (live-measured TIMEOUT on NEVTestCase `double-1`); the \
+         same `bus_vll_would_hang` verdict guards it, and `Engine::bus_vll_pair` is its \
+         only dispatcher",
+    ),
+];
+
+/// The [`STATE_DEPENDENT_REFUSALS`] reason for a `(family, kind, mode)` triple,
+/// or `None` when the triple carries no state-dependent guard. Family names
+/// compare case-insensitively, like [`check_callable`].
+///
+/// This is a *registry lookup*, not the guard: the predicate deciding the
+/// refusal is named in the row (for both rows, [`bus_vll_would_hang`]).
+pub fn state_dependent_refusal(family: &str, kind: ModeKind, mode: i32) -> Option<&'static str> {
+    STATE_DEPENDENT_REFUSALS
+        .iter()
+        .find(|(f, k, m, _)| *k == kind && *m == mode && f.eq_ignore_ascii_case(family))
+        .map(|(_, _, _, why)| *why)
 }
 
 // ---- the WP-G1 mode table ------------------------------------------------
@@ -855,11 +972,23 @@ pub const BUS_CPLX_SEQ_VOLTAGES: ModeSpec = ModeSpec::array(
     3,
     ModeEffect::Pure,
 );
-/// `BUSV(11)` — line-to-line complex voltages.
+/// `BUSV(11)` — line-to-line complex voltages: three pairs on a bus with
+/// `>= 3` nodes, one on a 2-node bus, and the `cmplx(-99999, 0)` marker below
+/// that (`DBus.pas:549-601`).
+///
+/// **Not unconditionally callable.** Its phase-pairing loop probes `jj` before
+/// wrapping it (`:580-584`) and spins forever on a bus whose node numbers miss
+/// `{jj0} u {1,2,3,4}` — see [`bus_vll_would_hang`] and
+/// [`STATE_DEPENDENT_REFUSALS`]; [`crate::dss::Engine::bus_vll_pair`] is the
+/// only guarded dispatcher.
 pub const BUS_VLL: ModeSpec =
     ModeSpec::array("Bus", 11, "Bus.VLL", "DBus.pas:549", 3, ModeEffect::Pure);
 /// `BUSV(12)` — per-unit line-to-line voltages. The `case` comment reads
 /// `Bus. PuVLL` (stray space).
+///
+/// Divides [`BUS_VLL`]'s pairs by `BaseFactor_LL = 1000*kVBase*sqrt3` (`1.0`
+/// when `kVBase <= 0`, `:622-623`) through the SAME unbounded loop (`:636-640`)
+/// and therefore carries the same state-dependent refusal.
 pub const BUS_PU_VLL: ModeSpec =
     ModeSpec::array("Bus", 12, "Bus.PuVLL", "DBus.pas:603", 3, ModeEffect::Pure);
 /// `BUSV(13)` — node voltages as `(magnitude, angle°)` pairs.
@@ -2343,6 +2472,105 @@ mod tests {
                 "{m} — every pre-table element read is ordered"
             );
         }
+    }
+
+    /// [`bus_vll_would_hang`] against every distinct bus node set the live
+    /// corpus contains (19 classes over 209 211 buses / 511 live cases,
+    /// `tmp/g14c` population sweep of `tmp/g14a/bus_pop_main.json`), with the
+    /// pairing each class produces spelled out so the table doubles as the
+    /// documentation of the walk.
+    ///
+    /// Exactly one class refuses — NEVTestCase `double-1..6`
+    /// `[10,31,32,33,41,42,43]`, live-measured as a `BUSV(11)` TIMEOUT — and the
+    /// two neighbouring 13-node NEV classes do NOT, which is what keeps the
+    /// guard from degenerating into "refuse anything unusual".
+    #[test]
+    fn bus_vll_would_hang_refuses_exactly_the_measured_corpus_class() {
+        // (node set, hangs?) — every class in the live population.
+        let table: &[(&[i32], bool)] = &[
+            (&[], false),  // 0-node bus: the ELSE branch
+            (&[1], false), // 1-node: the ELSE branch
+            (&[2], false),
+            (&[3], false),
+            (&[1, 2], false), // 2 nodes => one pair
+            (&[1, 3], false),
+            (&[2, 3], false),
+            (&[1, 2, 3], false),    // the ordinary 3-phase bus
+            (&[1, 2, 3, 4], false), // pairs (1,2) (2,3) (3,4)
+            (&[1, 2, 3, 10], false),
+            (&[1, 2, 3, 4, 10], false), // NEVMASTER `13kvbus`
+            (&[1, 10], false),          // pairs (1,1) — a node with itself
+            (&[1, 2, 10], false),       // pairs (1,2) (2,1) (10,1)
+            (&[1, 2, 3, 4, 5], false),
+            (&[1, 2, 3, 4, 5, 6], false),
+            (&[1, 2, 3, 4, 5, 6, 7, 8, 9], false),
+            (&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], false),
+            // NEVMASTER `quad-1..5`: jj0 = 11 IS a node => pairs (10,11) x3.
+            (&[10, 11, 12, 13, 21, 22, 23, 31, 32, 33, 41, 42, 43], false),
+            // NEVMASTER `double-1..6`: jj0 = 11 is not a node and neither is any
+            // of 1..4 => the second `repeat` never exits.
+            (&[10, 31, 32, 33, 41, 42, 43], true),
+        ];
+        for (nodes, want_hang) in table {
+            let got = bus_vll_would_hang(nodes);
+            assert_eq!(
+                got.is_some(),
+                *want_hang,
+                "bus_vll_would_hang({nodes:?}) = {got:?}"
+            );
+        }
+        // The refusal that fires is the SECOND-loop one, and it names the loop.
+        let why = bus_vll_would_hang(&[10, 31, 32, 33, 41, 42, 43]).expect("must refuse");
+        assert!(why.contains("second `repeat`"), "{why}");
+        assert!(why.contains("DBus.pas:580-584"), "{why}");
+        // The first-loop arm is defensive — unreachable while node numbers obey
+        // the BUS_NODES invariant (distinct, >= 1), so it is driven here with a
+        // node set that violates it rather than left untested.
+        let why = bus_vll_would_hang(&[-1, 0]).expect("no node >= 1 must refuse");
+        assert!(why.contains("first `repeat`"), "{why}");
+        // Non-vacuity of the wrap transcription: probing BEFORE the wrap is what
+        // makes `[10,31,...]` hang. A node set differing only by adding node 4
+        // (which the wrap reaches) is accepted, and one differing only by adding
+        // node 11 (= jj0, which the pre-wrap probe reaches) is accepted too.
+        assert!(bus_vll_would_hang(&[4, 10, 31, 32, 33, 41, 42, 43]).is_none());
+        assert!(bus_vll_would_hang(&[10, 11, 31, 32, 33, 41, 42, 43]).is_none());
+    }
+
+    /// The two registers divide the work cleanly: [`DO_NOT_CALL`] refuses inside
+    /// [`crate::dss::Engine::read_mode`] for every state, [`STATE_DEPENDENT_REFUSALS`]
+    /// is cleared per call by a predicate. A mode on both would be refused
+    /// unconditionally while claiming to be conditional, so they must be
+    /// disjoint — and a state-dependent row must still be a mode WP-G1 reads.
+    #[test]
+    fn the_two_refusal_registers_are_disjoint_and_state_dependent_rows_are_read_modes() {
+        assert_eq!(STATE_DEPENDENT_REFUSALS.len(), 2);
+        for (fam, kind, mode, why) in STATE_DEPENDENT_REFUSALS {
+            assert!(
+                check_callable(fam, *kind, *mode).is_none(),
+                "{fam} {kind:?}:{mode} is on BOTH registers"
+            );
+            assert!(
+                why.contains("DBus.pas:") && why.contains("bus_vll_would_hang"),
+                "a state-dependent row must cite its Pascal and name its predicate: {why}"
+            );
+            assert!(
+                WP_G1_MODES.iter().any(|m| m.kind == *kind
+                    && m.mode == *mode
+                    && m.family.eq_ignore_ascii_case(fam)),
+                "{fam} {kind:?}:{mode} is refused per state but is not a WP-G1 mode"
+            );
+        }
+        // The lookup is by triple, case-insensitive on the family, and does not
+        // leak onto the neighbouring Bus V rows the capture reads unguarded.
+        assert!(state_dependent_refusal("bus", ModeKind::V, 11).is_some());
+        assert!(state_dependent_refusal("Bus", ModeKind::V, 12).is_some());
+        assert!(state_dependent_refusal("Bus", ModeKind::V, 10).is_none());
+        assert!(state_dependent_refusal("Bus", ModeKind::V, 13).is_none());
+        assert!(state_dependent_refusal("Bus", ModeKind::I, 11).is_none());
+        assert!(state_dependent_refusal("CktElement", ModeKind::V, 11).is_none());
+        // The two guarded rows are exactly the VLL pair.
+        assert_eq!(BUS_VLL.mode, 11);
+        assert_eq!(BUS_PU_VLL.mode, 12);
     }
 
     #[test]
