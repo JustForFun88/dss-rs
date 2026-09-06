@@ -1272,6 +1272,13 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > 0-based rather than nudge DE_PASCALIZE **P14**'s ceiling — it stays 106 — and the two
 > cross-transport `#[test]`s, the last producers running in a case directory without a claim, take
 > the `CorpusGuard` too).
+> **The audit settlement** (`728332b6`, 15 findings — 9 fixed / 5 recorded / 1 refuted) closed a
+> second port gap in (4) — `exec/json_import.rs` never drained the queued trace header, so a
+> Storage imported from JSON with `DebugTrace: true` traced nothing — and, on its own gate run,
+> the root cause of the `Test/AutoTrans/*` residue: a guard on a PARENT case directory restored a
+> sibling case's *swept* output, so both Rust guards now leave a deleted entry deleted
+> (`a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`; 9 leaked before, 0 over four
+> full drives).
 > **Tier as executed:** §0's `opus-high+` row held; the five coordinator STOPs it took were
 > scope questions, not tier questions.
 

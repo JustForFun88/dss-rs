@@ -231,7 +231,8 @@ DLL (`r4133`), partitioned by the divergence ledger `tests/corpus/ledger.json`
 pinned dss-python (`tools/golden/PIN.txt`) must be installed — without it the
 gate fails rather than skipping; the r4133 DLL is git-tracked and its
 `epri-worker` bridge is built by `cargo test` itself (Windows-only —
-`crates/dss-epri` is `#[cfg(windows)]`). New tests read feeders from the
+`crates/dss-epri` is `#[cfg(windows)]`, bar its DLL-free `guard` module, ungated
+since GOLDEN_REBASE G1.10a so all three producers share one classification). New tests read feeders from the
 vendored corpus, never from `.inputs/` at runtime.
 
 **`TESTING.md`** is the map of the whole test infrastructure — the layers (unit
