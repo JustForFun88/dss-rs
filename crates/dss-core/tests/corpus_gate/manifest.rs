@@ -153,8 +153,19 @@ pub(crate) struct SolvableCase {
     /// tries and r4133 loops forever). They ride THIS flag and add none of
     /// their own: no new capture slot, no new force rule, no
     /// `population.lock.json` move (`harness::compare_bus_seq_and_vll`).
-    /// **Still to come on this same flag:** `AllPCEatBus`/`AllPDEatBus`/
-    /// `Distance` + `AllBusDistances`/`AllNodeDistances` (G1.4b).
+    /// **Wired by G1.4b (2026-09-05, settlement D29):** `Distance`
+    /// (`DBus.pas:122-128` == `CAPI_Bus.pas:419-427`) plus the circuit-level
+    /// `AllBusDistances` (`DCircuit.pas:566-580` == `CAPI_Circuit.pas:671-688`)
+    /// and `AllNodeDistances` (`:582-604` == `:697-722`) —
+    /// `harness::compare_bus_distances`.
+    /// **Wired by G1.4d (2026-09-06, settlement D26):** `AllPCEatBus`
+    /// (`DBus.pas:840-866` == `CAPI_Bus.pas:773-788`) and `AllPDEatBus`
+    /// (`:867-898` == `:790-805`), read LAST in the walk because they are its
+    /// only `ModeEffect::Impure` reads on the r4133 channel —
+    /// `harness::compare_bus_at_bus`. They ride this flag too: no capture slot,
+    /// no force rule, no `population.lock.json` move.
+    /// **Nothing is owed on this flag any more**; a further bus quantity would
+    /// extend this list, not the flag set.
     #[serde(default)]
     pub(crate) compare_bus: bool,
     /// G1.5: the bus **short-circuit** surface — `Zsc1`/`Zsc0`/`ZscMatrix`/

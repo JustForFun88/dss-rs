@@ -2068,6 +2068,39 @@ directions (`harness::DISTANCE_POPULATION`, printed on the run's own
 pinned to the oracles' own measured kilometres by
 `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`.
 
+## Bus at-bus lists (GOLDEN_REBASE G1.4d, `harness::compare_bus_at_bus`)
+
+**There is no floor here, and that is a decision worth writing down.**
+`compare_bus_at_bus` gates `Bus.AllPCEatBus` and `Bus.AllPDEatBus` — lists of
+qualified element NAMES (`Class.name`). No float crosses this wire in either
+direction, on either channel, so the comparison is exact set equality with
+cardinality (case-insensitive, because the three engines spell the class name in
+three registered cases), and the comparator takes **no `Tolerances` argument at
+all** — like `compare_bus_distances` above, but for a different reason: distances
+are exact because every ingredient is bit-identical, these are exact because they
+are not numbers.
+
+**What replaces a band.** The two oracles do not compute the same set as the port
+(each of them contradicts its own stated intent — see TESTING.md §"The bus at-bus
+surface" and the upstream reports `investigations/to_opendss/69-…`, `70-…`,
+`71-…`), so the surface needed a way to be honest about a difference that no
+tolerance could ever express. It is *not* a ledger exclusion (G1.4d adds **0**
+rows): each channel's own walk is replayed over the port's raw attachment facts
+and the oracle's reply must EQUAL that replay, and the residue — the (bus,
+element) records where the port's own answer and that replay differ — is COUNTED
+into four run-wide fail-on-stale populations (`PDE_TERMINAL3_DECLINES`,
+`CAPI_NODEREF_DROPS`, `CAPI_NODEREF_ADDS`, `PCE_AT_BUS_DECLINES`), asserted
+exactly in both directions. A "tolerance" on this surface would mean admitting an
+unexplained name, which is precisely what the mechanism assertion forbids.
+
+**Non-vacuity is a population plus two pins.** The empty answer is legitimate on
+most buses of most decks, so an accepting comparator could be green over nothing:
+the four populations are the guard against that (a silently shortened port answer
+passes every per-case assertion and is caught only by them — measured), and
+`the_makeposseq_xfmr_deck_reports_the_at_bus_lists_the_port_computes` /
+`the_makeposseq_xfmr_at_bus_wires_are_each_channels_own_walk` pin one deck's port
+answer and both oracles' raw replies with both numbers.
+
 ## r4133 event-log masks (`harness::EVENTLOG_MASKS`, §1.3-3)
 
 `compare_eventlog` compares the cumulative event log line-for-line (numeric

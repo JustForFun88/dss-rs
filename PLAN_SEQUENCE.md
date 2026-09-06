@@ -100,18 +100,21 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               class) landed 2026-08-29 on `r4133-props`, and
                               G1.0 (the WP-G1 rails) landed 2026-09-04; since
                               then, in parallel lanes (D7): G1.9 (circuit
-                              aggregates + solution scalars) and G1.7
-                              (topology) in `lane-s`, G1.6b (PDElements),
+                              aggregates + solution scalars), G1.7 (topology),
+                              G1.8 (incidence matrix) and G1.10a (run-file
+                              artifacts) in `lane-s`, G1.6b (PDElements),
                               G1.6(i) (meter reliability) and G1.6(ii)
                               (per-bus reliability) in `lane-m`, G1.3a (polar
                               channels), G1.3d(i)+(ii) (element extras),
                               G1.3b (sequence transform) and G1.3c (complex
                               sequence + TotalPowers, 2026-09-06 — the
                               per-element surface is complete) in `lane-e`,
-                              and G1.4a (bus voltages), G1.5 (bus short
-                              circuit), G1.4c (bus sequence + VLL) and G1.4b
-                              (bus distances) in `lane-b`; G1.4d, G1.8 and
-                              G1.10-G1.11c remain; WP-G3–G5 queued.
+                              and the whole bus chain G1.4a (bus voltages),
+                              G1.5 (bus short circuit), G1.4c (bus sequence +
+                              VLL), G1.4b (bus distances) and G1.4d (at-bus
+                              lists, 2026-09-06 — the bus chain is complete)
+                              in `lane-b`; G1.10b/c and G1.11a-c remain;
+                              WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
  5b. R4133_PROPS_PLAN.md      **COMPLETE 2026-09-04** (authored + opened
      (docs/plans-archive/)    2026-08-22; moved to `docs/plans-archive/` by its
