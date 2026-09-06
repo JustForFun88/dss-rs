@@ -781,7 +781,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
             let probes = capture_probes(engine, &req.probes)?;
             let variables = capture_variables(engine, &req.variables)?;
             let eventlog = if req.eventlog {
-                capture_eventlog(engine)?
+                capture_eventlog(engine)
             } else {
                 Vec::new()
             };
@@ -2043,35 +2043,36 @@ fn capture_ctrlqueue(engine: &Engine) -> Vec<String> {
         .collect()
 }
 
-/// `capture_eventlog` (Oddie path): `export eventlog` writes a UTF-8-BOM CSV;
-/// read it back stripping the BOM per line and dropping blank lines.
-fn capture_eventlog(engine: &Engine) -> Result<Vec<String>, EngineError> {
-    let reply = engine.raw_command("export eventlog");
-    let (errno, desc) = engine.poll_error();
-    if errno != 0 {
-        return Err(EngineError::Dss {
-            errno,
-            desc,
-            ctx: "export eventlog".to_string(),
-        });
-    }
-    let path = reply.trim().trim_start_matches('\u{FEFF}').to_string();
-    let Ok(bytes) = std::fs::read(&path) else {
-        return Ok(Vec::new());
-    };
-    // utf-8-sig: strip a leading file BOM, then per-line BOM + CR.
-    let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
-    let text = String::from_utf8_lossy(body);
-    let mut out = Vec::new();
-    for raw in text.split('\n') {
-        let line = raw
-            .trim_start_matches('\u{FEFF}')
-            .trim_end_matches(['\r', '\n']);
-        if !line.trim().is_empty() {
-            out.push(line.to_string());
-        }
-    }
-    Ok(out)
+/// `capture_eventlog`: the run's cumulative event log, read **in memory** from
+/// `Solution.EventLog` ([`Engine::eventlog`] = `SolutionV(0)`, r4133
+/// `Version8/Source/DDLL/DSolution.pas:518,526-541`, which serializes
+/// `EventStrings[ActiveActor]`), with blank lines dropped.
+///
+/// This is the same list the other two producers read: the capi transport takes
+/// `ckt.Solution.EventLog` (`tools/oracle/oracle_server.py::capture_eventlog`
+/// -> dss_capi 0.14.5 `src/CAPI/CAPI_Solution.pas:525-540`, the same
+/// `EventStrings` walk) and the port reads its own log in memory. It replaces
+/// the retired Oddie path, which issued `export eventlog` and read the CSV back
+/// (r4133 `Common/ExportResults.pas:3527-3532` =
+/// `EventStrings[ActiveActor].SaveToFile`, named `<CircuitName>_EXP_EventLog.CSV`
+/// at `Executive/ExportOptions.pas:365`): that command made the r4133 channel
+/// write a file into the case directory that neither the capi channel nor the
+/// port creates, which G1.10a's created-file-set surface sees as a divergence on
+/// every event-logging case (coordinator decision **D30**, class A: 59 red
+/// (case, channel) pairs). The two reads were measured byte-identical over a
+/// full 526-case corpus drive (0 mismatches, 83 cases with `evlog=1`), and the
+/// equivalence is pinned by
+/// `tests/protocol.rs::the_in_memory_event_log_equals_the_exported_file`.
+///
+/// Upstream's own harness never compared this surface at all — fastdss
+/// `tests/compare_outputs.py:289-292` skips `EventLog` as "too textual" — so the
+/// gate's comparison is new coverage, not catch-up.
+fn capture_eventlog(engine: &Engine) -> Vec<String> {
+    engine
+        .eventlog()
+        .into_iter()
+        .filter(|l| !l.trim().is_empty())
+        .collect()
 }
 
 /// Read the `<CircuitName>_AutoAddLog.csv` the AutoAdd solve wrote (inside the
