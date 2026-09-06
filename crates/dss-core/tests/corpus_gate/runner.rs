@@ -1013,6 +1013,40 @@ pub(crate) fn compare_capture(
                 );
                 harness::record_sc_study_compare(full);
             }
+
+            // The AT-BUS half of the SAME per-bus walk (GOLDEN_REBASE_PLAN.md
+            // G1.4d, coordinator decision D26): `Bus.AllPCEatBus` /
+            // `Bus.AllPDEatBus`, two arms appended to the one `SetActiveBus`
+            // sweep — so, like the three blocks above, it rides `compare_bus`
+            // and opens no flag of its own.
+            //
+            // It runs LAST because that is the order both transports read the
+            // pair in, and they read it last because on the r4133 channel it is
+            // the bus walk's only `ModeEffect::Impure` read: `getP*atBus`
+            // drives `DSS_Class.First`/`Next` and `TDSSClass.Get_First`/
+            // `Get_Next` assign `ActiveCircuit.ActiveCktElement`
+            // (`Common/DSSClass.pas:342-371`). It moves neither `ActiveBusIndex`
+            // nor any `Iterminal` cache, so the surface is still capture-group
+            // C (order-free) — `crates/dss-epri/src/modes.rs`, G1.4d F0.
+            //
+            // `v_excluded` is deliberately NOT passed and no `Tolerances`
+            // either: the wire carries element NAMES, not an image of
+            // `Solution.NodeV`, so a triaged voltage cause can never explain a
+            // divergence here and there is nothing to band.
+            //
+            // The two oracles run two DIFFERENT walks and each contradicts its
+            // own stated intent, so neither is compared against the port's
+            // answer directly: each channel's walk is asserted POSITIVELY over
+            // the port's own attachment facts (`oracle == walk(port state)`,
+            // the D15/D16/D21 shape). Nothing is excluded — G1.4d adds no
+            // ledger entry — and the measured disagreements are COUNTED into
+            // four run-wide fail-on-stale populations
+            // (`harness::assert_at_bus_populations`, called once from the gate
+            // epilogue). This is the ONE recording call site — the harness' own
+            // drives must not record, or the populations stop being a property
+            // of the corpus.
+            let at_bus = harness::compare_bus_at_bus(dss, &cp.buses, channel.props_channel(), &ctx);
+            harness::record_at_bus_populations(at_bus);
         }
 
         if c.compare_all_properties {

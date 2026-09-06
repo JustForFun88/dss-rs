@@ -13,6 +13,7 @@ mod allocation;
 mod autoadd;
 mod autotrans_xfmrcode;
 mod base_frequency;
+mod bus_elements;
 mod compat_quirks;
 mod controls;
 mod derived_polar;

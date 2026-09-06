@@ -121,6 +121,14 @@ pub(crate) struct Checkpoint {
     #[serde(default)]
     pub(crate) solution_scalars: Option<SolutionScalarsCap>,
     /// G1.4a: every bus's voltage surface, in the oracle's `BusList` order.
+    /// Later sub-steps appended their arms to the SAME per-bus walk rather than
+    /// taking a checkpoint slot of their own — `Distance` (G1.4b), the six
+    /// short-circuit arrays (G1.5, behind the `zsc` request field), the
+    /// sequence/line-to-line pairs (G1.4c) and the two at-bus name lists
+    /// (G1.4d, read last because they are the r4133 channel's only
+    /// `ModeEffect::Impure` bus reads). All of them ride the one `compare_bus`
+    /// flag; `crates/dss-core/tests/corpus_gate.rs` pins that from both
+    /// transports' source text.
     #[serde(default)]
     pub(crate) buses: Vec<BusCap>,
     /// G1.4a: `Circuit.AllBusVmagPu` — every NODE's per-unit voltage magnitude,

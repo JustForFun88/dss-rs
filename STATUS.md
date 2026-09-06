@@ -158,16 +158,17 @@ port, capi and r4133 all differ: the port publishes the physically correct answe
 port's state is **asserted** rather than excluded (**D15**/**D16**, four fail-on-stale populations + the shared `C_012` ceiling) and
 r4133's `VLL` **hang** is refused per bus (**D2**; `DIVERGENCES.md` §G1.4c, `to_opendss/` 64-66) — **0** new. And **G1.4b** (`lane-b`, `1aa08d9c` + `03565bf7` + docs),
 the bus **distance** surface on the same walk, compared **exactly** (`rel = abs = 0`), with `DISTANCE_POPULATION` **(867, 79 137)**
-fail-on-stale and D9's `MakeBusList` fix pinned live: **D26** split its at-bus half into a NEW sub-step **G1.4d** (the r4133 criterion
-leaves capi diverging on 60 cases / 3 mechanisms; the port will answer S4) — **a plan amendment the user has not seen**; **D29** refused
-its own step 1 (r4133's `MergeWith` renames a line without updating `DeviceList`, so the DDLL captures another element), so
-`modes:reduce/midi_reduce.dss` stays capi-gated behind the new **`distance`** ledger field (**+1** entry, the WP's second). The lanes'
+fail-on-stale and D9's `MakeBusList` fix pinned live; **D29** refused its own step 1 (r4133's `MergeWith` leaves `DeviceList` stale), so
+`modes:reduce/midi_reduce.dss` stays capi-gated behind the new **`distance`** ledger field (**+1**). And **G1.4d** (`lane-b`, `62c616eb` + surface + docs;
+split off by **D26** — *a plan amendment the user has not seen*), the bus **at-bus lists**: the port answers **S4**, neither oracle's criterion (D26's
+disabled-drop premise refuted: 15 of 223 ARE listed); each channel's own walk is **asserted** over the port's raw facts and the residue COUNTED into four
+fail-on-stale populations — (279, 279) / (18, 147) / (8, 11) / (0, 0), **0** new; the r4133 mode rows go `Pure` → **Impure** (`to_opendss/` 69-71). The lanes'
 micro decks met here: corpus **526** cases / 522 live, `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY}_POPULATION` =
 (443, 312, 87, 44) and `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **103**,
-ledger **55** / 31 causes; G1.3b/c, **G1.4d**, G1.6(ii), G1.8, G1.10–G1.11c and WP-G3–G5 remain.
+ledger **55** / 31 causes; G1.3b/c, G1.6(ii), G1.8, G1.10–G1.11c and WP-G3–G5 remain.
 
 **Next.** Element lane **G1.3b** → G1.3c; `lane-m` **G1.6(ii)** (the eight per-bus reliability columns + `Bus.Int_Duration`, on G1.6(i)'s population and protocol — it also owns or hands on the AT-1
-zone-boundary decision below); `lane-s` **G1.8** (incidence/Laplacian) → G1.10a–c; bus lane **G1.4d** (the at-bus lists, criterion S4 — D26), then WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+zone-boundary decision below); `lane-s` **G1.8** (incidence/Laplacian) → G1.10a–c; bus lane **free** (G1.4d landed — the chain G1.4a → G1.5 → G1.4c → G1.4b → G1.4d is complete), so WP-G3–G5; queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape

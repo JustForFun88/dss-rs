@@ -557,6 +557,29 @@ struct BusCap {
     /// walk — never a silent gap. Always `false` on the capi transport, whose
     /// second loop is the bounded `for k := 1 to 3` of `CAPI_Alt.pas:2500`.
     vll_declined: bool,
+    /// `Bus.AllPCEatBus` — the qualified names of the power-conversion elements
+    /// whose TERMINAL 1 names this bus (`BUSV(18)`, `DBus.pas:840-866` ->
+    /// `Common/Circuit.pas:1540-1583`, class set `:1559` == capi
+    /// `CAPI_Bus.pas:773-788` -> `Common/Circuit.pas:1797-1870`). G1.4d.
+    ///
+    /// The wire shape is THIS channel's: `getPCEatBus` seeds `Result[0] :=
+    /// 'None'` (`:1551`) and appends one empty trailing slot (`:1569-1570`),
+    /// and the DDLL arm filters that slot (`DBus.pas:853`) while re-emitting
+    /// `'None'` for an empty byte array (`:862-863`). So an empty answer is
+    /// exactly `["None"]` and no other entry may be empty — both rails are
+    /// asserted in [`capture_all_buses`], never normalized: the capi channel's
+    /// convention is a different one (the pinned dss-python facade appends one
+    /// `''` to a non-empty reply, `dss/IBus.py`), and the comparator asserts
+    /// each channel's own.
+    all_pce_at_bus: Vec<String>,
+    /// `Bus.AllPDEatBus` — the qualified names of the power-delivery elements
+    /// whose terminal 1 or 2 names this bus, with `bus1 <> bus2` filtering the
+    /// shunts out (`BUSV(19)`, `DBus.pas:867-898` ->
+    /// `Common/Circuit.pas:1493-1536`, the criterion `:1520-1522` == capi
+    /// `CAPI_Bus.pas:790-805` -> `Common/Circuit.pas:1712-1794`). Same wire
+    /// shape and the same two rails as [`Self::all_pce_at_bus`] (`:1505`,
+    /// `:1524-1525`, `DBus.pas:880`, `:894-895`).
+    all_pde_at_bus: Vec<String>,
 }
 
 /// What THIS transport publishes for `Bus.ZscMatrix`/`Bus.YscMatrix` — and for
@@ -1735,9 +1758,12 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// would otherwise attribute the previous bus's voltages to this one.
 ///
 /// Capture-order class **C, order-free** (GOLDEN_REBASE_PLAN.md §1.1(a),
-/// coordinator decision D3): every arm reads `Solution.NodeV` directly and
-/// touches neither `ComputeIterminal` nor `ActiveCktElement` — only
-/// `ActiveBusIndex` moves. The per-bus read order below matches the capi
+/// coordinator decision D3): every value arm reads `Solution.NodeV` directly
+/// and touches neither `ComputeIterminal` nor `ActiveCktElement` — only
+/// `ActiveBusIndex` moves. The two G1.4d at-bus arms are group C too, but for
+/// the weaker reason `ModeEffect::Impure` carries: they move a class cursor
+/// and the active element, never a current cache, which is why they are read
+/// LAST (see below). The per-bus read order below matches the capi
 /// transport's and is a contract, not a staleness hazard.
 ///
 /// Shapes are asserted, never assumed: `2 * len(nodes)` per value array (a
@@ -1771,6 +1797,22 @@ pub fn all_properties_dump(engine: &Engine) -> Result<Vec<PropsCap>, EngineError
 /// shapes are asserted per arm against [`R4133_SC_SENTINEL_LEN`] — a violation
 /// fails the case loudly instead of shipping a short row the comparator would
 /// misread as a value divergence.
+///
+/// The two G1.4d arms ([`BusCap::all_pce_at_bus`], [`BusCap::all_pde_at_bus`])
+/// close the walk, unconditionally, in the slot `oracle_server.capture_all_buses`
+/// gives them. They are read LAST because they are the only
+/// [`crate::modes::ModeEffect::Impure`] reads of the block: `getP*atBus` drives
+/// `DSS_Class.First`/`Next` (`Common/Circuit.pas:1517-1527`, `:1563-1572`) and
+/// `TDSSClass.Get_First`/`Get_Next` (`Common/DSSClass.pas:342-371`) assign
+/// `ActiveCircuit.ActiveCktElement` and each walked class's own `ActiveElement`
+/// cursor. Nothing in this function reads an element afterwards, the bus cursor
+/// is untouched (`DBus.pas:849`, `:876` only pass `BusList.Get(ActiveBusIndex)`
+/// down — asserted live by `crates/dss-epri/tests/modes.rs`), and the next
+/// element-scoped capture re-activates per element by name
+/// ([`capture_all_properties`]), so the clobber reaches nothing. Their two wire
+/// rails — no empty entry, `"None"` only alone — are asserted here rather than
+/// normalized: the capi channel's convention differs by construction and each
+/// channel's own is what the comparator checks.
 fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, EngineError> {
     let names = engine.circuit_all_bus_names()?;
     let mut out = Vec::with_capacity(names.len());
@@ -1898,6 +1940,49 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
                 }
             }
         }
+        // G1.4d: the two at-bus lists close the per-bus walk on BOTH transports
+        // (`oracle_server.py::capture_all_buses` reads them in the same slot,
+        // in the same order). They are read LAST because on THIS channel they
+        // are the only `ModeEffect::Impure` reads of the block
+        // (`crate::modes::BUS_ALL_PCE_AT_BUS`): `getP*atBus` drives
+        // `DSS_Class.First`/`Next` and `TDSSClass.Get_First`/`Get_Next`
+        // (`Common/DSSClass.pas:342-371`) assign `ActiveCircuit`'s active
+        // element and each walked class's own cursor. Neither read moves
+        // `ActiveBusIndex` (`DBus.pas:849`, `:876` only pass
+        // `BusList.Get(ActiveBusIndex)` down), so the next bus's reads are
+        // unaffected, and neither goes through `ComputeIterminal` — the block
+        // stays capture-group C.
+        let all_pce_at_bus = engine.bus_all_pce_at_bus()?;
+        let all_pde_at_bus = engine.bus_all_pde_at_bus()?;
+        for (key, v) in [
+            ("all_pce_at_bus", &all_pce_at_bus),
+            ("all_pde_at_bus", &all_pde_at_bus),
+        ] {
+            // `getP*atBus` appends one empty trailing slot
+            // (`Common/Circuit.pas:1524-1525`, `:1569-1570`) and the DDLL arm
+            // filters it (`DBus.pas:853`, `:880`). An empty entry reaching here
+            // means that filter stopped working, which the comparator would
+            // read as a divergence of the LIST rather than of the transport.
+            if let Some(i) = v.iter().position(|s| s.is_empty()) {
+                return Err(EngineError::Other(format!(
+                    "bus capture: {name}.{key} entry {i} of {v:?} is empty — \
+                     DBus.pas:853/:880 filter getP*atBus' trailing slot, so no \
+                     entry can be"
+                )));
+            }
+            // `'None'` is the arm's own empty-answer word (`Circuit.pas:1505`,
+            // `:1551`; re-emitted at `DBus.pas:862-863`, `:894-895`), never a
+            // member of a real list — an element named `None` would print
+            // qualified (`Class.None`), so a bare `None` beside real names is
+            // this transport misreading the buffer.
+            if v.iter().any(|s| s == "None") && v.len() != 1 {
+                return Err(EngineError::Other(format!(
+                    "bus capture: {name}.{key} mixes the empty-answer word \
+                     \"None\" with real entries: {v:?} (Circuit.pas:1505/:1551 \
+                     seed it alone)"
+                )));
+            }
+        }
         out.push(BusCap {
             name: name.clone(),
             kv_base,
@@ -1917,6 +2002,8 @@ fn capture_all_buses(engine: &Engine, want_sc: bool) -> Result<Vec<BusCap>, Engi
             vll,
             pu_vll,
             vll_declined,
+            all_pce_at_bus,
+            all_pde_at_bus,
         });
     }
     engine.assert_clean("buses")?;

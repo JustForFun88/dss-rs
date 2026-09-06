@@ -87,14 +87,15 @@ fn solved_ieee13() -> Engine {
 }
 
 /// Re-select the fixture the family rows read from. Called before **every**
-/// mode: seventeen rows are [`ModeEffect::Impure`] and move a cursor or a
-/// memoized structure (`PDElements.ParentPDElement` moves `ActiveCktElement`
-/// itself, and so do the two `Bus.AllP*atBus` rows, which drive every PD/PC
-/// class's `DSS_Class.First`/`Next`; the five `Circuit` loss/power rows, the two
-/// `CktElement.Has*Control` rows and `Meters.Totals` walk a `PointerList` to
-/// exhaustion or re-totalize; the six `Topology` rows build and memoize
-/// `GetTopology` and move its cursor), so without this a later row would silently
-/// read a different object.
+/// mode: twenty rows are [`ModeEffect::Impure`] and move a cursor or a memoized
+/// structure (the three `PDElements` rows — `First`, `Next` and
+/// `ParentPDElement` — move `ActiveCktElement` itself, and so do the two
+/// `Bus.AllP*atBus` rows, which drive every PD/PC class's
+/// `DSS_Class.First`/`Next`; the five `Circuit` loss/power rows, the two
+/// `CktElement.Has*Control` rows, `Meters.Totals` and `Meters.SetActiveSection`
+/// walk a `PointerList` to exhaustion, re-totalize or move the section cursor;
+/// the six `Topology` rows build and memoize `GetTopology` and move its cursor),
+/// so without this a later row would silently read a different object.
 fn select_fixture(e: &Engine) {
     // `Meters.First` (`MetersI(0)`, `DMeters.pas:32-52`) sets `ActiveCktElement`
     // to the meter object itself, so it must run BEFORE the element selection —
