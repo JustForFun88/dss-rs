@@ -12193,6 +12193,15 @@ const PDE_TERMINAL3_DECLINES: (usize, usize) = (279, 279);
 /// StorageControllerTechNote, `epri_dpv` and GFM_IEEE8500 decks plus five
 /// `midi_*` protection decks and the `reduce/*` family — the R part's 18 cases
 /// / 147 records on the capi channel, one gated step each.
+///
+/// It would also absorb a SECOND capi mechanism if the corpus ever grew one:
+/// capi's fast path scans terminals `0..Min(High(Terminals), 2)`
+/// (`Circuit.pas:1750`), so a 4-winding transformer's fourth bus would be
+/// dropped for a terminal-WINDOW reason and counted here under the node-ref
+/// name. Unwitnessed and un-witnessable today — re-measured at the G1.4d audit
+/// settlement: **0** corpus decks declare `windings`/`wdg` ≥ 4 — and the
+/// settlement's rule if one ever appears is a `modes:` micro deck plus its own
+/// counter, never a silent merge into this one.
 const CAPI_NODEREF_DROPS: (usize, usize) = (18, 147);
 
 /// **Class C**, capi channel: capi's fast path hits a stale reference that now
@@ -12207,6 +12216,14 @@ const CAPI_NODEREF_ADDS: (usize, usize) = (8, 11);
 /// diverge either. It is asserted exactly like the other three, which is what
 /// makes a future PC-class divergence a GATE failure that must be triaged
 /// rather than a number that quietly grows.
+///
+/// The two channels are NOT symmetric here (G1.4d audit settlement T3): on
+/// `R4133` the replayed PCE predicate is character-for-character the property
+/// [`assert_port_at_bus_is_s4`] now asserts of the port's own `pce`, so that
+/// channel can no longer move this counter at all — a port omission reds per
+/// bus first. Only `CapiV0145`, whose walk reads node references instead of
+/// names, can still reach it, which is where the growth direction was witnessed
+/// (F4's disabled-`Load` drive).
 const PCE_AT_BUS_DECLINES: (usize, usize) = (0, 0);
 
 /// Record one **gating** at-bus compare's class counts.
@@ -12397,8 +12414,9 @@ fn normalized_at_bus(
 /// list is a sub-multiset of `attachments` whose every member really carries the
 /// S4 property the list is built from (`is_pd` + a terminal by name for `pde`,
 /// `is_pc` + terminal 1 for `pce`). The other direction — that nothing S4
-/// requires is MISSING — is what the channel assertions and the offline engine
-/// tests (`exec::tests::bus_elements`) state.
+/// requires is MISSING — is [`assert_port_at_bus_is_s4`], per bus, beside the
+/// offline engine tests (`exec::tests::bus_elements`); a channel assertion
+/// cannot state it (G1.4d audit settlement AC-3/T3).
 fn port_at_bus_list(
     list: &[String],
     attachments: &[dss_core::exec::BusAttachment],
@@ -12453,6 +12471,58 @@ fn port_at_bus_list(
     }
     out.sort_unstable();
     out
+}
+
+/// **The port's own rule, recomputed from the raw facts** and asserted against
+/// the answer it published — the direction [`port_at_bus_list`] cannot state.
+///
+/// S4 (D26) is `is_pd && bus1 <> bus2 && ANY terminal names the bus` for `pde`
+/// and `is_pc && terminal 1 names the bus` for `pce`
+/// (`src/exec/view.rs::build_bus_elements`). `attachments` publishes the
+/// ingredients raw, so recomputing the rule here is an independent statement of
+/// it, not a re-read of the answer.
+///
+/// It is the ONE claim no channel assertion can make: each oracle's walk is a
+/// projection of these same facts (r4133 narrows `pde` to terminals 1/2, capi
+/// swaps the name test for a node-reference one), so an element the port
+/// silently dropped from `pde` vanishes from BOTH sides of that equality and
+/// every case still passes — measured by G1.4d F4's drive 2, where shortening
+/// every non-empty `pde` left 526/526 green and only the run-wide population
+/// [`PDE_TERMINAL3_DECLINES`] caught it in the epilogue. Here it reds on the bus
+/// that lost the element.
+fn assert_port_at_bus_is_s4(
+    port_pde: &[String],
+    port_pce: &[String],
+    attachments: &[dss_core::exec::BusAttachment],
+    bus: &str,
+    ctx: &str,
+) {
+    for (what, port, want) in [
+        (
+            "AllPDEatBus",
+            port_pde,
+            at_bus_names(attachments, |a| {
+                a.is_pd && a.series && !a.by_name.is_empty()
+            }),
+        ),
+        (
+            "AllPCEatBus",
+            port_pce,
+            at_bus_names(attachments, |a| a.is_pc && a.by_name.contains(&1)),
+        ),
+    ] {
+        assert_eq!(
+            port,
+            want.as_slice(),
+            "{ctx}: bus {bus} {what}: the port answered {port:?}, but S4 applied to this \
+             bus's OWN attachment facts requires {want:?} (GOLDEN_REBASE D26 — a PD-class \
+             element with ANY terminal naming the bus under the `bus1 <> bus2` filter, a \
+             PC-class element naming it at terminal 1). No channel assertion can see this: \
+             both upstream walks are projections of the same facts, so a name the port \
+             dropped is missing from both sides of them. The bus's raw attachments are \
+             {attachments:?}"
+        );
+    }
 }
 
 /// **r4133's own walk**, replayed over the port's attachment facts: a PD-class
@@ -12543,7 +12613,10 @@ fn at_bus_missing(from: &[String], of: &[String]) -> Vec<String> {
 ///    carries its one trailing `''`. Only then is the reply normalized.
 /// 2. **the port's answer is well formed** ([`port_at_bus_list`]): no
 ///    duplicate, every entry a `Class.name` of this bus's own attachments, and
-///    every entry justified by the S4 property its list is built from.
+///    every entry justified by the S4 property its list is built from — then
+///    **complete** ([`assert_port_at_bus_is_s4`]): S4 recomputed from the raw
+///    facts must give exactly that list, the one direction no channel
+///    assertion can state (G1.4d audit settlement).
 /// 3. **the channel's own walk, replayed over the port's state** — an
 ///    EQUALITY, as case-insensitive sets with cardinality: `R4133` against
 ///    [`r4133_at_bus_walk`], `CapiV0145` against [`capi_at_bus_walk`]. This is
@@ -12613,6 +12686,7 @@ pub fn compare_bus_at_bus(
         let oracle_pde = normalized_at_bus(channel, &e.all_pde_at_bus, "AllPDEatBus", &e.name, ctx);
         let port_pce = port_at_bus_list(&v.pce, &v.attachments, false, "AllPCEatBus", &e.name, ctx);
         let port_pde = port_at_bus_list(&v.pde, &v.attachments, true, "AllPDEatBus", &e.name, ctx);
+        assert_port_at_bus_is_s4(&port_pde, &port_pce, &v.attachments, &e.name, ctx);
 
         let (walk_pde, walk_pce) = match channel {
             PropsChannel::R4133 => r4133_at_bus_walk(&v.attachments),
@@ -12685,7 +12759,7 @@ pub fn compare_bus_at_bus(
 #[cfg(test)]
 mod bus_at_bus_comparator_tests {
     use super::{AtBusCounts, BusCap, PropsChannel, compare_bus_at_bus};
-    use dss_core::exec::Dss;
+    use dss_core::exec::{BusAttachment, Dss};
 
     /// The G1.4d fixture (`crates/dss-core/src/exec/tests/bus_elements.rs` uses
     /// the same deck): every structural case of the surface in eight buses — a
@@ -13035,6 +13109,152 @@ mod bus_at_bus_comparator_tests {
         exp[at("b1")].nodes.pop();
         let msg = reds(|| compare_bus_at_bus(&dss, &exp, PropsChannel::R4133, "nodes"));
         assert!(msg.contains("node count differs"), "{msg:?}");
+    }
+
+    /// **The completeness direction, driven offline.**
+    /// [`super::assert_port_at_bus_is_s4`] is the surface's only per-case
+    /// witness that the port's own answer carries everything S4 requires (no
+    /// channel assertion can see a name missing from both sides of it), so it
+    /// gets its own drive over hand-built attachment facts: the full lists are
+    /// accepted, and dropping one name from either list reds naming the bus and
+    /// the element that went missing.
+    #[test]
+    fn a_port_at_bus_list_that_drops_an_s4_element_reds_per_case() {
+        let attach =
+            |name: &str, is_pd: bool, is_pc: bool, series: bool, by_name: &[usize]| BusAttachment {
+                name: name.to_string(),
+                is_pd,
+                is_pc,
+                enabled: true,
+                series,
+                by_name: by_name.to_vec(),
+                by_node_ref: by_name.to_vec(),
+            };
+        // A series line at terminal 2; a 3-winding transformer this bus reaches
+        // only at its THIRD terminal (the class-A shape, which r4133's own walk
+        // projects away); a shunt capacitor (PD *and* PC upstream, but dropped
+        // from the PD list by `bus1 = bus2`); a load.
+        let attachments = vec![
+            attach("Line.feed", true, false, true, &[2]),
+            attach("Transformer.t3", true, false, true, &[3]),
+            attach("Capacitor.shunt", true, true, false, &[1]),
+            attach("Load.ld", false, true, false, &[1]),
+        ];
+        let pde: Vec<String> = vec!["line.feed".into(), "transformer.t3".into()];
+        let pce: Vec<String> = vec!["capacitor.shunt".into(), "load.ld".into()];
+        super::assert_port_at_bus_is_s4(&pde, &pce, &attachments, "b1", "positive control");
+
+        let short: Vec<String> = vec!["line.feed".into()];
+        let msg = reds(|| {
+            super::assert_port_at_bus_is_s4(&short, &pce, &attachments, "b1", "dropped pde")
+        });
+        assert!(msg.contains("bus b1 AllPDEatBus"), "{msg:?}");
+        assert!(msg.contains("transformer.t3"), "{msg:?}");
+
+        let short: Vec<String> = vec!["load.ld".into()];
+        let msg = reds(|| {
+            super::assert_port_at_bus_is_s4(&pde, &short, &attachments, "b1", "dropped pce")
+        });
+        assert!(msg.contains("bus b1 AllPCEatBus"), "{msg:?}");
+        assert!(msg.contains("capacitor.shunt"), "{msg:?}");
+    }
+
+    /// A second, deliberately tiny fixture whose bus `gnd` is named ONLY
+    /// through ground node specs (`bus2=gnd.0.0.0`), so `NumNodesThisBus = 0`.
+    /// capi's `SetLength(nodes, 0)` then leaves an FPC dynamic array that IS
+    /// `NIL` (`Common/Circuit.pas:1728-1731`), which selects its *"Original
+    /// code as fallback"* name test (`:1746`/`:1833`, arms `:1778-1785`/
+    /// `:1855-1861`) instead of the node-reference fast path.
+    ///
+    /// The main fixture has no node-less bus and the corpus's own witness is
+    /// one deck away from disappearing (`Test/REACTORTest.DSS` bus `loadbus2`),
+    /// so this makes the arm's coverage independent of the corpus — G1.4d audit
+    /// settlement T2.
+    fn node_less_fixture() -> Dss {
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "Set DefaultBaseFrequency=60",
+            "new circuit.atbusgnd basekv=12.47 pu=1.0 phases=3 bus1=src",
+            "new linecode.lc nphases=3 r1=0.3 x1=0.7 r0=0.9 x0=2.1 c1=3.4 c0=1.6 units=km",
+            "new line.feed bus1=src bus2=b1 linecode=lc length=0.5 units=km",
+            "new reactor.grnd bus1=b1.1.2.3 bus2=gnd.0.0.0 phases=3 r=0.1 x=1.0",
+            "new load.ld bus1=b1 phases=3 conn=wye kv=12.47 kw=500",
+            "set voltagebases=[12.47]",
+            "calcvoltagebases",
+            "solve",
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    }
+
+    /// **capi 0.14.5, MEASURED** on [`node_less_fixture`]'s deck through the
+    /// pinned dss-python on 2026-09-06 (`tmp/g14d/settle/probe_nodeless.py`),
+    /// verbatim. `gnd` is the arm: its fast path can match nothing there (the
+    /// bus has no node reference of its own, and the reactor's second terminal
+    /// is all ground), yet capi answers `Reactor.grnd` — the name test.
+    const NODE_LESS_CAPI: [Reply; 3] = [
+        ("src", &["Vsource.source", ""], &["Line.feed", ""]),
+        (
+            "b1",
+            &["Load.ld", "Reactor.grnd", ""],
+            &["Line.feed", "Reactor.grnd", ""],
+        ),
+        ("gnd", &["None"], &["Reactor.grnd", ""]),
+    ];
+
+    /// **r4133** on the same deck, written out from its own name test as
+    /// [`R4133_REPLIES`] is — it has no fast path, so `gnd` is the one bus where
+    /// the two channels are guaranteed to agree.
+    const NODE_LESS_R4133: [Reply; 3] = [
+        ("src", &["Vsource.source"], &["Line.feed"]),
+        (
+            "b1",
+            &["Load.ld", "Reactor.grnd"],
+            &["Line.feed", "Reactor.grnd"],
+        ),
+        ("gnd", &["None"], &["Reactor.grnd"]),
+    ];
+
+    /// capi's node-less arm, offline: its measured reply is ACCEPTED (which it
+    /// can only be if the comparator selects the fallback there — the fast path
+    /// answers nothing at `gnd`), and the fast path's answer is REJECTED with
+    /// the arm named.
+    #[test]
+    fn the_capi_walk_takes_its_name_test_fallback_on_a_node_less_bus() {
+        let dss = node_less_fixture();
+        let views = dss.all_bus_voltages();
+        assert_eq!(views.len(), 3, "{:?}", views.iter().map(|v| &v.name));
+        assert!(
+            views[2].name.eq_ignore_ascii_case("gnd"),
+            "{}",
+            views[2].name
+        );
+        assert!(
+            views[2].nodes.is_empty(),
+            "the fixture's `gnd` must carry no node, got {:?}",
+            views[2].nodes
+        );
+
+        for (channel, replies) in [
+            (PropsChannel::CapiV0145, &NODE_LESS_CAPI),
+            (PropsChannel::R4133, &NODE_LESS_R4133),
+        ] {
+            let counts = compare_bus_at_bus(&dss, &capture(&dss, replies), channel, "node-less");
+            assert_eq!(
+                counts,
+                AtBusCounts::default(),
+                "{channel:?}: no divergence class is carried by this deck"
+            );
+        }
+
+        let mut exp = capture(&dss, &NODE_LESS_CAPI);
+        exp[2].all_pde_at_bus = vec!["None".to_string()];
+        let msg = reds(|| compare_bus_at_bus(&dss, &exp, PropsChannel::CapiV0145, "fast path"));
+        assert!(msg.contains("bus gnd AllPDEatBus"), "{msg:?}");
+        assert!(msg.contains("Original code as fallback"), "{msg:?}");
     }
 }
 

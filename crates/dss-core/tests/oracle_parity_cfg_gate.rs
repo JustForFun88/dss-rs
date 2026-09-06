@@ -5020,9 +5020,12 @@ fn the_g1_4b_pins_the_docs_cite_exist_exactly_once() {
 /// fail-on-stale population — so these tests are the entire written record of
 /// the surface, and losing one silently would leave the prose describing a gate
 /// that no longer exists.
-const G1_4D_PINS: [(&str, usize); 16] = [
+const G1_4D_PINS: [(&str, usize); 21] = [
     // the comparator (`tests/harness/mod.rs`)
     ("compare_bus_at_bus", 1),
+    // the completeness direction the channel assertions cannot state, added by
+    // the G1.4d audit settlement (`tests/harness/mod.rs`)
+    ("assert_port_at_bus_is_s4", 1),
     // the two both-numbers pins on `modes:makeposseq/makeposseq_xfmr.dss`
     // (`tests/corpus_gate.rs`)
     (
@@ -5040,6 +5043,11 @@ const G1_4D_PINS: [(&str, usize); 16] = [
         1,
     ),
     ("the_at_bus_guard_fires_when_a_pce_divergence_appears", 1),
+    ("the_at_bus_guard_fires_when_the_terminal3_class_grows", 1),
+    (
+        "the_at_bus_guard_fires_when_a_stale_node_ref_stops_naming_an_element",
+        1,
+    ),
     // the capture-order contract (`tests/corpus_gate.rs`, `tests/capture_order.rs`)
     (
         "the_at_bus_capture_reads_last_in_one_fixed_order_on_both_transports",
@@ -5063,6 +5071,14 @@ const G1_4D_PINS: [(&str, usize); 16] = [
         1,
     ),
     ("each_channel_is_held_to_its_own_walk_not_the_other_ones", 1),
+    (
+        "a_port_at_bus_list_that_drops_an_s4_element_reds_per_case",
+        1,
+    ),
+    (
+        "the_capi_walk_takes_its_name_test_fallback_on_a_node_less_bus",
+        1,
+    ),
 ];
 
 /// The documents that cite the G1.4d names, same rule as [`G1_4B_PIN_DOCS`].
