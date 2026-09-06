@@ -3331,17 +3331,18 @@ row against the pre-fix lock.
   Recorded: the oracles' `[0.0]` no-circuit sentinel (documented at the accessor; the port keeps `[]`) and
   the third per-(case, channel, step) `all_bus_voltages()` rebuild (pre-existing pattern → G1.4d).
 - **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**; commits
-  `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface) — the bus **at-bus
-  lists** (`Bus.AllPCEatBus`/`AllPDEatBus`) live on both channels on G1.4a's per-bus walk. The port
-  answers **S4**, neither oracle's criterion (r4133 `Common/Circuit.pas:1513`/`:1559`, capi
-  `:1746-1767`): `Dss::all_bus_elements` publishes the answer AND the raw terminal facts, over which
-  `harness::compare_bus_at_bus` replays each channel's own walk (**D15**/**D16**/**D21**) and COUNTS the
-  residue into four fail-on-stale populations — **(279, 279)** / **(18, 147)** / **(8, 11)** / **(0, 0)**.
-  D26's premise that capi drops disabled elements is refuted by measurement (15 of 223 (disabled element,
-  own bus) pairs ARE listed), which is what makes that channel an equality. **0** ledger rows (55 / 31),
-  no flag, no lock cell, no golden byte; pins in `G1_4D_PINS`, details in `TESTING.md` §"The bus at-bus
-  surface" and `to_opendss/` 69-71. Both lanes **7 892 / 0 / 5 ignored**, corpus **526/526**, `lane_diff`
-  **PASS** max |Δ| = 0.
+  `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface, `dff755b5` the
+  settlement, + docs) — the bus **at-bus lists** (`Bus.AllPCEatBus`/`AllPDEatBus`) live on both channels
+  on G1.4a's per-bus walk. The port answers **S4**, neither oracle's criterion (r4133
+  `Common/Circuit.pas:1513`/`:1559`, capi `:1746-1767`): `Dss::all_bus_elements` publishes the answer AND
+  the raw terminal facts, over which `harness::compare_bus_at_bus` replays each channel's own walk
+  (**D15**/**D16**/**D21**) and COUNTS the residue into four fail-on-stale populations — **(279, 279)** /
+  **(18, 147)** / **(8, 11)** / **(0, 0)**. D26's premise that capi drops disabled elements is refuted by
+  measurement (15 of 223 (disabled element, own bus) pairs ARE listed), which is what makes that channel
+  an equality. **0** ledger rows (55 / 31 causes), no flag, no lock cell, no golden byte; pins in
+  `G1_4D_PINS`, details in `TESTING.md` §"The bus at-bus surface" and `to_opendss/` 69-71. Both lanes
+  **7 892 / 0 / 5 ignored** over 79 binaries, corpus **526/526**, ledger **55** / **1 567** hits / 0
+  stale, `lane_diff` **PASS** max |Δ| = 0.
 
   **Audit settlement** (2026-09-06, `dff755b5`; 13 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted): the
   comparator gained the one direction no channel assertion can state (`assert_port_at_bus_is_s4` — each

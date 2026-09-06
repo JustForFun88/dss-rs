@@ -104,10 +104,12 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               2026-09-05) in lane `lane-s`, G1.6b (PDElements)
                               in `lane-m`, G1.3a (per-element polar channels)
                               and G1.3d(i) (terminal/phase counts, NodeOrder,
-                              EnergyMeter) in `lane-e`, and G1.4a (the bus
-                              voltage surface) in `lane-b`, per decision D7;
-                              G1.3b-d(ii) + the rest of G1.4-G1.11c remain;
-                              WP-G3–G5 queued.
+                              EnergyMeter) in `lane-e`, and the whole bus chain
+                              G1.4a → G1.5 → G1.4c → G1.4b → G1.4d (voltages,
+                              short circuit, sequence/line-line, distances,
+                              at-bus lists) in `lane-b`, complete 2026-09-06,
+                              per decision D7; G1.3b-d(ii), G1.6(i)/(ii), G1.8
+                              and G1.10-G1.11c remain; WP-G3–G5 queued.
                               Added 2026-08-22 per the user's request.
  5b. R4133_PROPS_PLAN.md      **COMPLETE 2026-09-04** (authored + opened
      (docs/plans-archive/)    2026-08-22; moved to `docs/plans-archive/` by its
