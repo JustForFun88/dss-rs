@@ -16,7 +16,12 @@
 //!   is individually visible and reviewable.
 //! - `#[cfg(windows)]` gating — the vendored EPRI binary is a Win64 DLL; on any
 //!   other platform this crate compiles to an empty shell (the r4133 channel is
-//!   simply unavailable there).
+//!   simply unavailable there). [`guard`] is the one exception: it loads no DLL
+//!   and calls only `std::fs`, and the gate's own corpus guard
+//!   (`crates/dss-core/tests/corpus_gate/runner.rs`) reports from its
+//!   classification, so gating it would force a second copy of that rule to
+//!   exist for the other platforms — it is ungated instead (coordinator
+//!   decision D33(3)).
 //! - Module-level `// SAFETY` documentation on every FFI boundary (see
 //!   [`ffi`]) stating the invariant that makes the call sound.
 //!
@@ -39,7 +44,9 @@
 //! - [`capture`] — `CaseResult` assembly, byte-for-byte mirroring
 //!   `tools/oracle/oracle_server.py` + `tools/golden/gen_checkpoints.py`.
 //! - [`guard`] — a Rust port of `tools/oracle/corpus_guard.py` (recursive
-//!   snapshot / restore of the case directory).
+//!   snapshot / restore of the case directory, and the ONE created-entry
+//!   classification all three of the gate's producers report from). Pure
+//!   `std::fs`, hence ungated.
 //! - [`script`] — the generic `exec`/`read`/`chdir` scripting surface for the
 //!   manual regen drivers + probes (functional parity with the retired Oddie
 //!   bridge's ad-hoc `Text.Command` + property reads; never used by the gate).
@@ -61,7 +68,6 @@ pub mod dss;
 pub mod families;
 #[cfg(windows)]
 pub mod ffi;
-#[cfg(windows)]
 pub mod guard;
 #[cfg(windows)]
 pub mod modes;

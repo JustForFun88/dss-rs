@@ -3,7 +3,8 @@
 //! with `tools/golden/gen_checkpoints.py`) against the raw r4133 DLL.
 //!
 //! The response is JSON-shape-identical to the retired Oddie oracle's
-//! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`), so the Rust
+//! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`, + G1.10a's
+//! `run_files` and `sweep_failed`), so the Rust
 //! gate's `serde` deserialize accepts it unchanged (bit-diff-proven against the
 //! Python path by `xcheck_bridge.py`, itself retired with that stack in Phase
 //! E). Read order within a step matches `oracle_server` exactly — notably the
@@ -119,6 +120,13 @@ pub struct RunRequest {
     pub global_result: bool,
     #[serde(default)]
     pub autoadd_log: bool,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10a — the run-produced FILE SET under the
+    /// case's DataPath. Not a model read: the run's filesystem effect, taken
+    /// from the SAME [`CorpusGuard`] pass that sweeps the corpus clean, and read
+    /// STRICTLY LAST of the whole run (after `autoadd_log`) while the guard is
+    /// still alive. Twin request key: `oracle_server.py`'s `run_files`.
+    #[serde(default)]
+    pub run_files: bool,
     #[serde(default)]
     pub warn_and_continue: bool,
     // `full_csc` is accepted but ignored: the gate always requests it (true) and
@@ -152,6 +160,24 @@ pub struct CaseResult {
     n_steps: usize,
     checkpoints: Vec<Checkpoint>,
     autoadd_log: Option<String>,
+    /// G1.10a — the sorted, normalized set of filesystem entries this run
+    /// created under the case dir (a trailing `/` marks a created directory;
+    /// see [`crate::guard::normalize_created_name`]). `None` when the request
+    /// did not ask for it, and also when the guard cannot report honestly (an
+    /// incomplete pre-run snapshot); the gate's presence rail
+    /// (`harness::capture_guard::require_capture_opt`) turns the second case
+    /// into a failed case rather than "this deck created nothing".
+    run_files: Option<Vec<String>>,
+    /// G1.10a / coordinator decision D32(2) — the created entries this run's own
+    /// hygiene guard could NOT remove, normalized like [`Self::run_files`].
+    /// Always present (`[]` is the normal answer), never gated on a request
+    /// flag: a producer that leaves an undeletable dropping behind silences the
+    /// created set of every LATER producer of the same case, which is how the
+    /// capi Storage trace-file leak hid from the gate (see
+    /// [`crate::guard::CorpusGuard::sweep_created`]). The gate's runner fails
+    /// the case on a non-empty list
+    /// (`crates/dss-core/tests/corpus_gate/runner.rs::compare_with_result`).
+    sweep_failed: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -641,7 +667,13 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     let warn = req.warn_and_continue;
     let star = req.selected_elements == ["*"];
 
-    let _guard = CorpusGuard::new(&req.case_path);
+    // G1.10a: bound by name (it used to be `_guard`) because the run's created
+    // FILE SET is reported from this very guard, after the last read and before
+    // it sweeps — one classification, two consumers (`CorpusGuard::created` and
+    // the sweep), so the reported set cannot disagree with the swept one. `mut`
+    // since D32(2): the sweep is driven explicitly by `finish()` below so its
+    // failures can travel in this reply instead of dying in `Drop`.
+    let mut guard = CorpusGuard::new(&req.case_path);
 
     let mut node_order: Vec<String> = Vec::new();
     let mut checkpoints: Vec<Checkpoint> = Vec::new();
@@ -906,11 +938,27 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         None
     };
 
+    // G1.10a: STRICTLY LAST of the whole run — after every step's model read and
+    // after the `autoadd_log` file read — and while `guard` is still alive, since
+    // its `Drop` removes exactly what this call classifies. `None` means "cannot
+    // be reported honestly" (incomplete pre-run snapshot / failed listing); the
+    // gate's presence rail turns that into a failed case.
+    let run_files = if req.run_files { guard.created() } else { None };
+
+    // D32(2): sweep NOW, not in `Drop`, so a removal the guard could not perform
+    // is reported to the gate instead of being swallowed. Unconditional — the
+    // hygiene contract does not depend on the run-file request flag. (An early
+    // `?` return above still sweeps through `Drop`, which prints the leak to
+    // stderr; that case has already failed on the error itself.)
+    let sweep_failed = guard.finish();
+
     Ok(CaseResult {
         node_order,
         n_steps: req.n_steps,
         checkpoints,
         autoadd_log,
+        run_files,
+        sweep_failed,
     })
 }
 

@@ -46,15 +46,21 @@ num-complex.workspace = true
 # `tests/golden_lock.rs`). Pure Rust, already in the workspace lock file via
 # `dss-usermodel`'s fixture-hash scaffold — same version, no new closure.
 sha2 = "0.10"
-
 # GOLDEN_REBASE G1.3a — `tests/capture_order.rs` resolves each
 # `capture-order: <Name> (<A|B|C>)` marker's D3 group through
 # `dss_epri::modes::capture_group_of`, so the capture bodies and the gate that
 # checks them share the ONE mode table instead of growing a second, competing
-# order table (spec amendment item 1). Test-only, Windows-only: `dss-epri` is
-# `#[cfg(windows)]` (the vendored EPRI binary is a Win64 DLL) and
+# order table (spec amendment item 1). Test-only: `dss-epri` is
 # `publish = false`, so nothing here reaches the shipped engine.
-[target.'cfg(windows)'.dev-dependencies]
+#
+# UNCONDITIONAL since GOLDEN_REBASE G1.10a (coordinator decision D33(3)) —
+# it used to sit under `[target.'cfg(windows)'.dev-dependencies]`. Every
+# DLL-facing module of the crate is still `#[cfg(windows)]` (the vendored EPRI
+# binary is a Win64 DLL), but `dss_epri::guard` is pure `std::fs` and is now
+# ungated, and the gate's own corpus guard
+# (`tests/corpus_gate/runner.rs::CorpusGuard::sweep_created`) reports from that
+# ONE created-entry classification on every platform instead of keeping a
+# compile-only twin of the same rule for the non-Windows build.
 dss-epri = { path = "../dss-epri" }
 
 [[bench]]

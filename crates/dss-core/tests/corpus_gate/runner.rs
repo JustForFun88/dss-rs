@@ -8,7 +8,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::thread::ThreadId;
+use std::time::{Duration, Instant};
 
 use dss_core::exec::Dss;
 use serde_json::json;
@@ -41,29 +43,74 @@ struct Snapshot {
     snapshot_ok: bool,
 }
 
-/// Live guards per case directory: `dir -> (pristine snapshot, refcount)`.
+/// One case directory's live claim: the pristine snapshot, the thread that owns
+/// the directory right now, and how deep that thread is nested inside it.
+struct DirClaim {
+    /// Published by [`CorpusGuard::new`] before it returns. `None` only while
+    /// the owning thread is photographing the directory — a window no other
+    /// thread can observe, because the claim is taken first and blocks them out.
+    snap: Option<Arc<Snapshot>>,
+    owner: ThreadId,
+    depth: usize,
+}
+
+/// Live claims per **canonical** case directory, plus the condvar a producer
+/// waiting for a directory parks on.
 ///
 /// The corpus puts many decks in one folder (`Test/AutoTrans`,
-/// `StorageControllerTechNote/Support`, …), and the scheduler runs cases in
-/// parallel, so two guards on the *same* directory overlap. With a per-guard
-/// snapshot that silently defeats the sweep: guard A snapshots a clean dir, A's
-/// engine writes `X`, guard B then snapshots and sees `X` as pre-existing, A
-/// drops and sweeps `X`, B's engine rewrites `X`, and B's drop keeps it — the
-/// vendored corpus ends the run polluted (reproduced on two full
-/// `cargo test --workspace` runs, a different file set each time).
+/// `IEEETestCases/8500-Node`, `StorageControllerTechNote/Support`, …), and this
+/// test binary has more than one producer walking them. The gate's scheduler is
+/// not the problem — its task unit IS the case-dir group, so its own cases in
+/// one folder are already sequential — but libtest runs the gate `#[test]`
+/// concurrently with its siblings in the same binary, and
+/// `corpus_ad_matches_normal_mode` compiles `ad_sweep.json`'s decks **in place**
+/// (`8500-Node/Run_8500Node.dss`, `Run_8500Node_Unbal.dss` and
+/// `Run_RecloserSiting.DSS` all carry `ad: "pf"`). A deck's own `Show`/`Export`
+/// lines run during `compile`, i.e. before `ad_solve_normal` re-points
+/// `datapath` at a scratch directory, so they land in the very case directory
+/// the gate is measuring.
 ///
-/// Sharing one snapshot per directory and sweeping only when the **last** guard
-/// leaves removes the interleaving: the names set is always the pristine one,
-/// and exactly one sweep runs, after every writer is done.
-type DirRegistry = Mutex<HashMap<PathBuf, (Arc<Snapshot>, usize)>>;
+/// Measured on this tree (G1.10a F4 run 2, `tmp/g110a/f_F4_unexpected_run2.md`):
+/// with only the per-directory snapshot sharing below, one case's created-file
+/// SET picked up another deck's reports — `ieee8500_*` and `ieee8500u_*` in a
+/// single reply — on a different (case, channel) pair each run.
+///
+/// So the claim is **exclusive per directory** (coordinator decision D33(2)):
+/// exactly one producer at a time owns a case dir, from the pre-run snapshot
+/// through both oracle captures, the port run, and the sweep + restore. It is
+/// **reentrant for the owning thread** — [`assert_deferred_rust_smoke`] takes a
+/// second guard inside `scheduler::run_one_case`'s, and the overlap fixture
+/// below takes two — and those nested guards share the one pristine snapshot,
+/// so the names set is always the pre-run one and exactly one sweep runs, when
+/// the last of them leaves.
+type DirRegistry = (Mutex<HashMap<PathBuf, DirClaim>>, Condvar);
 
 fn dir_registry() -> &'static DirRegistry {
     static REG: OnceLock<DirRegistry> = OnceLock::new();
-    REG.get_or_init(|| Mutex::new(HashMap::new()))
+    REG.get_or_init(|| (Mutex::new(HashMap::new()), Condvar::new()))
+}
+
+/// The claim key: the case directory as the filesystem itself spells it, so two
+/// manifest rows reaching one physical folder through different spellings
+/// (`Test/AutoTrans` vs `Test/autotrans`, a `..` segment, a junction) contend
+/// for the same claim instead of running unserialized side by side. Falls back
+/// to the literal path when the directory cannot be canonicalized (it does not
+/// exist — there is nothing to protect).
+/// How long a producer waits for a case directory before calling it a deadlock.
+/// A claim is held for ONE case (both oracle captures + the port run + the
+/// sweep), and the slowest gated case is a `large` feeder at well under a
+/// minute, so this bound cannot fire on a healthy run — it exists so that a
+/// claim leaked by a future edit fails loudly instead of hanging a 4-minute gate
+/// with no output at all.
+const DIR_CLAIM_DEADLINE: Duration = Duration::from_secs(600);
+
+fn dir_claim_key(dir: &Path) -> PathBuf {
+    std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf())
 }
 
 pub(crate) struct CorpusGuard {
     dir: PathBuf,
+    key: PathBuf,
     snap: Arc<Snapshot>,
 }
 
@@ -102,58 +149,121 @@ impl CorpusGuard {
         ok
     }
 
+    /// Claim the case directory — blocking while another thread runs a case in
+    /// it (coordinator decision D33(2)) — and photograph it.
     pub(crate) fn new(case_path: &str) -> Self {
         let dir = Path::new(case_path)
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
-        let mut reg = dir_registry().lock().unwrap_or_else(|e| e.into_inner());
-        let snap = match reg.get_mut(&dir) {
-            // Another case in this folder is already running: reuse its pristine
-            // snapshot rather than photographing that run's output as "vendored".
-            Some((snap, refs)) => {
-                *refs += 1;
-                Arc::clone(snap)
+        let key = dir_claim_key(&dir);
+        let me = std::thread::current().id();
+        let waiting = Instant::now();
+        let (reg, cv) = dir_registry();
+        let mut map = reg.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            match map.get_mut(&key) {
+                // Already ours: a nested guard on the same directory reuses this
+                // thread's pristine snapshot rather than photographing its own
+                // run's output as "vendored", and counts the nesting depth so
+                // that only the outermost one sweeps.
+                Some(claim) if claim.owner == me => {
+                    claim.depth += 1;
+                    let snap = Arc::clone(claim.snap.as_ref().expect(
+                        "a nested guard is only ever taken after `new` published \
+                         this thread's snapshot",
+                    ));
+                    return Self { dir, key, snap };
+                }
+                // Another producer owns the directory: wait for it to sweep and
+                // leave instead of photographing its output.
+                Some(claim) => {
+                    let owner = claim.owner;
+                    let (guard, timed_out) = cv
+                        .wait_timeout(map, Duration::from_secs(30))
+                        .unwrap_or_else(|e| e.into_inner());
+                    map = guard;
+                    assert!(
+                        !(timed_out.timed_out() && waiting.elapsed() > DIR_CLAIM_DEADLINE),
+                        "corpus guard: waited {:?} for the case directory {}, still \
+                         claimed by {owner:?}. A claim is held for exactly one case \
+                         and released by `Drop`, so this is a leaked claim (a guard \
+                         that outlives its case, or a producer stuck inside one) \
+                         — never widen the deadline to get past it.",
+                        waiting.elapsed(),
+                        key.display(),
+                    );
+                }
+                None => {
+                    map.insert(
+                        key.clone(),
+                        DirClaim {
+                            snap: None,
+                            owner: me,
+                            depth: 1,
+                        },
+                    );
+                    break;
+                }
             }
-            None => {
-                let mut names = BTreeSet::new();
-                let mut buf = BTreeMap::new();
-                let snapshot_ok = Self::snapshot(&dir, "", &mut names, &mut buf);
-                let snap = Arc::new(Snapshot {
-                    names,
-                    buf,
-                    snapshot_ok,
-                });
-                reg.insert(dir.clone(), (Arc::clone(&snap), 1));
-                snap
-            }
+        }
+        drop(map);
+        // The claim is this thread's now. It lives in the guard BEFORE the walk
+        // starts, so a panicking photograph releases the directory on unwind
+        // instead of deadlocking every other producer on it; the placeholder it
+        // carries until then is the "incomplete" snapshot, which never deletes.
+        let mut guard = Self {
+            dir,
+            key,
+            snap: Arc::new(Snapshot {
+                names: BTreeSet::new(),
+                buf: BTreeMap::new(),
+                snapshot_ok: false,
+            }),
         };
-        drop(reg);
-        Self { dir, snap }
+        // Photographed OUTSIDE the registry lock: the walk reads every small
+        // file in the directory, and holding the global map across it would
+        // serialize producers working in unrelated directories.
+        let mut names = BTreeSet::new();
+        let mut buf = BTreeMap::new();
+        let snapshot_ok = Self::snapshot(&guard.dir, "", &mut names, &mut buf);
+        guard.snap = Arc::new(Snapshot {
+            names,
+            buf,
+            snapshot_ok,
+        });
+        reg.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(&guard.key)
+            .expect("this thread's own claim is still registered")
+            .snap = Some(Arc::clone(&guard.snap));
+        guard
     }
 
-    fn sweep_created(&self, dir: &Path, prefix: &str) {
-        let Ok(rd) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in rd.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let rel = if prefix.is_empty() {
-                name
-            } else {
-                format!("{prefix}/{name}")
-            };
-            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            if self.snap.names.contains(&rel) {
-                if is_dir {
-                    self.sweep_created(&entry.path(), &rel);
-                }
-                continue;
-            }
+    /// Remove what the run created, classifying with the SHARED rule the two
+    /// oracle transports and the port probe report from
+    /// ([`dss_epri::guard::classify_created`]; coordinator decision D32(3)).
+    ///
+    /// Before that this guard had its own recursion, which descended into
+    /// PRE-EXISTING subdirectories — so an outer guard on `Test/` could delete
+    /// the live report files of a case running concurrently in the sibling case
+    /// directory `Test/AutoTrans/` (G1.10a F2b measured 9 such members over two
+    /// full 526-case drives). One classification, three consumers closes the
+    /// hazard everywhere: the removal roots are the case dir's own created
+    /// entries, and a created directory goes as one tree.
+    ///
+    /// Until coordinator decision D33(3) this arm was `#[cfg(windows)]` and the
+    /// other platforms kept a compile-only twin of the same rule, because
+    /// `dss-epri` gated its every module on Windows. `dss_epri::guard` is pure
+    /// `std::fs`, so it is now ungated (and the crate is an unconditional
+    /// dev-dependency): the twin is deleted and "one classification, three
+    /// consumers" is literally true on every platform.
+    fn sweep_created(&self) {
+        for (path, is_dir) in dss_epri::guard::classify_created(&self.dir, &self.snap.names).roots {
             if is_dir {
-                let _ = std::fs::remove_dir_all(entry.path());
+                let _ = std::fs::remove_dir_all(path);
             } else {
-                let _ = std::fs::remove_file(entry.path());
+                let _ = std::fs::remove_file(path);
             }
         }
     }
@@ -161,33 +271,38 @@ impl CorpusGuard {
 
 impl Drop for CorpusGuard {
     fn drop(&mut self) {
-        // Only the last guard on this directory restores it — an earlier sweep
-        // would race a sibling case that is still writing into the same folder.
+        let (reg, cv) = dir_registry();
         {
-            let mut reg = dir_registry().lock().unwrap_or_else(|e| e.into_inner());
-            match reg.get_mut(&self.dir) {
-                Some((_, refs)) if *refs > 1 => {
-                    *refs -= 1;
+            let mut map = reg.lock().unwrap_or_else(|e| e.into_inner());
+            // A guard nested inside this thread's own: only the outermost one
+            // sweeps, when every writer of this thread is done.
+            match map.get_mut(&self.key) {
+                Some(claim) if claim.depth > 1 => {
+                    claim.depth -= 1;
                     return;
                 }
-                _ => {
-                    reg.remove(&self.dir);
+                _ => {}
+            }
+        }
+        // Last one out. Sweep and restore while the claim is STILL held, so the
+        // next producer of this directory cannot photograph this run's droppings
+        // as vendored (coordinator decision D33(2)); only then release the
+        // directory and wake whoever is waiting for it.
+        if self.snap.snapshot_ok {
+            self.sweep_created();
+            for (name, data) in &self.snap.buf {
+                let p = self.dir.join(name);
+                match std::fs::read(&p) {
+                    Ok(cur) if cur == *data => {}
+                    _ => {
+                        let _ = std::fs::write(&p, data);
+                    }
                 }
             }
         }
-        if !self.snap.snapshot_ok {
-            return;
-        }
-        self.sweep_created(&self.dir.clone(), "");
-        for (name, data) in &self.snap.buf {
-            let p = self.dir.join(name);
-            match std::fs::read(&p) {
-                Ok(cur) if cur == *data => {}
-                _ => {
-                    let _ = std::fs::write(&p, data);
-                }
-            }
-        }
+        let mut map = reg.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(&self.key);
+        cv.notify_all();
     }
 }
 
@@ -218,8 +333,12 @@ fn corpus_guard_restores_case_dir_recursively() {
     );
     assert!(!root.join("run_created.csv").exists());
     assert!(
-        !sub.join("run_created_inner.csv").exists(),
-        "run-created file inside a pre-existing subdir must be swept (recursion)"
+        sub.join("run_created_inner.csv").exists(),
+        "a file appearing under a PRE-EXISTING subdirectory must NOT be swept: \
+         the gate schedules by case dir, so `support/` may itself be a manifest \
+         case directory whose case is running right now, and this file is its \
+         live output (D30(2)/D32(3); the shared classification \
+         `dss_epri::guard::classify_created` and its F2b measurement)"
     );
     assert!(
         !root.join("ckt_di").exists(),
@@ -228,12 +347,14 @@ fn corpus_guard_restores_case_dir_recursively() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// Two cases in the **same** deck folder run concurrently (the corpus puts many
-/// decks in one directory), so their guards overlap. The interleaving that used
-/// to leak: A snapshots clean → A writes → B snapshots (sees A's output) → A
-/// drops and sweeps → B writes again → B drops and *keeps* it. With the shared
-/// per-directory snapshot the second guard reuses the pristine names and the
-/// sweep runs once, when the last guard leaves.
+/// Two guards on the **same** deck folder nested inside one thread — what
+/// `assert_deferred_rust_smoke` does inside `scheduler::run_one_case`'s guard.
+/// Since D33(2) that is the only way two guards on one directory can overlap
+/// (another thread blocks in `new`), and the interleaving that used to leak is
+/// still the one this pins: A snapshots clean → A writes → B snapshots (sees A's
+/// output) → A drops and sweeps → B writes again → B drops and *keeps* it. With
+/// the shared per-directory snapshot the nested guard reuses the pristine names
+/// and the sweep runs once, when the last guard leaves.
 #[test]
 fn corpus_guard_overlapping_guards_still_sweep() {
     let root = std::env::temp_dir().join(format!("dss_guard_overlap_{}", std::process::id()));
@@ -253,13 +374,120 @@ fn corpus_guard_overlapping_guards_still_sweep() {
         drop(ga);
         assert!(
             out.exists(),
-            "the first guard must not sweep while a sibling case is still running"
+            "the inner guard must not sweep while the outer one is still running"
         );
         std::fs::write(&out, b"run b output").unwrap();
         drop(gb);
     }
     assert!(!out.exists(), "the last guard out must sweep the leftovers");
     assert!(case_a.is_file() && case_b.is_file(), "decks must survive");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// Coordinator decision **D33(2)**: one producer at a time owns a case
+/// directory. Two synthetic manifest rows in one folder — the
+/// `IEEETestCases/8500-Node` shape, where seven rows plus `ad_sweep.json`'s `pf`
+/// decks all write `<CircuitName>_*` reports into ONE directory — must not have
+/// their before/after windows overlap, or one producer's output lands in the
+/// other's created-file SET (measured: G1.10a F4 run 2).
+///
+/// Deterministic in the direction that matters: the second thread records
+/// whether the first was still holding the directory at the moment it got in,
+/// and that flag is what the test asserts. The bounded `recv_timeout` below is
+/// the second, weaker half (it can only make the test slower, never green).
+#[test]
+fn corpus_guard_serializes_two_threads_in_one_case_directory() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+
+    let root = std::env::temp_dir().join(format!("dss_guard_serial_{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(&root).unwrap();
+    let case_a = root.join("a.dss");
+    let case_b = root.join("b.dss");
+    std::fs::write(&case_a, b"! deck a").unwrap();
+    std::fs::write(&case_b, b"! deck b").unwrap();
+
+    let a_holds = AtomicBool::new(false);
+    let (trying_tx, trying_rx) = mpsc::channel::<()>();
+    let (got_tx, got_rx) = mpsc::channel::<()>();
+
+    std::thread::scope(|s| {
+        let ga = CorpusGuard::new(&case_a.to_string_lossy());
+        a_holds.store(true, Ordering::SeqCst);
+        let b = s.spawn(|| {
+            trying_tx.send(()).unwrap();
+            let _gb = CorpusGuard::new(&case_b.to_string_lossy());
+            // What B saw the instant it owned the directory.
+            let saw_a_inside = a_holds.load(Ordering::SeqCst);
+            let b_sees = std::fs::read_dir(&root)
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect::<BTreeSet<String>>();
+            got_tx.send(()).unwrap();
+            (saw_a_inside, b_sees)
+        });
+        trying_rx.recv().unwrap();
+        assert!(
+            got_rx.recv_timeout(Duration::from_millis(500)).is_err(),
+            "the second producer entered a case directory the first one still owned"
+        );
+        // A's run writes its report while it still owns the folder.
+        std::fs::write(root.join("a_exp_voltages.csv"), b"run a output").unwrap();
+        a_holds.store(false, Ordering::SeqCst);
+        drop(ga);
+        got_rx
+            .recv_timeout(Duration::from_secs(60))
+            .expect("the second producer must get the directory once the first leaves");
+        let (saw_a_inside, b_sees) = b.join().unwrap();
+        assert!(
+            !saw_a_inside,
+            "the second producer took the case directory while the first still \
+             owned it — its snapshot would photograph the first run's output"
+        );
+        assert!(
+            !b_sees.contains("a_exp_voltages.csv"),
+            "the first producer's report was still on disk when the second \
+             snapshotted the directory: {b_sees:?}"
+        );
+    });
+    assert!(case_a.is_file() && case_b.is_file(), "decks must survive");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// The other direction of D33(2): the claim is per DIRECTORY, not a global lock
+/// on the corpus. Two producers in DIFFERENT case folders keep running at the
+/// same time — the gate's `jobs=16` parallelism depends on it, and a global
+/// lock would serialize a 4-minute gate into an hour.
+#[test]
+fn corpus_guard_does_not_serialize_two_different_case_directories() {
+    use std::sync::mpsc;
+
+    let root = std::env::temp_dir().join(format!("dss_guard_parallel_{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let dir_a = root.join("case_a");
+    let dir_b = root.join("case_b");
+    std::fs::create_dir_all(&dir_a).unwrap();
+    std::fs::create_dir_all(&dir_b).unwrap();
+    let case_a = dir_a.join("a.dss");
+    let case_b = dir_b.join("b.dss");
+    std::fs::write(&case_a, b"! deck a").unwrap();
+    std::fs::write(&case_b, b"! deck b").unwrap();
+
+    let (got_tx, got_rx) = mpsc::channel::<()>();
+    std::thread::scope(|s| {
+        let ga = CorpusGuard::new(&case_a.to_string_lossy());
+        s.spawn(|| {
+            let _gb = CorpusGuard::new(&case_b.to_string_lossy());
+            got_tx.send(()).unwrap();
+        });
+        got_rx.recv_timeout(Duration::from_secs(60)).expect(
+            "a producer in ANOTHER case directory must not wait for this one: the \
+             claim is per case dir, never a global corpus lock",
+        );
+        drop(ga);
+    });
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -1106,11 +1334,106 @@ pub(crate) fn compare_with_result(
         c.n_steps,
         "{label}: oracle checkpoint count"
     );
+    // G1.10a / coordinator decision D33(1) — the channel's own D32(2)(a)
+    // teardown `clear` raised. Surfaced FIRST (before the hygiene assert below,
+    // whose panic would otherwise hide it) and deliberately NOT a case failure:
+    // the teardown runs after every read of the run, so the compared surface is
+    // already captured, and the transport that raised exits after replying so a
+    // pooled worker is respawned instead of reused
+    // (`tools/oracle/oracle_server.py::main`). The one measured producer is the
+    // pinned dss_capi 0.14.5 on the two `modes:autoadd` decks (`DSSException
+    // (#303) ... clear ... Access violation`) — an outdated-oracle fault, not a
+    // port divergence, so it gets a note here and in `DIVERGENCES.md`, never a
+    // ledger row.
+    if let Some(err) = oc.teardown_error.as_deref() {
+        // One line: the pinned oracle folds a CRLF-formatted multi-line
+        // description into the message, and a per-case note must stay
+        // greppable in a 526-case log.
+        let err = err.split_whitespace().collect::<Vec<_>>().join(" ");
+        eprintln!(
+            "{label}: the `{}` producer's teardown `clear` raised AFTER the \
+             capture — the surface is compared as usual and the worker is \
+             recycled: {err}",
+            channel_tag(channel),
+        );
+    }
+    // G1.10a / coordinator decision D32(2) — hygiene H1, checked BEFORE anything
+    // else this case does with the filesystem. `sweep_failed` is what the
+    // channel's own `CorpusGuard` classified as run-created and then could not
+    // remove; the entry stays in the case directory, so the NEXT producer of
+    // this case (the other channel, or the port's probe below) snapshots it as
+    // pre-existing and silently drops that name from its created set. That is
+    // not hypothetical: dss_capi never closes a Storage `debugtrace` stream
+    // (`src/PCElements/Storage.pas:872`, freed only at `:871`/`:1199`), so the
+    // capi channel used to leak `STOR_<name>.csv` and make the `r4133` channel
+    // report an empty set for that deck (G1.10a F4). Both transports now release
+    // the circuit before their guard sweeps, and any survivor fails the case
+    // here instead of hiding — the order-coupling can never come back silently.
+    assert!(
+        oc.sweep_failed.is_empty(),
+        "{label}: the `{}` producer left {} leaked dropping(s) in the case \
+         directory that its corpus guard classified as run-created and could \
+         not remove: {}. A file still held open by that engine poisons every \
+         later producer's pre-run snapshot (and pollutes the vendored corpus). \
+         Fix the producer — release the circuit (`clear`) before the guard \
+         sweeps, or close the file — never widen the surface around it.",
+        channel_tag(channel),
+        oc.sweep_failed.len(),
+        oc.sweep_failed.join(", "),
+    );
     let tol = tol_for(&c.kind);
+    // G1.10a — the run-produced FILE SET. The port needs its OWN before/after
+    // bracket (and must sweep what it classified) because the scheduler runs the
+    // Rust engine once PER CHANNEL: on an `engines: "both"` case the second run
+    // would otherwise find channel 1's files already on disk and report an empty
+    // created set. The outer `CorpusGuard` (`scheduler::run_one_case`) stays the
+    // safety net and is never bypassed. Started here, before the engine touches
+    // the directory and after the oracle result is already in hand, so anything
+    // the ORACLE's own guard failed to sweep sits in the probe's "before"
+    // snapshot and can never be mis-attributed to the port.
+    #[cfg(windows)]
+    let run_file_probe = c
+        .compare_run_files
+        .then(|| harness::run_files::RunFileProbe::start(case_path));
+    // The classification itself is portable since D33(3) (`dss_epri::guard` is
+    // ungated, and `CorpusGuard::sweep_created` above runs it on every
+    // platform), but the SURFACE is compared only against the gate's two oracle
+    // channels and the `r4133` transport is a Win64 DLL, so the comparator
+    // `harness::run_files` stays declared under `#[cfg(windows)]`. Refuse the
+    // flag loudly elsewhere rather than compare nothing (that module's
+    // §Platform doc).
+    #[cfg(not(windows))]
+    assert!(
+        !c.compare_run_files,
+        "{label}: `compare_run_files` is Windows-only — its `r4133` oracle \
+         channel is a Win64 DLL, so the comparator `harness::run_files` is \
+         declared under `#[cfg(windows)]`"
+    );
     let (mut dss, baseline) = run_rust_capture(label, case_path, c);
     compare_capture(
         &mut dss, baseline, oc, label, case_path, c, &tol, channel, ledger,
     );
+    // The port's run is over: drop the engine BEFORE the probe reads, so a file
+    // the engine still holds open is closed (and flushed) first — a removal that
+    // failed on an open handle would make the next channel's probe see the file
+    // as pre-existing.
+    drop(dss);
+    #[cfg(windows)]
+    if let Some(probe) = run_file_probe {
+        let port_files = probe.finish_and_clean(label);
+        // Field-by-field ledger partition, per created NAME (the `run_files`
+        // field's `name_re` scopes); the call marks the scope hit, which is what
+        // keeps `ledger.json` fail-on-stale honest. Run-level surface, so step 0
+        // is the only step a scope can select.
+        let excluded = |name: &str| ledger.is_some_and(|v| v.excluded("run_files", Some(name), 0));
+        harness::run_files::compare_run_files(
+            channel_tag(channel),
+            oc.run_files.as_deref(),
+            &port_files,
+            &excluded,
+            label,
+        );
+    }
 }
 
 /// One-shot convenience for the opt-in report tests: snapshot the case dir,
