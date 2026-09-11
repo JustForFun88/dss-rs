@@ -1374,7 +1374,7 @@ pinned oracle, an artifact, not an engine gap.
 
 ## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
 
-`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:11214`)
+`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:11229`)
 compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
 and takes no `Tolerances` argument at all. That is a derivation, not an
 optimism: on every gated case today each compared value is one of
@@ -1394,7 +1394,7 @@ optimism: on every gated case today each compared value is one of
 rounding to absorb and any difference at all is a bug, not a floor. The one
 divergence the corpus does measure is not numeric drift but an uninitialized read
 in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
-(`crates/dss-core/tests/harness/mod.rs:11028`) and pinned — an envelope over a
+(`crates/dss-core/tests/harness/mod.rs:11043`) and pinned — an envelope over a
 value that changes every process would not be a fact. See TESTING.md
 §"The `PDElements` walk".
 
@@ -2689,12 +2689,12 @@ dated). What was checked, and against what:
 | claim here | landed at | verdict |
 |---|---|---|
 | the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:9805`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:9820`) | unchanged |
 | the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, each row's gap measured as `display_rel` (`props_norm.rs:783-792`) | identical, both places |
 | 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
 | capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1208-1217` and `:1225-1234` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1279-1288` and `:1268-1277` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:8699` (asserted as `i_abs / floor`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1433-1442` and `:1422-1431` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:8712` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
@@ -2979,6 +2979,107 @@ r4133's 6 against the port's 4. Both are exclusions of *named members*, decided 
 by value — the field-by-field shape this file's rules require — and neither widens anything for any
 other name on any other case. See `TESTING.md` §"G1.10a — the created-file SET".
 
+## G1.10b run-file contents (`harness::run_file_contents`) — **a derivation, not a new band**
+
+G1.10a compared a set of names and needed no tolerance at all. G1.10b compares the *cells* of the
+files in that set, so it needs a rule — and the rule adds **no numeric constant**: it is an existing
+calibrated floor plus exact arithmetic from the number's own print format. A cell passes when
+
+> `|a − b| ≤ class_floor(quantity class, tol_for(&case.kind), max(|a|, |b|)) + ulp(print format, max(|a|, |b|))`
+
+Both terms are already-owned quantities. The first is the case's **existing** in-memory floor, read
+straight off `harness::Tolerances` through the same `tol_for(&c.kind)` the rest of the live gate uses
+— `Voltage → v_abs + v_rel·m`, `Current`/`Power → i_abs + i_rel·m`, `Admittance → y_abs + y_rel·m`,
+`Pu → v_rel·m` (no absolute term), `Energy → energy_abs + energy_rel·m`, and **zero** for
+`Distance`, `Integer`, `Text` and the two quantities another gate already pins exactly
+(`Quantity::ExactElsewhere`, e.g. `Export Voltages`' `BasekV`, which G1.4a compares exactly on the
+same case). The second term is the resolution the writer *printed at*: an oracle cell is a decimal
+rendering of an f64, so two engines that agree to the last bit can still disagree by one unit in the
+last printed place. It is defined by the Pascal format literal and by nothing else —
+`%N.df → 10^-d`, `%N.sg → 10^(1-s) · 10^floor(log10 max(|a|,|b|))` — with one unit test per format
+literal the column maps use (`Fixed(0/1/2)`, `Sig(5/6/10)`, `Exact`, `DeclinedG`). An exact `0`
+against a residual needs no special case: the class floor's absolute term covers it.
+
+**This is a derivation of the existing floors onto a printed surface, not a widening of them.** No
+value in `Tolerances`, no tier and no `GateSpec` moved; `rel = abs = 0` still holds for every
+`Integer`, `Text` and `Distance` column, and the in-memory quantities these files re-print are still
+gated at their own floors by the surfaces that own them. What the ulp term admits is exactly what
+the *printer* lost, and it shrinks automatically wherever a report prints more digits.
+
+**The angle rule is the image of the paired magnitude's band, and it is two-sided.** An angle column
+carries no floor of its own; it is compared by converting its magnitude column's band through
+`harness::polar_angle_band` (`rad2deg · allowed / |I|`, `None` once `|I| ≤ allowed`) with
+`|I| = max(|I_oracle|, |I_port|)` — coordinator decision **D40(1)** — and wrap-aware via
+`harness::wrapped_deg`, plus the angle column's own print ulp. Two notes the rule depends on:
+
+* it **supersedes** the golden's one-sided `GateSpec::PrevCol(1e-6)` on the live surface only, and is
+  *tighter* than it wherever the magnitude is real — it can only produce a finding, never mask one;
+* **D10's `√2·abs` factor does not apply here.** That factor is the image of a band that treats `re`
+  and `im` separately; this band is the image of a **modulus** band, which is what
+  `polar_angle_band` documents itself as and which is the tighter of the two.
+
+When both magnitudes are an exact `0` the angle is compared **exactly**, which keeps the property
+the golden's one-sided gate deliberately holds.
+
+**The column maps — quantity class and print format per column, each cited to its r4133 writer.**
+
+| report kind | columns → class / format | r4133 writer (`Version8/Source/...`) |
+| --- | --- | --- |
+| `currents` | `Element` Text/Exact; then per terminal pair `\|I\| (A)` Current/`Sig(6)` + `Ang (deg)` Angle/`Fixed(2)` | `Common/ExportResults.pas:458`, the four `', %10.6g, %8.2f'` writes `:471`/`:474`/`:475`/`:480`, header `:551-555` |
+| `powers` | `Element` Text, `Terminal` Integer; `P`, `Q` and the four excess-kVA columns Power/`Fixed(1)` | `:1069`, header `:1095`, values `:1113-1126` |
+| `voltages` | `Bus` Text, `BasekV` ExactElsewhere/`Sig(5)`, `Node` Integer, `Magnitude (V)` Voltage/`Sig(6)`, angle `Fixed(2)`, `pu` Pu/`Sig(5)` | `:236`, header `:265-266`, bus row `:272`, quadruple `:288` |
+| `profile` | `Name` Text, two `Distance` (km)/`Sig(6)` + two `puV` Pu/`Sig(6)`, seven integer plot columns | `:3371`, header `:3391`, `WriteNewLine` `:3356`/`:3363`/`:3364-3366` |
+| `y(dense)` | `Node` Text; per node `G (S)` and `+j B (S)` Admittance/`Sig(10)` | `:3069`, `:3078`, `:3090` |
+| `y(triplet)` | `Row`, `Col` Integer; `G (S)`, `B (S)` Admittance/`Sig(10)` | `:3052`, `:3059` |
+| `yprim` | `re (S)`, `im (S)` Admittance/`Sig(10)` | `:2874`, `:2876` |
+| `register` | `Year`, `Hour` Integer, `LDCurve`, `PVSystem` Text, each register Energy/`Fixed(0)` | `WriteMultiplePVSystemMeterFiles` `:1990`, `:2017`, `:2030` |
+| `storage-trace` | `Iteration`/`StorageModel` Integer, `Mode`/`LoadModel`/`CurrentType` Text, `Qnominalperphase`/`Pnominalperphase` Power/`Fixed(2)`, per phase `\|Iinj\|`/`\|Iterm\|` Current/`Fixed(1)` and `\|Vterm\|` Voltage/`Fixed(1)`; **36 `%-.g` columns declined** | `PCElements/Storage.pas:1073-1085` (header), `:2401-2429` (record) |
+
+**The five measured classes, their worst cells and the pins that carry them** (measured live through
+the gate's own transports on the forced population, 2026-09-11/12; both numbers in every pin, the
+port side read live so no literal can rot):
+
+| class | measured worst cell | why it is inside the rule | pin |
+| --- | --- | --- | --- |
+| C1 — the angle of a residual magnitude (49 cells) | `Run_8500Node.dss` [capi] `ieee8500_exp_currents.csv` row 2049: port `1.02898E-11 A ∠ 45.00°` vs oracle `0 ∠ 0.00°` | `\|I\| = 1.02898e-11 ≤ allowed = i_abs + i_rel·\|I\| = 1.0000000000010290e-5 A` → the angle carries no information and is declined; the magnitude column stays compared | `an_angle_of_a_residual_magnitude_is_gated_on_both_sides` |
+| C2 — angle print ulp (36) | same file row 934: `-74.04°` vs `-74.06°` at `\|I\| = 1.6957E-5 A` | band `= 57.29577951308232 · 1.00000016957e-5 / 1.6957e-5 + 0.01 = 33.7896…°` against `Δθ = 0.02°`; `Δ\|I\| = 3.8e-9 A` against `i_abs = 1e-5` — **compared, not declined** | `the_angle_of_a_16_microamp_current_is_free_within_the_case_floor` |
+| C3 — magnitude print ulp (13) | same file [r4133] row 927: `0.0374457` vs `0.0374458` | `Δ = 1e-7 A` = one unit in the last printed place of `%10.6g` at `3.74e-2` | `a_six_significant_digit_cell_may_move_by_one_ulp` |
+| C4 — near-zero cancellation (6) | `Run_8500Node_Unbal.dss` [capi] row 0: `2.88924E-9` vs `1.56542E-8 A`; `Run_NEV.dss` [r4133] `nev_exp_y.csv`: `-2.498001805E-16` vs `-1.110223025E-016 S` | `Δ = 1.276496e-8 A ≤ i_abs 1e-5`; `Δ = 1.38777878e-16 S ≤ y_abs 1e-6` — the absolute term, exactly what it is calibrated for | `a_cancellation_residual_cell_is_bounded_by_the_case_floor` |
+| C5 — `+j` and the three-digit exponent (4) | `nev_exp_y.csv`: `+j 2.220446049E-16` (port, capi) vs `+j 2.220446049E-016` (r4133) | a **tokenization normalization**, not a band: the marker is stripped on both sides (its presence asserted, so a lost layout still reds) and the two spellings parse to the same f64 | `the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically` |
+
+Each pin carries its own negative drive — the same cell moved past its floor reds — so none of the
+five admits anything beyond what is written above. The worst *magnitude* case, `1 %` of a real
+current, reds by five orders of magnitude (`5.969e-1 A` against a `1.16e-4 A` allowance), measured
+in the corrupted-cell demo on both channels.
+
+**Two reductions of the surface that are NOT tolerances.** (1) The **36 `%-.g` columns** of the
+Storage `DebugTrace` (r4133 `PCElements/Storage.pas:2401-2429`) are declined on **both** channels:
+FPC renders them at 2 significant digits and the Delphi-built r4133 at ~15, so the two ORACLES
+disagree with each other (`1E4` port/capi vs `9999` r4133) and no band exists that could make one
+side right — a decline with a census and a both-numbers pin is the only honest shape
+(`the_two_sig_trace_columns_are_declined_on_both_channels`, which also names the one cell where the
+port's own lanes part: `kWTotalLosses` `5.4` default / `5.5` parity via `compat::fmt_g`, against
+capi `5.5` and r4133 `5.45`). When WP-G4's **G4.1** tears the `fmt_g` kernel down the port prints at
+r4133's precision and the decline must be re-measured and shrunk to capi-only. (2) The trace's
+**read-back tail** is a count, not a band: `WriteTraceRecord` fires outside the `Iterminal` cache
+test (r4133 `PCElements/Storage.pas:2874`, test `:2868-2871`; capi 0.14.5 `:2356`, test
+`:2348-2353`), so the oracle transports' six post-solve element reads write six records and the
+port's single `snapshot_elements` recompute writes two — 102 rows against 98 over 96 identical solve
+records. Every cell of the common prefix is compared under the rule above and the gap is accounted
+positively by the fail-on-stale population `TRACE_READBACK_RECORDS`
+(`the_storage_trace_tail_is_the_readers_footprint`), never by relaxing a cell.
+
+**One deliberate tightening, recorded because it is a choice.** `Quantity::Power` takes the
+`|V_kv| = 1` end of `assert_power_close`'s voltage-scaled band — the tighter end — because a report
+row carries no paired terminal voltage to scale with. If a power cell ever fails there, the fix is
+to carry the voltage into the map, never to widen the class.
+
+**Nothing else moved.** No `Tolerances` field, no tier, no existing `ExportPolicy` value, no golden
+byte; the lifted `harness::export_policies` producers are byte-faithful copies of the golden ones
+and both callers use the same function (`every_compared_kind_uses_the_same_policy_as_its_golden`).
+Reports without a golden policy are recorded and **not** compared rather than compared ad hoc
+(`a_report_without_a_policy_is_recorded_not_compared`). See `TESTING.md` §"G1.10b — the CONTENTS of
+the selected run files".
 
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 
