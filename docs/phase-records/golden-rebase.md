@@ -3700,6 +3700,29 @@ row against the pre-fix lock.
 
   merge: lane lane-s -> update, see git log
 
+  **+ F0′** (2026-09-11, lane `lane-m`, **D39**/**D41** — a follow-up commit to G1.10a, not a sub-step) —
+  the bridge gags report auto-display with r4133's **own** switches, D25's editor no-op staying only as the
+  safety net: `Engine::new` issues `Set RegistryUpdate=No` → `Set AllowForms=No` →
+  `new circuit.dssrs_bridge_init` → `Set ShowReports=No` → `Set ShowExport=No` → `clear` →
+  `Set Editor=rundll32.exe` → `Set DefaultBaseFrequency=60` (options 149/138/71,
+  `Executive/ExecOptions.pas:640`/`:975`/`:826`; the last two are unserved without a circuit, `:645-649` →
+  `#301`, and `clear` resets neither flag, `Executive/Executive.pas:234-276`). Census re-derived from the
+  vendored source: 34 + 1 + 3 + **12 unguarded** + 5 GUI-only = **55** `FireOffEditor` sites (the brief's
+  “56 / 4 under `AllowForms`” corrected); the 12 are reported as
+  `to_opendss/73-dll-fires-editor-despite-noformsallowed.md`. **No report is suppressed — only the viewer launch** (`Common/ShowResults.pas:401-403`
+  closes the file before consulting the switch): the created-file set over 14 report decks is identical with
+  the switches on (**56** = 56 entries, **0** differing decks), so **0** ledger rows, **0** golden bytes, no
+  lock cell and `lane_diff` not owed (`dss-epri` only, **D41**). Layers, census and riders in `TESTING.md`
+  §“The bridge suppresses report auto-display” + `tools/opendss/README.md`; pins
+  `report_switches_survive_a_compile_and_gag_every_guarded_editor_site` and
+  `the_editor_safety_net_covers_the_sites_no_switch_guards` (registered in `G1_10_PINS`; `#702` from a
+  sentinel editor is the observable). Commit: the single F0′ commit on `lane-m` atop `6987133a` (see `git log`).
+  Gate (the five commands green in BOTH lanes, 11 015 passed / 0 failed / 5 pre-existing ignored each): `corpus_gate` **526/526** cases /
+  452 tests, ledger **57** entries / 1 573 hits / 0 unhit, `SCRATCH_FILE_DECLINES` **(9, 9)** and every
+  neighbouring population unmoved, `oracle_parity_cfg_gate` **25** (the `dss.rs` line citations F0′ shifted,
+  in `TESTING.md` and the plan, re-pointed by diff-map), `population_lock` 3, `golden_lock` 4 with `tests/golden/**` untouched;
+  `git status --short tests/corpus` empty, notepad 0 → 0 / rundll32 1 → 1.
+
 - **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**; commits
   `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface, `dff755b5` the
   settlement, + docs) — the bus **at-bus lists** (`Bus.AllPCEatBus`/`AllPDEatBus`) live on both channels

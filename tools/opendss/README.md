@@ -96,7 +96,10 @@ longer exists.
   pollute the vendored corpus (`git status tests/corpus` must stay clean).
 - **UI suppression**: the bridge's init sequence calls `DSSI(8, 0)`, which sets
   the engine's `NoFormsAllowed := TRUE` (`DDSS.pas` mode 8 — note the inverted
-  argument), so a corpus sweep opens no forms/popups.
+  argument), and restates it through the executive with `Set AllowForms=No`
+  (option 149, `Executive/ExecOptions.pas:640`/`:1118`, served with no circuit),
+  so a corpus sweep opens no forms/popups and no modal `DoSimpleMsg`
+  (`Common/DSSGlobals.pas:615`, `:651`, `:676`) can hang the headless worker.
 - **No process-global state escapes the worker** (GOLDEN_REBASE G1.4a, coordinator
   decision D13). r4133 persists `DefaultBaseFreq`, `LastFile` and `DataPath` in
   `HKCU\Software\OpenDSS\MainSect` — read at DLL load in `TExecutive.Create`
@@ -115,23 +118,42 @@ longer exists.
   mirrors the frequency reset on the capi channel (which has no registry and
   rejects `Set RegistryUpdate` outright). Both are pinned by
   `crates/dss-epri/tests/protocol.rs`.
-- **No OS editor is fired** (GOLDEN_REBASE G1.10a, coordinator decision D25). r4133
-  ends every `Show` writer with
-  `If AutoDisplayShowReport Then FireOffEditor(FileNm)` (`Common/ShowResults.pas`,
-  20+ sites; `AutoDisplayShowReport := TRUE` at `Common/DSSGlobals.pas:2052`) and
-  calls it unconditionally from `Dump` (`Executive/ExecHelper.pas:1357`), the
-  hash-list dumps (`:1223`-`:1249`), `VDIFF` (`:3373`) and `Show autoadded`
-  (`Executive/ShowOptions.pas:208`); `DoShowCmd` (`Executive/ShowOptions.pas:156`)
-  has **no** `NoFormsAllowed` guard, so `DSSI(8, 0)` does not cover it. On Windows
-  `FireOffEditor` `ShellExecute`s `DefaultEditor` (`Common/Utilities.pas:304`),
-  which the DLL read from the machine key at load with the default `'Notepad.exe'`
-  (`Common/DSSGlobals.pas:990`) — one leaked OS process per report on every gate
-  run. The bridge therefore issues **`Set Editor=rundll32.exe` at init**, right
-  after `Set RegistryUpdate=No` so the value never reaches the user's registry
-  (`Common/DSSGlobals.pas:1017`, guarded by `:1015`); `rundll32.exe` exits at once
-  on a non-DLL argument (measured: 0 processes, 0 windows, no created-file name
-  moves). Pinned by `crates/dss-epri/tests/protocol.rs`. The capi channel already
-  clears `DSS_CAPI_ALLOW_EDITOR` (`tools/oracle/oracle_server.py:1585`).
+- **No report auto-display, in three layers** (GOLDEN_REBASE G1.10a F0 + F0′,
+  coordinator decisions D25 and D39). r4133 calls `FireOffEditor` from 55 places;
+  on Windows that is a `ShellExecute` of `DefaultEditor` (`Common/Utilities.pas:298`,
+  `:304`), read from the machine key at DLL load with the default `'Notepad.exe'`
+  (`Common/DSSGlobals.pas:990`, `:2122`) — one leaked OS process per report.
+  `Engine::new` therefore issues, in order,
+  `Set RegistryUpdate=No` → `Set AllowForms=No` → `new circuit.dssrs_bridge_init` →
+  `Set ShowReports=No` → `Set ShowExport=No` → `clear` → `Set Editor=rundll32.exe` →
+  `Set DefaultBaseFrequency=60`:
+  (1) `AllowForms=No` covers the three hash-list `Dump` branches
+  (`Executive/ExecHelper.pas:1223`/`:1232`/`:1241`) and the modal forms;
+  (2) `ShowReports=No` (option 138) covers 34 sites — all of `Common/ShowResults.pas`
+  plus `ControlQueue.pas:482`, `Solution.pas:3543`, `Monitor.pas:1774` — and
+  `ShowExport=No` (option 71) covers `Executive/ExportOptions.pas:517`; neither is
+  served by `DoSetCmd_NoCircuit` (`ExecOptions.pas:645-649` → `#301`), hence the
+  throwaway circuit the following `clear` drops — `clear` resets neither flag
+  (`Executive/Executive.pas:234-276`), so they hold for the worker's lifetime;
+  (3) `Set Editor=rundll32.exe` is the **safety net** for the 12 sites no switch
+  guards (`Dump`, `Dump alloc`, `FileEdit`, `AlignFile`, `VDIFF`,
+  `CvrtLoadshapes`, `Show AutoAdded` ×2, `Show QueryLog`, `Rephase`,
+  the CN/CNTS debug dumps) — `rundll32.exe` exits at once on a non-DLL argument, and
+  the option is issued after `Set RegistryUpdate=No` so it never reaches the user's
+  registry (`Common/DSSGlobals.pas:1017` under the guard at `:1015`). Those 12 sites
+  are reported upstream in
+  `investigations/to_opendss/73-dll-fires-editor-despite-noformsallowed.md`.
+  **No report is suppressed — only the viewer launch:** every writer does
+  `CloseFile(F)` and *then* consults its switch (`Common/ShowResults.pas:401-403`),
+  measured 2026-09-11 as an identical created-file set over 14 report decks
+  (56 entries with the switches on, 56 with `ShowReports` back at its default `Yes`,
+  0 differing decks). Pinned by `crates/dss-epri/tests/protocol.rs`
+  (`report_switches_survive_a_compile_and_gag_every_guarded_editor_site`,
+  `the_editor_safety_net_covers_the_sites_no_switch_guards`,
+  `init_overrides_the_os_editor_and_never_writes_it_back`). The capi channel needs no
+  counterpart — dss_capi gates the same `FireOffEditor` on `DSS_CAPI_ALLOW_EDITOR`
+  (`.inputs/dss_capi/src/Common/Utilities.pas:231`) and
+  `tools/oracle/oracle_server.py:1974` already clears it.
 - **The DLL is never `FreeLibrary`'d** (`Dll::leak()`): the r4133 unit
   finalization tears down its Delphi solver actor thread through a
   message-pumping `TThread.WaitFor` that deadlocks in a headless process. The
