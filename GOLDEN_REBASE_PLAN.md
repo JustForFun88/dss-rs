@@ -1688,6 +1688,16 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > full drives).
 > **Tier as executed:** §0's `opus-high+` row held; the five coordinator STOPs it took were
 > scope questions, not tier questions.
+> **F0′ (2026-09-11, lane `lane-m`, D39/D41 — a follow-up commit, not a sub-step).** Point (5)'s
+> `Set Editor=rundll32.exe` is no longer the mechanism but the **safety net**: `Engine::new` gags report
+> auto-display with r4133's own switches — `Set AllowForms=No`, then `Set ShowReports=No` and
+> `Set ShowExport=No` behind a throwaway circuit, because `DoSetCmd_NoCircuit` answers `#301` for options
+> 138/71 (`Executive/ExecOptions.pas:645-649`) — and the editor no-op now covers only the **12** of 55
+> `FireOffEditor` sites upstream left unguarded (reported as `to_opendss/73`). **No report is suppressed,
+> only the viewer launch:** the created-file set over 14 report decks is identical with the switches on
+> (56 = 56 entries, 0 differing decks), so part **a**'s surface, **b**/**c**'s contents and the
+> `Show`/`Export` goldens are untouched; 0 ledger rows, 0 golden bytes, `lane_diff` not owed (`dss-epri`
+> only). Record in `docs/phase-records/golden-rebase.md`, layers in `TESTING.md`.
 
 ### G1.11a — r4133 channel: CktElement families
 
@@ -1947,7 +1957,7 @@ value". **That premise is false, and the sub-step's first attempt returned
 blocked with the measurement** (owner resolution 2026-08-06, recorded here): the
 pad is a client-layer artifact on **both** gating channels — dss-python pads in
 `dss/IMonitors.py`, and the `r4133` channel's captures come from our own bridge,
-which replicates that decoder by design (`crates/dss-epri/src/dss.rs:625-634`,
+which replicates that decoder by design (`crates/dss-epri/src/dss.rs:729-738`,
 `cnt == 272 -> [0.0]`). Channel-scoping was measured to red three gated `r4133`
 cases (`modes:time/generaltime.dss`, `generaltime_yearly.dss`,
 `generaltime_duty.dss`).

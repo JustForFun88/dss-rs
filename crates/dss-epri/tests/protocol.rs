@@ -28,8 +28,20 @@ struct WorkerProc {
 
 impl WorkerProc {
     fn spawn() -> WorkerProc {
+        WorkerProc::spawn_in(None)
+    }
+
+    /// [`WorkerProc::spawn`] with the child's working directory pinned — the
+    /// D39 init-trace probe needs a directory it owns and can sweep, so that
+    /// "the throwaway init circuit wrote nothing" is a measurement and not a
+    /// claim.
+    fn spawn_in(dir: Option<&std::path::Path>) -> WorkerProc {
         let bin = env!("CARGO_BIN_EXE_epri-worker");
-        let mut child = Command::new(bin)
+        let mut cmd = Command::new(bin);
+        if let Some(d) = dir {
+            cmd.current_dir(d);
+        }
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -1254,6 +1266,389 @@ fn the_event_log_capture_creates_no_file() {
         "an event-log capture created {created:?} — `capture_eventlog` is issuing \
          `export eventlog` again (r4133 `Common/ExportResults.pas:3527-3532`), a \
          file neither the capi channel nor the port writes (D30 class A)"
+    );
+    swept.expect("remove the scratch dir");
+}
+
+// ---------------------------------------------------------------------------
+// D39 (G1.10a F0′) — the bridge gags report auto-display with the engine's own
+// switches; `Set Editor=` is only the safety net
+// ---------------------------------------------------------------------------
+
+/// A fresh scratch directory under the OS temp dir, unique per process + call.
+fn scratch_dir(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "dss-rs-g110a-{tag}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).expect("create scratch dir");
+    dir
+}
+
+/// The sorted file names directly under `dir`.
+fn dir_entries(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .expect("read scratch dir")
+        .map(|e| {
+            e.expect("scratch dir entry")
+                .file_name()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// Every running PID with this image name (`tasklist /FO CSV /NH`), so a test
+/// can diff the set around a command and see only the processes it caused —
+/// a machine-wide count would be at the mercy of the developer's own windows
+/// and of the other lanes' gates.
+fn image_pids(image: &str) -> std::collections::BTreeSet<u32> {
+    let out = Command::new("tasklist")
+        .args(["/FI", &format!("IMAGENAME eq {image}"), "/FO", "CSV", "/NH"])
+        .output()
+        .expect("run tasklist");
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.lines()
+        .filter_map(|l| {
+            let mut fields = l.split("\",\"");
+            let name = fields.next()?.trim_start_matches('"');
+            if !name.eq_ignore_ascii_case(image) {
+                return None;
+            }
+            fields.next()?.trim_matches('"').parse::<u32>().ok()
+        })
+        .collect()
+}
+
+/// PIDs of `image` that are new since `before` and still alive after up to
+/// `wait`; an editor that exits on its own drains this set, one that lingers
+/// does not. Polled, never slept blindly, so a fast exit does not cost a second.
+fn new_pids_still_alive(
+    image: &str,
+    before: &std::collections::BTreeSet<u32>,
+    wait: std::time::Duration,
+) -> std::collections::BTreeSet<u32> {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        let live: std::collections::BTreeSet<u32> =
+            image_pids(image).difference(before).copied().collect();
+        if live.is_empty() || std::time::Instant::now() >= deadline {
+            return live;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// A self-contained feeder whose script carries one report of each *guarded*
+/// kind: five `Show` writers (gated by `AutoDisplayShowReport`, r4133
+/// `Common/ShowResults.pas:403` …) and two `Export`s (gated by
+/// `AutoShowExport`, `Executive/ExportOptions.pas:517`). Compiled from a
+/// scratch directory, so every file it writes is swept with that directory
+/// and no vendored corpus deck is touched.
+const SHOW_DECK: &[&str] = &[
+    "new circuit.f0prime basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000",
+    "new linecode.lc nphases=3 r1=0.3 x1=0.6 r0=0.7 x0=1.9 c1=0 c0=0 units=mi",
+    "new line.feed bus1=src bus2=mid linecode=lc length=1 units=mi",
+    "new load.l bus1=mid phases=3 kv=12.47 kw=500 pf=0.95 model=1",
+    "set voltagebases=[12.47]",
+    "calcvoltagebases",
+    "solve",
+    "Show Voltages LN Nodes",
+    "Show Currents Elements",
+    "Show Powers kVA Elements",
+    "Show Losses",
+    "Show Buses",
+    "Export Voltages",
+    "Export Currents",
+];
+
+/// D39 layers 1+2: **the init switches survive a `Compile`, and no *guarded*
+/// `FireOffEditor` site fires — while every report is still written.**
+///
+/// The observable is `DSS error #702`, not a process count: `FireOffEditor`
+/// reports `ERROR_FILE_NOT_FOUND` through `DoSimpleMsg(…, 702)` (r4133
+/// `Common/Utilities.pas:304`, `:310`), so with an editor no machine can start
+/// ([`EDITOR_SENTINEL_A`]) a site that fires *raises* instead of spawning
+/// anything. That makes the suppression deterministic to assert and safe to
+/// drive — a process count would race the other lanes' gates and the
+/// developer's own windows. The liveness control is in the same test: the
+/// **unguarded** `Dump` site (`Executive/ExecHelper.pas:1357`) must raise #702
+/// with that very editor, so the silence above cannot be the sentinel failing
+/// to bite.
+///
+/// The guarded reports are therefore issued *directly*, one per request, and
+/// the `Compile` is only what proves the switches survive a deck: `ProcessCommand`
+/// resets `ErrorNumber := 0` at the start of every command
+/// (`Executive/ExecCommands.pas:604`), so a #702 raised by a `Show` inside a
+/// compiled script is wiped by the script's next line and never reaches the
+/// caller (measured 2026-09-11 — the deck below returns `ok` even with
+/// `AutoDisplayShowReport` left on).
+///
+/// The `ShowExport` layer is driven two-sided for the same reason: its flag is
+/// already `FALSE` at unit initialization (`Common/DSSGlobals.pas:2051`), so
+/// `Get ShowExport = No` alone would be vacuous — the test flips it on, sees
+/// the guarded `Export` fire (#702), flips it off and sees it silent.
+/// `AllowForms` is asserted one-sided by design: `Set AllowForms=Yes` would let
+/// the next `DoSimpleMsg` open a modal dialog (`Common/DSSGlobals.pas:651-660`)
+/// and hang this headless worker for good.
+///
+/// Non-vacuity (driven in-tree 2026-09-11, each edit reverted and the diff
+/// re-checked): with `Set ShowReports=No` deleted from `Engine::new` the direct
+/// `Show Voltages LN Nodes` comes back `DSS error #702 (exec: Show Voltages LN
+/// Nodes): Editor "DssRsEditorSentinelA.exe"  Not Found.` and the test reds on
+/// that assertion; with `new circuit.dssrs_bridge_init` deleted the worker never
+/// starts — `epri-worker: cannot load …: DSS error #301 (init: Set
+/// ShowReports=No): You must create a new circuit object first` — which is the
+/// throwaway circuit earning its place.
+#[test]
+fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
+    let scratch = scratch_dir("f0prime-switches");
+    let deck = scratch.join("f0prime_shows.dss");
+
+    // The worker's working directory is this scratch dir while `Engine::new`
+    // runs, so "the throwaway `new circuit.dssrs_bridge_init` leaves no trace"
+    // is measured, not assumed.
+    let mut w = WorkerProc::spawn_in(Some(&scratch));
+    let after_init = dir_entries(&scratch);
+
+    // Option 149 is served without a circuit (`ExecOptions.pas:1561`); 138/71
+    // are not (`DoGetCmd_NoCircuit` `:1510` has no case for them), so those two
+    // are read after the compile below.
+    let allow_forms_bare = w.exec("Get AllowForms")["reply"].clone();
+
+    // Pin the output directory so every report lands where this test sweeps
+    // (`Set DataPath`, option 57, served with no circuit — `:571`).
+    w.exec(&format!("Set DataPath={}", scratch.display()));
+    // From here on any `FireOffEditor` that fires raises #702 instead of
+    // starting a process.
+    w.exec(&format!("Set Editor={EDITOR_SENTINEL_A}"));
+
+    std::fs::write(&deck, format!("{}\n", SHOW_DECK.join("\n"))).expect("write deck");
+    let compiled = w.request(json!({
+        "cmd": "exec",
+        "text": format!("Compile \"{}\"", deck.display()),
+    }));
+
+    // The guarded `Show` writers, one command per request: `ProcessCommand`
+    // resets `ErrorNumber := 0` at the start of EVERY command
+    // (`Executive/ExecCommands.pas:604`), so a #702 raised by a `Show` *inside*
+    // a compiled script is wiped by the next line of that script and never
+    // reaches the caller (measured 2026-09-11: the deck above returns `ok` even
+    // with `AutoDisplayShowReport` on). Issued directly, the errno survives into
+    // the reply — which is what makes these two assertions worth anything.
+    let shown_ln = w.request(json!({"cmd": "exec", "text": "Show Voltages LN Nodes"}));
+    let shown_buses = w.request(json!({"cmd": "exec", "text": "Show Buses"}));
+
+    // The compile ran `new circuit.f0prime`: if a circuit reset any of the
+    // three flags, these reads are where it shows.
+    let show_reports = w.exec("Get ShowReports")["reply"].clone();
+    let show_export = w.exec("Get ShowExport")["reply"].clone();
+    let allow_forms = w.exec("Get AllowForms")["reply"].clone();
+
+    // Liveness control: the unguarded site, same sentinel editor.
+    let unguarded_dump = w.request(json!({"cmd": "exec", "text": "Dump"}));
+
+    // The `ShowExport` layer, both ways round.
+    w.exec("Set ShowExport=Yes");
+    let export_shown = w.request(json!({"cmd": "exec", "text": "Export Voltages"}));
+    w.exec("Set ShowExport=No");
+    let export_gagged = w.request(json!({"cmd": "exec", "text": "Export Voltages"}));
+
+    let reports = dir_entries(&scratch);
+    w.quit();
+    let swept = std::fs::remove_dir_all(&scratch);
+
+    assert_eq!(
+        after_init,
+        Vec::<String>::new(),
+        "`Engine::new` left {after_init:?} in its working directory — the D39 \
+         init sequence must build and drop `circuit.dssrs_bridge_init` without \
+         touching the disk (`MakeNewCircuit`, `Common/DSSGlobals.pas:793-836`)"
+    );
+    assert_eq!(
+        allow_forms_bare,
+        json!("No"),
+        "a fresh worker reports AllowForms={allow_forms_bare} before any deck: \
+         `Set AllowForms=No` is missing from Engine::new"
+    );
+    assert_eq!(
+        compiled.get("ok").and_then(Value::as_bool),
+        Some(true),
+        "the Show-carrying deck did not compile, so nothing below is measured \
+         on a real report run: {compiled}"
+    );
+    for (cmd, reply) in [
+        ("Show Voltages LN Nodes", &shown_ln),
+        ("Show Buses", &shown_buses),
+    ] {
+        assert_eq!(
+            reply.get("ok").and_then(Value::as_bool),
+            Some(true),
+            "`{cmd}` fired its `FireOffEditor` (r4133 \
+             `Common/ShowResults.pas:403` …), so `Set ShowReports=No` did not \
+             reach r4133 — with the editor gagged the writer must close its \
+             file and stop there: {reply}"
+        );
+    }
+    assert_eq!(
+        (
+            show_reports.clone(),
+            show_export.clone(),
+            allow_forms.clone()
+        ),
+        (json!("No"), json!("No"), json!("No")),
+        "a `Compile` (which runs `new circuit.…`) moved the report switches: \
+         ShowReports={show_reports}, ShowExport={show_export}, \
+         AllowForms={allow_forms} — they are unit globals no `clear` and no \
+         circuit may touch (`Common/DSSGlobals.pas:2051-2052`)"
+    );
+    let dump_err = unguarded_dump
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        unguarded_dump.get("ok").and_then(Value::as_bool) == Some(false)
+            && dump_err.contains("#702"),
+        "the unguarded `Dump` site (`Executive/ExecHelper.pas:1357`) did not \
+         fire the sentinel editor, so the silence above proves nothing about \
+         the switches: {unguarded_dump}"
+    );
+    let export_err = export_shown
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        export_shown.get("ok").and_then(Value::as_bool) == Some(false)
+            && export_err.contains("#702"),
+        "`Set ShowExport=Yes` did not make `Export Voltages` fire the editor \
+         (`Executive/ExportOptions.pas:517`), so reading the flag back as `No` \
+         would prove nothing: {export_shown}"
+    );
+    assert_eq!(
+        export_gagged.get("ok").and_then(Value::as_bool),
+        Some(true),
+        "`Set ShowExport=No` did not gag the same `Export`: {export_gagged}"
+    );
+    // The whole point of D39: the viewer is gone, the reports are not.
+    let written = |suffix: &str| {
+        reports
+            .iter()
+            .any(|n| n.to_ascii_lowercase().ends_with(suffix))
+    };
+    assert!(
+        written("_vln_node.txt") && written("_exp_voltages.csv") && reports.len() >= 8,
+        "the switches suppressed the reports themselves, not just the viewer \
+         launch — the deck's five Shows, two Exports, its own source and the \
+         `Dump` should all be on disk, found {reports:?}"
+    );
+    swept.expect("remove the scratch dir");
+}
+
+/// D39 layer 3: **the safety net is live where no switch reaches.**
+///
+/// `Dump` (r4133 `Executive/ExecHelper.pas:1357`) is one of the 12
+/// `FireOffEditor` call sites neither `ShowReports`, `ShowExport` nor
+/// `AllowForms` guards, so whatever `DefaultEditor` holds is what it runs. With
+/// an editor no machine can start the site raises `DSS error #702`
+/// (`Common/Utilities.pas:310`) — which is how this test knows the site fires
+/// at all — and with the bridge's own `rundll32.exe` it must neither raise nor
+/// leave a process behind.
+///
+/// That `rundll32.exe` is what a fresh worker holds is asserted here and proven
+/// against a poisoned machine key by
+/// [`init_overrides_the_os_editor_and_never_writes_it_back`], which is also the
+/// test that pins the registry write-back; this one never touches the registry,
+/// so the two cannot race.
+///
+/// Non-vacuity (driven in-tree 2026-09-11, each edit reverted and the diff
+/// re-checked): with `Engine::new` installing [`EDITOR_SENTINEL_A`] instead of
+/// `rundll32.exe` the test reds on the first assertion (`a fresh worker holds
+/// Editor="DssRsEditorSentinelA.exe"`); with the sentinel half pointed at a
+/// *guarded* writer (`Show Voltages LN Nodes`) instead of `Dump` it reds on the
+/// liveness assertion with `{"ok":true,…}`, i.e. this test really is aimed at a
+/// site no switch covers.
+#[test]
+fn the_editor_safety_net_covers_the_sites_no_switch_guards() {
+    let scratch = scratch_dir("f0prime-safetynet");
+    let notepads_before = image_pids("notepad.exe");
+    let rundll_before = image_pids(BRIDGE_EDITOR);
+
+    let mut w = WorkerProc::spawn_in(Some(&scratch));
+    w.exec(&format!("Set DataPath={}", scratch.display()));
+    // `Get Editor` (option 15, `ExecOptions.pas:1206`) is served only by
+    // `DoGetCmd`, which needs a circuit; `Dump` needs one too.
+    w.exec("new circuit.f0primenet basekv=12.47 phases=3 bus1=b1");
+    // Solved, so that pointing the sentinel half at a *guarded* writer instead
+    // (the negative drive below) fails on the missing #702 and not on
+    // `The circuit must be solved` (`Executive/ShowOptions.pas:198`).
+    w.exec("solve");
+    let installed = w.exec("Get Editor")["reply"].clone();
+
+    // 1. The site is live: an editor that cannot be started makes it raise.
+    w.exec(&format!("Set Editor={EDITOR_SENTINEL_A}"));
+    let with_sentinel = w.request(json!({"cmd": "exec", "text": "Dump"}));
+
+    // 2. The safety net makes the same site harmless.
+    w.exec(&format!("Set Editor={BRIDGE_EDITOR}"));
+    let with_bridge = w.request(json!({"cmd": "exec", "text": "Dump"}));
+    let lingering = new_pids_still_alive(
+        BRIDGE_EDITOR,
+        &rundll_before,
+        std::time::Duration::from_secs(10),
+    );
+    let new_notepads: Vec<u32> = image_pids("notepad.exe")
+        .difference(&notepads_before)
+        .copied()
+        .collect();
+
+    w.quit();
+    let swept = std::fs::remove_dir_all(&scratch);
+
+    assert_eq!(
+        installed,
+        json!(BRIDGE_EDITOR),
+        "a fresh worker holds Editor={installed}, not the bridge's \
+         {BRIDGE_EDITOR:?} — the D39 safety net is not installed"
+    );
+    let sentinel_err = with_sentinel
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        with_sentinel.get("ok").and_then(Value::as_bool) == Some(false)
+            && sentinel_err.contains("#702"),
+        "`Dump` did not fire the sentinel editor, so this test cannot tell a \
+         working safety net from a dead call site: {with_sentinel}"
+    );
+    assert_eq!(
+        with_bridge.get("ok").and_then(Value::as_bool),
+        Some(true),
+        "`Dump` with the bridge's editor {BRIDGE_EDITOR:?} raised — the safety \
+         net must be a program that starts and exits, never one that errors \
+         into the gate: {with_bridge}"
+    );
+    assert_eq!(
+        lingering,
+        std::collections::BTreeSet::new(),
+        "the safety-net editor left {lingering:?} running after 10 s: \
+         `rundll32.exe` is chosen because it exits immediately on a non-DLL \
+         argument — a lingering process is what D25 measured for `where.exe`, \
+         `cmd.exe` and `PING.EXE`"
+    );
+    assert_eq!(
+        new_notepads,
+        Vec::<u32>::new(),
+        "the run started notepad(s) {new_notepads:?} — the machine editor \
+         reached a report despite the D39 init sequence"
     );
     swept.expect("remove the scratch dir");
 }
