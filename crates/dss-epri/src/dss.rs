@@ -280,7 +280,16 @@ impl Engine {
     ///    other duty outweighs the editor: with forms allowed every
     ///    `DoSimpleMsg` pops a modal dialog (`Common/DSSGlobals.pas:651-660`),
     ///    which would hang this headless worker on the first error — which is
-    ///    also why no test drives `Set AllowForms=Yes`.
+    ///    also why no test drives `Set AllowForms=Yes`. Because `DSSI(8, 0)`
+    ///    runs first, no in-worker observation can separate the two: layer 1 is
+    ///    redundant **by construction**, and the protocol test's
+    ///    `Get AllowForms` = `No` is an *invariant* assertion, not a drive of
+    ///    this command: deleting the command alone leaves it green (measured
+    ///    2026-09-11, audit settlement), and deleting `DSSI(8, 0)` too does not
+    ///    make it answer `Yes` — the bare worker then never answered
+    ///    `Get AllowForms` at all and had to be killed, which is the modal hang
+    ///    this layer exists to prevent. The drive was taken once and not
+    ///    repeated (D38: no probe may fire an OS dialog).
     /// 2. **`Set ShowReports=No`** (option 138, `:182`; setter `:975`, getter
     ///    `:1361`) clears `AutoDisplayShowReport`, which gates **34** sites: the
     ///    31 `Common/ShowResults.pas` writers (`:403`, `:717`, `:1116` …
@@ -299,9 +308,13 @@ impl Engine {
     ///    (`TExecutive.Clear` resets `DefaultEarthModel`, `LogQueries` and
     ///    `MaxAllocationIterations` only — `Executive/Executive.pas:234-276`;
     ///    the option setters above are the only other assignments in the tree),
-    ///    so they hold for the worker's lifetime. Proven, not assumed:
-    ///    `tests/protocol.rs` `report_switches_survive_a_compile_and_gag_every_guarded_editor_site`
-    ///    reads them back `No` after a later `Compile`.
+    ///    so they survive every `clear` and every `Compile`. Proven, not
+    ///    assumed: `tests/protocol.rs`
+    ///    `report_switches_survive_a_compile_and_gag_every_guarded_editor_site`
+    ///    reads them back `No` after a later `Compile`. What they do **not**
+    ///    survive is a deck of the corpus setting `ShowExport` itself, so
+    ///    [`Engine::clear`] re-asserts both per case (audit settlement
+    ///    2026-09-11 — the deck list and the mechanism are there).
     /// 3. **`Set Editor=rundll32.exe`** (option 15, `:570` with no circuit,
     ///    `:722` with one) is the safety net for the **12** sites no switch
     ///    guards: `Executive/ExecHelper.pas:1249` (`Dump alloc` — the sibling of
@@ -313,8 +326,13 @@ impl Engine {
     ///    the `Rephase`/`Reconductor` script writer),
     ///    `General/CNLineConstants.pas:219` and
     ///    `General/CNTSLineConstants.pas:355` (the `CNData-1.txt` debug dump).
-    ///    Two are live in the vendored corpus (one `dump …` deck, two `FileEdit`
-    ///    decks; measured 2026-09-11). The remaining 5 of the 55 are GUI-only
+    ///    Two of the twelve are live in the vendored corpus: `Dump` (`:1357`)
+    ///    in **2** decks (`Test/REACTORTest.DSS:19`/`:35`,
+    ///    `Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss:31`) and
+    ///    `FileEdit` (`:1674`) in **3** (`ckt5/Run_ckt5.dss:74`,
+    ///    `123Bus/Run_YearlySim.dss:48`, `4Bus-YYD/YYD-Master.DSS:82`/`:84`;
+    ///    `Test/Dynamic_Kundur.dss:68` is commented out) — measured over the
+    ///    live manifest 2026-09-11. The remaining 5 of the 55 are GUI-only
     ///    (`Forms/Panel.pas:868`, `:883`, `Forms/ScriptEdit.pas:441`,
     ///    `Forms/Scriptform.pas:475`, `Forms/ScriptformNormal.pas:389`) and
     ///    unreachable in the DLL build. The unguarded sites are reported
@@ -426,7 +444,10 @@ impl Engine {
         // for the worker's lifetime. `MakeNewCircuit`
         // (`Common/DSSGlobals.pas:793-836`) only builds objects — the throwaway
         // reaches no file — and every command here polls the error queue, so a
-        // worker that starts at all started clean.
+        // worker that starts at all started clean. It leaves no log either:
+        // `new circuit` itself runs `ClearEventLog; ClearErrorLog`
+        // (`Executive/ExecHelper.pas:248-250`), and so does every later case's
+        // own `new circuit`, so both are empty after this `clear` by mechanism.
         eng.command_strict("new circuit.dssrs_bridge_init", "init")?;
         eng.command_strict("Set ShowReports=No", "init")?;
         eng.command_strict("Set ShowExport=No", "init")?;
@@ -557,7 +578,8 @@ impl Engine {
 
     // ---- compile / solve --------------------------------------------------
 
-    /// `clear` + the per-case `DefaultBaseFreq` reset (D13).
+    /// `clear` + the per-case `DefaultBaseFreq` reset (D13) and report-switch
+    /// re-assertion (D39; audit settlement 2026-09-11).
     ///
     /// r4133's `clear` (`Executive/ExecHelper.pas:987-995` → `TExecutive.Clear`,
     /// `Executive/Executive.pas:234-275`) resets `DefaultEarthModel`,
@@ -580,8 +602,36 @@ impl Engine {
     /// (`crates/dss-core/src/exec/construct.rs:173`), so the bridge restores that
     /// same starting point after every `clear`. A deck that wants 50 Hz still
     /// gets it: the reset precedes the `Compile`.
+    ///
+    /// # The report switches, per case (D39)
+    ///
+    /// `AutoDisplayShowReport` / `AutoShowExport` are unit globals no `clear`
+    /// and no circuit touches — which is why [`Engine::new`] can set them once —
+    /// but a **deck** can: five live corpus decks issue `Set ShowExport=yes`
+    /// (`EPRITestCircuits/ckt5/Run_ckt5.dss:66`, `ckt7/RunDSS_ckt7.dss:61`,
+    /// `IEEETestCases/8500-Node/Run_8500Node.dss:27`,
+    /// `Run_8500Node_Unbal.dss:28`, `Microgrid/…/GFM_IEEE8500/Run_8500Node_Unbal.dss:28`)
+    /// and `Estimate` force-sets it (`Executive/ExecHelper.pas:3779`). Without
+    /// this re-assertion that flag leaks into every later case of a pooled
+    /// worker and only the layer-3 safety net still gags
+    /// `Executive/ExportOptions.pas:517` — the same cross-case leak shape as
+    /// D13's `DefaultBaseFreq`, and the reason layer 2's lifetime claim is
+    /// stated per case rather than per process. Options 138/71 are not served
+    /// without a circuit (`Executive/ExecOptions.pas:645-649` → `#301`), so the
+    /// throwaway `circuit.dssrs_bridge_init` carries them here exactly as in
+    /// [`Engine::new`]; it reaches no file (`Common/DSSGlobals.pas:793-836`) and
+    /// `new circuit` runs `ClearEventLog; ClearErrorLog`
+    /// (`Executive/ExecHelper.pas:248-250`), so the case still starts on empty
+    /// logs. Pinned by `tests/protocol.rs`
+    /// `clear_re_asserts_the_report_switches`.
     pub fn clear(&self) -> Result<(), EngineError> {
         self.command_strict("clear", "clear")?;
+        self.command_strict("new circuit.dssrs_bridge_init", "clear")?;
+        self.command_strict("Set ShowReports=No", "clear")?;
+        self.command_strict("Set ShowExport=No", "clear")?;
+        self.command_strict("clear", "clear")?;
+        // Last: the throwaway circuit above does not move `DefaultBaseFreq`, but
+        // keeping the D13 reset at the tail makes the two resets one order.
         self.command_strict("Set DefaultBaseFrequency=60", "clear")?;
         Ok(())
     }

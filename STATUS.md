@@ -169,7 +169,8 @@ r4133 `Visualize` `.DSV`/`.dbl` pair, a *product* divergence) — with **D25** e
 `DebugTrace` **port gap**, **D33** the loud leak report + one producer per case dir, **D35** (trace-header loops 0-based; P14's ceiling stays 106); its
 settlement also fixed the parent-guard resurrect behind the `Test/AutoTrans` residue below. **+ F0′** (2026-09-11, `lane-m`, **D39**/**D41**): the
 bridge gags report auto-display with r4133's own `AllowForms`/`ShowReports`/`ShowExport`, `Set Editor=` covering only the **12** unguarded
-`FireOffEditor` sites (`to_opendss/73`); no report is suppressed — 56 = 56 created entries over 14 decks, **0** new entries. And **G1.4d** (2026-09-06,
+`FireOffEditor` sites (`to_opendss/73`); no report is suppressed — 56 = 56 created entries over 14 decks, **0** new entries; its audit
+settlement adds the per-case re-assertion of both switches in `Engine::clear` (five live decks set `ShowExport` themselves). And **G1.4d** (2026-09-06,
 `lane-b`, `62c616eb` + `1acc1f53` + `dff755b5` + `247e2339`/`04d8bb98`), the bus **at-bus lists** — **the bus chain closes here**: the port answers
 **S4**, neither oracle's criterion (D26's disabled-drop premise refuted — 15 of 223 pairs ARE listed); each channel's own walk is **asserted** over the
 port's raw terminal facts (**D15**/**D16**/**D21**) and the residue COUNTED into four fail-on-stale populations — (279, 279) / (18, 147) / (8, 11) / (0,
@@ -179,10 +180,10 @@ no flag and no lock cell; **D34**'s unported executive commands sit at `ORPHANED
 = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **57** / 33 causes; G1.10b/c, the **G1.11′**
 close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP-G3–G5 remain.
 
-**Next.** **Session 2026-09-11 (D41): three lanes re-based onto `update` `6987133a`, running in parallel** — `lane-m` **F0′** (**D39**, landed on the
-lane), `lane-s` **G1.10b** (**D40** = S-B: per-column class + print-ulp cell rule, 0 rows), `lane-e` **G1.10c** (**D42** = S-CLASS: the DI tree on five
-cases, 4 rows); landings first-finished-first-landed (**D27**), one at a time. Then the **G1.11′** docs close-out in the main tree once G1.10b and
-G1.10c have landed (**D37(1)**), then WP-G3 (**D37(9)**, G3.1 alone first). Queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** (**D41**, 2026-09-11) **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`) are in flight; landings
+first-finished-first-landed (**D27**), one at a time. Then the **G1.11′** docs close-out in the main tree once
+both have landed (**D37(1)**), then WP-G3 (**D37(9)**, G3.1 alone first). Queued: `WASM_USERMODELS`, RESONANCE,
+MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape

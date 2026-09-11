@@ -672,7 +672,7 @@ thirteen fields. The engine side is again additive inside
 held the per-conductor `V·conj(I)`; the r4133 side needed no new mode
 (`WP_G1_MODES` stays 97 — modes 13/14/20 were proven `Served` by G1.0) and two
 additive helpers, `Engine::element_total_powers`
-(`crates/dss-epri/src/dss.rs:1085`) and `Engine::element_cplx_seq` (`:1089`).
+(`crates/dss-epri/src/dss.rs:1135`) and `Engine::element_cplx_seq` (`:1198`).
 Five things that are not obvious from the field names:
 
 * **The complex compare is strictly stronger than the magnitude one, at the
@@ -951,7 +951,7 @@ regardless (`DLines.pas:794-795`). Whenever there is a YPrim at all, both arms
 copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and compares
 `CktElement.Yprim` live on both channels (`tools/oracle/oracle_server.py:1357`,
 `crates/dss-epri/src/capture.rs:930` over `Engine::element_yprim`
-(`crates/dss-epri/src/dss.rs:829`), Rust side `compare_yprim` at
+(`crates/dss-epri/src/dss.rs:879`), Rust side `compare_yprim` at
 `corpus_gate/runner.rs:980` → `harness::compare_yprim`
 (`crates/dss-core/tests/harness/mod.rs:1581`)), so a
 second `Lines`-shaped capture would add no information. **The honest residual is
@@ -1799,7 +1799,7 @@ after `Text.Result`/`GlobalResult` has been read (the command overwrites it) and
 before every capture of that checkpoint — on all three engines
 (the `RelCalc` drive, `crates/dss-core/tests/corpus_gate/runner.rs:831`;
 `tools/oracle/oracle_server.py:1307`, `Engine::relcalc`,
-`crates/dss-epri/src/dss.rs:633`). *Once*, because `RelCalc` is **not idempotent**: a
+`crates/dss-epri/src/dss.rs:708`). *Once*, because `RelCalc` is **not idempotent**: a
 second run re-accumulates `Bus.TotalMiles` (`13.825757575757578 →
 22.348484848484844`, measured on both oracles and pinned in the port by
 `relcalc_is_not_idempotent_and_the_gate_runs_it_once`). The payload therefore lives
@@ -3272,7 +3272,7 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
   that default is exactly why the capture folds `'0'` (r4133) and `''` (capi) to
   "no meter" before comparing — see the D4 fold above.
 * **A family this crate has not measured is refused, not guessed.** `probe_mode`
-  (`crates/dss-epri/src/dss.rs:1533`) refuses an `S` probe on a family with no
+  (`crates/dss-epri/src/dss.rs:1583`) refuses an `S` probe on a family with no
   `S_SENTINELS` row, and a `V` probe on a family in `V_WITHOUT_SENTINEL`
   (`crates/dss-epri/src/modes.rs:180` — `CapacitorsV` writes **no** sentinel at
   all), rather than reporting a silent `Served`.
@@ -3282,7 +3282,7 @@ WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
 (`crates/dss-epri/src/modes.rs:1725`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
-(`crates/dss-epri/src/dss.rs:1725`) takes the row **by reference** — a mode number
+(`crates/dss-epri/src/dss.rs:1775`) takes the row **by reference** — a mode number
 cannot drift between the table and its reader — and rejects a reply whose shape is
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
@@ -3358,7 +3358,7 @@ Three rules that table carries, each of which a capture must respect:
   `CktElementV` 7/8/9 (`SeqCurrents`/`SeqVoltages`/`SeqPowers`) and 13/14/20
   (`CplxSeqVoltages`/`CplxSeqCurrents`/`TotalPowers`), the last three reached
   through `Engine::element_cplx_seq` and `Engine::element_total_powers`
-  (`crates/dss-epri/src/dss.rs:1089`, `:1085`).
+  (`crates/dss-epri/src/dss.rs:1198`, `:1135`).
 * **`ModeEffect` is the authority on what a row moves, and it carries the
   capture-order partition.** `Impure` rows move state: `Meters.Totals` re-runs
   `TotalizeMeters`; `PDElements.ParentPDElement` re-points `ActiveCktElement`;
@@ -3445,7 +3445,7 @@ a comment nobody reads
 `TOPOLOGY_NUM_LOOPS` … `TOPOLOGY_ALL_ISOLATED_LOADS`, effects `TOPO_TREE` /
 `TOPO_PD_LIST` / `TOPO_PC_LIST`) with one typed accessor each, from
 `topology_num_loops` to `topology_all_isolated_loads`
-(`crates/dss-epri/src/dss.rs:2403-2432`), so G1.7 added **no FFI**. The family's
+(`crates/dss-epri/src/dss.rs:2455-2484`), so G1.7 added **no FFI**. The family's
 remaining modes — `TopologyI(3..12)`, all of `TopologyS`, and `TopologyV`'s cursor
 arms — are never bound and never called: they reassign
 `ActiveCircuit.ActiveCktElement` and would poison the per-element capture of the
@@ -3460,7 +3460,7 @@ topology capture must re-seek with `.First`.
 classified `SolutionV(1)`/`(3)`/`(4)`/`(5)` as `Served`
 (`modes::SOLUTION_INC_MATRIX`, `_ROWS`, `_COLS`, `SOLUTION_LAPLACIAN`) with one
 typed accessor each (`solution_inc_matrix` … `solution_laplacian`,
-`crates/dss-epri/src/dss.rs:2503-2522`), so G1.8 added **no FFI and no mode**;
+`crates/dss-epri/src/dss.rs:2554-2573`), so G1.8 added **no FFI and no mode**;
 its `dss.rs` diff is the block comment recording the read order and what is not
 bound. `SolutionV(2)` `Solution.BusLevels` stays on the do-not-call register and
 is never bound (the `BusLevels` row, `crates/dss-epri/src/modes.rs:309-312`); since the
@@ -3496,7 +3496,7 @@ those buses: `modes::bus_vll_would_hang` (`crates/dss-epri/src/modes.rs:378`) is
 an FFI-free transcription of the loop over the bus's own node numbers, the two
 modes are registered in `STATE_DEPENDENT_REFUSALS` (`modes.rs:411`, asserted
 **disjoint** from `DO_NOT_CALL`, which keeps meaning "unsafe in every state"),
-and `Engine::bus_vll_pair` (`crates/dss-epri/src/dss.rs:2145`) is their single
+and `Engine::bus_vll_pair` (`crates/dss-epri/src/dss.rs:2195`) is their single
 dispatcher — it re-reads `Bus.Nodes` itself (that arm's own scan is bounded), so
 no caller can pass it a stale node list and one verdict decides both arms. A
 refusal is published as `vll_declined = true` with empty arrays, and the harness
@@ -3680,7 +3680,16 @@ process per report, ~900 orphaned Notepad windows across the lanes before this l
    `Executive/ExportOptions.pas:517`. Neither option is served by `DoSetCmd_NoCircuit`
    (`:645-649` answers `#301`), so a throwaway circuit `dssrs_bridge_init` carries them
    and `clear` drops it again; `clear` (`Executive/Executive.pas:234-276`) resets neither
-   flag, so both hold for the worker's lifetime (asserted after a real deck's `Compile`).
+   flag, so both survive every `clear` and every `Compile` (asserted after a real deck's
+   `Compile`). A **deck** can still turn `ShowExport` back on — five live corpus decks do
+   (`EPRITestCircuits/ckt5/Run_ckt5.dss:66`, `ckt7/RunDSS_ckt7.dss:61`,
+   `IEEETestCases/8500-Node/Run_8500Node.dss:27`, `Run_8500Node_Unbal.dss:28`,
+   `Microgrid/…/GFM_IEEE8500/Run_8500Node_Unbal.dss:28`), as does `Estimate`
+   (`ExecHelper.pas:3779`) — and the flag would then leak into every later case of a pooled
+   worker, so `Engine::clear` re-asserts both per case behind the same throwaway circuit (the
+   D13 `DefaultBaseFrequency` shape; pinned by `::clear_re_asserts_the_report_switches`, which
+   measured `Yes` on both flags after a bare `clear` before the fix — audit settlement
+   2026-09-11).
 3. **`Set Editor=rundll32.exe`** is the **safety net for the 12 sites upstream left
    unguarded** — `Dump` and `Dump alloc` (`ExecHelper.pas:1357`, `:1249`), `FileEdit`
    (`:1674`), `AlignFile` (`:3209`), `VDIFF` (`:3373`), `CvrtLoadshapes` (`:4071`),
@@ -3703,12 +3712,16 @@ untouched. Measured 2026-09-11 over 14 report-writing corpus decks (`Test/REACTO
 `Dump` deck, …): **56** created entries with the switches on, **56** with `ShowReports`
 restored to its default `Yes` in-session, **0** differing decks, set-for-set equal per deck.
 The same probe proves the layers are live rather than vacuous: with `Set Editor=<a sentinel
-no machine can start>`, `Show Voltages LN Nodes` raises `#702` (`Utilities.pas:310`) with
-the switches off and nothing with them on, while `Dump` raises `#702` in **both** — the
-unguarded class the safety net exists for. Pinned by
+no machine can start>`, `Show Voltages LN Nodes` raises `#702` (`Utilities.pas:310`) when
+`ShowReports` is back at `Yes` and stays silent with the bridge's `No`, while `Dump` raises
+`#702` either way — the unguarded class the safety net exists for. Pinned by
 `crates/dss-epri/tests/protocol.rs::report_switches_survive_a_compile_and_gag_every_guarded_editor_site`,
-`::the_editor_safety_net_covers_the_sites_no_switch_guards` and
-`::init_overrides_the_os_editor_and_never_writes_it_back`.
+`::the_editor_safety_net_covers_the_sites_no_switch_guards`,
+`::clear_re_asserts_the_report_switches`, `::command_lines_reads_this_process` and
+`::init_overrides_the_os_editor_and_never_writes_it_back`. The two process assertions of the
+safety-net test are attributed by command line to the test's own scratch directory —
+`rundll32.exe` is a busy Windows image, and a machine-wide PID diff would red on a process
+the bridge never started (audit settlement 2026-09-11).
 
 Two riders. (a) `SetLastResultFile` sits *inside* `FireOffEditor`
 (`Common/Utilities.pas:305`), so a gagged `Show` no longer updates `LastResultFile` /
