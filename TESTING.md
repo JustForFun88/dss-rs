@@ -831,7 +831,7 @@ knowing:
   included — so a capi one-element `DefaultResult` sentinel reds instead of
   de-interleaving into a silent `[0.0]`. The engine keeps `PhaseLosses` in
   **W/var** (`CktElement::phase_losses`,
-  `crates/dss-core/src/elements/traits.rs:966`); the oracles' ×0.001 (r4133
+  `crates/dss-core/src/elements/traits.rs:973`); the oracles' ×0.001 (r4133
   `DDLL/DCktElement.pas:651`, capi `CAPI/CAPI_Alt.pas:466`) is a
   capture-boundary encoding applied at exactly one site, this comparator.
 * **`PhaseLosses` is the first channel to JOIN `LANE_SKIP_ELEM_POWERS`**
@@ -850,7 +850,7 @@ knowing:
 * **The control-derived scalars read a DERIVED list, with no `Enabled`
   filter.** Pascal keeps a per-element `ControlElementList`; the port keeps a
   circuit-wide attach order (`Circuit::reattach_control`,
-  `crates/dss-core/src/circuit/circuit.rs:704`) and buckets it per element on
+  `crates/dss-core/src/circuit/circuit.rs:728`) and buckets it per element on
   demand (`circuit::controls::derive_control_lists`,
   `crates/dss-core/src/circuit/controls.rs:119`), which `Show Controlled` and
   the reliability sweep's live `GetOCPDeviceType` scan (`live_ocp_device_type`,
@@ -2006,7 +2006,7 @@ oracles disagree with each other on the spelling: r4133 writes `EXP_VOLTAGES.CSV
 (`src/Executive/ExportOptions.pas:314,343,345`), and r4133 additionally lowercases the whole
 deck-supplied stem (`auto1bus_hl_current.txt` against capi's `Auto1bus_HL_current.txt`). The port
 follows capi's spelling — `export_with` / `write_export` name the lower-case stems at
-`crates/dss-core/src/exec/report.rs:314`, `:370`, `:399` and `:1411` — and the comparator
+`crates/dss-core/src/exec/report.rs:336`, `:392`, `:421` and `:1439` — and the comparator
 folds ASCII case on all three sides, so both channels gate the same set — the R-18 decision and its
 four reasons are recorded in `docs/upgrade/DIVERGENCES.md` and pinned literally by
 `run_files_pins::the_two_oracle_spellings_of_auto1bus_fold_to_one_member` (the nine raw names per
