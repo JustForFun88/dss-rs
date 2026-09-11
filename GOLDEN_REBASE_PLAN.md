@@ -1663,7 +1663,8 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > `DebugTrace` was unported while both oracles create `STOR_<name>.CSV` at edit time (r4133
 > `PCElements/Storage.pas:1073-1085`), so it was ported in its own commit ahead of the surface —
 > name compared here, contents handed to **b**, where the two ORACLES disagree with each other in
-> 16 columns (FPC `%-.g` = 2 significant digits, the Delphi-built r4133 ~15). (5) **The bridge
+> 16 columns (FPC `%-.g` = 2 significant digits, the Delphi-built r4133 ~15; part b measured
+> **36** declined columns per record against 16 compared, 2026-09-12). (5) **The bridge
 > stopped writing two files of its own**: `Set Editor=rundll32.exe` at init (D25 — r4133 fires
 > `FireOffEditor` on every `Show`/`Dump` with no `NoFormsAllowed` guard, ~900 orphaned Notepads
 > across the lanes), and the event-log capture reads `Solution.EventLog` in memory instead of
@@ -1688,6 +1689,68 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > full drives).
 > **Tier as executed:** §0's `opus-high+` row held; the five coordinator STOPs it took were
 > scope questions, not tier questions.
+
+> **Part b as executed (2026-09-12, lane `lane-s`) — the CONTENTS of the selected run files.**
+> Outcome: settlement **S-B** (coordinator decision **D40**), i.e. a per-report **column map** plus
+> the cell rule `case floor + print ulp`, wired on G1.10a's flag and population — **no new flag, no
+> force-rule change, no lock flag moved, 0 golden bytes, 0 ledger entries** (57 / 33 causes
+> unchanged, 1 573 hits, 0 stale) and `population.lock.json` byte-identical. What is compared: nine
+> report kinds over **7 cases / 32 (case, channel) file comparisons / 3 035 190 cells** per drive
+> (16 files and ≈1.52 M cells per gating channel), each through the **same** `ExportPolicy` its
+> golden uses — the seven producers were lifted byte-faithfully into `harness::export_policies` and
+> both callers now share them, so "same policy" is a compile-time fact. What is not: monitor DATA
+> (A6, unchanged), the policy-less kinds (NCIM `deltaF`/`deltaZ`/`Jacobian`, `cim100`) and the
+> deck-named exports (`export … file=<name>`; the file name does not identify the report kind) —
+> each **recorded by name with its reason**, never compared ad hoc, and a census asserts what was
+> compared so nothing can silently go quiet (`RUN_FILE_CONTENTS_COMPARED` /
+> `RUN_FILE_CONTENTS_DECLINES` / `TRACE_READBACK_RECORDS`, all fail-on-stale in both directions and
+> per channel non-zero).
+> **The five measured cell classes C1–C5 all fell inside the rule** — the residual angle, the angle
+> and magnitude print ulps, the near-zero cancellation and the `+j`/three-digit-exponent spelling —
+> so the STOP's 108 cells cost **zero** rows: each is pinned with both numbers and a negative drive
+> (`an_angle_of_a_residual_magnitude_is_gated_on_both_sides`,
+> `the_angle_of_a_16_microamp_current_is_free_within_the_case_floor`,
+> `a_six_significant_digit_cell_may_move_by_one_ulp`,
+> `a_cancellation_residual_cell_is_bounded_by_the_case_floor`,
+> `the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically`), and the derivation is in
+> `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents". `every_compared_kind_is_mutation_gated_on_its_own_report`
+> drives every kind on its own live report (scale, swap, drop, re-order RED; last-place respelling
+> PASS).
+> **Three things the text above did not foresee, each measured, each costing 0 ledger rows.**
+> (1) **The two ORACLES disagree with each other inside the Storage `DebugTrace`**: 36 `%-.g`
+> columns per record (not the 16 D33(6) estimated, which counted only the visibly divergent ones)
+> print at 2 significant digits from FPC and ~15 from Delphi, so that column set is **declined on
+> both channels** with a census and a both-numbers pin while the 16 integer/text/fixed-decimal
+> columns, the header and the structure are compared — hand-down to **G4.1**: once the `fmt_g`
+> kernel dies, re-measure and shrink the decline to capi-only. (2) **One compared kind's row count
+> is a property of the reader** (**D43(1)**): `WriteTraceRecord` is unconditional outside the
+> `Iterminal` cache test (r4133 `PCElements/Storage.pas:2874`, capi `:2356`), so the transports' six
+> post-solve reads append six records and the port's single `snapshot_elements` recompute (G2.3)
+> two — oracle 102 rows vs port 98 over 96 identical solve records. Option A: assert
+> `port_rows <= oracle_rows`, compare every cell of the common prefix, and account the gap
+> positively as `TRACE_READBACK_RECORDS` — not a skip, not a data-derived boundary.
+> (3) **The capi contents copy cannot sit where the spec put it** (**D43(2)**): dss_capi 0.14.5
+> holds the Storage trace stream open with a share mode that denies *read*, so the copy runs after
+> the D32(2)(a) teardown `clear` (r4133's immediately after `created()`), a per-transport slot
+> declared by `RunFileRule::contents_first` and asserted from both transports' source text by
+> `capture_order::check_run_file_contents_read_with_the_set`.
+> **Two port gaps landed in their own commits ahead of the surface** (CLAUDE.md "port gaps
+> immediately"): the AC-5 hand-down `InShowResults` suppression r4133 raises around
+> **Show/Export/Save** (`ExecHelper.pas:935` is `DoSaveCmd`, not Dump — **D43(3)** corrects D40(7);
+> the consumer guard is `PCElements/Storage.pas:2408`), whose `DoSaveCmd` latch is an upstream
+> defect the port does **not** reproduce (`to_opendss/72`, pinned by
+> `save_scopes_the_flag_instead_of_latching_it`); and the `node_ref` guard nine PC `get_currents`
+> overrides were missing (**D43(4)**), where r4133 raises error 641 and capi writes the previous
+> element's currents out of its scratch buffer (`to_opendss/74`). Both are corpus-unreachable, so
+> neither costs a row. Coordinator decisions applied: **D7** (lane `lane-s`), **D40** (S-B, the
+> sidecar transport, the `%-.g` decline + the G4.1 hand-down, the `+j` tokenization, census rows for
+> the policy-less and deck-named kinds), **D43** (the reader-footprint accounting, the capi slot,
+> the `Save` divergence and the corrected citations, micro-part F2b, three commits).
+> **Riders:** **e** (the forced `export profile phases=all`) rides the existing `post` mechanism and
+> is compared on both 8500-Node decks; **d** (`save circuit`) stays as part a recorded it.
+> **Tier as executed:** §0's `opus-high+` row held; F0/F2/F3 ran at `xhigh` for the engine flag, the
+> floor derivation and the triage, and the two STOPs it took (the row count, the transport slot)
+> were scope questions, not tier questions.
 
 ### G1.11a — r4133 channel: CktElement families
 

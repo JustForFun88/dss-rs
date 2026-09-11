@@ -172,17 +172,17 @@ settlement also fixed the parent-guard resurrect behind the `Test/AutoTrans` res
 disabled-drop premise refuted — 15 of 223 pairs ARE listed); each channel's own walk is **asserted** over the port's raw terminal facts
 (**D15**/**D16**/**D21**) and the residue COUNTED into four fail-on-stale populations — (279, 279) / (18, 147) / (8, 11) / (0, 0) — the completeness
 direction added by its settlement (`assert_port_at_bus_is_s4`); the two r4133 mode rows go `Pure` → **Impure**, **0** new entries, no flag and no lock cell;
-**D34**'s unported executive commands sit at `ORPHANED_GAPS.md` §1.21. The lanes' micro decks met here: corpus **526** cases / 522 live;
+**D34**'s unported executive commands sit at `ORPHANED_GAPS.md` §1.21. And **G1.10b** (2026-09-12, `lane-s`, `4bbc6405` + `9b07466a` + `<surface-sha>` + docs), the run files' **CONTENTS** — nine report kinds through the SAME `ExportPolicy`
+their goldens use (lifted into `harness::export_policies`), on **D40**'s *case floor + print ulp* rule, a derivation with **no new constant**: 7 cases / 32 file comparisons /
+**3 035 190** cells per drive, sidecar-transported, three fail-on-stale censuses per channel; classes C1–C5 all inside the rule (**0** new, 0 golden bytes, lock identical), the
+Storage trace's **36** `%-.g` columns declined on BOTH channels (the oracles disagree → **G4.1**) and its row count the reader's own footprint (**D43(1)**, 102 vs 98); two port
+gaps landed ahead of it — the `InShowResults` bracket round Show/Export/Save (`DoSaveCmd`'s latch NOT reproduced, `to_opendss/72`) and nine PC `node_ref` guards (`to_opendss/74`). The lanes' micro decks met here: corpus **526** cases / 522 live;
 `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44), `FORCED_DERIVED_POPULATION` = (445, 314,
-87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **57** / 33 causes; G1.10b/c, G1.11a–c and WP-G3–G5 remain.
+87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **57** / 33 causes; G1.10c, G1.11a–c and WP-G3–G5 remain.
 
-**Next.** **USER WIND-DOWN (2026-09-06) — nothing else is launched this session.** G1.4d was the last landing: all four lanes
-(`lane-b`/`lane-e`/`lane-m`/`lane-s`) are **idle and fully merged into `update`** (the AT-1 zone-boundary decision `lane-m` handed on is owned by
-`ORPHANED_GAPS.md` §1.20). Next session, in order: **F0′** (**D39** — the bridge suppresses report auto-display via r4133's own
-`AllowForms=No`/`ShowReports=No`/`ShowExport=No`, `Set Editor=` the safety net only, plus the upstream report; `lane-s tmp/g110a/f0prime_brief.md`);
-**G1.10b**, **STOPPED at spec** (`lane-s tmp/g110b/STOP.md` — `Export Currents` reprint classes C1–C5, 108 cells / 6 cases; recommended S-B = per-column map
-+ case floor + print ulp, 0 ledger rows; ruling pending); **G1.10c** (`lane-e tmp/g110c/brief.md`); **G1.11a–c** + the **G1.11′** close-out (**D37**,
-`lane-e tmp/g111/brief.md`); then WP-G3 (`lane-e tmp/g30/`). Queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** **G1.10b** is complete on `lane-s` (2026-09-12, the three commits above) and awaits its audit pair and the landing into `update`; **G1.10c** runs on `lane-e`
+(**D42** S-CLASS, **D44**) and **F0′** on `lane-m` (**D39** — the bridge suppresses report auto-display with r4133's own `AllowForms=No`/`ShowReports=No`/`ShowExport=No`,
+`Set Editor=` the safety net only); landings stay first-finished-first-landed (**D27**), one at a time. Then **G1.11′** in the main tree once G1.10b AND G1.10c have landed (**D37(1)**, `lane-e tmp/g111/brief.md`), then WP-G3 with G3.1 alone first (**D37(9)**, `lane-e tmp/g30/`). Queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape

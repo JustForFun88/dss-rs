@@ -91,7 +91,12 @@ fn port_run_files(rel: &str, n_steps: usize) -> (Vec<String>, Vec<String>) {
     // Drop the engine BEFORE the probe reads, exactly as the runner does: a file
     // the engine still held open would fail its removal.
     drop(dss);
-    let created = probe.finish_and_clean(&format!("run_files_pins:{rel}"));
+    // G1.10b: the probe now reports the created SET and the CONTENTS of the
+    // members the gate selects; these pins are about the set, so they take
+    // that half (the contents have their own pins).
+    let created = probe
+        .finish_and_clean(&format!("run_files_pins:{rel}"))
+        .created;
     let fired = plots.lock().unwrap_or_else(|e| e.into_inner()).clone();
     (created, fired)
 }

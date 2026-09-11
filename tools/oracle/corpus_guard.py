@@ -129,6 +129,151 @@ def split_engine_scratch(names) -> tuple[list[str], list[str]]:
     return kept, scratch
 
 
+# ---------------------------------------------------------------------------
+# GOLDEN_REBASE G1.10b - which created files carry their CONTENTS to the gate.
+# ---------------------------------------------------------------------------
+
+
+def check_contents_pattern(pattern: str) -> None:
+    """Refuse a selection pattern that is not exactly one `*` between two
+    literal ASCII parts.
+
+    The shape is pinned rather than grown into a glob dialect because the same
+    pattern list is matched on the Rust side
+    (`crates/dss-epri/src/guard.rs::check_contents_pattern`): two glob engines
+    that disagreed on one deck would silently compare different files on the two
+    gating channels."""
+    if pattern.count("*") != 1:
+        raise ValueError(
+            f"run-file contents pattern {pattern!r} must carry exactly one `*` "
+            "(it stands for one run of characters other than `/`); the shape is "
+            "fixed because crates/dss-epri/src/guard.rs matches the same patterns"
+        )
+    if not pattern.isascii() or pattern != ascii_lower(pattern):
+        raise ValueError(
+            f"run-file contents pattern {pattern!r} must be lower-case ASCII: it "
+            "is matched against a `normalize_created_name` member, which is "
+            "already ASCII-case-folded"
+        )
+
+
+def contents_pattern_matches(pattern: str, name: str) -> bool:
+    """True when `pattern` - one `*` standing for any run of characters other
+    than `/` - matches the normalized created-set member `name`.
+
+    Twin: `crates/dss-epri/src/guard.rs::contents_pattern_matches`."""
+    head, _, tail = pattern.partition("*")
+    if len(name) < len(head) + len(tail):
+        return False
+    if not (name.startswith(head) and name.endswith(tail)):
+        return False
+    return "/" not in name[len(head) : len(name) - len(tail)]
+
+
+def selects_contents(patterns, name: str) -> bool:
+    """True when the gate asked for this member's contents. A created DIRECTORY
+    (trailing `/`) never matches: only file bytes travel.
+
+    The pattern list is NOT defined here - it is declared once on the gate side
+    (`crates/dss-epri/src/guard.rs::RUN_FILE_CONTENTS_PATTERNS`) and arrives in
+    the run request, so no transport re-derives which files it must hand back.
+
+    Twin: `crates/dss-epri/src/guard.rs::selects_contents`."""
+    if name.endswith("/"):
+        return False
+    return any(contents_pattern_matches(p, name) for p in patterns)
+
+
+def _resolve_selected(case_dir: str, created, patterns) -> list:
+    """Resolve the selected members of `created` to the real paths they were
+    written under, listing `case_dir` ONCE.
+
+    Not a second classification: `created` is the one `CorpusGuard.created()`
+    already made, and this only maps each selected member back to the spelling
+    its producer used on disk (`normalize_created_name` folds the case, so a
+    normalized name is not a path). Every failure raises - a selected report
+    that is not a direct child of the case directory, or that the directory no
+    longer lists as a file, must never turn into a quietly missing file.
+
+    Twin: `crates/dss-epri/src/guard.rs::resolve_selected`."""
+    for p in patterns:
+        check_contents_pattern(p)
+    wanted = [n for n in created if selects_contents(patterns, n)]
+    if not wanted:
+        return []
+    on_disk = {}
+    for entry in os.listdir(case_dir):
+        p = os.path.join(case_dir, entry)
+        if os.path.isfile(p):
+            on_disk[normalize_created_name(entry, False)] = p
+    out = []
+    for name in wanted:
+        if "/" in name:
+            raise RuntimeError(
+                f"run-file contents: the selected member {name!r} lives under a "
+                "run-created subdirectory. Every selected report is written to "
+                "`GetOutputDirectory + CircuitName_ + FileName` (r4133 "
+                "Version8/Source/Executive/ExportOptions.pas:401), i.e. into the "
+                "case directory itself; a nested one means the selection patterns "
+                "now reach a tree they were not written for."
+            )
+        if name not in on_disk:
+            raise RuntimeError(
+                f"run-file contents: {name!r} is in this run's created-file set "
+                f"but the case directory {case_dir} no longer lists it as a file. "
+                "A selected report must still be on disk when its contents are "
+                "taken - the read is the last thing the run does, inside the "
+                "guard scope, before the sweep."
+            )
+        out.append((name, on_disk[name]))
+    return out
+
+
+def copy_selected_contents(case_dir: str, created, patterns, sidecar):
+    """Copy the selected members' bytes into the gate-owned sidecar directory
+    and return the names copied, sorted - the capi transport's half of the
+    G1.10b contents surface (coordinator decision D40(6)).
+
+    Bytes travel on disk rather than inline in the line-JSON reply because the
+    selection reaches ~19 MB per channel per full drive (`NEV_EXP_Y.csv` alone
+    is 4.6 MB), which would cross the worker pipes twice on every `both` case.
+
+    The sidecar is WIPED and recreated here, so a file left by an earlier case
+    or by the other channel can never be read as this run's output; the gate
+    then asserts the directory holds exactly the returned names and deletes it.
+
+    `patterns` empty -> the gate did not ask: no directory is touched and `None`
+    comes back, which keeps an off-flag reply identical to a pre-G1.10b one and
+    lets the gate's presence rail tell "not requested" from "requested, and this
+    deck wrote none of the selected reports".
+
+    Twin: `crates/dss-epri/src/guard.rs::copy_selected_contents`."""
+    if not patterns:
+        return None
+    if not sidecar:
+        raise RuntimeError(
+            "run-file contents: the request carries selection patterns but no "
+            "`run_file_contents_dir`. The bytes travel through a gate-owned "
+            "sidecar directory; without one the transport would have to inline "
+            "megabytes into the reply, which coordinator decision D40(6) rules out."
+        )
+    if created is None:
+        raise RuntimeError(
+            "run-file contents: the request asks for file contents but this run's "
+            "created-file set could not be classified (incomplete pre-run "
+            "snapshot). The contents are a subset of that set, so they cannot be "
+            "reported either."
+        )
+    selected = _resolve_selected(case_dir, created, patterns)
+    shutil.rmtree(sidecar, ignore_errors=True)
+    os.makedirs(sidecar, exist_ok=True)
+    names = []
+    for name, path in selected:
+        shutil.copyfile(path, os.path.join(sidecar, name))
+        names.append(name)
+    return sorted(names)
+
+
 class CorpusGuard:
     """Restore the case's directory after a run: delete any file the run
     created, and rewrite any small pre-existing file it overwrote. Large files
@@ -392,6 +537,20 @@ SELF_TEST_LEAK_CREATED = ["exp_y.csv", "stor_s1.csv"]
 SELF_TEST_LEAK_FAILED = ["stor_s1.csv"]
 SELF_TEST_LEAK_AFTER_SWEEP = ["STOR_s1.CSV", "case.dss"]
 
+# The G1.10b CONTENTS fixture, shared with the Rust twin
+# (`guard.rs::the_sidecar_copy_and_the_in_place_read_select_the_same_files`):
+# one selected report written in r4133's upper-case spelling, one unselected
+# text report next to it, and the selection patterns as they arrive in the run
+# request. The copy carries BYTES (CRLF included) - the decode happens once, on
+# the gate side (`guard.rs::decode_run_file`).
+SELF_TEST_CONTENTS_PATTERNS = ("*_exp_y.csv", "stor_*.csv")
+SELF_TEST_CONTENTS_WRITES = {
+    "NEV_EXP_Y.CSV": b"Row,Col\r\n1,2\r\n",
+    "NEV_VLN_Node.txt": b"not selected\n",
+}
+SELF_TEST_CONTENTS_CREATED = ["nev_exp_y.csv", "nev_vln_node.txt"]
+SELF_TEST_CONTENTS_COPIED = ["nev_exp_y.csv"]
+
 
 def _write(path: str, text: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -444,6 +603,44 @@ def _self_test() -> int:
         leak_after = sorted(os.listdir(tmp2))
         held.close()
 
+    # G1.10b: the CONTENTS sidecar copy - same selection, the same wipe-first
+    # rule and the same loud failures as the Rust twin.
+    with tempfile.TemporaryDirectory() as tmp3:
+        _write(os.path.join(tmp3, "case.dss"), "pre-existing\n")
+        for name, data in SELF_TEST_CONTENTS_WRITES.items():
+            with open(os.path.join(tmp3, name), "wb") as fh:
+                fh.write(data)
+        side = os.path.join(tmp3, "sidecar")
+        os.makedirs(side)
+        with open(os.path.join(side, "stale_exp_y.csv"), "wb") as fh:
+            fh.write(b"from the previous case\n")
+        contents_copied = copy_selected_contents(
+            tmp3, SELF_TEST_CONTENTS_CREATED, SELF_TEST_CONTENTS_PATTERNS, side
+        )
+        contents_sidecar = sorted(os.listdir(side))
+        with open(os.path.join(side, "nev_exp_y.csv"), "rb") as fh:
+            contents_bytes = fh.read()
+        contents_off = copy_selected_contents(tmp3, SELF_TEST_CONTENTS_CREATED, (), side)
+        try:
+            copy_selected_contents(
+                tmp3, SELF_TEST_CONTENTS_CREATED, SELF_TEST_CONTENTS_PATTERNS, ""
+            )
+            contents_no_dir = "NO RAISE"
+        except RuntimeError:
+            contents_no_dir = "raises"
+        try:
+            copy_selected_contents(
+                tmp3, ["gone_exp_y.csv"], SELF_TEST_CONTENTS_PATTERNS, side
+            )
+            contents_gone = "NO RAISE"
+        except RuntimeError:
+            contents_gone = "raises"
+        try:
+            check_contents_pattern("exp_*_*.csv")
+            contents_bad_pattern = "NO RAISE"
+        except ValueError:
+            contents_bad_pattern = "raises"
+
     print(
         json.dumps(
             {
@@ -457,6 +654,8 @@ def _self_test() -> int:
                 "leak_created": leak_created,
                 "leak_sweep_failed": leak_failed,
                 "leak_after_sweep": leak_after,
+                "contents_copied": contents_copied,
+                "contents_sidecar": contents_sidecar,
             },
             indent=1,
         )
@@ -469,6 +668,13 @@ def _self_test() -> int:
     assert leak_created == SELF_TEST_LEAK_CREATED, leak_created
     assert leak_failed == SELF_TEST_LEAK_FAILED, leak_failed
     assert leak_after == SELF_TEST_LEAK_AFTER_SWEEP, leak_after
+    assert contents_copied == SELF_TEST_CONTENTS_COPIED, contents_copied
+    assert contents_sidecar == SELF_TEST_CONTENTS_COPIED, contents_sidecar
+    assert contents_bytes == SELF_TEST_CONTENTS_WRITES["NEV_EXP_Y.CSV"], contents_bytes
+    assert contents_off is None, contents_off
+    assert contents_no_dir == "raises", contents_no_dir
+    assert contents_gone == "raises", contents_gone
+    assert contents_bad_pattern == "raises", contents_bad_pattern
     assert restored == "pre-existing\n", restored
     assert after_scope == "raises", after_scope
     assert normalize_created_name("./A\\B//C.CSV", False) == "a/b/c.csv"
