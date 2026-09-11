@@ -672,7 +672,7 @@ thirteen fields. The engine side is again additive inside
 held the per-conductor `V·conj(I)`; the r4133 side needed no new mode
 (`WP_G1_MODES` stays 97 — modes 13/14/20 were proven `Served` by G1.0) and two
 additive helpers, `Engine::element_total_powers`
-(`crates/dss-epri/src/dss.rs:981`) and `Engine::element_cplx_seq` (`:985`).
+(`crates/dss-epri/src/dss.rs:1135`) and `Engine::element_cplx_seq` (`:1198`).
 Five things that are not obvious from the field names:
 
 * **The complex compare is strictly stronger than the magnitude one, at the
@@ -951,7 +951,7 @@ regardless (`DLines.pas:794-795`). Whenever there is a YPrim at all, both arms
 copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and compares
 `CktElement.Yprim` live on both channels (`tools/oracle/oracle_server.py:1357`,
 `crates/dss-epri/src/capture.rs:930` over `Engine::element_yprim`
-(`crates/dss-epri/src/dss.rs:725`), Rust side `compare_yprim` at
+(`crates/dss-epri/src/dss.rs:879`), Rust side `compare_yprim` at
 `corpus_gate/runner.rs:980` → `harness::compare_yprim`
 (`crates/dss-core/tests/harness/mod.rs:1581`)), so a
 second `Lines`-shaped capture would add no information. **The honest residual is
@@ -1799,7 +1799,7 @@ after `Text.Result`/`GlobalResult` has been read (the command overwrites it) and
 before every capture of that checkpoint — on all three engines
 (the `RelCalc` drive, `crates/dss-core/tests/corpus_gate/runner.rs:831`;
 `tools/oracle/oracle_server.py:1307`, `Engine::relcalc`,
-`crates/dss-epri/src/dss.rs:529`). *Once*, because `RelCalc` is **not idempotent**: a
+`crates/dss-epri/src/dss.rs:708`). *Once*, because `RelCalc` is **not idempotent**: a
 second run re-accumulates `Bus.TotalMiles` (`13.825757575757578 →
 22.348484848484844`, measured on both oracles and pinned in the port by
 `relcalc_is_not_idempotent_and_the_gate_runs_it_once`). The payload therefore lives
@@ -2141,8 +2141,9 @@ byte-identical corpus-wide over a full 526-case drive (0 mismatches, 83 `evlog=1
 equivalence is now a bridge test, `protocol::the_in_memory_event_log_equals_the_exported_file`,
 beside the behavioural `protocol::the_event_log_capture_creates_no_file`. Upstream never compared
 this surface either (`origin/fastdss` `tests/compare_outputs.py:289-292` skips `EventLog` as "too
-textual"). (2) The bridge suppresses the OS editor at init — §"The bridge suppresses the OS editor"
-below, `protocol::init_overrides_the_os_editor_and_never_writes_it_back`. Meanwhile the port
+textual"). (2) The bridge suppresses report auto-display at init — §"The bridge suppresses report
+auto-display" below (three layers; `protocol::init_overrides_the_os_editor_and_never_writes_it_back`
+and the two D39 tests beside it). Meanwhile the port
 *gained* a writer: Storage `DebugTrace` was unported, so the port created nothing where both
 oracles create `STOR_<name>.CSV` at edit time (r4133 `Version8/Source/PCElements/Storage.pas:1073-1085`)
 — a port gap on the authority channel, fixed in its own commit ahead of the surface (CLAUDE.md's
@@ -3271,7 +3272,7 @@ The `S` literals are transcribed verbatim, upstream wording and typo included �
   that default is exactly why the capture folds `'0'` (r4133) and `''` (capi) to
   "no meter" before comparing — see the D4 fold above.
 * **A family this crate has not measured is refused, not guessed.** `probe_mode`
-  (`crates/dss-epri/src/dss.rs:1429`) refuses an `S` probe on a family with no
+  (`crates/dss-epri/src/dss.rs:1583`) refuses an `S` probe on a family with no
   `S_SENTINELS` row, and a `V` probe on a family in `V_WITHOUT_SENTINEL`
   (`crates/dss-epri/src/modes.rs:180` — `CapacitorsV` writes **no** sentinel at
   all), rather than reporting a silent `Served`.
@@ -3281,7 +3282,7 @@ WP-G1 needs live once, as `ModeSpec` rows in `WP_G1_MODES`
 (`crates/dss-epri/src/modes.rs:1725`), each carrying its (family, kind, mode)
 triple, the `D*.pas` line of the `case` arm it transcribes, the `myType` tag a
 `V` arm assigns, and any state the arm moves. `Engine::read_mode`
-(`crates/dss-epri/src/dss.rs:1621`) takes the row **by reference** — a mode number
+(`crates/dss-epri/src/dss.rs:1775`) takes the row **by reference** — a mode number
 cannot drift between the table and its reader — and rejects a reply whose shape is
 not the row's, so a future DLL revision fails loudly instead of decoding garbage.
 `r4133_mode_capability_is_complete_for_wp_g1`
@@ -3357,7 +3358,7 @@ Three rules that table carries, each of which a capture must respect:
   `CktElementV` 7/8/9 (`SeqCurrents`/`SeqVoltages`/`SeqPowers`) and 13/14/20
   (`CplxSeqVoltages`/`CplxSeqCurrents`/`TotalPowers`), the last three reached
   through `Engine::element_cplx_seq` and `Engine::element_total_powers`
-  (`crates/dss-epri/src/dss.rs:985`, `:981`).
+  (`crates/dss-epri/src/dss.rs:1198`, `:1135`).
 * **`ModeEffect` is the authority on what a row moves, and it carries the
   capture-order partition.** `Impure` rows move state: `Meters.Totals` re-runs
   `TotalizeMeters`; `PDElements.ParentPDElement` re-points `ActiveCktElement`;
@@ -3444,7 +3445,7 @@ a comment nobody reads
 `TOPOLOGY_NUM_LOOPS` … `TOPOLOGY_ALL_ISOLATED_LOADS`, effects `TOPO_TREE` /
 `TOPO_PD_LIST` / `TOPO_PC_LIST`) with one typed accessor each, from
 `topology_num_loops` to `topology_all_isolated_loads`
-(`crates/dss-epri/src/dss.rs:2299-2328`), so G1.7 added **no FFI**. The family's
+(`crates/dss-epri/src/dss.rs:2455-2484`), so G1.7 added **no FFI**. The family's
 remaining modes — `TopologyI(3..12)`, all of `TopologyS`, and `TopologyV`'s cursor
 arms — are never bound and never called: they reassign
 `ActiveCircuit.ActiveCktElement` and would poison the per-element capture of the
@@ -3459,7 +3460,7 @@ topology capture must re-seek with `.First`.
 classified `SolutionV(1)`/`(3)`/`(4)`/`(5)` as `Served`
 (`modes::SOLUTION_INC_MATRIX`, `_ROWS`, `_COLS`, `SOLUTION_LAPLACIAN`) with one
 typed accessor each (`solution_inc_matrix` … `solution_laplacian`,
-`crates/dss-epri/src/dss.rs:2399-2418`), so G1.8 added **no FFI and no mode**;
+`crates/dss-epri/src/dss.rs:2554-2573`), so G1.8 added **no FFI and no mode**;
 its `dss.rs` diff is the block comment recording the read order and what is not
 bound. `SolutionV(2)` `Solution.BusLevels` stays on the do-not-call register and
 is never bound (the `BusLevels` row, `crates/dss-epri/src/modes.rs:309-312`); since the
@@ -3495,7 +3496,7 @@ those buses: `modes::bus_vll_would_hang` (`crates/dss-epri/src/modes.rs:378`) is
 an FFI-free transcription of the loop over the bus's own node numbers, the two
 modes are registered in `STATE_DEPENDENT_REFUSALS` (`modes.rs:411`, asserted
 **disjoint** from `DO_NOT_CALL`, which keeps meaning "unsafe in every state"),
-and `Engine::bus_vll_pair` (`crates/dss-epri/src/dss.rs:2041`) is their single
+and `Engine::bus_vll_pair` (`crates/dss-epri/src/dss.rs:2195`) is their single
 dispatcher — it re-reads `Bus.Nodes` itself (that arm's own scan is bounded), so
 no caller can pass it a stale node list and one verdict decides both arms. A
 refusal is published as `vll_declined = true` with empty arrays, and the harness
@@ -3654,38 +3655,87 @@ each other's value; the `Engine::new` reset makes that harmless (each worker pin
 regardless of what it read), which is exactly why the reset, not the restore, is the
 load-bearing fix.
 
-**The bridge suppresses the OS editor** (GOLDEN_REBASE G1.10a F0, coordinator decision
-D25, 2026-09-05). r4133 keeps `AutoDisplayShowReport := TRUE`
-(`Common/DSSGlobals.pas:2052`) and every `Show` writer ends with
-`If AutoDisplayShowReport Then FireOffEditor(FileNm)` (`Common/ShowResults.pas:403`,
-`:717`, `:1116` … `:2904`; `Common/ControlQueue.pas:482`; `Common/Solution.pas:3543`),
-while `Dump` (`Executive/ExecHelper.pas:1357`), the hash-list dumps (`:1223`-`:1249`),
-`VDIFF` (`:3373`) and `Show autoadded` (`Executive/ShowOptions.pas:208`) call it
-unconditionally — `DoShowCmd` (`Executive/ShowOptions.pas:156`) has **no**
-`NoFormsAllowed` guard, so `DSSI(8, 0)` does not reach this path. On Windows
-`FireOffEditor` is a `ShellExecute` of `DefaultEditor` (`Common/Utilities.pas:304`),
-read from the machine key at DLL load with the default `'Notepad.exe'`
-(`Common/DSSGlobals.pas:990`): every gate run therefore leaked one OS process per
-report, and ~900 orphaned Notepad windows accumulated across the lanes before this
-landed. `Engine::new` now issues `Set Editor=rundll32.exe` right after
-`Set RegistryUpdate=No` (so the value can never reach the user's key,
-`Common/DSSGlobals.pas:1017` under the guard at `:1015`), pinned by
-`crates/dss-epri/tests/protocol.rs::init_overrides_the_os_editor_and_never_writes_it_back`.
-`rundll32.exe` is the target because it exits at once on a non-DLL argument: measured
-2026-09-05 over the 14-deck file-set probe with the machine key poisoned to
-`notepad.exe`, 60 created files across 14 decks, **0** notepad/rundll32 processes
-created, **0** window-count change, and the created-file set byte-identical to the
-run before. The capi channel needs no counterpart — dss_capi gates the same
-`FireOffEditor` on `DSS_CAPI_ALLOW_EDITOR`
-(`.inputs/dss_capi/src/Common/Utilities.pas:231`) and
-`tools/oracle/oracle_server.py:1585` already clears it. `Set ShowReports=No` is not an
-alternative: `DoSetCmd_NoCircuit` does not serve option 138, so at init it raises
-`DSS error #301` (`Executive/ExecOptions.pas:645-649`), and it would not cover the
-unconditional call sites anyway. **Never restore a bridge source file with a
-timestamp-preserving copy** (`Copy-Item`, `cp -p`) after a scratch experiment: cargo's
-mtime fingerprint and `engines.rs::epri_worker_bin` both then keep the *experiment's*
-binary — measured while taking the numbers above, where a probe silently ran the
-un-suppressed worker. Touch the file (or `cargo clean -p dss-epri`) and re-verify.
+**The bridge suppresses report auto-display — with the engine's own switches, and the
+editor no-op only as the safety net** (GOLDEN_REBASE G1.10a F0 + F0′, coordinator
+decisions **D25** and **D39**, 2026-09-11). r4133 keeps `AutoDisplayShowReport := TRUE`
+(`Common/DSSGlobals.pas:2052`) and calls `FireOffEditor` from **55** places in
+`Version8/Source`; on Windows that is a `ShellExecute` of `DefaultEditor`
+(`Common/Utilities.pas:298`, `:304`), read from `HKCU\Software\OpenDSS` at DLL load with
+the factory default `'Notepad.exe'` (`Common/DSSGlobals.pas:990`, `:2122`) — one OS
+process per report, ~900 orphaned Notepad windows across the lanes before this landed.
+`Engine::new` (`crates/dss-epri/src/dss.rs`) therefore issues
+`Set RegistryUpdate=No` → `Set AllowForms=No` → `new circuit.dssrs_bridge_init` →
+`Set ShowReports=No` → `Set ShowExport=No` → `clear` → `Set Editor=rundll32.exe` →
+`Set DefaultBaseFrequency=60`, i.e. **three layers**:
+
+1. **`Set AllowForms=No`** (option 149, `Executive/ExecOptions.pas:640`/`:1118`, served
+   with no circuit) sets `NoFormsAllowed`, which gates the three hash-list `Dump`
+   branches (`Executive/ExecHelper.pas:1223`, `:1232`, `:1241`) and — the reason it is
+   issued rather than left to `DSSI(8, 0)` — every modal `DoSimpleMsg` form
+   (`Common/DSSGlobals.pas:615`, `:651`, `:676`), which would hang a headless worker
+   for good. `Set AllowForms=Yes` is never driven, by design.
+2. **`Set ShowReports=No`** (138, `ExecOptions.pas:975`) covers **34** sites — all 31 of
+   `Common/ShowResults.pas` plus `Common/ControlQueue.pas:482`, `Common/Solution.pas:3543`,
+   `Meters/Monitor.pas:1774` — and **`Set ShowExport=No`** (71, `:826`) covers
+   `Executive/ExportOptions.pas:517`. Neither option is served by `DoSetCmd_NoCircuit`
+   (`:645-649` answers `#301`), so a throwaway circuit `dssrs_bridge_init` carries them
+   and `clear` drops it again; `clear` (`Executive/Executive.pas:234-276`) resets neither
+   flag, so both survive every `clear` and every `Compile` (asserted after a real deck's
+   `Compile`). A **deck** can still turn `ShowExport` back on — five live corpus decks do
+   (`EPRITestCircuits/ckt5/Run_ckt5.dss:66`, `ckt7/RunDSS_ckt7.dss:61`,
+   `IEEETestCases/8500-Node/Run_8500Node.dss:27`, `Run_8500Node_Unbal.dss:28`,
+   `Microgrid/…/GFM_IEEE8500/Run_8500Node_Unbal.dss:28`), as does `Estimate`
+   (`ExecHelper.pas:3779`) — and the flag would then leak into every later case of a pooled
+   worker, so `Engine::clear` re-asserts both per case behind the same throwaway circuit (the
+   D13 `DefaultBaseFrequency` shape; pinned by `::clear_re_asserts_the_report_switches`, which
+   measured `Yes` on both flags after a bare `clear` before the fix — audit settlement
+   2026-09-11).
+3. **`Set Editor=rundll32.exe`** is the **safety net for the 12 sites upstream left
+   unguarded** — `Dump` and `Dump alloc` (`ExecHelper.pas:1357`, `:1249`), `FileEdit`
+   (`:1674`), `AlignFile` (`:3209`), `VDIFF` (`:3373`), `CvrtLoadshapes` (`:4071`),
+   `Show AutoAdded` (`ShowOptions.pas:208`, `:209`), `Show QueryLog` (`:385`),
+   `Rephase` (`Common/Utilities.pas:2817`) and the CN/CNTS cable-constants debug dumps
+   (`General/CNLineConstants.pas:219`, `CNTSLineConstants.pas:355`). `rundll32.exe` exits
+   at once on a non-DLL argument; it is issued **after** `Set RegistryUpdate=No` so the
+   value can never reach the user's key (`Common/DSSGlobals.pas:1017` under the guard at
+   `:1015`). The unguarded sites are reported upstream as
+   `investigations/to_opendss/73-dll-fires-editor-despite-noformsallowed.md` (suggested
+   fix: guard inside `FireOffEditor`, the DSS-Extensions `AllowEditor` precedent).
+
+**No report is suppressed — only the viewer launch.** Every writer does `CloseFile(F)`
+and *then* consults its switch (`Common/ShowResults.pas:401-403`, `ControlQueue.pas:482`,
+`Solution.pas:3543`, `Monitor.pas:1774`, `ExportOptions.pas:517`), so the created-file set
+(G1.10a), the file contents (G1.10b/c), the `Show`/`Export` goldens and `GlobalResult` are
+untouched. Measured 2026-09-11 over 14 report-writing corpus decks (`Test/REACTORTest.DSS`,
+`YgD-Test.dss`, `AutoTrans/Auto1bus.dss`, `NEVTestCase/Run_NEV.dss`,
+`StoCtrl_SeasonTarget/Run_example.dss`, `CIM/IEEE13_CDPSM.dss`, the `IEEE-TIA-LV Model`
+`Dump` deck, …): **56** created entries with the switches on, **56** with `ShowReports`
+restored to its default `Yes` in-session, **0** differing decks, set-for-set equal per deck.
+The same probe proves the layers are live rather than vacuous: with `Set Editor=<a sentinel
+no machine can start>`, `Show Voltages LN Nodes` raises `#702` (`Utilities.pas:310`) when
+`ShowReports` is back at `Yes` and stays silent with the bridge's `No`, while `Dump` raises
+`#702` either way — the unguarded class the safety net exists for. Pinned by
+`crates/dss-epri/tests/protocol.rs::report_switches_survive_a_compile_and_gag_every_guarded_editor_site`,
+`::the_editor_safety_net_covers_the_sites_no_switch_guards`,
+`::clear_re_asserts_the_report_switches`, `::command_lines_reads_this_process` and
+`::init_overrides_the_os_editor_and_never_writes_it_back`. The two process assertions of the
+safety-net test are attributed by command line to the test's own scratch directory —
+`rundll32.exe` is a busy Windows image, and a machine-wide PID diff would red on a process
+the bridge never started (audit settlement 2026-09-11).
+
+Two riders. (a) `SetLastResultFile` sits *inside* `FireOffEditor`
+(`Common/Utilities.pas:305`), so a gagged `Show` no longer updates `LastResultFile` /
+`@lastfile` (`Common/DSSGlobals.pas:1058-1063`). That **aligns** the two oracles rather
+than splitting them: dss_capi returns before the same call when the editor is off
+(`.inputs/dss_capi/src/Common/Utilities.pas:231`) and `tools/oracle/oracle_server.py`
+already sets `d.AllowEditor = False`; no corpus deck reads `@lastfile`/`%result%`.
+(b) `Estimate` force-issues `Set showexport=yes` inside its own command
+(`ExecHelper.pas:3779`) and never restores it, and `clear` does not reset `AutoShowExport`
+— the safety net is the only cover there (0 corpus decks run it today). **Never restore a
+bridge source file with a timestamp-preserving copy** (`Copy-Item`, `cp -p`) after a scratch
+experiment: cargo's mtime fingerprint and `engines.rs::epri_worker_bin` both then keep the
+*experiment's* binary — measured while taking the D25 numbers, where a probe silently ran
+the un-suppressed worker. Touch the file (or `cargo clean -p dss-epri`) and re-verify.
 
 **And the bridge writes no file of its own** (GOLDEN_REBASE G1.10a, coordinator decision
 D30(1), 2026-09-06). `crates/dss-epri/src/capture.rs` issues **no** `export` command: the

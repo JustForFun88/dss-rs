@@ -5672,14 +5672,14 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
 /// `DebugTrace` port and its leak report, the D33 per-case-directory claim and
 /// the guarded teardown `clear` — is carried by a test name and nothing else,
 /// so a deleted or renamed pin would leave a documented claim with no prover.
-/// (2) Four of the names live in `crates/dss-epri`, the test-only bridge crate
+/// (2) Several of the names live in `crates/dss-epri`, the test-only bridge crate
 /// that the corpus gate compiles but the product never links; a rename there
 /// is invisible to every product test.
 ///
 /// `RunFileProbe::start` is deliberately absent: `fn start(` is a generic
 /// method name the needle below would over-count. Its half of the lifecycle is
 /// pinned through `finish_and_clean`, which no other module defines.
-const G1_10_PINS: [(&str, usize); 40] = [
+const G1_10_PINS: [(&str, usize); 44] = [
     // the three both-numbers pins (`crates/dss-core/tests/run_files_pins.rs`)
     (
         "visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port",
@@ -5748,6 +5748,17 @@ const G1_10_PINS: [(&str, usize); 40] = [
     // the r4133 bridge: D25 editor suppression and D30(1)'s in-memory event log
     // (`crates/dss-epri/tests/protocol.rs`)
     ("init_overrides_the_os_editor_and_never_writes_it_back", 1),
+    // F0′ (D39): the two switch layers that turned the editor no-op into a
+    // mere safety net (`crates/dss-epri/tests/protocol.rs`).
+    (
+        "report_switches_survive_a_compile_and_gag_every_guarded_editor_site",
+        1,
+    ),
+    ("the_editor_safety_net_covers_the_sites_no_switch_guards", 1),
+    // its audit settlement (2026-09-11): the per-case re-assertion of the two
+    // switches and the command-line attribution the two process diffs ride on.
+    ("clear_re_asserts_the_report_switches", 1),
+    ("command_lines_reads_this_process", 1),
     ("the_in_memory_event_log_equals_the_exported_file", 1),
     ("the_event_log_capture_creates_no_file", 1),
     // the per-RUN capture-order rule over both transports' source text

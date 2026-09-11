@@ -1688,6 +1688,11 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > full drives).
 > **Tier as executed:** §0's `opus-high+` row held; the five coordinator STOPs it took were
 > scope questions, not tier questions.
+> **F0′ (2026-09-11, lane `lane-m`, D39/D41 — a follow-up commit, not a sub-step).** Point (5)'s
+> `Set Editor=rundll32.exe` became the **safety net** for the 12 of 55 unguarded `FireOffEditor` sites
+> (`to_opendss/73`): `Engine::new` now gags report auto-display with r4133's own `AllowForms`/`ShowReports`/
+> `ShowExport` switches and `Engine::clear` re-asserts them per case, while no report is suppressed (56 = 56
+> created entries over 14 report decks) — record in `docs/phase-records/golden-rebase.md`, layers in `TESTING.md`.
 
 ### G1.11a — r4133 channel: CktElement families
 
@@ -1947,7 +1952,7 @@ value". **That premise is false, and the sub-step's first attempt returned
 blocked with the measurement** (owner resolution 2026-08-06, recorded here): the
 pad is a client-layer artifact on **both** gating channels — dss-python pads in
 `dss/IMonitors.py`, and the `r4133` channel's captures come from our own bridge,
-which replicates that decoder by design (`crates/dss-epri/src/dss.rs:625-634`,
+which replicates that decoder by design (`crates/dss-epri/src/dss.rs:1424-1429`,
 `cnt == 272 -> [0.0]`). Channel-scoping was measured to red three gated `r4133`
 cases (`modes:time/generaltime.dss`, `generaltime_yearly.dss`,
 `generaltime_duty.dss`).
