@@ -194,10 +194,40 @@ pub struct Engine {
 
 impl Engine {
     /// Load the r4133 DLL (leaking its `Library` handle — see [`Engine`]) and run
-    /// the init sequence (`UNIFIED_GATE_PLAN.md` §2.2): `DSSI(8,0)` disable forms
-    /// → read Version → `Set RegistryUpdate=No` → `Set Editor=rundll32.exe` →
-    /// `Set DefaultBaseFrequency=60`. All subsequent DLL calls happen
-    /// on this same thread.
+    /// the init sequence (`UNIFIED_GATE_PLAN.md` §2.2, extended by D13/D25/D39):
+    /// `DSSI(8,0)` disable forms → read Version → `Set RegistryUpdate=No` →
+    /// `Set AllowForms=No` → `new circuit.dssrs_bridge_init` →
+    /// `Set ShowReports=No` → `Set ShowExport=No` → `clear` →
+    /// `Set Editor=rundll32.exe` → `Set DefaultBaseFrequency=60`. All subsequent
+    /// DLL calls happen on this same thread.
+    ///
+    /// # No report is suppressed — only the viewer launch (D39)
+    ///
+    /// Every `Show`/`Export`/`Dump` still writes its file, byte for byte, with
+    /// the switches on: each writer closes the file and *then* consults the
+    /// switch — `CloseFile(F); If AutoDisplayShowReport Then
+    /// FireOffEditor(FileNm); ParserVars.Add('@lastshowfile', FileNm)`
+    /// (`Common/ShowResults.pas:400-404`; same shape at
+    /// `Common/ControlQueue.pas:481-482`, `Common/Solution.pas:3542-3543`,
+    /// `Meters/Monitor.pas:1770-1776`) — and `Export` sets `LastResultFile` and
+    /// `@lastexportfile` *before* its guard
+    /// (`Executive/ExportOptions.pas:514-517`). So the compared surface — the
+    /// created-file set (GOLDEN_REBASE G1.10a), the file contents (G1.10b/c),
+    /// the `Show`/`Export` goldens, `GlobalResult` — does not move; only the
+    /// external viewer launch stops, exactly what `AllowEditor = False` does on
+    /// the capi channel (`tools/oracle/oracle_server.py:1974`).
+    ///
+    /// The one piece of state the guard does gate is `SetLastResultFile` after a
+    /// `Show`: r4133 calls it *inside* `FireOffEditor`
+    /// (`Common/Utilities.pas:305`), so with the editor suppressed
+    /// `LastResultFile` / `@lastfile` (`Common/DSSGlobals.pas:1059-1063`) keep
+    /// their previous value. That is already what the capi channel does — its
+    /// `FireOffEditor` returns on `not DSS_CAPI_ALLOW_EDITOR` before the same
+    /// call (`.inputs/dss_capi/src/Common/Utilities.pas:231-232`, inside the
+    /// Windows implementation `:227-259`) — so the change aligns the two oracles
+    /// rather than splitting them, and no vendored deck reads `@lastfile` or
+    /// `%result%` (`Common/Utilities.pas:690`; measured 0 corpus `.dss` files,
+    /// 2026-09-11).
     ///
     /// # `Set RegistryUpdate=No` — the process-global registry channel (D13)
     ///
@@ -225,58 +255,129 @@ impl Engine {
     /// `Set DefaultBaseFrequency=37` and exits leaves `BaseFrequency = 37` in the
     /// key; with this command issued first the key does not move.
     ///
-    /// # `Set Editor=rundll32.exe` — the OS-editor channel (D25)
+    /// # The three layers (D39, user decision 2026-09-06)
     ///
-    /// r4133 keeps `AutoDisplayShowReport := TRUE`
-    /// (`Common/DSSGlobals.pas:2052`) and every `Show` writer ends with
-    /// `If AutoDisplayShowReport Then FireOffEditor(FileNm)`
-    /// (`Common/ShowResults.pas` — 20+ sites, `:403`, `:717`, `:1116` …
-    /// `:2904`; `Common/ControlQueue.pas:482`;
-    /// `Common/Solution.pas:3543`), while `Dump`
-    /// (`Executive/ExecHelper.pas:1357`), the hash-list dumps (`:1223`, `:1232`,
-    /// `:1241`, `:1249`), `VDIFF` (`:3373`), `FileEdit` (`:1674`),
-    /// `Show autoadded` (`Executive/ShowOptions.pas:208-209`) and
-    /// `Show QueryLog` (`:385`) call it unconditionally. `DoShowCmd`
-    /// (`Executive/ShowOptions.pas:156`) has **no** `NoFormsAllowed` guard —
-    /// that flag reaches only `DoAboutBox` (`ExecHelper.pas:1803`),
-    /// `DoFormEditCmd` (`:2760`) and the empty-parameter `Show Variables`
-    /// (`:4464`) — so `DSSI(8,0)` does not cover this path. In the Windows
-    /// build `FireOffEditor` is
-    /// `ShellExecute(0, nil, encloseQuotes(DefaultEditor), encloseQuotes(FileNm),
-    /// nil, SW_SHOW)` (`Common/Utilities.pas:298-318`, `:304`): asynchronous, so
-    /// it does not hang the worker — it *accumulates* one OS process per report.
-    /// `DefaultEditor` comes from `HKCU\Software\OpenDSS` with the default
-    /// `'Notepad.exe'` (`Common/DSSGlobals.pas:990`, hard default `:2122`), read
-    /// at DLL load like `BaseFrequency`, so the bridge cannot pre-empt the read
-    /// and must overwrite the variable instead — which
-    /// `Set Editor=` does, with no circuit active (`DoSetCmd_NoCircuit`,
-    /// `Executive/ExecOptions.pas:570`; the with-circuit twin is `:722`).
+    /// r4133 has no `AllowEditor` — that knob is a DSS-Extensions addition
+    /// (`.inputs/dss_capi/src/Common/DSSGlobals.pas:784`,
+    /// `src/CAPI/CAPI_DSS.pas:41`) — so the bridge drives the engine's own
+    /// switches first and keeps the editor no-op only for the call sites
+    /// upstream left unguarded. Recounted over the vendored r4133 source
+    /// (`.inputs/electricdss-code-r4133-trunk/Version8/Source`, excluding the
+    /// `CMD_Lazz` console tree, the declaration `Common/Utilities.pas:20` with
+    /// its two implementations `:260` FPC / `:298` Windows, and the commented
+    /// `Common/Ymatrix.pas:239`): **55** `FireOffEditor` call sites.
     ///
-    /// Measured on this DLL (2026-09-05, GOLDEN_REBASE G1.10a F0 record): an
-    /// unsuppressed sweep spawns one `notepad.exe` per `Show`/`Dump` report
-    /// (hundreds of orphaned windows accumulated across the lanes); with this
-    /// command the same 14-deck probe spawns **zero** lingering processes and
-    /// creates exactly the same file set.
-    /// `rundll32.exe` is the target because it exits immediately on a
-    /// non-DLL argument, leaving no process and no window — `where.exe`,
-    /// `cmd.exe` and `PING.EXE` each leave one lingering process.
-    /// `Set ShowReports=No` (option 138, `Executive/ExecOptions.pas:182`) is not
-    /// usable here: `DoSetCmd_NoCircuit` does not serve 138, so at init it falls
-    /// into the `ELSE` that raises `DSS error #301` (`:645-649`) — and it would
-    /// not cover the unconditional `FireOffEditor` call sites anyway.
+    /// 1. **`Set AllowForms=No`** (option 149, `Executive/ExecOptions.pas:193`;
+    ///    setter `:639-641` with no circuit, `:1118` with one) sets
+    ///    `NoFormsAllowed`, which gates **3** sites — the `Dump commands` /
+    ///    `Dump buslist` / `Dump devicelist` branches
+    ///    (`Executive/ExecHelper.pas:1221-1243`; editor at `:1223`, `:1232`,
+    ///    `:1241`, the guard wrapping the whole branch, so those three write no
+    ///    file either). It restates through the executive what `DSSI(8, 0)`
+    ///    below already did (`DDLL/DDSS.pas:68-69`), so the state is visible to
+    ///    `Get AllowForms` (`ExecOptions.pas:1490` with a circuit, `:1561`
+    ///    without) and survives a bridge that ever drops the mode call. Its
+    ///    other duty outweighs the editor: with forms allowed every
+    ///    `DoSimpleMsg` pops a modal dialog (`Common/DSSGlobals.pas:651-660`),
+    ///    which would hang this headless worker on the first error — which is
+    ///    also why no test drives `Set AllowForms=Yes`. Because `DSSI(8, 0)`
+    ///    runs first, no in-worker observation can separate the two: layer 1 is
+    ///    redundant **by construction**, and the protocol test's
+    ///    `Get AllowForms` = `No` is an *invariant* assertion, not a drive of
+    ///    this command: deleting the command alone leaves it green (measured
+    ///    2026-09-11, audit settlement), and deleting `DSSI(8, 0)` too does not
+    ///    make it answer `Yes` — the bare worker then never answered
+    ///    `Get AllowForms` at all and had to be killed, which is the modal hang
+    ///    this layer exists to prevent. The drive was taken once and not
+    ///    repeated (D38: no probe may fire an OS dialog).
+    /// 2. **`Set ShowReports=No`** (option 138, `:182`; setter `:975`, getter
+    ///    `:1361`) clears `AutoDisplayShowReport`, which gates **34** sites: the
+    ///    31 `Common/ShowResults.pas` writers (`:403`, `:717`, `:1116` …
+    ///    `:3682`), `Common/ControlQueue.pas:482`, `Common/Solution.pas:3543`
+    ///    and the `Show`-mode monitor export `Meters/Monitor.pas:1774`.
+    ///    **`Set ShowExport=No`** (option 71, `:115`; setter `:826`, getter
+    ///    `:1283`) clears `AutoShowExport`, which gates the single
+    ///    `Executive/ExportOptions.pas:517`. `AutoShowExport` starts `FALSE`
+    ///    already, `AutoDisplayShowReport` starts `TRUE`
+    ///    (`Common/DSSGlobals.pas:2051-2052`, the unit `initialization` at
+    ///    `:1862`, once per DLL load). Neither option is served without a
+    ///    circuit — `DoSetCmd_NoCircuit` (`:545-651`) lists neither, so at init
+    ///    they would raise `DSS error #301` (`:645-649`); hence the throwaway
+    ///    `new circuit.dssrs_bridge_init` that carries them and the `clear` that
+    ///    drops it again. Both flags are unit globals `clear` never touches
+    ///    (`TExecutive.Clear` resets `DefaultEarthModel`, `LogQueries` and
+    ///    `MaxAllocationIterations` only — `Executive/Executive.pas:234-276`;
+    ///    the option setters above are the only other assignments in the tree),
+    ///    so they survive every `clear` and every `Compile`. Proven, not
+    ///    assumed: `tests/protocol.rs`
+    ///    `report_switches_survive_a_compile_and_gag_every_guarded_editor_site`
+    ///    reads them back `No` after a later `Compile`. What they do **not**
+    ///    survive is a deck of the corpus setting `ShowExport` itself, so
+    ///    [`Engine::clear`] re-asserts both per case (audit settlement
+    ///    2026-09-11 — the deck list and the mechanism are there).
+    /// 3. **`Set Editor=rundll32.exe`** (option 15, `:570` with no circuit,
+    ///    `:722` with one) is the safety net for the **12** sites no switch
+    ///    guards: `Executive/ExecHelper.pas:1249` (`Dump alloc` — the sibling of
+    ///    layer 1 whose branch carries no guard), `:1357` (`Dump` →
+    ///    `<CircuitName>_PropertyDump.Txt`), `:1674` (`FileEdit`), `:3209`
+    ///    (`AlignFile`), `:3373` (`VDIFF`), `:4071` (`CvrtLoadshapes`),
+    ///    `Executive/ShowOptions.pas:208`, `:209` (`Show AutoAdded`), `:385`
+    ///    (`Show QueryLog`), `Common/Utilities.pas:2817` (`GoForwardAndRephase`,
+    ///    the `Rephase`/`Reconductor` script writer),
+    ///    `General/CNLineConstants.pas:219` and
+    ///    `General/CNTSLineConstants.pas:355` (the `CNData-1.txt` debug dump).
+    ///    Two of the twelve are live in the vendored corpus: `Dump` (`:1357`)
+    ///    in **2** decks (`Test/REACTORTest.DSS:19`/`:35`,
+    ///    `Scripts/IEEE-TIA-LV Model/Split-Phase_IEEE_TIA.dss:31`) and
+    ///    `FileEdit` (`:1674`) in **3** (`ckt5/Run_ckt5.dss:74`,
+    ///    `123Bus/Run_YearlySim.dss:48`, `4Bus-YYD/YYD-Master.DSS:82`/`:84`;
+    ///    `Test/Dynamic_Kundur.dss:68` is commented out) — measured over the
+    ///    live manifest 2026-09-11. The remaining 5 of the 55 are GUI-only
+    ///    (`Forms/Panel.pas:868`, `:883`, `Forms/ScriptEdit.pas:441`,
+    ///    `Forms/Scriptform.pas:475`, `Forms/ScriptformNormal.pas:389`) and
+    ///    unreachable in the DLL build. The unguarded sites are reported
+    ///    upstream (`investigations/to_opendss/`).
     ///
-    /// Issued *after* `Set RegistryUpdate=No` so the write-back guard is already
-    /// closed for the whole lifetime of this bridge's editor string: r4133
-    /// persists `DefaultEditor` alongside `BaseFrequency`
+    /// `DefaultEditor` is read from `HKCU\Software\OpenDSS` at DLL load with the
+    /// default `'Notepad.exe'` (`Common/DSSGlobals.pas:990`, hard default
+    /// `:2122`) — i.e. before the bridge can issue anything, so layer 3
+    /// overwrites the variable rather than the key. On Windows `FireOffEditor`
+    /// is `ShellExecute(0, nil, encloseQuotes(DefaultEditor),
+    /// encloseQuotes(FileNm), nil, SW_SHOW)` under `If FileExists(FileNm)`
+    /// (`Common/Utilities.pas:298-320`, `:302`, `:304`): asynchronous, so an
+    /// unsuppressed sweep does not hang the worker — it *accumulates* one OS
+    /// process per report (~900 orphaned notepads across the lanes before D25).
+    /// `rundll32.exe` is the target because it exits immediately on a non-DLL
+    /// argument, leaving no process and no window — `where.exe`, `cmd.exe` and
+    /// `PING.EXE` each leave one lingering process (measured 2026-09-05,
+    /// GOLDEN_REBASE G1.10a F0). A missing editor is not silent either:
+    /// `ShellExecute` returning `ERROR_FILE_NOT_FOUND` raises `DSS error #702`
+    /// (`Common/Utilities.pas:310`), which is how the protocol tests prove a
+    /// site fires at all.
+    ///
+    /// Layer 3 is issued *after* `Set RegistryUpdate=No` so the write-back guard
+    /// is already closed for the whole lifetime of this bridge's editor string:
+    /// r4133 persists `DefaultEditor` next to `BaseFrequency`
     /// (`Common/DSSGlobals.pas:1017`, under the `UpdateRegistry` test at
-    /// `:1015`), so with that order no code path can carry `rundll32.exe` into
-    /// the user's `HKCU\Software\OpenDSS`
-    /// (pinned by `the_worker_never_writes_the_editor_registry_value`). The capi channel needs no counterpart: dss_capi has the same
-    /// `FireOffEditor` (`.inputs/dss_capi/src/Common/Utilities.pas:226-259`) but
-    /// gates it on `DSS_CAPI_ALLOW_EDITOR` (`:231`,
-    /// `.inputs/dss_capi/src/Common/DSSGlobals.pas:784`), which
-    /// `tools/oracle/oracle_server.py:1585` already clears
-    /// (`d.AllowEditor = False` → `CAPI_DSS.pas:102`).
+    /// `:1015`, from `TExecutive.Destroy` → the unit `Finalization`), so no path
+    /// can carry `rundll32.exe` into the user's `HKCU\Software\OpenDSS` (pinned
+    /// by `init_overrides_the_os_editor_and_never_writes_it_back`). It follows
+    /// the `clear` only to keep the D39 order readable — option 15 is served
+    /// with or without a circuit.
+    ///
+    /// What no switch can cover, and the safety net therefore must: `Estimate`
+    /// force-sets `Set showexport=yes` before its own `Export Estimation`
+    /// (`Executive/ExecHelper.pas:3779`) and never restores it, and `clear` does
+    /// not reset `AutoShowExport` — so a single `Estimate` leaves every later
+    /// `Export` in that worker process firing the editor. No vendored deck runs
+    /// it today (measured 0 corpus `.dss` files, 2026-09-11).
+    ///
+    /// The capi channel needs no counterpart: dss_capi has the same
+    /// `FireOffEditor` (`.inputs/dss_capi/src/Common/Utilities.pas:227-259`) but
+    /// returns early on `not DSS_CAPI_ALLOW_EDITOR` (`:231-232`,
+    /// `src/Common/DSSGlobals.pas:784`), and `tools/oracle/oracle_server.py`
+    /// already sets `d.AllowForms = False` (`:1968`) and `d.AllowEditor = False`
+    /// (`:1974` → `CAPI/CAPI_DSS.pas:102`).
     ///
     /// # `Set DefaultBaseFrequency=60` — the init reset (D13)
     ///
@@ -330,17 +431,41 @@ impl Engine {
         // fn doc. Strict: a DLL that does not accept the option must fail loudly,
         // never leave the registry channel open.
         eng.command_strict("Set RegistryUpdate=No", "init")?;
-        // D25: stop `Show`/`Dump` from ShellExecute-ing Notepad once per report
-        // (`Common/Utilities.pas:304`, unguarded by `NoFormsAllowed`) — see the
-        // fn doc. Issued AFTER `Set RegistryUpdate=No` so this value never
-        // reaches the user's registry. Strict: a DLL that does not accept the
-        // option must fail loudly, never leave the editor channel open.
+        // D39 layer 1: restate the `DSSI(8, 0)` above through the executive
+        // (`Executive/ExecOptions.pas:639-641`, served with no circuit) — see
+        // the fn doc. Keeps `Get AllowForms` honest and keeps a modal
+        // `DoSimpleMsg` dialog (`Common/DSSGlobals.pas:651-660`) from ever
+        // hanging this headless worker.
+        eng.command_strict("Set AllowForms=No", "init")?;
+        // D39 layer 2: options 138/71 are not served by `DoSetCmd_NoCircuit`
+        // (`Executive/ExecOptions.pas:645-649` raises #301), so a throwaway
+        // circuit carries them and the `clear` drops it again; neither flag is
+        // touched by `clear` (`Executive/Executive.pas:234-276`), so both hold
+        // for the worker's lifetime. `MakeNewCircuit`
+        // (`Common/DSSGlobals.pas:793-836`) only builds objects — the throwaway
+        // reaches no file — and every command here polls the error queue, so a
+        // worker that starts at all started clean. It leaves no log either:
+        // `new circuit` itself runs `ClearEventLog; ClearErrorLog`
+        // (`Executive/ExecHelper.pas:248-250`), and so does every later case's
+        // own `new circuit`, so both are empty after this `clear` by mechanism.
+        eng.command_strict("new circuit.dssrs_bridge_init", "init")?;
+        eng.command_strict("Set ShowReports=No", "init")?;
+        eng.command_strict("Set ShowExport=No", "init")?;
+        eng.command_strict("clear", "init")?;
+        // D25 + D39 layer 3 (the safety net): the 12 `FireOffEditor` sites no
+        // switch guards would ShellExecute the machine's editor once per report
+        // (`Common/Utilities.pas:304`) — see the fn doc. Issued AFTER
+        // `Set RegistryUpdate=No` so this value never reaches the user's
+        // registry. Strict: a DLL that does not accept the option must fail
+        // loudly, never leave the editor channel open.
         eng.command_strict("Set Editor=rundll32.exe", "init")?;
         // D13: the registry read already happened at DLL load
         // (`Common/DSSGlobals.pas:1005`), so start this session from the port's
         // own default (`crates/dss-core/src/exec/construct.rs:173`, 60 Hz)
         // instead of whatever the key held — a bare probe session that never
-        // calls `clear` would otherwise inherit it. Strict for the same reason.
+        // calls `clear` would otherwise inherit it. Last, so it also covers the
+        // layer-2 `clear` above (which does not reset `DefaultBaseFreq` either).
+        // Strict for the same reason.
         eng.command_strict("Set DefaultBaseFrequency=60", "init")?;
         Ok(eng)
     }
@@ -453,7 +578,8 @@ impl Engine {
 
     // ---- compile / solve --------------------------------------------------
 
-    /// `clear` + the per-case `DefaultBaseFreq` reset (D13).
+    /// `clear` + the per-case `DefaultBaseFreq` reset (D13) and report-switch
+    /// re-assertion (D39; audit settlement 2026-09-11).
     ///
     /// r4133's `clear` (`Executive/ExecHelper.pas:987-995` → `TExecutive.Clear`,
     /// `Executive/Executive.pas:234-275`) resets `DefaultEarthModel`,
@@ -476,8 +602,36 @@ impl Engine {
     /// (`crates/dss-core/src/exec/construct.rs:173`), so the bridge restores that
     /// same starting point after every `clear`. A deck that wants 50 Hz still
     /// gets it: the reset precedes the `Compile`.
+    ///
+    /// # The report switches, per case (D39)
+    ///
+    /// `AutoDisplayShowReport` / `AutoShowExport` are unit globals no `clear`
+    /// and no circuit touches — which is why [`Engine::new`] can set them once —
+    /// but a **deck** can: five live corpus decks issue `Set ShowExport=yes`
+    /// (`EPRITestCircuits/ckt5/Run_ckt5.dss:66`, `ckt7/RunDSS_ckt7.dss:61`,
+    /// `IEEETestCases/8500-Node/Run_8500Node.dss:27`,
+    /// `Run_8500Node_Unbal.dss:28`, `Microgrid/…/GFM_IEEE8500/Run_8500Node_Unbal.dss:28`)
+    /// and `Estimate` force-sets it (`Executive/ExecHelper.pas:3779`). Without
+    /// this re-assertion that flag leaks into every later case of a pooled
+    /// worker and only the layer-3 safety net still gags
+    /// `Executive/ExportOptions.pas:517` — the same cross-case leak shape as
+    /// D13's `DefaultBaseFreq`, and the reason layer 2's lifetime claim is
+    /// stated per case rather than per process. Options 138/71 are not served
+    /// without a circuit (`Executive/ExecOptions.pas:645-649` → `#301`), so the
+    /// throwaway `circuit.dssrs_bridge_init` carries them here exactly as in
+    /// [`Engine::new`]; it reaches no file (`Common/DSSGlobals.pas:793-836`) and
+    /// `new circuit` runs `ClearEventLog; ClearErrorLog`
+    /// (`Executive/ExecHelper.pas:248-250`), so the case still starts on empty
+    /// logs. Pinned by `tests/protocol.rs`
+    /// `clear_re_asserts_the_report_switches`.
     pub fn clear(&self) -> Result<(), EngineError> {
         self.command_strict("clear", "clear")?;
+        self.command_strict("new circuit.dssrs_bridge_init", "clear")?;
+        self.command_strict("Set ShowReports=No", "clear")?;
+        self.command_strict("Set ShowExport=No", "clear")?;
+        self.command_strict("clear", "clear")?;
+        // Last: the throwaway circuit above does not move `DefaultBaseFreq`, but
+        // keeping the D13 reset at the tail makes the two resets one order.
         self.command_strict("Set DefaultBaseFrequency=60", "clear")?;
         Ok(())
     }
