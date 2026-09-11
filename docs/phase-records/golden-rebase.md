@@ -3700,17 +3700,16 @@ row against the pre-fix lock.
 
   merge: lane lane-s -> update, see git log
 
-  **+ F0′** (2026-09-11, lane `lane-m`, **D39**/**D41** — a follow-up commit, not a sub-step; sha
-  `6a987289`) — the bridge gags report auto-display with r4133's own switches (`Set AllowForms=No`, then
-  `Set ShowReports=No`/`Set ShowExport=No` behind a throwaway circuit, options 138/71 answering `#301`
-  without one, `Executive/ExecOptions.pas:645-649`), leaving D25's editor no-op only as the safety net for
-  the **12** of **55** `FireOffEditor` sites upstream leaves unguarded (`to_opendss/73`). No report is
-  suppressed — only the viewer launch (`Common/ShowResults.pas:401-403`): 56 = 56 created entries over 14
-  report decks, so **0** ledger rows, 0 golden bytes, no lock cell, `lane_diff` not owed (`dss-epri` only).
-  Layers in `TESTING.md` + `tools/opendss/README.md`; pins
+  **+ F0′** (2026-09-11, lane `lane-m`, **D39**/**D41** — a follow-up commit, not a sub-step; commits
+  `6a987289` + settlement `a5a272e2` + docs `468c608e` + docs) — the bridge gags report auto-display with
+  r4133's own switches (`Set AllowForms=No`, then `Set ShowReports=No`/`Set ShowExport=No` behind a throwaway
+  circuit, options 138/71 answering `#301` without one, `Executive/ExecOptions.pas:645-649`), leaving D25's
+  editor no-op only as the safety net for the **12** of **55** `FireOffEditor` sites upstream leaves
+  unguarded (`to_opendss/73`). No report is suppressed — only the viewer launch
+  (`Common/ShowResults.pas:401-403`): 56 = 56 created entries over 14 report decks, so **0** ledger rows,
+  0 golden bytes, no lock cell. Layers in `TESTING.md` + `tools/opendss/README.md`; pins
   `report_switches_survive_a_compile_and_gag_every_guarded_editor_site`,
-  `the_editor_safety_net_covers_the_sites_no_switch_guards` (`G1_10_PINS`). Gate: five commands green in
-  BOTH lanes, `corpus_gate` 526/526, ledger 57 entries / 0 unhit.
+  `the_editor_safety_net_covers_the_sites_no_switch_guards` (`G1_10_PINS` 40 → 44 with the settlement's two).
 
   **Audit settlement** (`a5a272e2`): 13 findings — **10 fixed / 3 recorded / 0 refuted**. The one with teeth:
   `ShowExport` is a unit global five live corpus decks set themselves, so it leaked into every later case of
@@ -3721,6 +3720,13 @@ row against the pre-fix lock.
   the corpus deck counts, three stale `dss.rs` citations and the D41 record/plan/STATUS shape. Recorded:
   layer 1 cannot be falsified in-worker (`DSSI(8, 0)` precedes it — measured, documented); no probe fires the
   OS editor (**D38**); `LINE_CITED_DOCS` stays out of the plan/record until G5.1 (**D37(10)**).
+  Gate after the settlement, both lanes: `fmt` + both clippies rc 0, **11 017 passed / 0 failed / 5
+  pre-existing ignored** per lane, `corpus_gate` **452** tests with
+  `corpus_gate_all_cases_match_engines` ok over the 526-case manifest, ledger **57** entries (fail-on-stale,
+  so green = 0 unhit), `golden.lock.json` and `tests/golden/**` untouched, and no editor process spawned over
+  either full drive; `lane_diff` **not owed** — `crates/dss-epri` only (**D41**), no product crate's `src`
+  moved. The docs pass also moved `STATUS.md` §6's three retired-Oddie tooling paragraphs into
+  `epri-bridge.md` verbatim: they described tools no longer in the tree and contradicted this layering.
 
 - **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**; commits
   `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface, `dff755b5` the
