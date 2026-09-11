@@ -1986,7 +1986,7 @@ row against the pre-fix lock.
   channels — dss-python pads in `dss/IMonitors.py` (`if cnt == 272: return
   np.zeros((1,))`, 272 = the header-only `ByteStream`), and the `r4133` channel's
   captures come from our own bridge, which replicates that decoder by design
-  (`crates/dss-epri/src/dss.rs:625-634`, "exactly like dss-python"). That bridge
+  (`crates/dss-epri/src/dss.rs:1424-1429`, "exactly like dss-python"). That bridge
   decoder, not any Pascal accessor, is the load-bearing evidence on the r4133
   channel. Channel-scoping was **measured** to red three gated `r4133`
   cases (`modes:time/generaltime.dss`, `generaltime_yearly.dss`,
@@ -3700,28 +3700,27 @@ row against the pre-fix lock.
 
   merge: lane lane-s -> update, see git log
 
-  **+ F0′** (2026-09-11, lane `lane-m`, **D39**/**D41** — a follow-up commit to G1.10a, not a sub-step) —
-  the bridge gags report auto-display with r4133's **own** switches, D25's editor no-op staying only as the
-  safety net: `Engine::new` issues `Set RegistryUpdate=No` → `Set AllowForms=No` →
-  `new circuit.dssrs_bridge_init` → `Set ShowReports=No` → `Set ShowExport=No` → `clear` →
-  `Set Editor=rundll32.exe` → `Set DefaultBaseFrequency=60` (options 149/138/71,
-  `Executive/ExecOptions.pas:640`/`:975`/`:826`; the last two are unserved without a circuit, `:645-649` →
-  `#301`, and `clear` resets neither flag, `Executive/Executive.pas:234-276`). Census re-derived from the
-  vendored source: 34 + 1 + 3 + **12 unguarded** + 5 GUI-only = **55** `FireOffEditor` sites (the brief's
-  “56 / 4 under `AllowForms`” corrected); the 12 are reported as
-  `to_opendss/73-dll-fires-editor-despite-noformsallowed.md`. **No report is suppressed — only the viewer launch** (`Common/ShowResults.pas:401-403`
-  closes the file before consulting the switch): the created-file set over 14 report decks is identical with
-  the switches on (**56** = 56 entries, **0** differing decks), so **0** ledger rows, **0** golden bytes, no
-  lock cell and `lane_diff` not owed (`dss-epri` only, **D41**). Layers, census and riders in `TESTING.md`
-  §“The bridge suppresses report auto-display” + `tools/opendss/README.md`; pins
-  `report_switches_survive_a_compile_and_gag_every_guarded_editor_site` and
-  `the_editor_safety_net_covers_the_sites_no_switch_guards` (registered in `G1_10_PINS`; `#702` from a
-  sentinel editor is the observable). Commit: the single F0′ commit on `lane-m` atop `6987133a` (see `git log`).
-  Gate (the five commands green in BOTH lanes, 11 015 passed / 0 failed / 5 pre-existing ignored each): `corpus_gate` **526/526** cases /
-  452 tests, ledger **57** entries / 1 573 hits / 0 unhit, `SCRATCH_FILE_DECLINES` **(9, 9)** and every
-  neighbouring population unmoved, `oracle_parity_cfg_gate` **25** (the `dss.rs` line citations F0′ shifted,
-  in `TESTING.md` and the plan, re-pointed by diff-map), `population_lock` 3, `golden_lock` 4 with `tests/golden/**` untouched;
-  `git status --short tests/corpus` empty, notepad 0 → 0 / rundll32 1 → 1.
+  **+ F0′** (2026-09-11, lane `lane-m`, **D39**/**D41** — a follow-up commit, not a sub-step; sha
+  `6a987289`) — the bridge gags report auto-display with r4133's own switches (`Set AllowForms=No`, then
+  `Set ShowReports=No`/`Set ShowExport=No` behind a throwaway circuit, options 138/71 answering `#301`
+  without one, `Executive/ExecOptions.pas:645-649`), leaving D25's editor no-op only as the safety net for
+  the **12** of **55** `FireOffEditor` sites upstream leaves unguarded (`to_opendss/73`). No report is
+  suppressed — only the viewer launch (`Common/ShowResults.pas:401-403`): 56 = 56 created entries over 14
+  report decks, so **0** ledger rows, 0 golden bytes, no lock cell, `lane_diff` not owed (`dss-epri` only).
+  Layers in `TESTING.md` + `tools/opendss/README.md`; pins
+  `report_switches_survive_a_compile_and_gag_every_guarded_editor_site`,
+  `the_editor_safety_net_covers_the_sites_no_switch_guards` (`G1_10_PINS`). Gate: five commands green in
+  BOTH lanes, `corpus_gate` 526/526, ledger 57 entries / 0 unhit.
+
+  **Audit settlement** (`<SHA2>`): 13 findings — **10 fixed / 3 recorded / 0 refuted**. The one with teeth:
+  `ShowExport` is a unit global five live corpus decks set themselves, so it leaked into every later case of
+  a pooled worker — `Engine::clear` now re-asserts both switches per case (the D13 shape; pin
+  `clear_re_asserts_the_report_switches`, `Yes`/`Yes` measured before the fix). Also fixed: the created-file
+  set is asserted whole (was `len() >= 8`); the safety-net `Dump` runs the editor `Engine::new` installed so
+  its notepad tripwire can fire, both process diffs attributed by command line (`command_lines_reads_this_process`);
+  the corpus deck counts, three stale `dss.rs` citations and the D41 record/plan/STATUS shape. Recorded:
+  layer 1 cannot be falsified in-worker (`DSSI(8, 0)` precedes it — measured, documented); no probe fires the
+  OS editor (**D38**); `LINE_CITED_DOCS` stays out of the plan/record until G5.1 (**D37(10)**).
 
 - **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**; commits
   `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface, `dff755b5` the

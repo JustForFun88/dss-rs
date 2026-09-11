@@ -134,7 +134,8 @@ longer exists.
   `ShowExport=No` (option 71) covers `Executive/ExportOptions.pas:517`; neither is
   served by `DoSetCmd_NoCircuit` (`ExecOptions.pas:645-649` → `#301`), hence the
   throwaway circuit the following `clear` drops — `clear` resets neither flag
-  (`Executive/Executive.pas:234-276`), so they hold for the worker's lifetime;
+  (`Executive/Executive.pas:234-276`), so they survive every `clear`; a deck can still set
+  `ShowExport` itself (5 live corpus decks do), so `Engine::clear` re-asserts both per case;
   (3) `Set Editor=rundll32.exe` is the **safety net** for the 12 sites no switch
   guards (`Dump`, `Dump alloc`, `FileEdit`, `AlignFile`, `VDIFF`,
   `CvrtLoadshapes`, `Show AutoAdded` ×2, `Show QueryLog`, `Rephase`,
@@ -150,6 +151,7 @@ longer exists.
   0 differing decks). Pinned by `crates/dss-epri/tests/protocol.rs`
   (`report_switches_survive_a_compile_and_gag_every_guarded_editor_site`,
   `the_editor_safety_net_covers_the_sites_no_switch_guards`,
+  `clear_re_asserts_the_report_switches`,
   `init_overrides_the_os_editor_and_never_writes_it_back`). The capi channel needs no
   counterpart — dss_capi gates the same `FireOffEditor` on `DSS_CAPI_ALLOW_EDITOR`
   (`.inputs/dss_capi/src/Common/Utilities.pas:231`) and

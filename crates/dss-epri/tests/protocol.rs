@@ -1326,18 +1326,68 @@ fn image_pids(image: &str) -> std::collections::BTreeSet<u32> {
         .collect()
 }
 
-/// PIDs of `image` that are new since `before` and still alive after up to
-/// `wait`; an editor that exits on its own drains this set, one that lingers
-/// does not. Polled, never slept blindly, so a fast exit does not cost a second.
+/// The command lines of `pids`, as `Win32_Process` reports them; a PID that has
+/// already exited (or whose command line is not readable) is simply absent.
+fn command_lines(
+    pids: &std::collections::BTreeSet<u32>,
+) -> std::collections::BTreeMap<u32, String> {
+    if pids.is_empty() {
+        return std::collections::BTreeMap::new();
+    }
+    let ids = pids
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let script = format!(
+        "$ids=@({ids}); Get-CimInstance Win32_Process | \
+         Where-Object {{ $ids -contains $_.ProcessId }} | \
+         ForEach-Object {{ \"$($_.ProcessId)`t$($_.CommandLine)\" }}"
+    );
+    let out = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output();
+    let Ok(out) = out else {
+        return std::collections::BTreeMap::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let (pid, cmd) = l.split_once('\t')?;
+            Some((pid.trim().parse::<u32>().ok()?, cmd.trim().to_string()))
+        })
+        .collect()
+}
+
+/// PIDs of `image` that are new since `before`, **attributable to this test**
+/// (their command line mentions `needle` — the test's own scratch directory)
+/// and still alive after up to `wait`; an editor that exits on its own drains
+/// this set, one that lingers does not. Polled, never slept blindly, so a fast
+/// exit does not cost a second.
+///
+/// The `needle` is what keeps this assertion honest on a busy machine:
+/// `rundll32.exe` is a common Windows image (shell extensions, control-panel
+/// applets, the other lanes' gates), so a bare machine-wide PID diff would red
+/// on a process this test never started. `FireOffEditor` runs
+/// `ShellExecute(…, encloseQuotes(DefaultEditor), encloseQuotes(FileNm), …)`
+/// (r4133 `Common/Utilities.pas:304`), so the file it opened — always under the
+/// caller's scratch `DataPath` — is in the command line of anything it spawned.
 fn new_pids_still_alive(
     image: &str,
     before: &std::collections::BTreeSet<u32>,
+    needle: &str,
     wait: std::time::Duration,
 ) -> std::collections::BTreeSet<u32> {
     let deadline = std::time::Instant::now() + wait;
     loop {
-        let live: std::collections::BTreeSet<u32> =
+        let fresh: std::collections::BTreeSet<u32> =
             image_pids(image).difference(before).copied().collect();
+        let cmds = command_lines(&fresh);
+        let live: std::collections::BTreeSet<u32> = fresh
+            .iter()
+            .copied()
+            .filter(|p| cmds.get(p).is_some_and(|c| c.contains(needle)))
+            .collect();
         if live.is_empty() || std::time::Instant::now() >= deadline {
             return live;
         }
@@ -1368,6 +1418,25 @@ const SHOW_DECK: &[&str] = &[
     "Export Currents",
 ];
 
+/// Every entry [`SHOW_DECK`] leaves in its scratch directory, sorted as
+/// `dir_entries` returns them: the deck source itself, one file per guarded
+/// `Show` (r4133 `Common/ShowResults.pas`) and per guarded `Export`
+/// (`Executive/ExportOptions.pas`), and the property dump of the unguarded
+/// `Dump` the same test issues as its liveness control. Measured 2026-09-11;
+/// the set is compared whole, so a writer the switches silence reds instead of
+/// slipping under a count.
+const F0PRIME_REPORTS: &[&str] = &[
+    "f0prime_Buses.Txt",
+    "f0prime_Curr_Elem.Txt",
+    "f0prime_EXP_CURRENTS.CSV",
+    "f0prime_EXP_VOLTAGES.CSV",
+    "f0prime_Losses.Txt",
+    "f0prime_Power_elem_kVA.txt",
+    "f0prime_PropertyDump.Txt",
+    "f0prime_VLN_Node.Txt",
+    "f0prime_shows.dss",
+];
+
 /// D39 layers 1+2: **the init switches survive a `Compile`, and no *guarded*
 /// `FireOffEditor` site fires — while every report is still written.**
 ///
@@ -1396,7 +1465,14 @@ const SHOW_DECK: &[&str] = &[
 /// the guarded `Export` fire (#702), flips it off and sees it silent.
 /// `AllowForms` is asserted one-sided by design: `Set AllowForms=Yes` would let
 /// the next `DoSimpleMsg` open a modal dialog (`Common/DSSGlobals.pas:651-660`)
-/// and hang this headless worker for good.
+/// and hang this headless worker for good. That assertion is an *invariant*,
+/// not a drive of the executive command: `Engine::new` calls `DSSI(8, 0)`
+/// (`DDLL/DDSS.pas:68-69`, `NoFormsAllowed := TRUE`) before it, so deleting
+/// `Set AllowForms=No` alone leaves it green (measured 2026-09-11), and with
+/// `DSSI(8, 0)` deleted as well the worker stops answering `Get AllowForms`
+/// altogether — the modal hang layer 1 exists to prevent — rather than
+/// answering `Yes`. So this assertion guards the invariant (a future DLL that
+/// no longer starts with `NoFormsAllowed := TRUE`), not the command.
 ///
 /// Non-vacuity (driven in-tree 2026-09-11, each edit reverted and the diff
 /// re-checked): with `Set ShowReports=No` deleted from `Engine::new` the direct
@@ -1474,8 +1550,10 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
     assert_eq!(
         allow_forms_bare,
         json!("No"),
-        "a fresh worker reports AllowForms={allow_forms_bare} before any deck: \
-         `Set AllowForms=No` is missing from Engine::new"
+        "a fresh worker reports AllowForms={allow_forms_bare} before any deck — \
+         layer 1 is gone: BOTH `DSSI(8, 0)` (`DDLL/DDSS.pas:68-69`) and \
+         `Set AllowForms=No` are missing from `Engine::new`, or this DLL no \
+         longer starts with `NoFormsAllowed := TRUE`"
     );
     assert_eq!(
         compiled.get("ok").and_then(Value::as_bool),
@@ -1537,17 +1615,21 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
         Some(true),
         "`Set ShowExport=No` did not gag the same `Export`: {export_gagged}"
     );
-    // The whole point of D39: the viewer is gone, the reports are not.
-    let written = |suffix: &str| {
-        reports
+    // The whole point of D39: the viewer is gone, the reports are not. Asserted
+    // as the WHOLE set, never a floor (audit settlement 2026-09-11): with a
+    // count-plus-two-suffixes test any one of the other seven writers could
+    // fall silent and still pass.
+    assert_eq!(
+        reports,
+        F0PRIME_REPORTS
             .iter()
-            .any(|n| n.to_ascii_lowercase().ends_with(suffix))
-    };
-    assert!(
-        written("_vln_node.txt") && written("_exp_voltages.csv") && reports.len() >= 8,
-        "the switches suppressed the reports themselves, not just the viewer \
-         launch — the deck's five Shows, two Exports, its own source and the \
-         `Dump` should all be on disk, found {reports:?}"
+            .map(|s| (*s).to_string())
+            .collect::<Vec<String>>(),
+        "the switches moved the created-file set: the deck's five `Show`s, two \
+         `Export`s, its own source and the unguarded `Dump`'s property dump \
+         must all be on disk — every writer does `CloseFile(F)` BEFORE it \
+         consults its switch (`Common/ShowResults.pas:401-403`), so D39 \
+         suppresses the viewer launch and nothing else"
     );
     swept.expect("remove the scratch dir");
 }
@@ -1561,6 +1643,16 @@ fn report_switches_survive_a_compile_and_gag_every_guarded_editor_site() {
 /// (`Common/Utilities.pas:310`) — which is how this test knows the site fires
 /// at all — and with the bridge's own `rundll32.exe` it must neither raise nor
 /// leave a process behind.
+///
+/// The first `Dump` is issued *before* this test touches `Set Editor` at all,
+/// so it runs the editor `Engine::new` installed and nothing else: a worker
+/// missing layer 3 would ShellExecute the machine's factory `'Notepad.exe'`
+/// (`Common/DSSGlobals.pas:2122`) on this test's own dump file, which is what
+/// the notepad diff below catches (audit settlement 2026-09-11 — before it, the
+/// `Dump` ran under an editor the test had just set itself, and the notepad
+/// count could not move). Both process diffs are attributed by command line to
+/// this test's scratch directory: `rundll32.exe` is a busy Windows image and a
+/// machine-wide PID diff would red on someone else's process.
 ///
 /// That `rundll32.exe` is what a fresh worker holds is asserted here and proven
 /// against a poisoned machine key by
@@ -1591,23 +1683,41 @@ fn the_editor_safety_net_covers_the_sites_no_switch_guards() {
     // `The circuit must be solved` (`Executive/ShowOptions.pas:198`).
     w.exec("solve");
     let installed = w.exec("Get Editor")["reply"].clone();
+    let scratch_tag = scratch
+        .file_name()
+        .expect("scratch dir has a name")
+        .to_string_lossy()
+        .to_string();
 
-    // 1. The site is live: an editor that cannot be started makes it raise.
-    w.exec(&format!("Set Editor={EDITOR_SENTINEL_A}"));
-    let with_sentinel = w.request(json!({"cmd": "exec", "text": "Dump"}));
-
-    // 2. The safety net makes the same site harmless.
-    w.exec(&format!("Set Editor={BRIDGE_EDITOR}"));
+    // 1. The safety net as `Engine::new` installed it — no `Set Editor` has been
+    //    issued by this test yet, so this `Dump` runs whatever `DefaultEditor`
+    //    the worker holds. A worker that never installed layer 3 would run the
+    //    machine's editor here (factory default `'Notepad.exe'`,
+    //    `Common/DSSGlobals.pas:2122`), which is what the notepad diff catches;
+    //    the bridge's own `rundll32.exe` must neither raise nor linger.
     let with_bridge = w.request(json!({"cmd": "exec", "text": "Dump"}));
     let lingering = new_pids_still_alive(
         BRIDGE_EDITOR,
         &rundll_before,
+        &scratch_tag,
         std::time::Duration::from_secs(10),
     );
-    let new_notepads: Vec<u32> = image_pids("notepad.exe")
-        .difference(&notepads_before)
-        .copied()
-        .collect();
+    let new_notepads: Vec<u32> = {
+        let fresh: std::collections::BTreeSet<u32> = image_pids("notepad.exe")
+            .difference(&notepads_before)
+            .copied()
+            .collect();
+        let cmds = command_lines(&fresh);
+        fresh
+            .iter()
+            .copied()
+            .filter(|p| cmds.get(p).is_some_and(|c| c.contains(&scratch_tag)))
+            .collect()
+    };
+
+    // 2. The site is live: an editor that cannot be started makes it raise.
+    w.exec(&format!("Set Editor={EDITOR_SENTINEL_A}"));
+    let with_sentinel = w.request(json!({"cmd": "exec", "text": "Dump"}));
 
     w.quit();
     let swept = std::fs::remove_dir_all(&scratch);
@@ -1639,16 +1749,116 @@ fn the_editor_safety_net_covers_the_sites_no_switch_guards() {
     assert_eq!(
         lingering,
         std::collections::BTreeSet::new(),
-        "the safety-net editor left {lingering:?} running after 10 s: \
-         `rundll32.exe` is chosen because it exits immediately on a non-DLL \
-         argument — a lingering process is what D25 measured for `where.exe`, \
-         `cmd.exe` and `PING.EXE`"
+        "the safety-net editor left {lingering:?} running after 10 s with \
+         {scratch_tag:?} on its command line: `rundll32.exe` is chosen because \
+         it exits immediately on a non-DLL argument — a lingering process is \
+         what D25 measured for `where.exe`, `cmd.exe` and `PING.EXE`"
     );
     assert_eq!(
         new_notepads,
         Vec::<u32>::new(),
-        "the run started notepad(s) {new_notepads:?} — the machine editor \
-         reached a report despite the D39 init sequence"
+        "the unguarded `Dump` started notepad(s) {new_notepads:?} on this \
+         test's own file ({scratch_tag:?} is on their command line) — \
+         `Engine::new` did not install `Set Editor={BRIDGE_EDITOR}`, so the \
+         machine's factory editor reached a report (the ~900 orphaned Notepad \
+         windows D25 measured)"
     );
     swept.expect("remove the scratch dir");
+}
+
+/// D39 layer 2, per case: **`Engine::clear` re-asserts the report switches, so
+/// a deck that turns `ShowExport` on cannot leak it into the next case.**
+///
+/// `AutoShowExport` is a unit global `TExecutive.Clear` never resets (r4133
+/// `Executive/Executive.pas:234-276`) — the property [`Engine::new`] relies on
+/// to set it once — and five live corpus decks set it themselves
+/// (`EPRITestCircuits/ckt5/Run_ckt5.dss:66`, `ckt7/RunDSS_ckt7.dss:61`,
+/// `IEEETestCases/8500-Node/Run_8500Node.dss:27`, `Run_8500Node_Unbal.dss:28`,
+/// `Microgrid/GridFormingInverter/GFM_IEEE8500/Run_8500Node_Unbal.dss:28`), as
+/// does `Estimate` (`Executive/ExecHelper.pas:3779`). Measured before the fix
+/// (audit settlement 2026-09-11): `new circuit` → `Set ShowExport=True` →
+/// `clear` → `new circuit` → `Get ShowExport` came back **`Yes`** for the rest
+/// of that pooled worker's life, i.e. the D25 editor no-op, not the switch, was
+/// what kept `Executive/ExportOptions.pas:517` quiet from then on.
+///
+/// The drive is two-sided by construction: the flags are read back `Yes` while
+/// the "deck" holds them, so a re-assertion that silently did nothing would
+/// fail the second read instead of passing vacuously.
+#[test]
+fn clear_re_asserts_the_report_switches() {
+    let scratch = scratch_dir("f0prime-clear");
+    let mut w = WorkerProc::spawn_in(Some(&scratch));
+    w.exec(&format!("Set DataPath={}", scratch.display()));
+
+    // A "deck" doing what `Run_ckt5.dss:66` does (options 138/71 need a circuit).
+    w.exec("new circuit.f0primeleak basekv=12.47 phases=3 bus1=b1");
+    w.exec("Set ShowExport=Yes");
+    w.exec("Set ShowReports=Yes");
+    let leaked = (
+        w.exec("Get ShowExport")["reply"].clone(),
+        w.exec("Get ShowReports")["reply"].clone(),
+    );
+
+    // The per-case boundary the gate crosses (`capture.rs::run_case`).
+    let cleared = w.request(json!({"cmd": "clear"}));
+    w.exec("new circuit.f0primenext basekv=12.47 phases=3 bus1=b1");
+    let after = (
+        w.exec("Get ShowExport")["reply"].clone(),
+        w.exec("Get ShowReports")["reply"].clone(),
+    );
+    let dropped = dir_entries(&scratch);
+
+    w.quit();
+    let swept = std::fs::remove_dir_all(&scratch);
+
+    assert_eq!(
+        leaked,
+        (json!("Yes"), json!("Yes")),
+        "a deck could not turn the switches on at all ({leaked:?}), so reading \
+         them back `No` below would prove nothing"
+    );
+    assert_eq!(
+        cleared.get("ok").and_then(Value::as_bool),
+        Some(true),
+        "the protocol `clear` failed: {cleared}"
+    );
+    assert_eq!(
+        after,
+        (json!("No"), json!("No")),
+        "`Engine::clear` left ShowExport/ShowReports at {after:?}: a deck's own \
+         `Set ShowExport=yes` now leaks into every later case of this pooled \
+         worker (`Executive/Executive.pas:234-276` resets neither flag), and \
+         only the layer-3 editor no-op still gags \
+         `Executive/ExportOptions.pas:517`"
+    );
+    assert_eq!(
+        dropped,
+        Vec::<String>::new(),
+        "the re-assertion's throwaway `circuit.dssrs_bridge_init` left \
+         {dropped:?} on disk — it must reach no file \
+         (`Common/DSSGlobals.pas:793-836`), or the corpus gate's created-file \
+         set would move"
+    );
+    swept.expect("remove the scratch dir");
+}
+
+/// Non-vacuity rail for [`command_lines`]: both process assertions in
+/// [`the_editor_safety_net_covers_the_sites_no_switch_guards`] are filtered by
+/// command line, so a `command_lines` that came back empty whatever it was
+/// asked (no `powershell` on `PATH`, a `Win32_Process` that does not serve
+/// `CommandLine`) would let them pass no matter what the bridge spawned.
+/// Asserted on this very test process, which is always readable and always
+/// carries its own image name.
+#[test]
+fn command_lines_reads_this_process() {
+    let me = std::process::id();
+    let cmds = command_lines(&std::collections::BTreeSet::from([me]));
+    let line = cmds.get(&me).cloned().unwrap_or_default();
+    assert!(
+        line.to_ascii_lowercase().contains("protocol"),
+        "`command_lines` answered {line:?} for this test process ({me}): the \
+         attribution filter in the safety-net test is only as good as this \
+         lookup, and an empty answer would make its two process assertions \
+         vacuous"
+    );
 }
