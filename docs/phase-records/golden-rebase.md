@@ -3712,7 +3712,7 @@ row against the pre-fix lock.
   `the_editor_safety_net_covers_the_sites_no_switch_guards` (`G1_10_PINS`). Gate: five commands green in
   BOTH lanes, `corpus_gate` 526/526, ledger 57 entries / 0 unhit.
 
-  **Audit settlement** (`<SHA2>`): 13 findings — **10 fixed / 3 recorded / 0 refuted**. The one with teeth:
+  **Audit settlement** (`a5a272e2`): 13 findings — **10 fixed / 3 recorded / 0 refuted**. The one with teeth:
   `ShowExport` is a unit global five live corpus decks set themselves, so it leaked into every later case of
   a pooled worker — `Engine::clear` now re-asserts both switches per case (the D13 shape; pin
   `clear_re_asserts_the_report_switches`, `Yes`/`Yes` measured before the fix). Also fixed: the created-file
