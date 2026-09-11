@@ -167,7 +167,8 @@ row cursor **asserted, not excluded** (S-INC, `INC_UPSTREAM_ROW_DECLINES = (4, 5
 the oracles' spellings ASCII-folded (`DIVERGENCES.md` §R-18), the harmonics scratch counted off (`SCRATCH_FILE_DECLINES` **(9, 9)**), **1** new entry (the
 r4133 `Visualize` `.DSV`/`.dbl` pair, a *product* divergence) — with **D25** editor suppression, **D30(1)** the in-memory event log, **D32(1)** the Storage
 `DebugTrace` **port gap**, **D33** the loud leak report + one producer per case dir, **D35** (trace-header loops 0-based; P14's ceiling stays 106); its
-settlement also fixed the parent-guard resurrect behind the `Test/AutoTrans` residue below. **+ F0′** (2026-09-11, `lane-m`, **D39**/**D41**): the
+settlement also fixed the parent-guard resurrect behind the `Test/AutoTrans` residue below. **+ F0′** (2026-09-11, `lane-m`, **D39**/**D41**;
+`6a987289` + `a5a272e2` + docs): the
 bridge gags report auto-display with r4133's own `AllowForms`/`ShowReports`/`ShowExport`, `Set Editor=` covering only the **12** unguarded
 `FireOffEditor` sites (`to_opendss/73`); no report is suppressed — 56 = 56 created entries over 14 decks, **0** new entries; its audit
 settlement adds the per-case re-assertion of both switches in `Engine::clear` (five live decks set `ShowExport` themselves). And **G1.4d** (2026-09-06,
@@ -180,8 +181,8 @@ no flag and no lock cell; **D34**'s unported executive commands sit at `ORPHANED
 = (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **57** / 33 causes; G1.10b/c, the **G1.11′**
 close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP-G3–G5 remain.
 
-**Next.** (**D41**, 2026-09-11) **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`) are in flight; landings
-first-finished-first-landed (**D27**), one at a time. Then the **G1.11′** docs close-out in the main tree once
+**Next.** (**D41**, 2026-09-11) F0′ is finished on `lane-m` and awaits its landing; **G1.10b** (`lane-s`) and
+**G1.10c** (`lane-e`) are in flight; landings first-finished-first-landed (**D27**), one at a time. Then the **G1.11′** docs close-out in the main tree once
 both have landed (**D37(1)**), then WP-G3 (**D37(9)**, G3.1 alone first). Queued: `WASM_USERMODELS`, RESONANCE,
 MULTITHREADING, UPGRADE.
 
@@ -467,67 +468,23 @@ Oracle pin: Python 3.12.4, dss-python 0.15.7, dss-python-backend 0.14.5
 (the same dss_capi release vendored in `.inputs/dss_capi`). `python` works in
 this environment; the `py` launcher is broken — use `python` directly.
 
-**Official-EPRI-OpenDSS oracle (opt-in, `tools/opendss/` — 2026-07-07):**
-vendored EPRI `OpenDSSDirect.dll` r3723 (9.8.0.1) / r4088 (10.2.0.1) / r4133
-(11.0.0.1) driven through the AltDSS Oddie bridge (dss-python 0.16.0b2 in a
-separate venv, `PIN_OPENDSS.txt`), reusing `oracle_server.py` unchanged via
-`DSS_ORACLE_ENGINE=oddie`. For inventorying upstream changes ahead of porting
-them; the mandatory gate is untouched. Workflows (see `tools/opendss/README.md`):
-`DSS_LIVE_OPENDSS=<rev> cargo test ... corpus_live_opendss` → report
-`tmp/opendss_report_<rev>.json`, now partitioned against the triage catalog
-`tools/opendss/known_diffs.json` (2026-07-07, modeled on DSS-Python
-`KNOWN_COM_DIFF`; substring match on case label + first-failure reason, every
-entry states its cause, zero-hit entries warn). r3723: 150 matched / 82
-known-diverged / **0 new** of 232 — all 82 triaged into 11 classes (19 EPRI
-InvControl max-iter failures, 25 InvControl fixpoint drift, 10 iteration
-deltas, 8 monitor-header whitespace, 4 property-format brackets, 4
-injection FPC-vs-Delphi ulp, 3 storage kWhStored drift, 3 meter ZonePCE
-count, 3 event-log trailing space, 2 GenDispatcher prop-name, 1 harmonics
-Y-fingerprint) — so `DSS_LIVE_OPENDSS_ASSERT=1` (fails only on NEW) is green
-for r3723. Caveat: comparison stops at a case's first divergence — a known
-first divergence masks later ones in that case (accepted for inventory).
-`ab_compare.py --a oddie:r3723 --b oddie:r4133` → upstream-change inventory
-(baseline: 109/168 match; deltas in distance relays, harmonics, InvControl
-iteration behavior); `--known-diffs tools/opendss/known_diffs.json` relabels
-fully-triaged cases `known_diverged` (entries carry `ab_contains` where this
-tool's issue wording differs) and exits 0 when only known diffs remain.
-Two operational gotchas, both handled: (1) EPRI's Delphi `FireOffEditor`
-ShellExecutes the editor on every `Show`/`Export` with NO `NoFormsAllowed`
-check and Oddie can't set `AllowEditor` — a corpus sweep opened hundreds of
-Notepads; `make_engine()` now issues `Set RegistryUpdate=No` + `Set
-Editor=rundll32.exe` (silent no-op; registry write suppressed so the user's
-OpenDSS editor setting is untouched) — verified on all 3 revisions with a
-`Show` deck, zero spawns. (2) `.inputs/electricdss-tst` is now a re-checkout
-with different EOLs: `tools/corpus/vendor.py --force` produces a ~1544-file
-EOL-only diff — clean run pollution with `git restore tests/corpus` instead;
-re-vendor only deliberately.
+**Official-EPRI-OpenDSS oracle — the in-house bridge (`crates/dss-epri`).** The
+gating r4133 channel is the git-tracked `tools/opendss/bin/r4133/` DLL driven by
+`epri-worker`; `TESTING.md` and `tools/opendss/README.md` hold its operating
+rules, among them the three-layer UI suppression F0′ landed 2026-09-11
+(`Set AllowForms=No` → `Set ShowReports=No`/`Set ShowExport=No`, re-asserted per
+`clear`, with `Set Editor=rundll32.exe` as the safety net for the 12 unguarded
+`FireOffEditor` sites) — **no report is suppressed, only the viewer launch**.
+The opt-in Oddie/dss-python tooling §6 used to describe (`ab_compare.py`,
+`known_diffs.json`, `dsspy_validation/`, `wheels/`, `dsspy_crosscheck.py`, the
+r3723/r4088 binaries) was retired with the bridge round and is no longer in the
+tree; its per-consumer disposition and that text verbatim are in
+[`epri-bridge.md`](docs/phase-records/epri-bridge.md).
 
-**DSS-Python validation harness, vendored (`tools/opendss/dsspy_validation/` — 2026-07-07):** copy of DSS-Python `fastdss` `tests/`
-`_settings`/`save_outputs`/`compare_outputs` (BSD-3, attribution headers, local edits marked `# dss-rs:`): full-API-state dumps (~40
-collections/case, 206 upstream-curated cases, all present in our corpus) zipped per engine + offline tolerant diff (their `KNOWN_COM_DIFF`
-catalog kept as upstream) — broad-surface upstream inventory complementing `ab_compare.py`. Adaptations: corpus → vendored copy, engine spec
-`DSS_EXTENSIONS_TEST_ODDIE=oddie:<rev>` via `revisions.json` (+ expect_version hard check), COM branch dropped, our
-`RegistryUpdate=No`+`Editor=rundll32.exe` suppression, per-case `CorpusGuard` (lifted move-only into `tools/oracle/corpus_guard.py`, shared with
-oracle_server), results → `tmp/dsspy_validation/`, and `(Oddie)`-prefixed DSSException skips for API exports absent from older official DLLs
-(r3723 lacks `Transformers_Get_LossesByType`, `StoragesI`, ...). **Its `capi` side is dss_capi 0.15.0b4 — NOT the pinned 0.14.5 oracle; inventory
-only, never feeds goldens/gate.** pandas+xmldiff pinned into the Oddie venv (`PIN_OPENDSS.txt`). Sweeps must end with `git status tests/corpus`
-(the guard was non-recursive until GOLDEN_REBASE G1.10a, 2026-09-06; it now sweeps a run-created *subdirectory* — 123Bus `Run_YearlySim`'s
-`16Nov2011/` — whole, and never descends into a pre-existing one). Full-sweep baseline 2026-07-07: capi 199/206 captured, oddie:r3723 189/206
-(its 19 misses = the `epri-invcontrol-maxiter` #485 class, 1:1 with known_diffs), compare processes 3885 zip entries. The two beta packages are
-vendored as wheels in `tools/opendss/wheels/` (+SHA256SUMS; offline `--find-links` install proven) — setup no longer depends on the pre-releases
-staying on PyPI.
-
-**DSS-Python corpus cross-check (`tools/corpus/dsspy_crosscheck.py` —
-2026-07-07):** diffs DSS-Python's own 206-case validation list
-(`.inputs/DSS-Python/tests/_settings.py::test_filenames`, extracted textually
-— importing that module binds a DSS engine) against our six classifier
-manifests → `tmp/dsspy_crosscheck.{json,md}`. Measured split: 133
-solvable_now / 59 skipped_unsupported / 8 needs_investigation / 5
-oracle_issue / 1 not_an_entry_point = **73 promotion candidates** (35
-unblock at WP8.6 BatchEdit alone); all 206 exist in the vendored corpus.
-`L!`-prefixed cases (55) are run line-by-line upstream with interactive
-commands filtered — recorded per case so promotion work doesn't naively
-`Compile` them.
+**Re-vendoring the corpus still bites:** `.inputs/electricdss-tst` is a
+re-checkout with different EOLs, so `tools/corpus/vendor.py --force` produces a
+~1544-file EOL-only diff — clean run pollution with `git restore tests/corpus`
+instead; re-vendor only deliberately.
 
 ---
 
@@ -583,7 +540,7 @@ and this file; none was rewritten.
 | `depascalize-p-series.md` | P1b, P5a/b/c (miette diagnostics), P8, P9, P10, P11, P12, P13, P14, P15 |
 | `depascalize-p2.md`, `-p6.md`, `-p12.md`, `-p13.md`, `-r0.md` | the earlier standalone DE_PASCALIZE records |
 | `unified-gate.md` | UNIFIED_GATE Phase 0 and A–F, the pre-E/F cross-phase audit and the post-audit fix round |
-| `epri-bridge.md` | the `dss-epri` bridge parity round and capability round (Oddie retirement) |
+| `epri-bridge.md` | the `dss-epri` bridge parity round and capability round (Oddie retirement) — plus §6's three retired-Oddie tooling paragraphs, moved verbatim 2026-09-11 |
 | `wasm-usermodels.md` | WASM_USERMODELS WM.0–WM.7, the ABI re-freeze to r4133, the D2 sub-bug trace and its fix |
 | `orphaned-gaps.md` | OG-1.1 … OG-1.10 (GICMvars, AltDSS JSON tails, `CAPI_Schema` walks, UPFC modes, NCIM cadence, `Export Estimation`) |
 | `bug-wps.md` | the standalone BUG work packages: livectx and DynExp |
