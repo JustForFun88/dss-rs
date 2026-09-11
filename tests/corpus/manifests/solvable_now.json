@@ -1277,7 +1277,8 @@
    "path": "Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
    "engines": "both",
    "kind": "large",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_di": true
   },
   {
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
@@ -1294,7 +1295,8 @@
    "n_steps": 1,
    "isolate": true,
    "note": "UNIFIED_GATE Phase D: EnergyMeter DI_Totals CSV file-handle contention — a persistent oracle worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits → handle released), serializing the writes (R2/§3.3).",
-   "compare_run_files": true
+   "compare_run_files": true,
+   "compare_di": true
   },
   {
    "path": "Version8/Distrib/Examples/StorageControllerTechNote/Follow/FollowRun.dss",
@@ -1592,7 +1594,8 @@
    "path": "Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
    "engines": "both",
    "kind": "feeder",
-   "n_steps": 1
+   "n_steps": 1,
+   "compare_di": true
   },
   {
    "path": "Version8/Distrib/IEEETestCases/123Bus/SolarRamp.DSS",
@@ -1853,7 +1856,8 @@
     "set mode=snapshot"
    ],
    "n_steps": 1,
-   "engines": "both"
+   "engines": "both",
+   "compare_di": true
   },
   {
    "path": "Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
@@ -1862,7 +1866,8 @@
     "set mode=snapshot"
    ],
    "n_steps": 1,
-   "engines": "both"
+   "engines": "both",
+   "compare_di": true
   },
   {
    "path": "Version8/Distrib/IEEETestCases/4Bus-YYD/YYD-Master.DSS",

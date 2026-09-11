@@ -2980,6 +2980,110 @@ by value — the field-by-field shape this file's rules require — and neither 
 other name on any other case. See `TESTING.md` §"G1.10a — the created-file SET".
 
 
+## G1.10c demand-interval tree contents (`harness::di`) — **no new floor, no new constant**
+
+The DI surface compares ~9.8 M CSV cells per lane, and it introduces **no tolerance of its
+own**: every cell is banded by the tier the gate already carries for the physical quantity its
+column holds (`tol_for(&c.kind)`), selected once per column by a class table. No `Tolerances`
+value moved, no constant was defined, and `golden_reports.rs::di_policy()` — the nine IEEE13
+`DI_yr` byte goldens' policy — is neither called nor re-tuned by any of this. What follows is
+the derivation that this is a *reuse* of calibrated floors and not a new band.
+
+### Why the fixture floor does not transfer
+
+The brief specified `di_policy()` (`rel = 5e-8`, `abs = 0`, one header line) for the live
+surface. That policy was calibrated on ONE fixture: a **24-step daily** run of IEEE13 whose
+solved states agree between the engines to near machine precision. The live population is
+five **yearly** runs of 720 … 8 760 steps on 1 255 … 2 998-bus feeders, where every DI cell is
+an accumulation over hundreds or thousands of independently solved steps, each of which the
+gate itself only claims to reproduce at the case's own `v_rel`/`i_rel`/`energy_rel` tier.
+
+Measured, on the R part's captured trees: under `rel = 5e-8` the port fails **26 280** cells on
+ckt5 alone — and, decisively, **the two ORACLES fail it against each other** on **23 065** ckt7
+cells and **1 440** 123Bus cells. A band that two KLU-based reference engines cannot hold
+against one another is not a floor the port could be held to; it measures the run length, not
+the port. Adopting it would have meant either thousands of ledger rows or a swept widening,
+both refused. So the fixture keeps its own floor (nothing about the goldens changes) and the
+live surface is banded by quantity instead.
+
+### The class table (positional, never a regex over free text)
+
+Each column is classified by what its r4133 writer puts there. The register files' column
+sequence IS `TEnergyMeterObj.RegisterNames` in order (r4133
+`Meters/EnergyMeter.pas:1009-1043`, the per-voltage-base block named at `:3090-3119`), written
+out by the `DI_RegisterTotals` loop at `:875` and the `Registers` loop at `:2944`; the three
+fixed-shape reports carry their entire header as a single engine literal — system meter
+`:3430-3431`, overload report `:3849`, voltage exceptions `:3862-3863`. The port's own register
+table is therefore the classifier, and the oracle header is asserted equal to it verbatim
+before any cell is read.
+
+| class | columns | band |
+| --- | --- | --- |
+| index | column 0 (`Hour` / `Time` / `Year` / `Name`) | exact (`rel = abs = 0`) |
+| energy | every register column that is not `Max …`/`Peak …` — `kWh`, `kvarh`, the Zone and Losses kWh/kvarh blocks, Overload kWh Normal/Emerg, Load EEN/UE, the per-kV-base blocks, Gen kWh/kvarh | `energy_abs + energy_rel·\|e\|` — the class the gate already applies to these same registers through the meter surface |
+| power | `Max kW`, `Max kVA`, `Zone Max …`, `Max kW Load/No Load Losses`, `Gen Max kW/kVA`, `Peak kW`, `peak kVA`, `Peak Losses kW` | `i_abs + i_rel·\|e\|` |
+| current | `I1(A)`, `I2(A)`, `I3(A)`, `% Normal`, `% Emerg` | `i_abs + i_rel·\|e\|` |
+| voltage | `Min/Max Voltage`, `Min/Max LV Voltage` (per unit) | `v_abs + v_rel·\|e\|` |
+| exact | `Normal Amps`, `Emerg Amps`, `kVBase`, the four exception counts | exact |
+| text | `Element`, `Min/Max Bus`, `Min/Max LV Bus` | ASCII-case-insensitive equality, never parsed as numbers |
+
+A column no rule classifies **fails the case**; there is no default band to fall into, and
+`di_pins::the_di_class_table_covers_every_column_of_every_live_di_file` keeps the table
+exhaustive over the live population (13 shapes, 36 files, 1 454 columns, 4 922 812 cells).
+
+### Measured margin (ratio = |port − oracle| / allowed; ≤ 1 passes)
+
+Over all five cases × both channels, 9 845 624 cells before exclusions:
+
+| class | tier | worst ratio | where |
+| --- | --- | --- | --- |
+| energy | feeder | 0.0105 | 123Bus `di_totals_1.csv` row 40 `Overload kWh Normal` |
+| energy | large | 0.415 | peak-shave `di_totals_1.csv` `Load EEN` (ckt7 `kvarh` excluded — below) |
+| power | feeder | 0.134 | season-target `di_systemmeter_1.csv` `Peak kW` |
+| power | large | 0.515 | ckt7 `25607_1.csv` row 8 `Max kVA` |
+| current | feeder | 0.0927 | 123Bus `di_overloads_1.csv` `I2(A)` row 493 |
+| voltage | feeder | 0.0073 | 123Bus `di_voltexceptions_1.csv` `Min LV Voltage` |
+| voltage | large | 0.0236 | ckt7 `di_voltexceptions_1.csv` `Max LV Voltage` |
+| index / exact / text | both | 0 failures (bar the tie below) | counts, ratings, `kVBase`, `Element`, `Min Bus`, `Max Bus`, `Max LV Bus` equal on every row |
+
+Margin is **≥ 1.9×** everywhere outside the two triaged columns, on both channels — i.e. the
+reused tiers are not being squeezed by this surface.
+
+### The two triaged columns — exclusions with pins, not bands
+
+**`kvarh` of ckt7's `di_totals_1.csv` / `25607_1.csv`** (20 cells of 8 760 on
+`capi_v0145`, 17 on `r4133`, 24 distinct rows in the union) is a **near-cancellation**, not a
+floor: every excluded cell has `|kvarh| ≤ 76.7594` while the same row's `kWh ≥ 2 106.0996`, so
+the summands are 46× … 11 032× the net. The residual stays inside the accumulator's own class
+on its uncancelled twin — the port's absolute gap is `≤ 8.010487e-03` kvarh, at most
+**0.02301** of the energy band the same row's `kWh` earns, equivalently `5.493e-08 … 1.601e-06`
+of the row's own `Max kVA` (the `i_rel(large)` scale, exceeded by at most 1.61× on 2 of the 24
+cells) — and **no engine-independent value exists at that scale**: `|capi − r4133|` is
+`2.44e-05 … 2.51e-03` kvarh, i.e. 2.7 % … 88.8 % of the port's own gap, and exceeds the energy
+class outright on 6 of the 24 cells (worst **4.021×** at Time 359, capi `1.01464560883437`
+against r4133 `1.01383583996829`). All of that is asserted live, over all 24 cells, by
+`di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`; the literals there are
+expected values, not tolerances. **The rejected alternative was a widening**: adding a row-scale
+term (`+ i_rel · row Max kVA`) to the energy class admits all 20 capi cells with 1.4–2.6×
+margin and costs 0 ledger rows, but it widens EVERY energy cell on EVERY `large` deck by
+≈ 5e-3 (50× the class's own `abs`) — hiding real regressions to admit a handful of cells, which
+this file's rules forbid.
+
+**`min lv bus` of ckt7's `di_voltexceptions_1.csv`** (7 316 of 8 760 rows) is not a numeric
+question at all: it is the argmin of a **tie**. r4133 keeps the first strict minimizer
+(`Meters/EnergyMeter.pas:3717`, inside `WriteVoltageReport` `:3620-3754`, LV arm `:3707`) and
+the port's scan is faithful to it, but the three service buses carry per-unit magnitudes that
+are bit-identical on capi, so a last-bit-different faer solution finds its strict minimum at a
+different member of the tie. The *value* column `Min LV Voltage` is inside the voltage class on
+all 7 316 rows — the surface loses no numeric coverage — and
+`di_pins::the_ckt7_min_lv_bus_is_an_argmin_over_a_tie` names the three buses, the hex
+magnitudes and the port's own three magnitudes (equal within `v_rel`).
+
+Both are exclusions of a single **`<file>:<column>`** key on one case, decided per column and
+pinned by value — the field-by-field shape this file's rules require — and neither widens
+anything for any other column, file or case. See `TESTING.md` §"G1.10c — the demand-interval
+tree's contents".
+
 ## §AD — A-Diakoptics AD↔normal equivalence (D7 calibration, WP-AD.3)
 
 A-Diakoptics is an **EXACT** domain decomposition: at convergence the AD stitch

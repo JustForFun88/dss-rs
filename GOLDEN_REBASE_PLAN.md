@@ -279,7 +279,8 @@ declared **once** (G1.0, 2026-09-04) in `corpus_gate/manifest.rs` and mirrored i
 `population_lock.rs::rigor()`: `compare_derived` (G1.3a–c), `compare_element_extras`
 (G1.3d), `compare_bus` (G1.4), `compare_zsc` (G1.5), `compare_reliability` (G1.6),
 `compare_pdelements` (G1.6b), `compare_topology` (G1.7), `compare_inc_matrix` (G1.8),
-`compare_run_files` (G1.10a), `compare_di` (G1.10b). *(**2026-09-04**, G1.0: this
+`compare_run_files` (G1.10a), `compare_di` (G1.10c — the name was written here as G1.10b
+before the G1.10 split settled; corrected 2026-09-12 when the flag was wired). *(**2026-09-04**, G1.0: this
 supersedes the six names originally written here — `compare_derived` now means the
 per-element row only, `compare_bus` carries G1.4's half, and the other three names
 were added; **G1.9 gets no flag**, its aggregates and solution scalars being
@@ -1688,6 +1689,71 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > full drives).
 > **Tier as executed:** §0's `opus-high+` row held; the five coordinator STOPs it took were
 > scope questions, not tier questions.
+
+> **Part c is as executed (2026-09-12, lane `lane-e`).** The DI tree's **contents** —
+> every CSV the run creates under `<OutputDirectory><CaseName>/DI_yr_<year>/` — now compare on
+> both channels through a new `harness::di` comparator behind the `compare_di` flag
+> (`wired: true`, G1.10c). **The split's "six `CloseDI` cases" is corrected to five:**
+> `Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss` issues `CloseDI` *without*
+> `DemandInterval` and writes no tree at all on any of the three producers, so it is compared
+> empty and pinned DI-free by name (`DI_FREE_CLOSEDI_CASE`); the five producers are ckt5,
+> ckt7, the two StoCtrl decks and 123Bus, and their declaration list is **derived** from a
+> deck scan (the option and its shortest-prefix spelling `set demand=true`, over each entry
+> deck's whole `Redirect`/`Compile` closure) so a newly vendored DI deck cannot arrive
+> undeclared.
+> **The brief's floor did not survive measurement, and the settlement is a reuse, not a band**
+> (**D42(1)**, settlement **S-CLASS**): under the brief's `di_policy()` (rel 5e-8, abs 0 — a
+> floor calibrated on ONE 24-step daily IEEE13 fixture) the two ORACLES disagree with *each
+> other* on 23 065 ckt7 and 1 440 123Bus cells, so the live rule bands each column at the
+> gate's **existing calibrated tier for the physical quantity it carries** (`tol_for`), chosen
+> positionally off the port's own `RegisterNames` with the oracle header asserted verbatim and
+> an unclassified column failing the case. **No `Tolerances` value moved, no constant was
+> defined, `di_policy()` was neither called nor re-tuned and no golden byte moved**; the
+> derivation, the class table with its r4133 `Meters/EnergyMeter.pas` citations and the
+> measured margin (≥ 1.9× outside the two triaged columns) are `tests/TOLERANCE_NOTES.md`
+> §G1.10c.
+> **Exposure: 4 ledger entries, one case, two causes** (57 → **61** entries / 33 → **35**
+> causes) — ckt7's hourly `kvarh` (a near-cancellation on which the two oracles fail the
+> energy class against each other) and its `min lv bus` (an argmin over a bit-identical tie),
+> one entry per channel each, scoped `<file>:<column>` on the new **`di`** ledger field
+> (`LEDGER_FIELDS` 17 → 18, exclusion-only, per-value), each pinned by a both-numbers test plus
+> a comparator drive proving the scope masks that column *and nothing else*. **D44** amended
+> the kvarh pin after F4 measured D42(2)'s two prescribed universals FALSE (the
+> oracle-vs-oracle claim holds on 6 of 24 cells, not all; the `i_rel(large)·Max kVA` bound is
+> exceeded by up to 1.61× on 2 of 24): the pin now asserts the *measured* decomposition over
+> all 24 excluded cells with the port's numbers read live, and the ledger prose and its two
+> data errors (worst ratio 13.727 at Time 477; cause worst 4.021 at Time 359) were rewritten
+> to match. The rejected widening (a row-scale term on the energy class) is recorded with the
+> reason: 0 rows, but +50× `abs` on every energy cell of every `large` deck.
+> **R-19 did not fire.** No deck needed an injected `CloseDI` and no DI handle blocked the
+> guard: both transports read the tree from the created-file set the guard already computes,
+> COPY it into a per-(case, channel) sidecar under the gate's own scratch, and every
+> `sweep_failed` stayed empty over four full drives. The read slot is contractual and measured
+> — after `autoadd_log`, **before** `created()` and before the capi teardown `clear`, which
+> flushes the in-flight cycle on 3 of the 5 cases (8/8, 7/8 and 4/6 file digests) while
+> r4133's moves none — asserted out of both transports' sources by `check_run_tail_order`
+> (G1.10a's `check_run_files_last`, renamed) with four negative drives per transport. **D43(2)
+> fixes the merged tail order** against G1.10b's opposite finding: DI contents before
+> `created()`, the run-file contents copy after the capi teardown `clear`.
+> **Force rule and cost** (**D42(4)**): `force_di` arms **every live case** with no `kind`
+> test — four of the five producers are `kind=large`, which G1.10a's rule excludes — under its
+> own `FORCED_DI_POPULATION` = (522, 366, 101, 55), deliberately outside the four-way equality;
+> G1.10a's *comparison* stays on its own flag (ckt5's capi `EarlyAbort` after the deck's bogus
+> `Export monitor ckt5mon` costs that channel one created file — **D42(8)**, recorded for
+> G1.10a's owner, not acted on). The epilogue census `DI_TREE_CENSUS` = (5, 883, 72,
+> **9 793 064**) is re-derived fail-on-stale in both directions, each number derivable; the
+> whole surface costs ≈ +5…9 s per lane per full gate (A/B-measured — the full-gate clock is
+> load-dominated with three lanes gating at once). **No `crates/*/src` file moved**
+> (`crates/dss-epri` + `tests/` only), so `lane_diff` is **not owed** (**D41**'s rule) and the
+> two lanes were verified equal on the surface instead: the same 9 793 064-cell population
+> compares in both, and the pins' exact `f64` literals hold in both.
+> Coordinator decisions applied: **D7** (lane `lane-e`), **D41** (the lane round and the
+> dss-epri-only `lane_diff` rule), **D42** (S-CLASS, the five-case population, the force rule,
+> the sidecar, the capture slot, the parts split), **D43(2)** (the merged tail order with
+> G1.10b) and **D44** (the kvarh pin's measured decomposition; the ledger rewrite; the pin
+> registry and its citations land with the surface).
+> **Tier as executed:** §0's `opus-high+` row held; the two coordinator STOPs it took (the
+> floor question and the kvarh pin's universals) were evidence questions, not tier questions.
 
 ### G1.11a — r4133 channel: CktElement families
 

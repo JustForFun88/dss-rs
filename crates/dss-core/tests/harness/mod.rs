@@ -19157,3 +19157,19 @@ mod reliability_tests {
         }
     }
 }
+
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.10c: the CONTENTS of the
+/// run-created demand-interval tree — the per-column quantity-class table over
+/// `TEnergyMeterObj.RegisterNames` and one live comparator that bands each cell
+/// at the case's existing [`tol_for`] tier for that quantity. Windows-only for
+/// the same reason [`run_files`] is (the `r4133` transport is a Win64 DLL); the
+/// corpus gate refuses `compare_di` loudly elsewhere.
+///
+/// Declared here rather than beside [`run_files`] deliberately: a module
+/// declaration at the top of this 19 000-line file shifts every `mod.rs:LINE`
+/// citation TESTING.md and `tests/TOLERANCE_NOTES.md` anchor into it
+/// (`oracle_parity_cfg_gate::operational_docs_line_citations_point_at_the_line_they_name`),
+/// and re-pointing ~80 of them to add one `mod` line would be a far larger and
+/// more merge-hostile edit than this placement.
+#[cfg(windows)]
+pub mod di;
