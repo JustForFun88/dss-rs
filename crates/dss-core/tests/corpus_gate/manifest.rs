@@ -239,9 +239,18 @@ pub(crate) struct SolvableCase {
     /// gate stays the fixture `save_roundtrip.rs::save_forms_structural_file_set`.
     #[serde(default)]
     pub(crate) compare_run_files: bool,
-    /// G1.10b: the **demand-interval tree** — the `closedi` subset of the CSV set
-    /// above (`origin/fastdss` `tests/save_outputs.py:64,597`), split off because
-    /// a DI tree exists only for a deck that runs `closedi`.
+    /// G1.10c: the CONTENTS of the run-created **demand-interval tree**
+    /// (`<OutputDirectory><CaseName>/DI_yr_<year>/*.csv`, r4133
+    /// `Meters/EnergyMeter.pas:3804` `OpenAllDIFiles` → `MakeDIFileName`), the
+    /// subset of the created-file SET above that only a deck enabling
+    /// `Set DemandInterval=` writes (r4133 `Executive/ExecOptions.pas:104`,
+    /// `:812`; capi 0.14.5 `src/Executive/ExecOptions.pas:80`, `:581`). Split
+    /// off from `compare_run_files` because its population is different (four
+    /// of the five producers are `kind=large`, which that surface's force rule
+    /// excludes) and because its cells are compared by quantity class, not as
+    /// a set (`harness::di::compare_di`). Upstream never gated it either:
+    /// `origin/fastdss` `tests/save_outputs.py:64,597` archives the tree and
+    /// `tests/compare_outputs.py:416-421` skips a name the other side lacks.
     #[serde(default)]
     pub(crate) compare_di: bool,
     /// The feature this case covers is not ported yet (GAPS_PLAN.md §2.3/§3.1):
@@ -693,10 +702,21 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
         wired: true,
         get: |c| c.compare_run_files,
     },
+    // Wired by G1.10c (2026-09-11, coordinator decision D42) — request key `di`
+    // in `engines::build_run_request`, captured on BOTH transports from the very
+    // `CorpusGuard` classification G1.10a compares as a SET
+    // (`dss_epri::guard::CorpusGuard::created_di_files` + its Python twin
+    // `tools/oracle/corpus_guard.py`), copied into the gate's own per-(case,
+    // channel) sidecar and compared cell by cell against the port's tree by
+    // `harness::di::compare_di` behind `capture_guard::require_capture_opt` in
+    // `runner::compare_with_result`. An EMPTY tree is a legitimate answer — the
+    // corpus's sixth `closedi` deck (`Storage-Quasi-Static-Example/Run_Demo1.dss`)
+    // never enables `DemandInterval`, so all three producers write nothing — and
+    // a missing capture is not.
     G1Flag {
         name: "compare_di",
-        sub_step: "G1.10b",
-        wired: false,
+        sub_step: "G1.10c",
+        wired: true,
         get: |c| c.compare_di,
     },
 ];
@@ -1388,6 +1408,254 @@ fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
     assert!(
         std::panic::catch_unwind(|| assert_gictransformer_case_gates_r4133("ok", "r4133")).is_ok(),
         "an r4133-gated GICTransformer case must be allowed"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Which decks enable demand-interval metering (GOLDEN_REBASE G1.10c, 2026-09-11)
+// — the derivation behind `scheduler::DI_DECLARED_IN_MANIFEST`, so a new DI deck
+// cannot arrive in the corpus without a `compare_di` declaration.
+// ---------------------------------------------------------------------------
+
+/// Does this deck text turn **demand-interval metering on**?
+///
+/// The option is `DemandInterval` (r4133
+/// `Version8/Source/Executive/ExecOptions.pas:104`, applied at `:812`
+/// `EnergyMeterClass.SaveDemandInterval := InterpretYesNo(Param)`; capi 0.14.5
+/// `src/Executive/ExecOptions.pas:80`/`:581`), and the executive matches an
+/// option name by **shortest unique prefix**: `TCommandList.Getcommand` falls
+/// back to `THashList.FindAbbrev` (r4133 `Shared/Command.pas:79-89`,
+/// `Shared/HashList.pas:335-356`), a LINEAR scan returning the first entry whose
+/// leading characters match. The corpus uses both spellings — `set demand=true`
+/// (`EPRITestCircuits/ckt5/Run_ckt5.dss:53`, `ckt7/RunDSS_ckt7.dss:52`,
+/// `IEEETestCases/123Bus/Run_YearlySim.dss:36`) and `DemandInterval=True/yes`
+/// inside a multi-option `set` (`Examples/StoCtrl_Current_PeakShave/master.dss:28`,
+/// `Examples/StoCtrl_SeasonTarget/Run_example.dss:7`).
+///
+/// Three characters is the shortest prefix that reaches this option: the option
+/// list declares `Defaultdaily` (`:90`), `Defaultyearly` (`:91`) and
+/// `DefaultBaseFrequency` (`:117`) BEFORE it, so the linear scan resolves `de`
+/// and shorter to `Defaultdaily` — a scanner that accepted them would read a
+/// default-loadshape line as demand-interval metering.
+///
+/// Comment-stripped on the DSS rules (`!` to end of line anywhere, `//` when it
+/// opens the statement) so the many decks that carry the commented-out demand
+/// interval block — `IEEETestCases/LVTestCase/Master.dss:27-39` is the corpus's
+/// example — read as what they are: off.
+pub(crate) fn deck_enables_demand_interval(text: &str) -> bool {
+    for line in text.lines() {
+        for (name, value) in option_pairs(line) {
+            if name.len() >= 3
+                && "demandinterval".starts_with(&name)
+                && matches!(value.as_bytes().first(), Some(b'y' | b't' | b'1'))
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The `name=value` pairs of one comment-stripped, lower-cased deck line.
+///
+/// The DSS parser takes `name=value`, `name =value`, `name= value` and
+/// `name = value` alike (r4133 `Parser.pas::NextParam` splits on `=` after
+/// skipping white space), and a `set` line may carry several of them
+/// (`set mode=yearly DemandInterval=yes overloadreport=yes`), so the scan is
+/// over pairs rather than over the line's text.
+fn option_pairs(line: &str) -> Vec<(String, String)> {
+    let code = line.split('!').next().unwrap_or_default();
+    if code.trim_start().starts_with("//") {
+        return Vec::new();
+    }
+    let lower = code.to_ascii_lowercase().replace(',', " ");
+    // `a=b` → ["a", "=", "b"], so the four spacings above become one shape.
+    let spaced = lower.replace('=', " = ");
+    let toks: Vec<&str> = spaced.split_whitespace().collect();
+    let mut out = Vec::new();
+    for (i, t) in toks.iter().enumerate() {
+        if *t != "=" || i == 0 {
+            continue;
+        }
+        let name = toks[i - 1].trim_matches(['"', '\'']).to_string();
+        let value = toks
+            .get(i + 1)
+            .map(|v| v.trim_matches(['"', '\'']).to_string())
+            .unwrap_or_default();
+        out.push((name, value));
+    }
+    out
+}
+
+/// The `Redirect`/`Compile` closure of one deck, as `(path, text)` pairs.
+///
+/// A deck reaches its options through the files it pulls in, so "does this CASE
+/// enable demand-interval metering" is a question about the whole closure, not
+/// about the entry file. Relative paths resolve against the **including file's**
+/// directory: `DoRedirect` changes the current directory to the file it is
+/// about to run (r4133 `Version8/Source/Executive/ExecHelper.pas:681`, `:753`)
+/// and restores it afterwards for a redirect but not for a compile (`:809`).
+/// The distinction does not matter here — the walk resolves every name against
+/// its own file's directory and visits every reachable file once — and a name
+/// that does not resolve is skipped rather than guessed at, because this scan
+/// answers a question about the files that DO exist.
+fn deck_closure(entry: &Path) -> Vec<(PathBuf, String)> {
+    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut stack = vec![entry.to_path_buf()];
+    let mut out = Vec::new();
+    while let Some(p) = stack.pop() {
+        let Ok(canon) = p.canonicalize() else {
+            continue;
+        };
+        if !canon.is_file() || !seen.insert(canon.clone()) {
+            continue;
+        }
+        // Decks are ASCII/Latin-1 in practice; a stray non-UTF-8 byte must not
+        // hide an option line, so read lossily instead of skipping the file.
+        let text = String::from_utf8_lossy(
+            &std::fs::read(&canon).unwrap_or_else(|e| panic!("read {}: {e}", canon.display())),
+        )
+        .into_owned();
+        let dir = canon.parent().unwrap_or(Path::new(".")).to_path_buf();
+        for line in text.lines() {
+            if let Some(arg) = redirect_argument(line) {
+                stack.push(dir.join(arg.replace('\\', "/")));
+            }
+        }
+        out.push((canon, text));
+    }
+    out
+}
+
+/// The file name a `Redirect`/`Compile` line names, if it is one.
+///
+/// Both verbs are abbreviatable like every executive command (`FindAbbrev`,
+/// above), and the corpus writes the argument bare, `[bracketed]` or
+/// `"quoted"` — `Compile [Master_ckt5.dss]`,
+/// `Compile "IEEE123Master.dss"`, `Redirect Vsource.dss`. Four characters is
+/// the shortest prefix accepted here: it is past every collision in the command
+/// list and past the one-letter forms a prose line could produce.
+fn redirect_argument(line: &str) -> Option<String> {
+    let code = line.split('!').next().unwrap_or_default();
+    let code = code.trim();
+    if code.starts_with("//") {
+        return None;
+    }
+    let (verb, rest) = code.split_once(char::is_whitespace)?;
+    let verb = verb.to_ascii_lowercase();
+    let is_redirect =
+        verb.len() >= 4 && ("redirect".starts_with(&verb) || "compile".starts_with(&verb));
+    if !is_redirect {
+        return None;
+    }
+    let rest = rest.trim();
+    let arg = match rest.chars().next()? {
+        '[' => rest[1..].split(']').next()?.to_string(),
+        '"' => rest[1..].split('"').next()?.to_string(),
+        '\'' => rest[1..].split('\'').next()?.to_string(),
+        _ => rest.split_whitespace().next()?.to_string(),
+    };
+    (!arg.is_empty()).then_some(arg)
+}
+
+/// Does this case's deck — or anything it `Redirect`s / `Compile`s — enable
+/// demand-interval metering? The predicate behind
+/// `scheduler::every_deck_that_enables_demand_interval_declares_compare_di`.
+pub(crate) fn case_enables_demand_interval(entry: &str) -> bool {
+    deck_closure(Path::new(entry))
+        .iter()
+        .any(|(_, text)| deck_enables_demand_interval(text))
+}
+
+/// Non-vacuity for the scanner above (§1.1(f)): it must read the abbreviation
+/// the corpus actually uses, refuse the prefixes the executive resolves to a
+/// DIFFERENT option, refuse an explicit `no`, and refuse both comment forms.
+#[test]
+fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
+    for on in [
+        "set demand=true",
+        "Set DemandInterval=True",
+        "set mode=yearly DemandInterval=yes overloadreport=yes DIVerbose=yes",
+        "set demand = true",
+        "set demandinterval =yes",
+        "  set dem=1   ! the shortest prefix that reaches this option",
+    ] {
+        assert!(
+            deck_enables_demand_interval(on),
+            "{on:?} enables demand-interval metering"
+        );
+    }
+    for off in [
+        "set demand=false",
+        "set demandinterval=no",
+        "! set demand=true",
+        "// set demand=true",
+        "// ! Set \"DemandInterval\" to true so that energy quantities are recorded",
+        // `de` and shorter resolve to `Defaultdaily` (ExecOptions.pas:90), which
+        // the linear `FindAbbrev` scan reaches first.
+        "set de=true",
+        "set d=true",
+        "set defaultdaily=true",
+        "set defaultyearly=true",
+        // A prose mention is not a setting.
+        "! demand interval files are closed below",
+        "closedi",
+    ] {
+        assert!(
+            !deck_enables_demand_interval(off),
+            "{off:?} does not enable demand-interval metering"
+        );
+    }
+    // …and on the corpus's own decks, both ways round.
+    let root = corpus_root().join("electricdss-tst/Version8/Distrib");
+    for (deck, want) in [
+        ("EPRITestCircuits/ckt5/Run_ckt5.dss", true),
+        ("IEEETestCases/123Bus/Run_YearlySim.dss", true),
+        ("Examples/StoCtrl_Current_PeakShave/master.dss", true),
+        (
+            "Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss",
+            false,
+        ),
+        ("IEEETestCases/LVTestCase/Master.dss", false),
+    ] {
+        let text = std::fs::read_to_string(root.join(deck)).expect("read corpus deck");
+        assert_eq!(
+            deck_enables_demand_interval(&text),
+            want,
+            "{deck}: demand-interval metering {}",
+            if want { "is enabled" } else { "is not enabled" }
+        );
+    }
+    // The closure half: `Run_example.dss` enables it in its own text, and the
+    // `Redirect`ed `IEEE13NodecktMOD.dss` does not — so the walk must not smear
+    // one case's option onto its sibling.
+    let season = root.join("Examples/StoCtrl_SeasonTarget");
+    assert!(case_enables_demand_interval(
+        season.join("Run_example.dss").to_str().expect("utf-8 path")
+    ));
+    assert!(!case_enables_demand_interval(
+        season
+            .join("IEEE13NodecktMOD.dss")
+            .to_str()
+            .expect("utf-8 path")
+    ));
+    // …and the walk does reach a redirected file: the peak-shave master pulls
+    // its whole model in by `Redirect`.
+    let peakshave = root.join("Examples/StoCtrl_Current_PeakShave/master.dss");
+    let closure = deck_closure(&peakshave);
+    assert!(
+        closure.len() > 10,
+        "the peak-shave master redirects its model file by file; walked {} file(s)",
+        closure.len()
+    );
+    assert!(
+        redirect_argument("Compile [Master_ckt5.dss]").as_deref() == Some("Master_ckt5.dss")
+            && redirect_argument("Compile \"IEEE123Master.dss\"").as_deref()
+                == Some("IEEE123Master.dss")
+            && redirect_argument("redirect Vsource.dss").as_deref() == Some("Vsource.dss")
+            && redirect_argument("// redirect Vsource.dss").is_none()
+            && redirect_argument("new line.l1 bus1=a").is_none(),
+        "the three argument spellings, the comment form and a non-redirect line"
     );
 }
 

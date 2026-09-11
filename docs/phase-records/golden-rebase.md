@@ -3745,3 +3745,57 @@ row against the pre-fix lock.
   `operational_docs_line_citations_point_at_the_line_they_name`.
 
   merge: lane lane-b -> update, see git log
+
+- **G1.10c** (2026-09-12, lane `lane-e`, singles chain — **D7**/**D41**; commits `<surface: F1–F4r>` +
+  `<docs>`) — the **contents** of the demand-interval tree (`<OutputDirectory><CaseName>/DI_yr_<year>/*.csv`)
+  compare live on both channels behind `compare_di` (`wired: true`). Both transports select the tree out of
+  G1.10a's created-file classification (`is_di_member`, prefix `di_yr_`), COPY it into a per-(case, channel)
+  sidecar under the gate's scratch and read it **before** `created()` and before the capi teardown `clear`
+  — measured: that `clear` flushes the in-flight cycle on 3 of 5 cases (8/8, 7/8, 4/6 digests) while r4133's
+  moves none; `check_run_tail_order` (G1.10a's `check_run_files_last`, renamed) asserts the slot from both
+  sources, and **D43(2)** orders the merged tail against G1.10b (DI before `created()`, run-file contents
+  after the teardown `clear`).
+  **The brief's floor is refuted by measurement and replaced by a reuse** (**D42(1)**, S-CLASS): under
+  `di_policy()` (rel 5e-8 — calibrated on ONE 24-step daily IEEE13 fixture) the two ORACLES fail against
+  *each other* on 24 505 cells, so each column is banded at the gate's existing calibrated tier for its
+  quantity (`tol_for`), classified positionally off the port's own `RegisterNames` (r4133
+  `Meters/EnergyMeter.pas:1009-1043`, `:3090-3119`; the three fixed report headers `:3430-3431` / `:3849` /
+  `:3862-3863`) with the oracle header asserted verbatim and an unclassified column failing the case.
+  **No `Tolerances` value, no new constant, no golden byte, `di_policy()` untouched**; derivation in
+  `tests/TOLERANCE_NOTES.md` §G1.10c, surface in `TESTING.md` §"G1.10c".
+  Population **5** decks, not the split's six — `Run_Demo1.dss` issues `CloseDI` without `DemandInterval`
+  and writes nothing (`DI_FREE_CLOSEDI_CASE`); the declaration list is derived by a deck scan of the option
+  and its shortest-prefix spelling. `force_di` arms **every** live case (`FORCED_DI_POPULATION` = (522, 366,
+  101, 55), outside the four-way equality — 4 of the 5 producers are `kind=large`); epilogue census
+  `DI_TREE_CENSUS` = **(5, 883, 72, 9 793 064)**, each number derivable, fail-on-stale both directions;
+  cost ≈ +5…9 s per lane per full gate (A/B-measured).
+  **Exclusions (57 → 61 entries / 33 → 35 causes), all on `EPRITestCircuits/ckt7`, on the new exclusion-only
+  `di` field** (`LEDGER_FIELDS` 17 → 18), scoped `<file>:<column>`, one entry per channel each:
+  `di-ckt7-hourly-kvarh-cancels-{capi,r4133}` (cause `di-hourly-reactive-energy-cancels`) — pinned by
+  `di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate` +
+  `…the_ckt7_kvarh_scope_masks_that_column_and_nothing_else`; and
+  `di-ckt7-min-lv-bus-argmin-tie-{capi,r4133}` (cause `di-voltexception-argmin-tie`, r4133
+  `EnergyMeter.pas:3717` keeps the first strict minimizer) — pinned by
+  `…the_ckt7_min_lv_bus_is_an_argmin_over_a_tie` + `…_scope_masks_that_column_and_nothing_else`. Plus
+  `the_di_capture_reads_the_last_closed_cycle` and
+  `the_di_class_table_covers_every_column_of_every_live_di_file`; all six, the surface's 47 further drives and
+  its 18 constants are registered (`G1_10_PINS` 40 → **93**, `G1_10_CONSTS` 3 → **21**) and cited in
+  `TESTING.md` §"G1.10c".
+  **D44** (F4 STOP): D42(2)'s two prescribed numeric universals for the kvarh pin measured FALSE (the
+  oracle-vs-oracle claim holds on 6 of 24 cells; the `i_rel(large)·Max kVA` bound is exceeded up to 1.61× on
+  2 of 24), so the pin asserts the **measured** decomposition over all 24 cells with the port's numbers read
+  live, and the four entries' `source` paragraphs + the cause were rewritten with the two data errors
+  corrected (worst ratio 13.727 at Time 477; cause worst 4.021 at Time 359). Scopes, counts and the
+  populations unchanged. **R-19 did not fire** (no injected `CloseDI`, no blocked guard, `sweep_failed`
+  empty over four full drives). **D42(8)** recorded, not acted on: ckt5's capi `EarlyAbort` after the deck's
+  bogus `Export monitor ckt5mon` costs that channel one created file — which is why `compare_run_files`'
+  comparison stays on its own flag while the probe bracket rides `compare_run_files || compare_di`.
+  No `crates/*/src` file moved (`crates/dss-epri` + `tests/` only) → **`lane_diff` not owed** (**D41**);
+  instead both lanes were shown equal on the surface (same 9 793 064-cell population, the pins' exact `f64`
+  literals hold in both). **Gate, this tree, both lanes:** `cargo fmt --all --check` rc 0; full
+  `corpus_gate` **482 passed / 0 failed**, corpus **526/526** cases (default 152.0 s, parity 161.8 s —
+  the parity lane's first drive red once on the known `Test/AutoTrans/` capi export race, D23/D33(2),
+  and the unmodified re-run was green); `ledger` **61 entries / 1 579 hits / 0 unhit / 0 stale** in both;
+  `DI_TREE_CENSUS` re-derived **(5, 883, 72, 9 793 064)** identically in both, with exactly the three
+  ckt7 columns reported excluded; `oracle_parity_cfg_gate` 25 / `population_lock` 3 / `golden_lock` 4
+  (no golden byte, `tests/golden/**` untouched); zero untracked corpus droppings after the drives.

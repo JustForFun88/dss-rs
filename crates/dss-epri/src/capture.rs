@@ -131,6 +131,23 @@ pub struct RunRequest {
     /// still alive. Twin request key: `oracle_server.py`'s `run_files`.
     #[serde(default)]
     pub run_files: bool,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10c — the CONTENTS of the run-created
+    /// demand-interval tree (`<OutputDirectory><CaseName>/DI_yr_<year>/*`,
+    /// r4133 `Version8/Source/Meters/EnergyMeter.pas:824`). Like
+    /// [`Self::run_files`] it is not a model read: the members are the very
+    /// [`CorpusGuard`] classification that sweeps the corpus clean, narrowed by
+    /// [`crate::guard::is_di_member`], read inside the guard scope after
+    /// `autoadd_log` and BEFORE [`CorpusGuard::created`]. Twin request key:
+    /// `oracle_server.py`'s `di`.
+    #[serde(default)]
+    pub di: bool,
+    /// The gate's own sidecar directory for this (case, channel): where the DI
+    /// files are COPIED so they survive the guard's sweep (decision D42(5)).
+    /// Required when [`Self::di`] is set — a missing one fails the case loudly
+    /// rather than reporting an empty tree. Twin: `oracle_server.py`'s
+    /// `di_dir`.
+    #[serde(default)]
+    pub di_dir: Option<String>,
     #[serde(default)]
     pub warn_and_continue: bool,
     // `full_csc` is accepted but ignored: the gate always requests it (true) and
@@ -172,6 +189,17 @@ pub struct CaseResult {
     /// (`harness::capture_guard::require_capture_opt`) turns the second case
     /// into a failed case rather than "this deck created nothing".
     run_files: Option<Vec<String>>,
+    /// G1.10c — the run-created demand-interval tree's contents, as
+    /// `normalized member name -> path relative to the request's di_dir`
+    /// (the files themselves are COPIED there, because the guard's sweep
+    /// removes the originals before the gate compares them).
+    ///
+    /// `None` when the request did not ask for it, and also when the guard
+    /// cannot report honestly (an incomplete pre-run snapshot); the gate's
+    /// presence rail turns the second case into a failed case. `Some({})` —
+    /// "asked, and this deck wrote no demand-interval tree" — is the common,
+    /// legitimate answer and is what distinguishes it from `None`.
+    di: Option<BTreeMap<String, String>>,
     /// G1.10a / coordinator decision D32(2) — the created entries this run's own
     /// hygiene guard could NOT remove, normalized like [`Self::run_files`].
     /// Always present (`[]` is the normal answer), never gated on a request
@@ -1153,6 +1181,18 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         None
     };
 
+    // G1.10c: the demand-interval tree's CONTENTS, read after `autoadd_log` and
+    // strictly BEFORE the classification below — which the per-run capture-order
+    // rule keeps the last READ of the run (`crates/dss-core/tests/capture_order.rs`,
+    // D33(3)). Inside the guard scope, because the sweep removes exactly these
+    // files; the copies in the request's sidecar directory are what the gate
+    // compares.
+    let di = if req.di {
+        capture_di(&guard, req)?
+    } else {
+        None
+    };
+
     // G1.10a: STRICTLY LAST of the whole run — after every step's model read and
     // after the `autoadd_log` file read — and while `guard` is still alive, since
     // its `Drop` removes exactly what this call classifies. `None` means "cannot
@@ -1172,9 +1212,67 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         n_steps: req.n_steps,
         checkpoints,
         autoadd_log,
+        di,
         run_files,
         sweep_failed,
     })
+}
+
+/// Case-insensitive path-prefix test (both paths come from the gate, so no
+/// symlink resolution is owed): is `path` `dir` itself or below it?
+fn path_is_inside(path: &Path, dir: &Path) -> bool {
+    let fold = |p: &Path| p.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+    let (p, d) = (fold(path), fold(dir));
+    let d = d.trim_end_matches('/').to_string();
+    p == d || p.starts_with(&format!("{d}/"))
+}
+
+/// GOLDEN_REBASE G1.10c — copy the run-created demand-interval tree into the
+/// gate's sidecar directory and report the mapping.
+///
+/// The selection is [`CorpusGuard::created_di_files`]: the ONE created-entry
+/// classification, narrowed to the file members of a `DI_yr_*` tree, so a tree
+/// that was already on disk before the run can never enter the compared
+/// surface. `None` is the guard's "cannot report honestly" answer (an
+/// incomplete pre-run snapshot or a listing that failed), which the gate's
+/// presence rail turns into a failed case — it is deliberately NOT an empty
+/// map, which means "asked, and this deck wrote no DI tree".
+///
+/// Twin: `tools/oracle/oracle_server.py::capture_di`.
+fn capture_di(
+    guard: &CorpusGuard,
+    req: &RunRequest,
+) -> Result<Option<BTreeMap<String, String>>, EngineError> {
+    let Some(di_dir) = req.di_dir.as_deref() else {
+        return Err(EngineError::Other(format!(
+            "{}: the request asked for the demand-interval tree (`di`) without a \
+             sidecar directory (`di_dir`). The DI files are swept away with the \
+             rest of the run's output, so they must be copied out while the guard \
+             is alive; a missing directory fails the case instead of reporting an \
+             empty tree.",
+            req.case_path
+        )));
+    };
+    // The sidecar must lie OUTSIDE the case directory: a copy written inside it
+    // would be classified as this run's own output by the very guard whose
+    // classification selected the originals — it would enter G1.10a's created
+    // file SET and be swept before the gate could read it.
+    let case_dir = Path::new(&req.case_path).parent().unwrap_or(Path::new("."));
+    if path_is_inside(Path::new(di_dir), case_dir) {
+        return Err(EngineError::Other(format!(
+            "{}: the DI sidecar directory {di_dir:?} lies inside the case directory \
+             {case_dir:?}. The copies would be classified as run-created output and \
+             swept away with the originals; the sidecar belongs to the gate's own \
+             scratch (`corpus_gate::engines::di_sidecar_dir`).",
+            req.case_path
+        )));
+    }
+    let Some(members) = guard.created_di_files() else {
+        return Ok(None);
+    };
+    crate::guard::copy_di_tree(&members, Path::new(di_dir))
+        .map(Some)
+        .map_err(|e| EngineError::Other(format!("{}: {e}", req.case_path)))
 }
 
 /// `len` (flat re/im floats) is a square YPrim: `len == 2 * yorder^2`.
@@ -2658,7 +2756,37 @@ fn read_autoadd_log(engine: &Engine, case_path: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{complex_pair, inc_ints, inc_names, topo_names};
+    use super::{complex_pair, inc_ints, inc_names, path_is_inside, topo_names};
+
+    /// G1.10c — the DI sidecar must never sit inside the case directory, or the
+    /// copies would be classified as this run's own output and swept away with
+    /// the originals. Spelling only: both paths come from the gate, so the test
+    /// is a case-insensitive prefix on SEGMENT boundaries, not a sibling whose
+    /// name merely starts the same way.
+    #[test]
+    fn a_sidecar_inside_the_case_directory_is_recognized() {
+        let case = std::path::Path::new(r"E:\corpus\ckt7");
+        for inside in [
+            r"E:\corpus\ckt7",
+            r"E:\CORPUS\ckt7\di",
+            "E:/corpus/ckt7/di/x",
+        ] {
+            assert!(
+                path_is_inside(std::path::Path::new(inside), case),
+                "{inside} is inside the case dir"
+            );
+        }
+        for outside in [
+            r"E:\corpus\ckt7x\di",
+            r"E:\corpus\ckt5\di",
+            "F:/cargo-targets/lane-e/corpus_gate/di/ckt7_a1b2/r4133",
+        ] {
+            assert!(
+                !path_is_inside(std::path::Path::new(outside), case),
+                "{outside} is not inside the case dir"
+            );
+        }
+    }
 
     /// A `myType = 3` reply is exactly two doubles or it is a transport
     /// failure — the bridge must never pad one into a plausible `(0, 0)`

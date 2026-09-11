@@ -415,7 +415,7 @@ switched off later with no lock diff at all:
 | `compare_topology` | `topo=` | G1.7 | `NumLoops`/`NumIsolated*`/`AllLoopedPairs`/`AllIsolated*` |
 | `compare_inc_matrix` | `incm=` | G1.8 | `IncMatrix`/`IncMatrixCols`/`IncMatrixRows`/`Laplacian` |
 | `compare_run_files` | `runf=` | G1.10a | the SET of filesystem entries the run creates under DataPath (names, incl. created directories) — **wired 2026-09-06**; contents are G1.10b/c |
-| `compare_di` | `di=` | G1.10b | the DI tree |
+| `compare_di` | `di=` | G1.10c | the CONTENTS of every CSV the run creates under `<OutputDirectory><CaseName>/DI_yr_<year>/` — file set, header, row/field counts and every cell at its quantity's calibrated tier — on the five decks that enable `Set DemandInterval=`; **wired 2026-09-12**, forced on **every** live case (`FORCED_DI_POPULATION` = (522, 366, 101, 55)), the one forced surface that is not the shared live-non-`large` population |
 
 **G1.9 — circuit aggregates + solution scalars (unflagged, universal).** G1.9
 deliberately gets **no** flag — it is universal and cheap — so nobody adds an
@@ -467,7 +467,7 @@ linear functional of the per-element `currents`/`powers`/`losses` the ledger
 already partitions, so re-pinning a scoped element's echo in the sum would grow
 the ledger for a divergence it already owns. `compare_aggregates` therefore feeds
 its value arm from the runner's accepted `LedgerView::element_rewrites`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:1205`) — the same caps
+(`crates/dss-core/tests/corpus_gate/ledger.rs:1229`) — the same caps
 `compare_element_channels` is handed one loop above. Where a **deck-wide**
 `element` scope selects `losses`, every summand is rewritten and the value arm
 is then a self-comparison on that deck. That is inherent, not a comparator
@@ -492,7 +492,7 @@ ledger: **0** entries and 0 new `LEDGER_FIELDS`. Bands and their derivations:
 `tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates + solution scalars".
 
 **A flag may not be set before its surface exists.** `G1_SURFACE_FLAGS`
-(`crates/dss-core/tests/corpus_gate/manifest.rs:618`) carries each flag's owning
+(`crates/dss-core/tests/corpus_gate/manifest.rs:627`) carries each flag's owning
 sub-step and a `wired` bit; the structural family gate refuses any manifest case
 that sets a flag whose `wired` is still `false`, because the request builder
 would not send it, the oracle would return nothing, and the case would compare an
@@ -589,10 +589,10 @@ are not obvious from the field names:
   its own envelope on a folded capi sentinel and would neutralize a discrete
   miss the comparator asserts exactly. `envelope_element` and
   `rewrite_element_selected` are therefore both keyed on one predicate,
-  `seq_slot_is_banded` (`crates/dss-core/tests/corpus_gate/ledger.rs:1759`),
+  `seq_slot_is_banded` (`crates/dss-core/tests/corpus_gate/ledger.rs:1783`),
   pinned slot by slot on all three arms by
   `the_seq_rewrite_and_the_seq_envelope_cover_the_same_slots`
-  (`ledger.rs:3953`); a `seq_*` scope over an element with no banded slot
+  (`ledger.rs:3979`); a `seq_*` scope over an element with no banded slot
   measures nothing and is reported STALE rather than passing silently.
 * **The 1φ-positive-sequence population is a fail-on-stale census, recorded by
   the runner.** r4133's `SeqPowers` writes the single positive-sequence value
@@ -801,7 +801,7 @@ Five things about it that are not obvious from the field names:
 * **Two unrelated `node_order` fields share the name.** The per-element
   `ElementCap::node_order` (`mod.rs:1003`) is the bus-local node number per
   conductor per terminal; the checkpoint-level `CaseResult::node_order`
-  (`crates/dss-epri/src/capture.rs:161`) is the **Y node name order** of the
+  (`crates/dss-epri/src/capture.rs:180`) is the **Y node name order** of the
   whole circuit. They live in different JSON objects and share nothing but the
   word; both field docs say so.
 
@@ -950,7 +950,7 @@ differ only in bookkeeping outside the payload — mode 12 `Exit`s on a nil
 regardless (`DLines.pas:794-795`). Whenever there is a YPrim at all, both arms
 copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and compares
 `CktElement.Yprim` live on both channels (`tools/oracle/oracle_server.py:1357`,
-`crates/dss-epri/src/capture.rs:930` over `Engine::element_yprim`
+`crates/dss-epri/src/capture.rs:956` over `Engine::element_yprim`
 (`crates/dss-epri/src/dss.rs:725`), Rust side `compare_yprim` at
 `corpus_gate/runner.rs:980` → `harness::compare_yprim`
 (`crates/dss-core/tests/harness/mod.rs:1581`)), so a
@@ -1122,7 +1122,7 @@ Every one goes straight to `Solution.NodeV` (`CAPI_Alt.pas:2276` == r4133
 `DDLL/DBus.pas:423`) and moves only `ActiveBusIndex`, so no bus read stales a
 cached `Iterminal` or is staled by one. What
 `the_bus_capture_reads_in_one_fixed_order_on_both_transports`
-(`crates/dss-core/tests/corpus_gate.rs:709`) pins is therefore the agreement of
+(`crates/dss-core/tests/corpus_gate.rs:718`) pins is therefore the agreement of
 the two transports, not a staleness hazard: the same five per-bus quantities in
 the same order on the capi and r4133 sides, the bus block after
 `variables`/`eventlog`/`ctrlqueue` and before `all_properties` (which stays the
@@ -1231,7 +1231,7 @@ knowing:
   forced cases, whose decks run none (five run one). The capture-order test
   asserts that the short-circuit segment calls no refresh on either transport
   (`the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports`,
-  `crates/dss-core/tests/corpus_gate.rs:870`), and the comparator's **first**
+  `crates/dss-core/tests/corpus_gate.rs:879`), and the comparator's **first**
   assertion is the discrete "study ran" bit, before any number.
 * **A third ordering convention.** These arrays are indexed by the bus's
   *internal* (insertion) node index — `for i … for j … Zsc.GetElement(i, j)`,
@@ -2091,7 +2091,7 @@ global corpus lock) and `scheduler::two_manifest_rows_in_one_case_directory_land
 Since **D35(3)** *every* producer in that directory takes the claim, the two cross-transport
 `#[test]`s included: `the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case` and its
 short-circuit twin drive both oracle transports over one corpus deck and were the last guard-less
-producers — each now opens with a `CorpusGuard` (`corpus_gate.rs:1246`, `:1546`). Measured after the
+producers — each now opens with a `CorpusGuard` (`corpus_gate.rs:1255`, `:1555`). Measured after the
 change: the intermittent single-case capi red ("You must create a new circuit object first") did
 not recur in four consecutive full default-lane drives — it did recur once on 2026-09-06, on a
 parity drive taken while three other lanes were building on the same machine (CPU at 100 %), and
@@ -2119,7 +2119,7 @@ fix); measured 9 leaked files before, **0** over four consecutive full drives af
 
 **The run-file read is per-RUN, and strictly last.** It is not an A/B/C capture group: the
 classification is one read of the filesystem for the whole run, and
-`capture_order::check_run_files_last` asserts its position from **both transports' source text** —
+`capture_order::check_run_tail_order` asserts its position from **both transports' source text** —
 exactly once in the code view, after every per-step capture the `Anchors` table names, after the
 WPG.5 `autoadd_log` read (which reads one of the created files off disk), lexically inside the
 guard scope and as a direct statement of it (a classification nested in the retry loop, which
@@ -2170,7 +2170,7 @@ side `Dss::bus_reliability` / `BusReliabilityView`
 (`crates/dss-core/src/exec/view.rs:3665` / `:3616`) — `&self` reads, the
 reliability math untouched; transports
 `capture_bus_reliability` on both arms
-(`tools/oracle/oracle_server.py:664`, `crates/dss-epri/src/capture.rs:1753`); comparator
+(`tools/oracle/oracle_server.py:664`, `crates/dss-epri/src/capture.rs:1894`); comparator
 `harness::compare_bus_reliability`
 (`crates/dss-core/tests/harness/mod.rs:18380`), called from inside
 `compare_reliability` so the payload keeps one entry point. Six rules come with
@@ -2393,11 +2393,11 @@ apply. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 
-Current contents (re-counted off the file 2026-09-06, after G1.4a's D12/D14
+Current contents (re-counted off the file 2026-09-12, after G1.4a's D12/D14
 channel flip, G1.3b's D31 entry, G1.4b's D29 `distance` entry, G1.3c's
 **25** widenings of existing `element` scopes — which added no entry and no
-cause — and G1.10a's `run_files` entry): 57 entries over 33 documented
-causes — 5 r4133 `skip`
+cause — G1.10a's `run_files` entry and G1.10c's four `di` entries): 61 entries
+over 35 documented causes — 5 r4133 `skip`
 (the four #303 crash decks plus `r4133-espvlcontrol-uninstantiable`, where the
 r4133 DLL cannot construct an `ESPVLControl` at all), 29 r4133 `divergence`
 (Delphi 6-sig-fig display-precision
@@ -2416,9 +2416,15 @@ flip below — the three `property` entries the
 R4133_PROPS line-merge/switch fixes landed on the live capi compare
 (`reduce-merge-units-restored-midi-capi-props`, RP3.5, and
 `line-switch-keeps-linecode-zone2/zone3-capi-props`, RP3.6a) and the five
-`swtcontrol-per-phase-state-*-capi-props` entries RP3.7 landed), and 12
-`exclusion` — 4 capi_v0145 + 8 r4133, from four engine fixes, three measured
-oracle-channel defects and one product divergence. Four are
+`swtcontrol-per-phase-state-*-capi-props` entries RP3.7 landed), and 16
+`exclusion` — 6 capi_v0145 + 10 r4133, from four engine fixes, three measured
+oracle-channel defects, one product divergence and (GOLDEN_REBASE G1.10c,
+2026-09-12) the two demand-interval columns of
+`EPRITestCircuits/ckt7/RunDSS_ckt7.dss` — `kvarh` (cause
+`di-hourly-reactive-energy-cancels`) and `min lv bus`
+(`di-voltexception-argmin-tie`), one entry per channel each, both scoped
+`<file>:<column>` on the new `di` field and both pinned; see §"G1.10c — the
+demand-interval tree's contents". Four are
 `GOLDEN_REBASE_PLAN.md` G2.5's (2 capi_v0145 + 2 r4133), where the engine
 stopped reproducing three
 upstream bugs (GICTransformer `%R2`, Capacitor `MakePosSequence` `Cuf`,
@@ -2471,14 +2477,14 @@ the runtime reads a scope's `channels` as
 *empty ⇒ all of them* — so a committed entry written for the original three would
 silently widen onto every new element sub-channel WP-G1 adds (G1.3a–c), with no
 ledger diff and no population-lock trip. `SUBCHANNEL_FIELDS`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:765`) closes that with three
+(`crates/dss-core/tests/corpus_gate/ledger.rs:789`) closes that with three
 load-time rules: a scope on such a field must carry a **non-empty** `channels`;
 every name in it must be one of that field's declared sub-channels (a typo like
 `"curents"` otherwise loads cleanly, selects nothing, and leaves the entry
 reporting itself applied while masking not one value); and a scope on any other
 field must carry no `channels` at all, since the runtime would never read it.
 "All sub-channels" survives only as a named, reviewed exception in
-`BARE_CHANNELS_ALLOWED` (`ledger.rs:790`), which is **empty**. The rules are
+`BARE_CHANNELS_ALLOWED` (`ledger.rs:814`), which is **empty**. The rules are
 driven both ways by `a_scope_that_misuses_channels_is_refused_at_load`. When a
 sub-step adds a new element sub-channel it adds the name to `SUBCHANNEL_FIELDS`
 **in the same commit**, so the committed exclusions keep the width they were
@@ -2544,7 +2550,7 @@ cause as the rectangular channels the scope already named.
 
 G1.3c (2026-09-06) is the fourth and closes the flag: `cplx_seq_currents`,
 `cplx_seq_voltages` and `total_powers` join `SUBCHANNEL_FIELDS`
-(`crates/dss-core/tests/corpus_gate/ledger.rs:765`) in the commit that starts
+(`crates/dss-core/tests/corpus_gate/ledger.rs:789`) in the commit that starts
 comparing them, taking the `element` row to **thirteen** names. The complex pair
 rides the *same* `seq_slot_is_banded` predicate as the magnitudes — modes 13/14
 are the same `Calc*` output read without the `Cabs`, so the arms and the banded
@@ -3096,7 +3102,7 @@ deliberate exception: `skip_prop` is a free function taking the channel, so its
 | 5 | the assert | `assert_value_matches_tol`, `mod.rs:365` | the case's tier floors (`tol_for`) | **gate red, both spellings in the message** |
 
 A divergence the ledger owns is handled outside this chain, by the case's
-`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1413`, `:1433`) —
+`property`-scoped `ledger.json` entry (`corpus_gate/ledger.rs:1437`, `:1457`) —
 which is why the triage order below ends there and not before.
 
 **Link 2 — the normalization table** `PROPS_NORM_R4133` (`harness/props_norm.rs:560`). **168 rows**
@@ -3116,7 +3122,7 @@ written, never which value it is; anything else is an exclusion, not a rule.
 that the four per-kind locks (`NORM_ROWS` … `NORM_ENUM_SYNONYM_ROWS`,
 `props_norm.rs:742-764`) partition it, so a row cannot be added without moving a
 documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
-(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:276`) fails
+(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:285`) fails
 a full run in which a row was visited and folded nothing — the fail-on-stale
 half. The offline half is the replay (§"The r4133 props replay accounting"):
 every row must claim at least one vendored example row. Only the **live** half
@@ -3160,7 +3166,7 @@ converse guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` refuses a
 tied to the table both ways by
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`. *Liveness:*
 `props_norm::assert_echo_rows_are_live` (`props_norm.rs:2657`,
-`corpus_gate.rs:287`) — `visits > 0 && hits == 0` for a pair-scoped row,
+`corpus_gate.rs:296`) — `visits > 0 && hits == 0` for a pair-scoped row,
 `visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
 `visits == hits` by construction and the first arm cannot fire on it).
 
@@ -3204,7 +3210,7 @@ skipped on capi only, because their Rust tables are r4133-shaped
 `recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:8453`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
-(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:264`),
+(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:273`),
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
@@ -3862,6 +3868,215 @@ decision: `DSS_GATE_SEED_LEDGER=1` (optionally `DSS_GATE_SEED_ONLY=<substr>`)
 with no ledger, asserts nothing, and writes candidate entries with measured
 locations/envelopes to `tmp/ledger_candidates.json`. Hand-triage candidates
 into real entries (rules above) — **never** commit the candidate file as-is.
+
+## G1.10c — the demand-interval tree's contents (`compare_di`)
+
+**The surface.** Every CSV a run creates under `<OutputDirectory><CaseName>/DI_yr_<year>/`
+— the demand-interval tree an `EnergyMeter` writes while `Set DemandInterval=true` is in
+force — is compared **by content** against each of the case's gating channels. G1.10a
+already compares the *names* of everything the run creates; this sub-step compares the
+bytes of the DI subset, which is the only run-created CSV family both oracles produce
+deterministically and the port produces from its own metering rather than from a report
+reprint. The selection is `is_di_member`: a **file** member of the created set whose
+normalized path contains a directory whose name starts with `di_yr_` — a *prefix*, not
+`di_yr_<digits>`, so an unexpected year spelling widens the surface (and reds) rather than
+silently dropping out of it. The tree hangs under the run-created `<CaseName>` directory, so
+it is collected whole by G1.10a's classification ("the case dir's own entries, plus
+everything under a directory the run created") and can never pick up a tree that existed
+before the run.
+
+**The population is five decks, and it is derived, not typed.** `ckt5/Run_ckt5`,
+`ckt7/RunDSS_ckt7`, `StoCtrl_Current_PeakShave/Master`, `StoCtrl_SeasonTarget/Run_example`
+and `123Bus/Run_YearlySim` declare `"compare_di": true` in `solvable_now.json`
+(`DI_DECLARED_IN_MANIFEST`), and a manifest-side scanner reads the option out of every live
+case's entry deck **and its whole `Redirect`/`Compile` closure**, honouring the executive's
+own shortest-prefix option matching (the corpus writes `set demand=true`; `dem` is the
+shortest prefix that reaches `DemandInterval`, because `Defaultdaily`, `Defaultyearly` and
+`DefaultBaseFrequency` are declared ahead of it and r4133 `Shared/HashList.pas:335-356` is a
+linear scan). `every_deck_that_enables_demand_interval_declares_compare_di` asserts the two
+sets are equal in both directions, so a newly vendored DI deck cannot arrive undeclared.
+`Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss` issues `CloseDI` **without**
+`DemandInterval` and therefore writes no DI tree at all: it is compared (an empty tree on
+both sides) and pinned DI-free by name as `DI_FREE_CLOSEDI_CASE`, which is why this
+sub-step's population is five and not the six the plan's split originally named.
+
+**The force rule is the one forced surface that is not the shared live-non-`large`
+population.** `force_di` arms every live case with **no `kind` test**
+(`FORCED_DI_POPULATION` = (522, 366, 101, 55), re-derived per run and fail-on-stale in both
+directions), deliberately *not* folded into the four-way equality the property / topology /
+incidence / run-file populations share (443): four of the five DI producers are
+`kind=large`, which that rule excludes. The cost is one `contains("/di_yr_")` per created
+name on the other 517 cases. The port-side probe bracket exists whenever
+`compare_run_files || compare_di`, while G1.10a's **comparison** stays gated on its own
+flag — this sub-step must not arm the created-file SET on `large` decks, and the reason is
+measured: ckt5's capi `EarlyAbort` after the deck's bogus `Export monitor ckt5mon` (the
+deck's monitors are `ckt5_mon` / `ckt5_mon_p`) costs that channel one created file the port
+and r4133 both write. Nothing is red today because ckt5 is `large`; forcing G1.10a's surface
+onto `large` decks later will hit it.
+
+**The capture slot is contractual, and its reason is measured.** Both transports read the
+tree **after** `autoadd_log` and **strictly before** `created()` and before the capi
+teardown `clear`. That `clear` flushes the in-flight demand-interval cycle on capi: it moves
+8/8 DI file digests on 123Bus, 7/8 on the peak-shave deck and 4/6 on the season-target deck
+(0/7 on ckt5 and ckt7, which end in snapshot mode), while r4133's `clear` moves nothing on
+any of the five. Reading after it would compare a *different* cycle on one channel only.
+The port side is `RunFileProbe::di_tree`, read after the engine is dropped and before the
+probe sweeps (`finish_and_clean` consumes the probe, so the borrow checker states half of
+the rule). `check_run_tail_order` — G1.10a's `check_run_files_last`, renamed for the longer
+tail — asserts the slot out of both transports' source text, with four negative drives per
+transport. The tail order is
+`autoadd_log → DI contents → created() → [capi: teardown clear] → sweep`.
+
+**Transport is a sidecar directory, never an inline blob.** Each transport COPIES its
+selected members into the gate's own scratch, `<target>/corpus_gate/di/<case key>/<channel>/`,
+inside the guard bracket, and replies with `{normalized name → relative sidecar path}`; the
+gate reads them back, compares, and drops the sidecar. The reply is `None` when the tree was
+not requested and `{}` when it was requested and the deck writes none — the presence rail
+fails a case whose flag is on with nothing captured. A sidecar that would lie inside the
+case directory is refused (the copies would be classified as the run's own output and
+swept), as is a copy whose size does not match its source, a member missing on read-back,
+and a member that is not UTF-8. All four are loud case failures, never a silent skip.
+
+**Per file, then per cell.** The two sides' file sets must be equal (a missing or an extra
+member fails, naming both sets); then, per file, header line 1 **verbatim**, data-row count
+exact, per-row field count exact, and every cell left to right. A cell is not "a number in a
+CSV" — it is an EnergyMeter register, a demand, a per-unit voltage, a count or a name — so
+each column is compared at the gate's **existing calibrated tier for that physical quantity**
+(`tol_for(&c.kind)`), chosen once per column by the class table: the index column
+(`Hour`/`Time`/`Year`/`Name`) exact; energy registers at the `energy_*` band that already
+governs these very registers elsewhere in the gate; `Max …` / `Peak …` demands and the
+overload report's `I1(A)`/`I2(A)`/`I3(A)`/`% Normal`/`% Emerg` at `i_*`; per-unit
+`Min/Max Voltage` and `Min/Max LV Voltage` at `v_*`; `Normal Amps`, `Emerg Amps`, `kVBase`
+and the four exception counts exact; `Element` and the four bus names ASCII-case-insensitively
+and never as numbers. **No floor moved and no constant was defined** — the derivation, and
+why the IEEE13 `di_policy()` fixture floor does not transfer, is in
+`tests/TOLERANCE_NOTES.md` §"G1.10c". The classification is **positional over the port's own
+`RegisterNames`** (r4133 `Meters/EnergyMeter.pas:1009-1043`, the volt-base block `:3090-3119`),
+and the three fixed-shape reports carry their whole header as one engine literal
+(`:3430-3431` system meter, `:3849` overloads, `:3862-3863` voltage exceptions), so every
+compared file asserts its own header against the table before a cell is read. **A column the
+table does not classify fails the case** — never a default band; the live claim is kept true
+by `the_di_class_table_covers_every_column_of_every_live_di_file` (13 shapes, 36 files,
+1 454 classified columns, 4 922 812 classified cells). Two shapes a header-driven classifier
+would have broken on and this one handles: the season-target deck's register files carry
+only their index column in the header while their rows have 68 fields (r4133 writes the
+`RegisterNames` loop under `if Assigned(mtr)`), and 123Bus's `Min Bus`/`Max Bus` cells are
+numeric-looking names (`11`, `83`, `610`).
+
+**The census.** The gate epilogue re-derives `DI_TREE_CENSUS` = **(5, 883, 72, 9 793 064)**
+— producing cases, (case, channel) comparisons, files, cells — fail-on-stale in both
+directions, and refuses a label that is neither a manifest case nor a `unit:` fixture. Each
+number is derivable: **883** = the 888 live (case, channel) pairs of `FORCED_DI_POPULATION`
+(366 × 2 `both` + 101 + 55) minus the **5** channel-level `skip` entries the ledger carries;
+**72** = 36 files per channel (ckt5 7, ckt7 7, peak-shave 8, season-target 6, 123Bus 8) × 2
+channels; **9 793 064** = the 9 845 624 cells the class table covers minus the **52 560**
+cells of the three ledger-excluded ckt7 columns (2 × 8 760 `kvarh` + 8 760 `min lv bus`, per
+channel). The whole surface costs **≈ +5…9 s per lane per full gate**, A/B-measured with
+`DSS_GATE_ONLY` (the full-gate clock is load-dominated when several lanes gate at once and
+cannot resolve it).
+
+**Triaging a DI divergence.** The ledger field is `di` and its key is
+**`<normalized file name>:<lower-cased column header>`** — one column of one file, consulted
+only for a file that has at least one data row, and it can reach nothing else: not the file
+set, not the header, not the row count, not a neighbouring column. It is **exclusion-only**
+(no `divergence` may name it — there is no per-value envelope on a column of 8 760 cells;
+`LEDGER_FIELDS` 17 → **18**, `EXCLUSION_FIELDS` 13 → **14**, `EXCLUSION_ONLY_FIELDS` 8 → **9**,
+`PER_VALUE_EXCLUSION_FIELDS` 4 → **5**), and an excluded column is still counted as a ledger hit,
+so a stale entry still reds.
+G1.10c landed **four** such entries, all on
+`EPRITestCircuits/ckt7/RunDSS_ckt7.dss`, two per channel:
+
+* `di-ckt7-hourly-kvarh-cancels-{capi,r4133}` (cause `di-hourly-reactive-energy-cancels`) —
+  the `kvarh` column of `di_totals_1.csv` and `25607_1.csv` (one meter, so the totals file
+  mirrors the meter file): 20 cells of 8 760 fail the energy class on capi, 17 on r4133,
+  each the near-cancellation of an hour's net reactive energy (`|kvarh| ≤ 76.76` while the
+  same row's `kWh ≥ 2 106.1` — summands 46× … 11 032× the net). There is **no
+  engine-independent value** at that scale: the two oracles disagree with *each other* by
+  2.7 % … 88.8 % of the port's own gap and exceed the energy class outright on 6 of those 24
+  cells (worst 4.021×). Pinned by
+  `the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`, which re-derives the whole
+  decomposition live, and by `the_ckt7_kvarh_scope_masks_that_column_and_nothing_else`.
+* `di-ckt7-min-lv-bus-argmin-tie-{capi,r4133}` (cause `di-voltexception-argmin-tie`) — the
+  `min lv bus` column of `di_voltexceptions_1.csv`: 7 316 of 8 760 rows name a different
+  bus. It is the argmin of a **tied** minimum — on capi the three service buses carry
+  bit-identical per-unit magnitudes — and r4133 keeps the FIRST strict minimizer
+  (`Meters/EnergyMeter.pas:3717`, inside `WriteVoltageReport` `:3620-3754`, whose LV arm
+  opens at `:3707`), which the port's scan reproduces faithfully; its last-bit-different
+  faer solution simply finds the strict minimum at another member of the tie. The **value**
+  column `Min LV Voltage` is inside the voltage class on all 7 316 rows, and `Min Bus` /
+  `Max Bus` / `Max LV Bus` stay compared everywhere. Pinned by
+  `the_ckt7_min_lv_bus_is_an_argmin_over_a_tie` and
+  `the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else`.
+
+A new DI divergence is triaged the same way: measure the column on **both** channels, decide
+whether it is a port bug (fix it), an oracle defect (r4133 evidence plus an
+`investigations/to_opendss/` note) or a genuine cross-engine indeterminate, then scope ONE
+entry per channel to `<file>:<column>` with an expected-value pin naming both numbers.
+Widening a band to admit a handful of cells is refused: a row-scale term on the energy class
+would have admitted the 20 `kvarh` cells with 0 ledger rows and 1.4–2.6× margin, and would
+have widened every energy cell on every `large` deck by ≈ 5e-3 (50× the class's own `abs`).
+
+### The name index the pin registry checks
+
+Every name below is one the pin registry
+(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `G1_10_PINS` / `G1_10_CONSTS`) checks: each
+exists exactly once in the tree (the presence rail's drive twice — each of `harness/di.rs` and
+`harness/run_files.rs` owns a twin) and is cited here, so a rename or a deletion reds in the cfg
+gate instead of leaving a documented claim with no prover.
+
+* **The four pins and their two comparator drives** (`crates/dss-core/tests/di_pins.rs`):
+  `the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`,
+  `the_ckt7_kvarh_scope_masks_that_column_and_nothing_else`,
+  `the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`,
+  `the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else`,
+  `the_di_capture_reads_the_last_closed_cycle`,
+  `the_di_class_table_covers_every_column_of_every_live_di_file`; their literal tables
+  `CKT7_KVARH_TRIPLE`, `MIN_LV_BUS_COUNTS`, `TIE_MAGNITUDES_HEX`, and the live inventory
+  `DI_SHAPES_LIVE` / `DI_LIVE_FILES` / `DI_LIVE_COLUMNS` / `DI_LIVE_CELLS` (36 files, 1 454
+  classified columns, 4 922 812 classified cells over the five decks).
+* **The comparator, its class table and its census** (`crates/dss-core/tests/harness/di.rs`):
+  `compare_di`, `classify_member`, `di_census`, `di_account`; the class tables `FIXED_REGISTERS`,
+  `SYSTEM_METER_COLUMNS`, `OVERLOAD_COLUMNS`, `VOLT_EXCEPTION_COLUMNS`, `VBASE_SUFFIXES`; the
+  drives `an_identical_tree_compares_equal`, `the_two_line_endings_are_the_same_file`,
+  `a_missing_file_fails`, `an_extra_file_fails`, `a_header_edit_fails`, `a_row_count_change_fails`,
+  `a_field_count_change_fails`, `a_cell_outside_its_class_fails`, `a_cell_inside_its_class_passes`,
+  `a_voltage_cell_is_compared_at_the_voltage_band`,
+  `the_text_class_never_compares_two_names_as_numbers`, `an_unclassified_column_fails`,
+  `a_renamed_register_fails`, `a_register_file_without_names_in_its_header_is_still_classified`,
+  `an_excluded_column_is_still_counted_as_a_ledger_hit`,
+  `an_exclusion_never_reaches_the_header_or_the_row_count`, `an_absent_capture_fails_the_case`
+  (the one name this surface shares with G1.10a's — `harness/di.rs` and `harness/run_files.rs` each
+  own a twin, which is why its registry count is 2),
+  `an_empty_tree_compares_and_is_not_counted_as_a_di_case`, `the_census_counts_files_and_cells`,
+  `the_static_column_tables_spell_the_headers_the_engines_write`,
+  `the_fixed_register_table_is_the_ports_own_register_names`,
+  `the_shape_census_records_every_file_kind_it_met`.
+* **The selection and the two transports' sidecar** (`crates/dss-epri/src/guard.rs` and
+  `capture.rs`, `crates/dss-core/tests/corpus_gate/engines.rs`,
+  `crates/dss-core/tests/harness/run_files.rs`): `is_di_member`, `copy_di_tree`,
+  `created_di_files`, `capture_di`, `di_tree`, the shared fixture list `DI_FILES` (its fifth list
+  `SELF_TEST_DI_FILES` lives in the Python twin `tools/oracle/corpus_guard.py`), and the drives
+  `the_di_members_of_the_shared_fixture_are_selected_and_copied`,
+  `is_di_member_selects_only_files_under_a_di_year_directory`,
+  `a_sidecar_inside_the_case_directory_is_recognized`,
+  `the_port_probe_reads_the_di_tree_before_it_sweeps`,
+  `a_reply_without_the_di_key_is_none_and_an_empty_tree_is_some`,
+  `the_di_sidecar_is_per_case_and_per_channel_and_starts_empty`,
+  `only_a_request_that_asks_for_the_di_tree_is_given_a_sidecar`.
+* **The capture slot** (`crates/dss-core/tests/capture_order.rs`): the DI anchor's two negative
+  drives `the_run_tail_gate_rejects_a_misplaced_di_read` and
+  `the_r4133_run_tail_gate_rejects_a_misplaced_di_read`, inside the renamed run-tail rule
+  `check_run_tail_order`.
+* **The flag, the force rule, the manifest derivation and the census**
+  (`crates/dss-core/tests/corpus_gate/manifest.rs` and `scheduler.rs`):
+  `the_di_forcing_rule_is_every_live_case`, `the_di_surface_is_declared_on_every_gating_channel`,
+  `every_deck_that_enables_demand_interval_declares_compare_di`,
+  `the_demand_interval_scanner_reads_the_option_and_its_abbreviation`,
+  `deck_enables_demand_interval`, `case_enables_demand_interval`,
+  `assert_di_census_is_the_pinned_population`, and the four fail-on-stale populations
+  `FORCED_DI_POPULATION`, `DI_DECLARED_IN_MANIFEST`, `DI_TREE_CENSUS`, `DI_TREE_CASES` plus the
+  DI-free `CloseDI` case `DI_FREE_CLOSEDI_CASE`.
+
 
 ## See also
 

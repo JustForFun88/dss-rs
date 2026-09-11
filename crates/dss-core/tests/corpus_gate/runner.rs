@@ -1847,9 +1847,18 @@ pub(crate) fn compare_with_result(
     // the directory and after the oracle result is already in hand, so anything
     // the ORACLE's own guard failed to sweep sits in the probe's "before"
     // snapshot and can never be mis-attributed to the port.
+    //
+    // G1.10c: the probe is also the port-side producer of the demand-interval
+    // tree's CONTENTS, and four of the five DI cases are `kind = large` (so not
+    // forced for run files), so it exists whenever EITHER surface is armed. The
+    // two COMPARISONS stay independently gated below: arming G1.10a's file-set
+    // comparison on a `large` deck is a decision for that surface's owner, not
+    // a side effect of this one: on `EPRITestCircuits/ckt5` the deck exports a
+    // monitor that does not exist, capi raises and `EarlyAbort` drops its
+    // remaining exports while r4133 and the port carry on, so the created-file
+    // SET differs by one member there and would red instantly.
     #[cfg(windows)]
-    let run_file_probe = c
-        .compare_run_files
+    let run_file_probe = (c.compare_run_files || c.compare_di)
         .then(|| harness::run_files::RunFileProbe::start(case_path));
     // The classification itself is portable since D33(3) (`dss_epri::guard` is
     // ungated, and `CorpusGuard::sweep_created` above runs it on every
@@ -1860,10 +1869,11 @@ pub(crate) fn compare_with_result(
     // §Platform doc).
     #[cfg(not(windows))]
     assert!(
-        !c.compare_run_files,
-        "{label}: `compare_run_files` is Windows-only — its `r4133` oracle \
-         channel is a Win64 DLL, so the comparator `harness::run_files` is \
-         declared under `#[cfg(windows)]`"
+        !c.compare_run_files && !c.compare_di,
+        "{label}: `compare_run_files` / `compare_di` are Windows-only — their \
+         `r4133` oracle channel is a Win64 DLL, so the comparators \
+         `harness::run_files` and `harness::di` are declared under \
+         `#[cfg(windows)]`"
     );
     let (mut dss, baseline) = run_rust_capture(label, case_path, c);
     compare_capture(
@@ -1876,20 +1886,102 @@ pub(crate) fn compare_with_result(
     drop(dss);
     #[cfg(windows)]
     if let Some(probe) = run_file_probe {
+        // G1.10c — the demand-interval tree's contents, read BEFORE the
+        // sweep (`finish_and_clean` consumes the probe, so the borrow checker
+        // states that half of the read-slot rule;
+        // `capture_order::check_run_tail_order` states the two oracle
+        // transports' half).
+        let port_di = c.compare_di.then(|| probe.di_tree(label));
         let port_files = probe.finish_and_clean(label);
         // Field-by-field ledger partition, per created NAME (the `run_files`
         // field's `name_re` scopes); the call marks the scope hit, which is what
         // keeps `ledger.json` fail-on-stale honest. Run-level surface, so step 0
         // is the only step a scope can select.
-        let excluded = |name: &str| ledger.is_some_and(|v| v.excluded("run_files", Some(name), 0));
-        harness::run_files::compare_run_files(
-            channel_tag(channel),
-            oc.run_files.as_deref(),
-            &port_files,
-            &excluded,
-            label,
-        );
+        if c.compare_run_files {
+            let excluded =
+                |name: &str| ledger.is_some_and(|v| v.excluded("run_files", Some(name), 0));
+            harness::run_files::compare_run_files(
+                channel_tag(channel),
+                oc.run_files.as_deref(),
+                &port_files,
+                &excluded,
+                label,
+            );
+        }
+        if let Some(port_di) = port_di {
+            let tag = channel_tag(channel);
+            // The oracle's files live in this (case, channel)'s sidecar: the
+            // channel's own guard swept the originals away before the port ever
+            // ran (`corpus_gate::engines::di_sidecar_dir`).
+            let oracle_di = oc
+                .di
+                .as_ref()
+                .map(|m| read_di_sidecar(m, case_path, tag, label));
+            // Per `<file>:<column>` ledger partition (the `di` field's `name_re`
+            // scopes); run-level surface, so step 0 is the only selectable step.
+            let excluded = |key: &str| ledger.is_some_and(|v| v.excluded("di", Some(key), 0));
+            harness::di::compare_di(tag, oracle_di.as_ref(), &port_di, &tol, &excluded, label);
+            // Compared and equal: drop the copies. A case that FAILED keeps its
+            // sidecar for triage; the next run of the same case empties it
+            // (`engines::prepare_di_sidecar`).
+            crate::engines::remove_di_sidecar(case_path, tag);
+        }
     }
+}
+
+/// `GOLDEN_REBASE_PLAN.md` G1.10c — read one oracle channel's
+/// demand-interval capture back off its sidecar directory.
+///
+/// The transports cannot answer with the file TEXT: the tree is run-created, so
+/// each channel's own `CorpusGuard` sweeps it away at the end of that run, long
+/// before the port re-runs the same case in the same directory and this gate
+/// compares. They therefore COPY the selected members into
+/// `<target>/corpus_gate/di/<case key>/<channel>/`
+/// (`engines::di_sidecar_dir`, coordinator decision D42(5)) and reply with
+/// `normalized member name -> path relative to it`.
+///
+/// Every failure here is LOUD, never a skip: a member the transport claimed and
+/// did not leave behind, or one that is not UTF-8, would otherwise turn into a
+/// silently smaller comparison. A DI file is CSV text written by the engines'
+/// own formatters on all three producers.
+#[cfg(windows)]
+fn read_di_sidecar(
+    members: &BTreeMap<String, String>,
+    case_path: &str,
+    channel: &str,
+    label: &str,
+) -> harness::di::DiTree {
+    let dir = crate::engines::di_sidecar_dir(case_path, channel);
+    members
+        .iter()
+        .map(|(name, rel)| {
+            let path = dir.join(rel);
+            assert!(
+                path.starts_with(&dir),
+                "{label}: the `{channel}` transport placed the demand-interval file \
+                 {name} at {rel:?}, which is outside its own sidecar \
+                 directory {dir:?}"
+            );
+            let bytes = std::fs::read(&path).unwrap_or_else(|e| {
+                panic!(
+                    "{label}: the `{channel}` transport reported the demand-interval \
+                     file {name} and its sidecar copy {path:?} cannot be read: \
+                     {e}. The copy is made inside the transport's own guarded \
+                     bracket (`engines::prepare_di_sidecar`), so a missing \
+                     member is a transport bug, never a reason to compare less."
+                )
+            });
+            let text = String::from_utf8(bytes).unwrap_or_else(|e| {
+                panic!(
+                    "{label}: the `{channel}` demand-interval file {name} ({path:?}) \
+                     is not valid UTF-8 ({e}). The DI files are CSV text on \
+                     all three producers; a non-UTF-8 byte is a writer bug, \
+                     never a reason to compare the file loosely."
+                )
+            });
+            (name.clone(), text)
+        })
+        .collect()
 }
 
 /// One-shot convenience for the opt-in report tests: snapshot the case dir,

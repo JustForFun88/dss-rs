@@ -46,7 +46,9 @@
     "windgen-qmode0-no-arm": "WindGen steady-state QMode dispatch: TWindGenObj.SetNominalGeneration's `case WindModelDyn.QMode` (EPRI r4133 Version8/Source/PCElements/WindGen.pas:1276-1322) implements arm 1 (PF, :1277-1288) and arm 2 (volt-var, :1289-1319) and has NO arm 0, so `Else kvarCalc := 0` (:1320-1321) zeroes the reactive dispatch - while QMode DEFAULTS to 0 (Create, :1020), the property help documents it as 'Q control mode (0:Q, 1:PF, 2:VV)' (:429-430), and the dynamics model spells the same mode `QMode := 0; // 0 -> Constant Q` (WTG3_Model.pas:252) and implements it as `Qord := Qref` (:1059-1061). A default-configured WindGen therefore injects ZERO vars in power flow however its kvar=/pf= reads. It is an omission, not a design: the same engine dispatches the base kvar whenever the case is bypassed (model=4 / DoFixedQGen, :1797, comment :1775 'Q is always kvarBase' - probed terminal Q -726.4287342535065 kvar on windgen_snap_delta and -985.9891404764404 on windgen_daily, i.e. it injects the base), arm 1's own saturation fallback IS kvarBase (:1284), arm 2 is kvarBase scaled by the VV curve and saturated at |kvarBase| (:1313-1316 - probed: a flat y=+1 curve dispatches exactly kvarBase), and the parent class writes the dispatch outright (Generator.pas:1163), which WindGen could not transcribe because its ShapeFactor carries the wind SPEED rather than a pu multiplier (:1241). Probed live on the r4133 DLL (Version 11.0.0.1, R4133_PROPS_PLAN RP3.10 investigation): QMode=0 dispatches exactly 0 on all five decks and in every configuration, including decks that type kvar=, pf= and kVA=; `edit QMode=0` is inert; and no other site fills Qnominalperphase for mode 0 (complete 20-hit write census: :1245 turbine-off, :1325 the dispatch, and the two overwritten seeds :3002/:3025; InitDQDVCalc/BumpUpQ/ResetStartPoint have no WindGen caller, Common/Solution.pas:963-1000 walking Generators only). Per the 2026-08-02 policy (CLAUDE.md: upstream bugs are never reproduced in any lane) R4133_PROPS_PLAN RP3.10 implements `0: kvarCalc := kvarBase` in BOTH lanes (crates/dss-core/src/elements/pc/windgen/nominal.rs), as kvarCalc = kvarBase read RAW where kVA= is unset (SyncUpPowerQuantities :3028 / Set_Presentkvar :3001 have already put the pf convention's sign into it there) and as |kvarBase| with LeadLag = -1 for PFNominal < 0 in the branch where a typed kVA= has stripped that sign - arm 1's own discipline (:1286-1287). No kVArating clamp, because arm 1's saturation test cannot fire: kVATmp = sqrt(Pg^2 + kvarCalc^2) is Pg/|PF| and Pg is capped at kWBase (:1268-1269), so kVATmp <= kWBase/|PF| == kVArating bit-for-bit (measured on 3000/0.95, 1584/0.88, 1080/0.9). The sign must come from PFNominal and not from kvarBase alone: RecalcElementData's kVA-set branch re-derives kvarBase := sqrt(kVArating^2 - kWBase^2) (:1377-1378), a non-negative root that strips the sign a typed pf<0 (:3028) or kvar<0 (:3001) put there, so reading the base raw would dispatch the OPPOSITE sign from arm 1 on identical tokens - probed live on r4133 for kW=1000 kVA=1200 pf=-0.9, arm 1 gives terminal Q +523.0678462465884 kvar (the machine ABSORBS, which is what pf<0 means) while upstream's own model=4, reading the stripped base through varBase, gives terminal Q -523.0475290915948 (injecting); this engine's mode 0 follows arm 1. With kVA= unset the two formulations are bit-identical. Factor (GenMultiplier) still applies because :1325 sits outside the case (probed: Set genmult=0.5 halves it). The dispatch feeds Yeq (:1338), so it moves every GenModel that reads Yeq - model 1 (the only one any modes:windgen deck declares), model 2 and the model-6 YPrim seed; models 4/5 read varBase and are untouched. The four decks that declare a WindGen without a QMode= token therefore diverge from r4133 across the solved model; the fifth, modes:windgen/windgen_snap.dss, types pf=1.0 so its kvarBase is 0 and the new arm is a literal no-op there (measured: that case stays fully compared and green, and gets no entry). Correct values pinned by dss_core::elements::pc::windgen::tests::qmode0_dispatches_the_base_kvar, ::qmode0_dispatch_carries_the_sign_and_scales_with_genmult and ::qmode0_zero_only_when_the_base_is_zero (crates/dss-core/src/elements/pc/windgen/tests.rs), which name both engines' numbers; the dynamics state by ::dynamics_variables_match_the_qmode0_dispatch. Upstream report: investigations/to_opendss/55-windgen-qmode0-zero-var-dispatch.md (local). The property side is untouched: r4133's kvar getter renders the DISPATCHED Q (:2896 -> :2297-2300, RP3.2's finding) and the port renders kvar_base (elements/pc/windgen/accessors.rs), which this dispatch never writes, so the four r4133-windgen-kvar-dispatched-* property entries keep their pinned pairs unchanged.",
     "capcontrol-time-bus-is-the-capacitors": "CapControl TIMECONTROL terminal-1 bus association: EPRI r4133 requires a monitored element for every control type except FOLLOWCONTROL (Version8/Source/Controls/CapControl.pas:605, `ElmReq := ElmReq and (ControlType <> FOLLOWCONTROL)`) and binds the control's own bus 1 to that element's ElementTerminal (:622, `Setbus(1, MonitoredElement.GetBus(ElementTerminal))`); the `ControlledElement.GetBus(1)` fallback at :633 is the no-monitored-element arm only. The pinned dss_capi 0.14.5 still carries the pre-b9bc87b8 form: for TIMECONTROL *and* FOLLOWCONTROL it sets `effElement := ControlledElement` and forces `ElementTerminal := 1` (src/Controls/CapControl.pas:597-608), then `Setbus(1, effElement.GetBus(ElementTerminal))` (:619) -- i.e. the *capacitor's* bus. The port follows r4133 (crates/dss-core/src/elements/control/cap_control/mod.rs, the `control_type != Follow` arm), which is the same adoption DIVERGENCES.md D11 (part 2) already recorded for the effElement/Terminal readback; G1.3a's `VoltagesMagAng` channel is the first gate that makes the *bus* half observable, because the field reads NodeV through the element's own NodeRef. So on a `type=time element=...` CapControl the capi_v0145 channel reports the capacitor's bus voltage and the port (= r4133) the monitored element's terminal voltage -- a different bus, not a numeric gap. The r4133 channel of the same case compares clean and needs no entry. Both numbers pinned by dss_core::exec::tests::derived_polar::capcontrol_time_voltages_follow_the_monitored_elements_terminal.",
     "posseq-seqpowers-slot-stride": "EPRI r4133's CktElement.SeqPowers writes the 1-phase POSITIVE-SEQUENCE arm into the wrong slot with the wrong stride. Mode 9 of Version8/Source/DDLL/DCktElement.pas transplants the ONE-based iV := 2 / Inc(iV, 3) of CalcSeqCurrents (:50, :55) onto a ZERO-based dynamic array and then keeps a stride of one -- Count := 2 (:760) and inc(count) (:768) -- so terminal t's positive-sequence power lands in flat slot t+2 (terminal 1 in the NEGATIVE-sequence slot, terminal 2 in the next terminal's ZERO-sequence slot, and so on) instead of 3t+1. dss_capi 0.14.5 is right on the same arm (iCount := 1 at CAPI/CAPI_Alt.pas:555, inc(icount, 3) at :562), and so are all four Calc* helpers on BOTH engines on their one-based buffers. SeqCurrents and SeqVoltages are unaffected -- they go through Calc*, not through mode 9 -- so the divergence is seq_powers only. The port emits capi's correct layout (CLAUDE.md: upstream bugs are never reproduced); upstream report investigations/to_opendss/67-seqpowers-posseq-slot-stride.md.",
-    "visualize-dssview-file-pair": "`Visualize <quantity> <element>` writes a DSSView file PAIR on EPRI r4133 and NOTHING at all on the pinned dss_capi 0.14.5, so a deck that issues it diverges on the created-file SET of the r4133 channel only. r4133 Version8/Source/Executive/ExecHelper.pas:3672 (DoVisualizeCmd) dispatches to TDSSPlot.DoVisualizationPlot (Version8/Source/Plot/DSSPlot.pas:3642), which builds GetOutputDirectory + CircuitName_ + Format('%s_%s_PQ.DSV', [class, name]) (:3728 + :3746 for vizPOWER; :3730 _V.DSV and :3739 _I.DSV for the other two quantities) and calls MakeNewGraph (:3758). MakeNewGraph (Version8/Source/Plot/DSSGraph.pas:109) Rewrites that .DSV text file (:114-115) and then FileCreates its binary companion ChangeFileExt(ActiveFileName, '.dbl') (:125, :128) -- hence the PAIR, one file per DSSView viewer artifact. dss_capi 0.14.5 src/Executive/ExecHelper.pas:4099 instead assembles a TJSONObject {PlotType: 'Visualize', ElementName, ElementType, Quantity} (:4184-4189) and hands the formatted string to DSS.DSSPlotCallback, opening no file; with the headless oracle's NIL callback it is a pure no-op. The port follows the JSON payload (crates/dss-core/src/exec/command.rs:865-968 -> exec/plot.rs:405-421, fire_visualize_callback): a headless Rust engine has no DSSView to feed, and a callback payload is the interface a client can consume, where a .DSV/.dbl pair is a Windows-viewer file format. This is a deliberate PRODUCT divergence (docs/upgrade/DIVERGENCES.md), NOT an upstream defect: r4133 is doing what it means to do, so no investigations/to_opendss/ report is owed, and it costs exactly the two r4133-only names. GOLDEN_REBASE G1.10a."
+    "visualize-dssview-file-pair": "`Visualize <quantity> <element>` writes a DSSView file PAIR on EPRI r4133 and NOTHING at all on the pinned dss_capi 0.14.5, so a deck that issues it diverges on the created-file SET of the r4133 channel only. r4133 Version8/Source/Executive/ExecHelper.pas:3672 (DoVisualizeCmd) dispatches to TDSSPlot.DoVisualizationPlot (Version8/Source/Plot/DSSPlot.pas:3642), which builds GetOutputDirectory + CircuitName_ + Format('%s_%s_PQ.DSV', [class, name]) (:3728 + :3746 for vizPOWER; :3730 _V.DSV and :3739 _I.DSV for the other two quantities) and calls MakeNewGraph (:3758). MakeNewGraph (Version8/Source/Plot/DSSGraph.pas:109) Rewrites that .DSV text file (:114-115) and then FileCreates its binary companion ChangeFileExt(ActiveFileName, '.dbl') (:125, :128) -- hence the PAIR, one file per DSSView viewer artifact. dss_capi 0.14.5 src/Executive/ExecHelper.pas:4099 instead assembles a TJSONObject {PlotType: 'Visualize', ElementName, ElementType, Quantity} (:4184-4189) and hands the formatted string to DSS.DSSPlotCallback, opening no file; with the headless oracle's NIL callback it is a pure no-op. The port follows the JSON payload (crates/dss-core/src/exec/command.rs:865-968 -> exec/plot.rs:405-421, fire_visualize_callback): a headless Rust engine has no DSSView to feed, and a callback payload is the interface a client can consume, where a .DSV/.dbl pair is a Windows-viewer file format. This is a deliberate PRODUCT divergence (docs/upgrade/DIVERGENCES.md), NOT an upstream defect: r4133 is doing what it means to do, so no investigations/to_opendss/ report is owed, and it costs exactly the two r4133-only names. GOLDEN_REBASE G1.10a.",
+    "di-hourly-reactive-energy-cancels": "The hourly net REACTIVE energy of the ckt7 feeder is a near-cancellation: the EnergyMeter integrates every zone element's kvar over the hour (r4133 Version8/Source/Meters/EnergyMeter.pas:2262-2318 `TakeSample` -> `Integrate`, written out by `WriteDemandIntervalData` :2943-2949), and on the 24 cells this cause covers the capacitive and inductive halves of the feeder cancel to |kvarh| <= 76.7594 on the port (<= 76.7674 including both oracles) while the SAME row's real-energy register is kWh >= 2106.0996 -- the summands are 46.376x .. 11031.672x the net they add up to. Three MEASURED facts make the residual an indeterminate rather than a port bug (coordinator decision D44(1), Option A; the two universals D42(2) had prescribed were withdrawn as measured false). (a) The cancellation above. (b) The residual is inside the accumulator's own class on its uncancelled twin: the port's absolute gap is at most 8.010487e-03 kvarh, which is at most 0.023012 of the energy band the same row's kWh earns (a band never narrower than 0.2107), equivalently 5.4927e-08 .. 1.6014e-06 of the row's own Max kVA -- the i_rel(large) = 1e-6 scale of the powers being integrated, exceeded by at most 1.6014x and only on 2 of the 24 cells (Time 475 on r4133, Time 478 on both). (c) No engine-independent value exists at that scale: the two KLU oracles disagree with EACH OTHER by 2.443741e-05 .. 2.513225e-03 kvarh = 2.7 % .. 88.8 % of the port's own gap on the same cell, and exceed the energy class between themselves outright on 6 of the 24 cells (Times 359, 477, 827, 850, 2596, 8517), worst ratio 4.021 at Time 359 (capi 1.01464560883437 vs r4133 1.01383583996829). The port's larger faer perturbation only scales an indeterminacy the two KLU oracles already have between themselves. Not a port gap and not a tolerance question: widening the energy band to admit these cells would widen EVERY energy cell on a `large` deck by ~5e-3 kvarh (50x the class's own `abs`) to admit 20, which CLAUDE.md forbids. Measured GOLDEN_REBASE G1.10c R part 2026-09-11, re-derived per cell at full precision by F4 2026-09-12 (tmp/g110c/analyze_classes.py, analyze_energy.py, di_gaps.json, f4_kvarh.json); pinned by di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate.",
+    "di-voltexception-argmin-tie": "The voltage-exception report's `Min LV Bus` column is the ARGMIN of a tied minimum on ckt7. `TEnergyMeterObj.WriteVoltageReport` scans the buses in list order and keeps the FIRST STRICT minimizer (`If Vmagpu < underVmin`, r4133 Version8/Source/Meters/EnergyMeter.pas:3620-3695, the LV arm split at :3646 / :3706 on kVBase <= 1), and the port's scan is faithful to it line for line (crates/dss-core/src/solution/meters/demand_interval.rs:866-906 -- same order, same strict `<`, same `> 0.1` neutral guard, same kVBase split). On ckt7 the three service buses s1x_1001577 / s2x_1001577 / s3x_1001577 carry the SAME node magnitudes bit for bit on the oracle (tmp/g110c/probe_tie.py: 0x1.c26d89b2b06a6p-1, 0x1.c5736ad8e99ddp-1, 0x1.c69388d539fa3p-1 at each of the three), so the minimum is attained at three buses at once and which one a strict `<` scan reports is decided by the last bit of the solve: the port's faer solution breaks the tie at s2x_1001577 / s3x_1001577 where both KLU oracles break it at s1x_1001577. Every one of the three is a correct answer, and the VALUE column `Min LV Voltage` agrees inside the voltage class on all 7316 rows -- so the name column carries no information the value column does not. Not a port gap, no engine change; `Min Bus`, `Max Bus` and `Max LV Bus` stay compared and match on every row of every case. Measured GOLDEN_REBASE G1.10c R part 2026-09-11; coordinator decision D42(2)."
   },
   "entries": [
     {
@@ -1642,6 +1644,134 @@
         ],
         "note": "r4133 6 vs port 4 vs capi 4; the two excluded names are the DSSView .DSV text file and its .dbl binary twin",
         "date": "2026-09-06"
+      }
+    },
+    {
+      "id": "di-ckt7-hourly-kvarh-cancels-capi",
+      "case": "solvable_now:Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+      "channel": "capi_v0145",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "di",
+          "name_re": "(?i)^example_ckt7/di_yr_0/(di_totals|25607)_1\\.csv:kvarh$"
+        }
+      ],
+      "cause_ref": "di-hourly-reactive-energy-cancels",
+      "source": "GOLDEN_REBASE G1.10c measurement 2026-09-11, re-derived per cell at full precision 2026-09-12 (the R part's five-case drive of both transports at the gate's own capture slot, tmp/g110c/{capi,r4133,port}_files + analyze_classes.py; re-derived by F2's transcription of the Rust comparator, by F3's full 526-case live drive and by F4's per-cell extraction tmp/g110c/f4_kvarh.json). Scope: the `kvarh` column of the two files that carry it on this deck -- example_ckt7/di_yr_0/di_totals_1.csv and .../25607_1.csv (one meter, so the totals file mirrors the meter file). 20 cells of 8760 rows x 68 columns per file fail the energy class on this channel (17 on the other one; 24 in the union, which is the set the cause and the pin quantify). Both numbers at the three rows the pin names, port vs capi_v0145: row 352 7.21266169258719 vs 7.2086109009058 (ratio 4.935); row 477 0.412764282391174 vs 0.41082760865509 (ratio 13.727, this channel's worst cell; the r4133 side of the same row is 16.845); row 478 -76.7593383203749 vs -76.7673488074516 (the largest absolute gap of the surface, 8.010487e-03 kvarh). Why this is a cross-engine indeterminate and not a port bug (coordinator decision D44(1), Option A -- the measured decomposition): (a) |kvarh| <= 76.7594 on the port's side of every excluded cell while the same row's kWh >= 2106.0996, summands 46.376x .. 11031.672x the net; (b) the port's gap is <= 0.023012 of the energy band that same kWh earns (>= 0.2107), i.e. 5.4927e-08 .. 1.6014e-06 of the row's own Max kVA; (c) the two oracles disagree with EACH OTHER by 2.7 % .. 88.8 % of that gap and exceed the energy class between themselves on 6 of the 24 cells, worst 4.021x at Time 359. D42(2)'s two universals (|capi - r4133| exceeds the class on EVERY excluded cell; the port gap stays under i_rel(large) x Max kVA) were measured FALSE -- they hold on 6 of 24 and on 22 of 24 -- and are withdrawn by D44(1). Scoped to ONE column: the other 67 columns of both files -- including `kWh`, every Max/Peak demand and the per-kV-base blocks -- stay compared on this channel, as do the file set, the header line, the row count and every other DI file of this case. Pinned by di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate (the triple above plus (a)-(c) over all 24 cells, port values read live) and driven by di_pins::the_ckt7_kvarh_scope_masks_that_column_and_nothing_else (without the scope those rows red naming both numbers; with it the kWh and Max kVA cells of the SAME rows still red on a two-band move).",
+      "measured": {
+        "cells": 20,
+        "of_rows": 8760,
+        "files": [
+          "example_ckt7/di_yr_0/di_totals_1.csv",
+          "example_ckt7/di_yr_0/25607_1.csv"
+        ],
+        "worst_cell": {
+          "row": 477,
+          "port": 0.412764282391174,
+          "capi_v0145": 0.41082760865509,
+          "r4133": 0.410388521398359,
+          "ratio_to_energy_class": 13.727
+        },
+        "oracle_vs_oracle_ratio": 4.021,
+        "date": "2026-09-11"
+      }
+    },
+    {
+      "id": "di-ckt7-hourly-kvarh-cancels-r4133",
+      "case": "solvable_now:Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+      "channel": "r4133",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "di",
+          "name_re": "(?i)^example_ckt7/di_yr_0/(di_totals|25607)_1\\.csv:kvarh$"
+        }
+      ],
+      "cause_ref": "di-hourly-reactive-energy-cancels",
+      "source": "GOLDEN_REBASE G1.10c measurement 2026-09-11, re-derived per cell at full precision 2026-09-12 (the R part's five-case drive of both transports at the gate's own capture slot, tmp/g110c/{capi,r4133,port}_files + analyze_classes.py; re-derived by F2's transcription of the Rust comparator, by F3's full 526-case live drive and by F4's per-cell extraction tmp/g110c/f4_kvarh.json). Scope: the `kvarh` column of the two files that carry it on this deck -- example_ckt7/di_yr_0/di_totals_1.csv and .../25607_1.csv (one meter, so the totals file mirrors the meter file). 17 cells of 8760 rows x 68 columns per file fail the energy class on this channel (20 on the other one; 24 in the union, which is the set the cause and the pin quantify). Both numbers at the three rows the pin names, port vs r4133: row 352 7.21266169258719 vs 7.20876314957885 (ratio 4.749); row 477 0.412764282391174 vs 0.410388521398359 (ratio 16.845, this channel's worst cell; the capi_v0145 side of the same row is 13.727); row 478 -76.7593383203749 vs -76.7666439852964 (gap 7.305665e-03 kvarh). Why this is a cross-engine indeterminate and not a port bug (coordinator decision D44(1), Option A -- the measured decomposition): (a) |kvarh| <= 76.7594 on the port's side of every excluded cell while the same row's kWh >= 2106.0996, summands 46.376x .. 11031.672x the net; (b) the port's gap is <= 0.023012 of the energy band that same kWh earns (>= 0.2107), i.e. 5.4927e-08 .. 1.6014e-06 of the row's own Max kVA; (c) the two oracles disagree with EACH OTHER by 2.7 % .. 88.8 % of that gap and exceed the energy class between themselves on 6 of the 24 cells, worst 4.021x at Time 359. D42(2)'s two universals (|capi - r4133| exceeds the class on EVERY excluded cell; the port gap stays under i_rel(large) x Max kVA) were measured FALSE -- they hold on 6 of 24 and on 22 of 24 -- and are withdrawn by D44(1). Scoped to ONE column: the other 67 columns of both files -- including `kWh`, every Max/Peak demand and the per-kV-base blocks -- stay compared on this channel, as do the file set, the header line, the row count and every other DI file of this case. Pinned by di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate (the triple above plus (a)-(c) over all 24 cells, port values read live) and driven by di_pins::the_ckt7_kvarh_scope_masks_that_column_and_nothing_else (without the scope those rows red naming both numbers; with it the kWh and Max kVA cells of the SAME rows still red on a two-band move).",
+      "measured": {
+        "cells": 17,
+        "of_rows": 8760,
+        "files": [
+          "example_ckt7/di_yr_0/di_totals_1.csv",
+          "example_ckt7/di_yr_0/25607_1.csv"
+        ],
+        "worst_cell": {
+          "row": 477,
+          "port": 0.412764282391174,
+          "r4133": 0.410388521398359,
+          "capi_v0145": 0.41082760865509,
+          "ratio_to_energy_class": 16.845
+        },
+        "oracle_vs_oracle_ratio": 4.021,
+        "date": "2026-09-11"
+      }
+    },
+    {
+      "id": "di-ckt7-min-lv-bus-argmin-tie-capi",
+      "case": "solvable_now:Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+      "channel": "capi_v0145",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "di",
+          "name_re": "(?i)^example_ckt7/di_yr_0/di_voltexceptions_1\\.csv:min lv bus$"
+        }
+      ],
+      "cause_ref": "di-voltexception-argmin-tie",
+      "source": "GOLDEN_REBASE G1.10c measurement 2026-09-11, data re-confirmed 2026-09-12 (same drive as the `kvarh` entries above; tmp/g110c/f4_extract2.py). Scope: the `Min LV Bus` column of example_ckt7/di_yr_0/di_voltexceptions_1.csv. 7316 of 8760 rows name a different bus on this channel -- the port reports s2x_1001577 on 6941 rows and s3x_1001577 on 375 where capi_v0145 reports s1x_1001577 on all 8760 (the remaining 1444 rows agree) -- and the three buses carry bit-identical node magnitudes on the oracle (tmp/g110c/probe_tie.py), so each of them is a correct FIRST STRICT minimizer of a tie (cause di-voltexception-argmin-tie). Scoped to the NAME column alone: the value column `Min LV Voltage` is compared on all 8760 rows and green inside the voltage class (0 exceptions on either channel, worst ratio 0.0191476), and `Min Bus`, `Max Bus` and `Max LV Bus` -- the other three name columns of the same file -- stay compared and match on every row. Pinned by di_pins::the_ckt7_min_lv_bus_is_an_argmin_over_a_tie (the three names, the 6941/375/1444 split, the oracle's three hex magnitudes and the port's own three equal magnitudes read live) and driven by di_pins::the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else (without the scope the rows red naming both buses; with it `Min LV Voltage` and `Max LV Bus` of the same rows still red on a perturbation).",
+      "measured": {
+        "rows": 7316,
+        "of_rows": 8760,
+        "file": "example_ckt7/di_yr_0/di_voltexceptions_1.csv",
+        "port": [
+          "s2x_1001577",
+          "s3x_1001577"
+        ],
+        "oracle": [
+          "s1x_1001577"
+        ],
+        "tied_magnitudes_hex": [
+          "0x1.c26d89b2b06a6p-1",
+          "0x1.c5736ad8e99ddp-1",
+          "0x1.c69388d539fa3p-1"
+        ],
+        "min_lv_voltage_exceptions": 0,
+        "date": "2026-09-11"
+      }
+    },
+    {
+      "id": "di-ckt7-min-lv-bus-argmin-tie-r4133",
+      "case": "solvable_now:Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+      "channel": "r4133",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "di",
+          "name_re": "(?i)^example_ckt7/di_yr_0/di_voltexceptions_1\\.csv:min lv bus$"
+        }
+      ],
+      "cause_ref": "di-voltexception-argmin-tie",
+      "source": "GOLDEN_REBASE G1.10c measurement 2026-09-11, data re-confirmed 2026-09-12 (same drive as the `kvarh` entries above; tmp/g110c/f4_extract2.py). Scope: the `Min LV Bus` column of example_ckt7/di_yr_0/di_voltexceptions_1.csv. 7316 of 8760 rows name a different bus on this channel -- the port reports s2x_1001577 on 6941 rows and s3x_1001577 on 375 where r4133 reports s1x_1001577 on all 8760 (the remaining 1444 rows agree) -- and the three buses carry bit-identical node magnitudes on the oracle (tmp/g110c/probe_tie.py), so each of them is a correct FIRST STRICT minimizer of a tie (cause di-voltexception-argmin-tie). Scoped to the NAME column alone: the value column `Min LV Voltage` is compared on all 8760 rows and green inside the voltage class (0 exceptions on either channel, worst ratio 0.0191476), and `Min Bus`, `Max Bus` and `Max LV Bus` -- the other three name columns of the same file -- stay compared and match on every row. Pinned by di_pins::the_ckt7_min_lv_bus_is_an_argmin_over_a_tie (the three names, the 6941/375/1444 split, the oracle's three hex magnitudes and the port's own three equal magnitudes read live) and driven by di_pins::the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else (without the scope the rows red naming both buses; with it `Min LV Voltage` and `Max LV Bus` of the same rows still red on a perturbation).",
+      "measured": {
+        "rows": 7316,
+        "of_rows": 8760,
+        "file": "example_ckt7/di_yr_0/di_voltexceptions_1.csv",
+        "port": [
+          "s2x_1001577",
+          "s3x_1001577"
+        ],
+        "oracle": [
+          "s1x_1001577"
+        ],
+        "tied_magnitudes_hex": [
+          "0x1.c26d89b2b06a6p-1",
+          "0x1.c5736ad8e99ddp-1",
+          "0x1.c69388d539fa3p-1"
+        ],
+        "min_lv_voltage_exceptions": 0,
+        "date": "2026-09-11"
       }
     }
   ]

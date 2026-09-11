@@ -71,6 +71,19 @@ pub(crate) struct CaseResult {
     /// created nothing" — is the common, legitimate answer.
     #[serde(default)]
     pub(crate) run_files: Option<Vec<String>>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10c — the run-created demand-interval tree's
+    /// CONTENTS, as `normalized member name -> path relative to the request's
+    /// sidecar directory` ([`di_sidecar_dir`]). The files themselves are copied
+    /// there by the transport, because the channel's own `CorpusGuard` sweeps
+    /// the originals away before this gate ever reads them.
+    ///
+    /// Flag-gated (`SolvableCase::compare_di`) exactly like [`Self::run_files`]:
+    /// `None` is the honest reply when the case did not request it, and the
+    /// presence rail (`harness::capture_guard::require_capture_opt`) turns it
+    /// into a failure exactly when the flag IS on. `Some({})` — "asked, and this
+    /// deck wrote no DI tree" — is the common, legitimate answer.
+    #[serde(default)]
+    pub(crate) di: Option<std::collections::BTreeMap<String, String>>,
     /// `GOLDEN_REBASE_PLAN.md` G1.10a, coordinator decision D32(2) — the
     /// created entries the channel's OWN hygiene guard could not remove
     /// (`tools/oracle/corpus_guard.py::CorpusGuard.sweep_failed`,
@@ -299,6 +312,12 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         // (after `autoadd_log`, which itself reads a file off disk) and inside
         // the guard's scope.
         "run_files": c.compare_run_files,
+        // G1.10c: same contract, one key honored by BOTH transports
+        // (`oracle_server.py` reads `req["di"]`, `dss-epri`'s
+        // `RunRequest::di`). The sidecar directory the transports copy into
+        // travels with it as `di_dir`, attached per CHANNEL by
+        // [`attach_di_sidecar`] — a request built here is channel-agnostic.
+        "di": c.compare_di,
         // WP-G1 G1.3a: the per-element derived polar channels. One key for the
         // whole `compare_derived` surface, honored by BOTH transports —
         // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145) and
@@ -482,7 +501,10 @@ impl Oracle {
 
     /// Run one case and return the oracle's per-step model.
     pub(crate) fn run_case(&self, case_path: &str, c: &SolvableCase) -> CaseResult {
-        let req = build_run_request(case_path, c);
+        // This one-shot is the `capi_v0145` transport, so the DI sidecar is the
+        // capi one — the same attachment [`Channel::call`] performs for the
+        // scheduler's four transports.
+        let req = attach_di_sidecar(&build_run_request(case_path, c), CAPI_TAG);
         let r = self.call(&req);
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
         let v = r.result.expect("ok response missing result");
@@ -1204,6 +1226,119 @@ impl EpriOneShot {
 }
 
 // ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.10c: the DI sidecar directory.
+// ---------------------------------------------------------------------------
+
+/// The `capi_v0145` channel tag, spelled once (`harness::PropsChannel::tag`).
+const CAPI_TAG: &str = "capi_v0145";
+
+/// The gate's own scratch root, `<target dir>/corpus_gate`.
+///
+/// Derived from the test binary's own path (`<target>/<profile>/deps/<bin>`),
+/// so it follows `CARGO_TARGET_DIR` and a lane's redirected `target` junction
+/// without being told. Deliberately NOT under `tests/corpus/` and never the case
+/// directory: the corpus guard would classify anything written there as the
+/// run's own output.
+fn gate_scratch_root() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            exe.parent() // deps/
+                .and_then(|p| p.parent()) // debug/ | release/
+                .and_then(|p| p.parent()) // target/
+                .map(|p| p.to_path_buf())
+        })
+        .unwrap_or_else(std::env::temp_dir)
+        .join("corpus_gate")
+}
+
+/// A file-system-safe, collision-free key for one case: `<parent>_<stem>` in
+/// ASCII lower case plus an FNV-1a digest of the whole path, so two cases whose
+/// directories happen to share a name never share a sidecar.
+fn case_key(case_path: &str) -> String {
+    let folded = case_path.replace('\\', "/").to_ascii_lowercase();
+    // FNV-1a 64, spelled out: the key must be stable across processes, which
+    // `DefaultHasher` does not promise.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in folded.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let mut name = String::new();
+    let path = std::path::Path::new(&folded);
+    for part in [path.parent().and_then(|d| d.file_name()), path.file_stem()]
+        .into_iter()
+        .flatten()
+    {
+        for ch in part.to_string_lossy().chars() {
+            name.push(if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' {
+                ch
+            } else {
+                '_'
+            });
+        }
+        name.push('_');
+    }
+    format!("{name}{hash:016x}")
+}
+
+/// Where one (case, channel) DI capture is copied to:
+/// `<target>/corpus_gate/di/<case key>/<channel>` (coordinator decision D42(5)).
+///
+/// The demand-interval tree is run-created, so the channel's `CorpusGuard`
+/// sweeps it away at the end of the run — while the comparison happens here,
+/// later, after the port has re-run the same case in the same directory. The
+/// transport therefore COPIES the selected files into this directory (never
+/// moves them: the guard must still sweep the original and G1.10a must still see
+/// its name), and the runner deletes it inside the same guarded bracket that
+/// asked for it.
+pub(crate) fn di_sidecar_dir(case_path: &str, channel: &str) -> PathBuf {
+    gate_scratch_root()
+        .join("di")
+        .join(case_key(case_path))
+        .join(channel)
+}
+
+/// [`di_sidecar_dir`], emptied and created — so a stale copy from an earlier run
+/// can never be compared as this run's output.
+pub(crate) fn prepare_di_sidecar(case_path: &str, channel: &str) -> PathBuf {
+    let dir = di_sidecar_dir(case_path, channel);
+    remove_di_sidecar(case_path, channel);
+    std::fs::create_dir_all(&dir).unwrap_or_else(|e| {
+        panic!("cannot create the DI sidecar directory {dir:?} for {case_path}: {e}")
+    });
+    dir
+}
+
+/// Drop one (case, channel) sidecar once its contents have been compared.
+pub(crate) fn remove_di_sidecar(case_path: &str, channel: &str) {
+    let _ = std::fs::remove_dir_all(di_sidecar_dir(case_path, channel));
+}
+
+/// Attach the per-CHANNEL sidecar directory to a run request that asks for the
+/// demand-interval tree, creating it empty.
+///
+/// [`build_run_request`] is channel-agnostic (it sees the manifest row, not the
+/// transport), while the sidecar must not be shared by the two channels — the
+/// port runs once per channel and each run writes its own DI tree. The channel
+/// handle is therefore where the two meet, exactly as it is for the channel tag
+/// itself. A request that does not ask for the tree is passed through untouched,
+/// so every other command stays byte-identical.
+fn attach_di_sidecar(req: &Value, channel: &str) -> Value {
+    if req.get("di").and_then(Value::as_bool) != Some(true) {
+        return req.clone();
+    }
+    let case_path = req
+        .get("case_path")
+        .and_then(Value::as_str)
+        .expect("a run request that asks for the DI tree carries its case_path");
+    let dir = prepare_di_sidecar(case_path, channel);
+    let mut out = req.clone();
+    out["di_dir"] = json!(dir.to_string_lossy());
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Channel: the scheduler's uniform handle over the two channels' transports.
 // ---------------------------------------------------------------------------
 
@@ -1217,12 +1352,144 @@ pub(crate) enum Channel<'a> {
 }
 
 impl Channel<'_> {
+    /// This channel's tag, spelled as `harness::PropsChannel::tag` spells it —
+    /// the gate's one vocabulary for the two gating channels.
+    pub(crate) fn tag(&self) -> &'static str {
+        match self {
+            Channel::CapiPool(_) | Channel::CapiOneShot(_) => CAPI_TAG,
+            Channel::EpriPool(_) | Channel::EpriOneShot(_) => "r4133",
+        }
+    }
+
     pub(crate) fn call(&self, req: &Value) -> Resp {
+        // G1.10c: a request that asks for the demand-interval tree is given THIS
+        // channel's sidecar directory here, where the channel identity lives;
+        // everything else is passed through untouched.
+        let req = &attach_di_sidecar(req, self.tag());
         match self {
             Channel::CapiPool(p) => p.call(req),
             Channel::CapiOneShot(o) => o.call(req),
             Channel::EpriPool(p) => p.call(req),
             Channel::EpriOneShot(e) => e.call(req),
+        }
+    }
+}
+
+#[cfg(test)]
+mod di_sidecar_tests {
+    use super::*;
+
+    fn minimal_reply() -> Value {
+        json!({
+            "node_order": [],
+            "n_steps": 0,
+            "checkpoints": [],
+            "sweep_failed": [],
+        })
+    }
+
+    /// GOLDEN_REBASE G1.10c — the reply contract the presence rail rests on:
+    /// **`None` is "not requested", `{}` is "requested, and this deck wrote no
+    /// demand-interval tree"**. Both transports emit exactly that
+    /// (`tools/oracle/oracle_server.py::run_case`,
+    /// `dss_epri::capture::run_case`), and a transport that stopped emitting the
+    /// key must not deserialize into the empty answer — that is the AT-3
+    /// finding's shape on `sweep_failed`, which cost the D32(2) rail its teeth.
+    #[test]
+    fn a_reply_without_the_di_key_is_none_and_an_empty_tree_is_some() {
+        let none: CaseResult = serde_json::from_value(minimal_reply()).expect("minimal reply");
+        assert!(
+            none.di.is_none(),
+            "a reply that never asked for the DI tree carries no key at all"
+        );
+
+        let mut empty_reply = minimal_reply();
+        empty_reply["di"] = json!({});
+        let empty: CaseResult = serde_json::from_value(empty_reply).expect("empty DI reply");
+        assert_eq!(
+            empty.di.as_ref().map(std::collections::BTreeMap::len),
+            Some(0),
+            "an empty MAP is the honest answer of a deck that writes no DI tree, \
+             and must stay distinguishable from `None`"
+        );
+
+        let mut full_reply = minimal_reply();
+        full_reply["di"] = json!({"ieee13/di_yr_0/totals_1.csv": "ieee13/di_yr_0/totals_1.csv"});
+        let full: CaseResult = serde_json::from_value(full_reply).expect("DI reply");
+        assert_eq!(
+            full.di.expect("a tree")["ieee13/di_yr_0/totals_1.csv"],
+            "ieee13/di_yr_0/totals_1.csv",
+        );
+    }
+
+    /// The sidecar is per (case, channel), lives in the gate's own scratch, and
+    /// starts EMPTY — a stale copy from an earlier run can never be compared as
+    /// this run's output.
+    #[test]
+    fn the_di_sidecar_is_per_case_and_per_channel_and_starts_empty() {
+        let a = "/corpus/family_one/x/master.dss";
+        let b = "/corpus/family_two/x/master.dss";
+        assert_ne!(
+            di_sidecar_dir(a, CAPI_TAG),
+            di_sidecar_dir(a, "r4133"),
+            "the port runs once per channel and each run writes its own DI tree"
+        );
+        assert_ne!(
+            di_sidecar_dir(a, CAPI_TAG),
+            di_sidecar_dir(b, CAPI_TAG),
+            "two cases whose directory and stem happen to agree must not share a \
+             sidecar — they can run concurrently"
+        );
+        assert!(
+            di_sidecar_dir(a, CAPI_TAG).starts_with(gate_scratch_root()),
+            "the sidecar belongs to the gate's own scratch, never to tests/corpus \
+             (where the hygiene guard would classify it as the run's own output)"
+        );
+
+        let dir = prepare_di_sidecar(a, CAPI_TAG);
+        std::fs::write(dir.join("stale.csv"), b"from an earlier run\n").expect("write stale");
+        let again = prepare_di_sidecar(a, CAPI_TAG);
+        assert_eq!(dir, again);
+        assert_eq!(
+            std::fs::read_dir(&again)
+                .expect("the sidecar exists")
+                .count(),
+            0,
+            "prepare empties it"
+        );
+        remove_di_sidecar(a, CAPI_TAG);
+        assert!(
+            !again.exists(),
+            "the runner's removal takes the whole directory"
+        );
+    }
+
+    /// A request that does not ask for the DI tree is passed through byte for
+    /// byte; one that does is given THIS channel's directory.
+    #[test]
+    fn only_a_request_that_asks_for_the_di_tree_is_given_a_sidecar() {
+        let plain = json!({"cmd": "run", "case_path": "/corpus/x/master.dss", "di": false});
+        assert_eq!(
+            attach_di_sidecar(&plain, CAPI_TAG),
+            plain,
+            "every other request must reach the transport unchanged"
+        );
+
+        let asking = json!({"cmd": "run", "case_path": "/corpus/x/master.dss", "di": true});
+        for channel in [CAPI_TAG, "r4133"] {
+            let sent = attach_di_sidecar(&asking, channel);
+            let dir = sent["di_dir"]
+                .as_str()
+                .expect("the sidecar travels in the request");
+            assert_eq!(
+                std::path::Path::new(dir),
+                di_sidecar_dir("/corpus/x/master.dss", channel),
+            );
+            assert!(
+                std::path::Path::new(dir).is_dir(),
+                "created before the call"
+            );
+            remove_di_sidecar("/corpus/x/master.dss", channel);
         }
     }
 }

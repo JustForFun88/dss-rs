@@ -5679,7 +5679,20 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
 /// `RunFileProbe::start` is deliberately absent: `fn start(` is a generic
 /// method name the needle below would over-count. Its half of the lifecycle is
 /// pinned through `finish_and_clean`, which no other module defines.
-const G1_10_PINS: [(&str, usize); 40] = [
+///
+/// **GOLDEN_REBASE G1.10c** (the demand-interval tree's CONTENTS, `compare_di`)
+/// extends the same registry rather than opening a second one (coordinator
+/// decision **D44(3)**): it rides G1.10a's rails — the same created-file
+/// classification, the same `RunFileProbe`, the same per-case-directory claim —
+/// and lands **four** `ledger.json` rows on one case, so everything else it
+/// settled (the class table of D42(1), the capture slot of D42(6), the
+/// every-live-case force rule of D42(4), the census of D42(3), the sidecar
+/// transport of D42(5)) is again carried by a test name and nothing else.
+/// Its block is delimited below; `SELF_TEST_DI_FILES` is absent because the
+/// shared fixture's fifth list lives in the PYTHON twin
+/// (`tools/oracle/corpus_guard.py`), which this scan does not read — its Rust
+/// half is `DI_FILES`.
+const G1_10_PINS: [(&str, usize); 93] = [
     // the three both-numbers pins (`crates/dss-core/tests/run_files_pins.rs`)
     (
         "visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port",
@@ -5755,7 +5768,7 @@ const G1_10_PINS: [(&str, usize); 40] = [
     // rule searches for are NOT registered — they appear in this gate's own
     // synthetic fixtures, so a count there would pin test scaffolding (the
     // `capture_inc_matrix` precedent in [`G1_8_PINS`]).
-    ("check_run_files_last", 1),
+    ("check_run_tail_order", 1),
     ("capi_capture_classifies_the_run_files_last", 1),
     ("r4133_capture_classifies_the_run_files_last", 1),
     (
@@ -5784,15 +5797,142 @@ const G1_10_PINS: [(&str, usize); 40] = [
         "a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output",
         1,
     ),
+    // ---------------------------------------------------------------------
+    // GOLDEN_REBASE G1.10c — the demand-interval tree's CONTENTS.
+    // ---------------------------------------------------------------------
+    // the four both-numbers / mechanism pins and their two comparator drives
+    // (`crates/dss-core/tests/di_pins.rs`)
+    ("the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate", 1),
+    ("the_ckt7_kvarh_scope_masks_that_column_and_nothing_else", 1),
+    ("the_ckt7_min_lv_bus_is_an_argmin_over_a_tie", 1),
+    (
+        "the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else",
+        1,
+    ),
+    ("the_di_capture_reads_the_last_closed_cycle", 1),
+    (
+        "the_di_class_table_covers_every_column_of_every_live_di_file",
+        1,
+    ),
+    // the comparator, its class table and the census
+    // (`crates/dss-core/tests/harness/di.rs`)
+    ("compare_di", 1),
+    ("classify_member", 1),
+    ("di_census", 1),
+    ("di_account", 1),
+    ("an_identical_tree_compares_equal", 1),
+    ("the_two_line_endings_are_the_same_file", 1),
+    ("a_missing_file_fails", 1),
+    ("an_extra_file_fails", 1),
+    ("a_header_edit_fails", 1),
+    ("a_row_count_change_fails", 1),
+    ("a_field_count_change_fails", 1),
+    ("a_cell_outside_its_class_fails", 1),
+    ("a_cell_inside_its_class_passes", 1),
+    ("a_voltage_cell_is_compared_at_the_voltage_band", 1),
+    ("the_text_class_never_compares_two_names_as_numbers", 1),
+    ("an_unclassified_column_fails", 1),
+    ("a_renamed_register_fails", 1),
+    (
+        "a_register_file_without_names_in_its_header_is_still_classified",
+        1,
+    ),
+    ("an_excluded_column_is_still_counted_as_a_ledger_hit", 1),
+    ("an_exclusion_never_reaches_the_header_or_the_row_count", 1),
+    // …the presence rail's drive is the ONE name this surface shares with
+    // G1.10a's: `harness/di.rs` and `harness/run_files.rs` each own a twin of
+    // it, which is exactly the second copy the count must see.
+    ("an_absent_capture_fails_the_case", 2),
+    ("an_empty_tree_compares_and_is_not_counted_as_a_di_case", 1),
+    ("the_census_counts_files_and_cells", 1),
+    (
+        "the_static_column_tables_spell_the_headers_the_engines_write",
+        1,
+    ),
+    (
+        "the_fixed_register_table_is_the_ports_own_register_names",
+        1,
+    ),
+    ("the_shape_census_records_every_file_kind_it_met", 1),
+    // the selection and the two transports' sidecar
+    // (`crates/dss-epri/src/{guard,capture}.rs`, `corpus_gate/engines.rs`,
+    // `harness/run_files.rs`)
+    ("is_di_member", 1),
+    ("copy_di_tree", 1),
+    ("created_di_files", 1),
+    ("capture_di", 1),
+    ("di_tree", 1),
+    (
+        "the_di_members_of_the_shared_fixture_are_selected_and_copied",
+        1,
+    ),
+    (
+        "is_di_member_selects_only_files_under_a_di_year_directory",
+        1,
+    ),
+    ("a_sidecar_inside_the_case_directory_is_recognized", 1),
+    ("the_port_probe_reads_the_di_tree_before_it_sweeps", 1),
+    (
+        "a_reply_without_the_di_key_is_none_and_an_empty_tree_is_some",
+        1,
+    ),
+    (
+        "the_di_sidecar_is_per_case_and_per_channel_and_starts_empty",
+        1,
+    ),
+    (
+        "only_a_request_that_asks_for_the_di_tree_is_given_a_sidecar",
+        1,
+    ),
+    // the capture slot (`crates/dss-core/tests/capture_order.rs`)
+    ("the_run_tail_gate_rejects_a_misplaced_di_read", 1),
+    ("the_r4133_run_tail_gate_rejects_a_misplaced_di_read", 1),
+    // the flag, the force rule and the manifest derivation
+    // (`corpus_gate/{manifest,scheduler}.rs`)
+    ("the_di_forcing_rule_is_every_live_case", 1),
+    ("the_di_surface_is_declared_on_every_gating_channel", 1),
+    (
+        "every_deck_that_enables_demand_interval_declares_compare_di",
+        1,
+    ),
+    (
+        "the_demand_interval_scanner_reads_the_option_and_its_abbreviation",
+        1,
+    ),
+    ("deck_enables_demand_interval", 1),
+    ("case_enables_demand_interval", 1),
+    ("assert_di_census_is_the_pinned_population", 1),
 ];
 
 /// The G1.10a **constants** the same documents cite by name — the `fn {pin}(`
 /// needle cannot see them, and all three are fail-on-stale populations whose
 /// whole value is that a silent drift reds somewhere.
-const G1_10_CONSTS: [(&str, usize); 3] = [
+const G1_10_CONSTS: [(&str, usize); 21] = [
     ("SCRATCH_FILE_DECLINES", 1),
     ("FORCED_RUN_FILES_POPULATION", 1),
     ("RUN_FILES_DECLARED_IN_MANIFEST", 1),
+    // GOLDEN_REBASE G1.10c — the class tables, the shared fixture list, the
+    // four fail-on-stale populations and the two ckt7 literal tables. The
+    // process-wide `DI_SHAPES` accumulator is a `static`, not a `const`, so the
+    // needle cannot see it; its live claim is carried by `DI_SHAPES_LIVE`.
+    ("DI_FILES", 1),
+    ("FIXED_REGISTERS", 1),
+    ("SYSTEM_METER_COLUMNS", 1),
+    ("OVERLOAD_COLUMNS", 1),
+    ("VOLT_EXCEPTION_COLUMNS", 1),
+    ("VBASE_SUFFIXES", 1),
+    ("FORCED_DI_POPULATION", 1),
+    ("DI_DECLARED_IN_MANIFEST", 1),
+    ("DI_TREE_CENSUS", 1),
+    ("DI_TREE_CASES", 1),
+    ("DI_FREE_CLOSEDI_CASE", 1),
+    ("DI_SHAPES_LIVE", 1),
+    ("DI_LIVE_FILES", 1),
+    ("DI_LIVE_COLUMNS", 1),
+    ("DI_LIVE_CELLS", 1),
+    ("CKT7_KVARH_TRIPLE", 1),
+    ("MIN_LV_BUS_COUNTS", 1),
+    ("TIE_MAGNITUDES_HEX", 1),
 ];
 
 /// The documents that cite the G1.10a names, same rule as [`G1_9_PIN_DOCS`].
