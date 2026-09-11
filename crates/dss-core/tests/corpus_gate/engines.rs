@@ -71,6 +71,20 @@ pub(crate) struct CaseResult {
     /// created nothing" — is the common, legitimate answer.
     #[serde(default)]
     pub(crate) run_files: Option<Vec<String>>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the
+    /// created-file names (normalized and sorted like [`Self::run_files`])
+    /// whose CONTENTS the transport copied into this case's sidecar directory
+    /// ([`run_file_contents_dir`]). The bytes travel on disk, not in this
+    /// reply: the selection reaches ~19 MB per channel per full drive.
+    ///
+    /// `None` = the request carried no selection, so the presence rail
+    /// (`harness::capture_guard::require_capture_opt`) can tell that apart from
+    /// `Some([])` — "asked, and this deck wrote none of the selected reports",
+    /// the common answer. The gate asserts the sidecar holds exactly these
+    /// names, so a copy that lost one fails the case rather than comparing a
+    /// smaller set (`harness::run_files::read_sidecar`).
+    #[serde(default)]
+    pub(crate) run_file_contents: Option<Vec<String>>,
     /// `GOLDEN_REBASE_PLAN.md` G1.10a, coordinator decision D32(2) — the
     /// created entries the channel's OWN hygiene guard could not remove
     /// (`tools/oracle/corpus_guard.py::CorpusGuard.sweep_failed`,
@@ -299,6 +313,22 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         // (after `autoadd_log`, which itself reads a file off disk) and inside
         // the guard's scope.
         "run_files": c.compare_run_files,
+        // G1.10b: the CONTENTS half of the same flag. The SELECTION is computed
+        // once here, on the gate side, and shipped as data — both transports
+        // match it with one shared rule (`dss_epri::guard::selects_contents` and
+        // its Python twin `tools/oracle/corpus_guard.py::selects_contents`) and
+        // neither re-derives which files it must hand back. The bytes come back
+        // through the gate-owned sidecar directory (decision D40(6)), never
+        // inline. Off ⇒ an empty list and no directory, and the reply omits the
+        // key, which keeps it byte-identical to a pre-G1.10b one.
+        "run_file_contents": if c.compare_run_files {
+            dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS.to_vec()
+        } else {
+            Vec::new()
+        },
+        "run_file_contents_dir": c
+            .compare_run_files
+            .then(|| run_file_contents_dir(case_path).to_string_lossy().into_owned()),
         // WP-G1 G1.3a: the per-element derived polar channels. One key for the
         // whole `compare_derived` surface, honored by BOTH transports —
         // `tools/oracle/oracle_server.py::capture_all_elements` (capi_v0145) and
@@ -317,6 +347,55 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         "element_extras": c.compare_element_extras,
         "warn_and_continue": !c.expect_warnings.is_empty(),
     })
+}
+
+/// The gate-owned sidecar directory one case's run-file CONTENTS travel
+/// through (`GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6)).
+///
+/// Under the build's own `target/`, never inside `tests/corpus/` and never in
+/// the case directory: a byte the gate writes next to a vendored deck would be
+/// a corpus dropping, and one inside the case dir would land in the very
+/// created-file SET G1.10a compares.
+///
+/// One directory per CASE, not per channel, and the transport WIPES it before
+/// copying: the scheduler runs a `both` case's channels strictly in sequence
+/// (`corpus_gate::scheduler::run_one_case` fetches, compares and only then
+/// moves to the next channel), and the gate deletes the directory as it reads
+/// it ([`crate::harness::run_files::read_sidecar`]), so a file from the other
+/// channel or an earlier case can never be read as this run's output — and if
+/// one ever were, the name set the reply carries would not match the directory
+/// and the case would fail loudly.
+///
+/// The key is the case path made filename-safe plus a hash of the whole path,
+/// so two decks whose sanitized spellings collide still get their own directory.
+pub(crate) fn run_file_contents_dir(case_path: &str) -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    case_path.replace('\\', "/").hash(&mut h);
+    let stem: String = std::path::Path::new(case_path)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let mut root: PathBuf = match std::env::var_os("CARGO_TARGET_DIR") {
+        Some(d) => PathBuf::from(d),
+        None => [env!("CARGO_MANIFEST_DIR"), "..", "..", "target"]
+            .iter()
+            .collect(),
+    };
+    if root.is_relative() {
+        // The oracle workers are separate processes with their own working
+        // directories, so the path in the request must be absolute.
+        if let Ok(cwd) = std::env::current_dir() {
+            root = cwd.join(root);
+        }
+    }
+    root.push("corpus_gate");
+    root.push("run_files");
+    root.push(format!("{stem}_{:016x}", h.finish()));
+    root
 }
 
 pub(crate) fn oracle_server_path() -> PathBuf {

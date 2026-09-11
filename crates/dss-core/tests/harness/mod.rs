@@ -84,6 +84,21 @@ pub mod inc_matrix;
 #[cfg(windows)]
 pub mod run_files;
 
+/// The report-golden [`ExportPolicy`] table, lifted byte-faithfully out of
+/// `tests/golden_reports.rs` (`GOLDEN_REBASE_PLAN.md` G1.10b micro-part F2,
+/// coordinator decision D40(2)) so the byte goldens and the live run-file
+/// contents surface name the SAME policy for the same report.
+pub mod export_policies;
+
+/// `GOLDEN_REBASE_PLAN.md` WP-G1 sub-step G1.10b: the CELL comparison of the
+/// run-produced report files whose bytes [`run_files`] carries to the gate —
+/// per-report column maps (quantity class + Pascal `Format` per column, each
+/// cited to its r4133 writer line) and the `case floor + print ulp` rule of
+/// coordinator decision D40(1). Windows-only for the same reason
+/// [`run_files`] is.
+#[cfg(windows)]
+pub mod run_file_contents;
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;

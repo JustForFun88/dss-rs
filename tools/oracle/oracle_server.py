@@ -1436,6 +1436,7 @@ def capture_inc_matrix(d, ckt) -> dict:
 # Lifted move-only into corpus_guard.py (2026-07-07) so any consumer shares the
 # identical, empirically-hardened implementation.
 from corpus_guard import CorpusGuard as _CorpusGuard  # noqa: E402
+from corpus_guard import copy_selected_contents as _copy_selected_contents  # noqa: E402
 
 
 # The pinned engine (dss_capi 0.14.5) has a per-process nondeterminism: on a
@@ -1610,6 +1611,19 @@ def run_case(d, req: dict) -> dict:
     # `harness::capture_guard::require_capture_opt` can tell "not requested"
     # apart from "requested, and this deck creates nothing" (most decks do not).
     want_run_files = bool(req.get("run_files", False))
+    # G1.10b: the CONTENTS half. The gate's selection of created-file names
+    # whose BYTES this transport hands back, as patterns over a normalized
+    # member (`corpus_guard.selects_contents`); the list is declared ONCE on
+    # the gate side (`crates/dss-epri/src/guard.rs::RUN_FILE_CONTENTS_PATTERNS`)
+    # and travels in the request, so neither transport re-derives it. The bytes
+    # go through the gate-owned sidecar directory of decision D40(6) (never the
+    # case dir, never `tests/corpus/`) because the selection reaches ~19 MB per
+    # channel per drive and would otherwise cross the worker pipes inline. Empty
+    # -> the reply omits the key entirely (`None`), which is what lets the gate's
+    # presence rail tell that apart from `[]` ("asked, and this deck wrote none
+    # of the selected reports").
+    contents_patterns = list(req.get("run_file_contents", []) or [])
+    contents_dir = req.get("run_file_contents_dir") or ""
     # CF-C Port 2 user-model decks: tolerate the `_USER_MODEL_ERRNOS` at compile
     # AND at every solve (EarlyAbort is turned off around this call in main()).
     warn_and_continue = bool(req.get("warn_and_continue", False))
@@ -1920,6 +1934,33 @@ def run_case(d, req: dict) -> dict:
             teardown_error = f"{type(e).__name__}: {e}"
             log(f"teardown clear raised for {case_path}: {teardown_error}")
 
+        # G1.10b / decision D40(6): the CONTENTS of the files the gate selected,
+        # copied out of the case directory into the gate-owned sidecar while the
+        # guard still holds them. It consumes the set classified above - never a
+        # second classification, never a second listing rule.
+        #
+        # It runs AFTER the D32(2)(a) teardown on THIS channel, and that slot is
+        # MEASURED, not cosmetic (`tmp/g110b/probe_f1_stor_handle.py`, G1.10b F1):
+        # dss_capi 0.14.5 holds a Storage `debugtrace` stream open for the life of
+        # the object (`src/PCElements/Storage.pas:872`, freed only at `:871` on a
+        # re-edit and `:1199` in `TStorageObj.Destroy`) with a share mode that
+        # denies READ, so before the teardown `STOR_<name>.csv` cannot be opened at
+        # all (`PermissionError: [Errno 13]`) - the same handle whose `os.remove`
+        # D32(2)(a) had to move the teardown for. After the `clear` it reads whole
+        # (28 777 bytes on `Storage_price.dss`). The ordinary export reports are
+        # unaffected either way: `ExportVoltages` and its siblings close their file
+        # as they return, and `fbs_EXP_VOLTAGES.csv` is byte-identical before and
+        # after the teardown (349 bytes, sha256:0e8329e54fab84ee, measured). The
+        # r4133 transport needs no such move - it has no teardown at all, because
+        # r4133 closes its own trace file as it writes each record
+        # (`Version8/Source/PCElements/Storage.pas:1085`).
+        #
+        # `crates/dss-core/tests/capture_order.rs::check_run_file_contents_read_with_the_set`
+        # asserts this slot from the source text of both transports.
+        run_file_contents = _copy_selected_contents(
+            guard.dir, run_files, contents_patterns, contents_dir
+        )
+
     # D32(2): whatever the guard could not remove. Read AFTER the `with` block
     # (`__exit__` fills it) and reported unconditionally — the hygiene contract
     # does not depend on the run-file request flag. The gate's runner fails the
@@ -1936,6 +1977,7 @@ def run_case(d, req: dict) -> dict:
         "checkpoints": checkpoints,
         "autoadd_log": autoadd_log,
         "run_files": run_files,
+        "run_file_contents": run_file_contents,
         "sweep_failed": sweep_failed,
         "teardown_error": teardown_error,
     }

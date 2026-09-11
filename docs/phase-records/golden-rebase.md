@@ -3585,7 +3585,8 @@ row against the pre-fix lock.
   `the_event_log_capture_creates_no_file`; **D32(1)** Storage `DebugTrace` was a **port gap** on the
   authority channel (both oracles write `STOR_<name>.CSV` at edit time, r4133
   `PCElements/Storage.pas:1073-1085`) — ported in its own commit, open-append-close, name compared
-  here and contents handed to G1.10b (the two ORACLES disagree there in 16 columns, FPC `%-.g` = 2
+  here and contents handed to G1.10b (the two ORACLES disagree there in 16 columns — G1.10b measured
+  **36** declined columns per record against 16 compared, 2026-09-12 — FPC `%-.g` = 2
   significant digits vs Delphi ~15); **D32(2)/D33** the leak is closed loudly (a dropping surviving
   the sweep fails the case naming its producer; the capi transport clears before sweeping, guarded
   because dss_capi 0.14.5 faults on that `clear` after an AutoAdd solve — recorded in
@@ -3696,7 +3697,8 @@ row against the pre-fix lock.
   (`Examples/HarmonicsVariableLoad`, `IEEETestCases/13Bus` — the latter from 2026-09-04) read as
   pre-existing and suppressed a decline; deleted by name, the re-drive measured the pinned `(9, 9)`
   and left zero droppings. Frontier (USER WIND-DOWN): `lane-b` G1.4d lands last; F0′ (**D39**),
-  G1.10b (STOPPED at spec), G1.10c, the G1.11′ docs close-out and WP-G3 open the next session.
+  G1.10b (STOPPED at spec — settled by **D40** and landed 2026-09-12, its own block at the end of this
+  section), G1.10c, the G1.11′ docs close-out and WP-G3 open the next session.
 
   merge: lane lane-s -> update, see git log
 
@@ -3745,3 +3747,66 @@ row against the pre-fix lock.
   `operational_docs_line_citations_point_at_the_line_they_name`.
 
   merge: lane lane-b -> update, see git log
+
+- **G1.10b** (2026-09-12, lane `lane-s`, decisions **D7**/**D40**/**D43**, with **D33(6)** re-measured) —
+  the **CONTENTS** of the run files G1.10a's set already names, live on both gating channels. Settlement
+  **S-B**: nine report kinds, each compared through the SAME `ExportPolicy` its golden uses (the seven
+  producers lifted byte-faithfully into `harness::export_policies`, both callers sharing them —
+  `every_compared_kind_uses_the_same_policy_as_its_golden`), plus a per-column map of quantity class and
+  Pascal print format cited to the r4133 writer (`Common/ExportResults.pas`,
+  `PCElements/Storage.pas:1073-1085`/`:2401-2429`), under D40(1)'s cell rule *case floor + print ulp* — a
+  derivation of the calibrated `tol_for` floors onto a printed surface, **no new numeric constant**
+  (`tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents"). The bytes travel through a gate-owned sidecar
+  under `target/`, copied inside each transport's guard scope; the capi copy runs after the D32(2)(a)
+  teardown `clear` because dss_capi holds the Storage trace stream open denying *read* (D43(2)), a slot
+  asserted from both transports' source text by `check_run_file_contents_read_with_the_set`.
+  Census: **7 cases / 32 file comparisons / 3 035 190 cells** per drive (16 files, ≈1.52 M cells per
+  channel), pinned fail-on-stale in both directions and per channel by
+  `assert_run_file_contents_census_is_the_pinned_population` over `RUN_FILE_CONTENTS_COMPARED`,
+  `RUN_FILE_CONTENTS_DECLINES` and `TRACE_READBACK_RECORDS`.
+  **0 new ledger entries** (57 / 33 causes, 1 573 hits), 0 golden bytes, `population.lock.json`
+  byte-identical, no `ExportPolicy` value and no tolerance moved. The STOP's five cell classes C1–C5 all
+  fell inside the rule and are pinned with both numbers, port side read live
+  (`an_angle_of_a_residual_magnitude_is_gated_on_both_sides`,
+  `the_angle_of_a_16_microamp_current_is_free_within_the_case_floor`,
+  `a_six_significant_digit_cell_may_move_by_one_ulp`,
+  `a_cancellation_residual_cell_is_bounded_by_the_case_floor`,
+  `the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically`), with
+  `every_compared_kind_is_mutation_gated_on_its_own_report` driving every kind on its own live report
+  (scale / swap / drop / re-order RED, last-place respelling PASS) and
+  `a_report_without_a_policy_is_recorded_not_compared` holding the policy-less and deck-named exports as
+  recorded-not-compared. Two oracle-vs-oracle facts cost 0 rows each: the Storage trace's **36** `%-.g`
+  columns per record (D33(6) had estimated 16, which is the COMPARED count) are declined on both channels
+  because FPC prints 2 significant digits and the Delphi-built r4133 ~15
+  (`the_two_sig_trace_columns_are_declined_on_both_channels`; hand-down to **G4.1** — re-measure and
+  shrink to capi-only once `fmt_g` dies), and that file's row count is the reader's own footprint
+  (**D43(1)**: `WriteTraceRecord` fires outside the `Iterminal` cache test, r4133 `Storage.pas:2874` /
+  capi `:2356`, so oracle 102 rows vs port 98 over 96 identical solve records — the gap is *accounted*,
+  not skipped, by `the_storage_trace_tail_is_the_readers_footprint`).
+  **Two port gaps landed in their own commits ahead of the surface** (CLAUDE.md "port gaps immediately"):
+  the AC-5 hand-down `InShowResults` suppression, bracketed round **Show/Export/Save** as r4133 does
+  (`ShowOptions.pas:204`/`:393`, `ExportOptions.pas:328`/`:512`, `ExecHelper.pas:935` = `DoSaveCmd` — D43(3)
+  corrects D40(7); consumer guard `Storage.pas:2408`), whose never-lowered `DoSaveCmd` latch is an upstream
+  defect the port does not reproduce (`save_scopes_the_flag_instead_of_latching_it`, `to_opendss/72`,
+  beside `a_report_does_not_grow_a_storage_debug_trace` and
+  `a_show_that_aborts_mid_dispatch_still_lowers_the_flag`); and the `node_ref` guard nine PC
+  `get_currents` overrides were missing (**D43(4)**), where r4133 raises error 641 and capi 0.14.5 writes
+  the previous element's currents out of its scratch buffer
+  (`a_report_on_an_element_created_after_the_last_solve_reads_as_ground`,
+  `the_late_element_reports_its_current_once_the_next_solve_maps_it`, `to_opendss/74`). Both states are
+  corpus-unreachable, so neither is a ledger row. Details in `TESTING.md` §"G1.10b — the CONTENTS of the
+  selected run files", the plan's §G1.10 "part b as executed" note and `G1_10_PINS` (40 → **63** names,
+  `G1_10_CONSTS` 3 → **6**).
+  Commits `4bbc6405` (F0, the `InShowResults` bracket), `9b07466a` (F2b, the `node_ref` guards),
+  `<surface-sha>` (the surface: transports, comparator, census, pins) + docs.
+  **Gate at the docs stage, both lanes:** `cargo fmt --all --check` rc 0; full `corpus_gate`
+  **493 passed / 0 failed** per lane with **526/526** cases green (178.4 s default, 154.1 s parity), ledger
+  **57** entries / **1 573** hits / 0 stale / 0 unhit and the contents census identical on both lanes —
+  compared `(7, 32, 3 035 190)`, declines `(4, 8, 14 832)`, read-back tail `(2, 8)`, per channel
+  `capi_v0145 (16, 1 517 596, 7 415)` / `r4133 (16, 1 517 594, 7 417)`; `oracle_parity_cfg_gate` **25 / 0**
+  (the pin registry and both citation walkers), `population_lock` **3 / 0** with the lock byte-identical,
+  `golden_lock` **4 / 0** with `tests/golden/**` untouched. The micro-parts' own runs add
+  `golden_reports` **589–590 / 0**, `run_file_contents_pins` **388 / 0**, `run_files_pins` **381 / 0**,
+  `capture_order` **40 / 0** and `--lib` **1 628 / 0**, each in both lanes. `lane_diff` is **owed** by F0
+  and F2b (`crates/dss-core/src` moved), expected max |Δ| = **0** — the trace writer is not in the
+  `lane_dump` stream and the `node_ref` guard is unreachable on any deck that solves.

@@ -1912,6 +1912,338 @@ pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
         );
     }
 }
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.10b — the run-file CONTENTS census (coordinator decisions
+// D40(1)/(9), D43(1)).
+// ---------------------------------------------------------------------------
+
+/// What one `(case, channel)` contents comparison measured, as the gating call
+/// site saw it.
+///
+/// Recorded in `corpus_gate/runner.rs` from the `CellTally`
+/// `harness::run_file_contents::compare_run_file_cells` hands back, and never
+/// inside that comparator (coordinator decision **D24**, the
+/// [`harness::record_seq_arm`] precedent): the `harness::run_file_contents`
+/// fixtures in THIS test binary call the comparator too — several of them on
+/// the very Storage-trace kind the read-back tail below is derived from — so
+/// under the mandatory `cargo test --workspace` shape a comparator-side census
+/// reads the gating population *plus* the fixtures. Counting at the call site
+/// makes the population gate-only by construction, which is what lets the
+/// constants below be pinned exactly instead of as a floor.
+#[cfg(windows)]
+#[derive(Clone, Debug)]
+pub(crate) struct RunFileContentsRow {
+    /// The manifest case label, so a moved census names the deck.
+    case: String,
+    /// `capi_v0145` / `r4133` — the gating channel this comparison ran against.
+    channel: &'static str,
+    /// Report files whose contents were compared cell by cell.
+    files: usize,
+    /// Cells compared under the D40(1) `case floor + print ulp` rule.
+    compared: usize,
+    /// Cells the column map declined: the Storage trace's `%-.g` columns, which
+    /// the two ORACLES spell differently from each other (**D40(3)**, counts
+    /// corrected by **D43(5)**), and an angle whose paired magnitude is below
+    /// the case's own current floor, where the angle carries no information.
+    declined: usize,
+    /// Files accounting a reader read-back tail
+    /// (`ReportKind::accounts_readback_tail` — today the Storage `DebugTrace`).
+    trace_files: usize,
+    /// `oracle_rows − port_rows` summed over those files.
+    trace_tail: usize,
+}
+
+#[cfg(windows)]
+static RUN_FILE_CONTENTS_ROWS: Mutex<Vec<RunFileContentsRow>> = Mutex::new(Vec::new());
+
+/// Record one `(case, channel)` contents comparison for the epilogue below.
+///
+/// Called once per gated comparison from `corpus_gate/runner.rs`, including the
+/// (many) cases whose run produced no selected report at all — a row with
+/// `files = 0` is what makes "the surface was requested and compared nothing"
+/// visible instead of absent.
+#[cfg(windows)]
+pub(crate) fn record_run_file_contents(
+    case: &str,
+    channel: &'static str,
+    tally: harness::run_file_contents::CellTally,
+) {
+    RUN_FILE_CONTENTS_ROWS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(RunFileContentsRow {
+            case: case.to_string(),
+            channel,
+            files: tally.files,
+            compared: tally.compared,
+            declined: tally.declined,
+            trace_files: tally.trace_files,
+            trace_tail: tally.trace_tail,
+        });
+}
+
+/// `(cases, file comparisons, compared cells)` — the G1.10b contents surface's
+/// non-vacuity census, re-derived on every full run and pinned in BOTH
+/// directions.
+///
+/// A comparison census is the only thing that keeps a contents surface from
+/// silently comparing nothing (spec §2.3(5); coordinator decision **D40(9)**
+/// makes "a census that compares 0 cells on a gating channel" a STOP). A
+/// smaller population means a report stopped travelling — a selection pattern
+/// that no longer matches, a deck that stopped exporting, a transport that
+/// stopped copying — and a bigger one means a kind started being compared with
+/// nobody choosing its policy.
+///
+/// The key is `(case, channel)`, so a `both` case that exports a report
+/// contributes one file comparison per channel; `cases` counts the distinct
+/// manifest labels behind them.
+///
+/// **Measured `(7, 32, 3 035 190)` on 2026-09-12** (lane `lane-s`), read off a
+/// COMPLETED full 526-case default-lane drive and confirmed on the parity lane:
+/// the six forced `engines: "both"` decks that export a report this surface has
+/// a policy for (`Test/PVSystemTest.dss`, `…/WampServer/testcommandline.dss`,
+/// `…/NEVTestCase/Run_NEV.dss`, `…/8500-Node/Run_8500Node.dss`,
+/// `…/8500-Node/Run_8500Node_Unbal.dss`, `…/GFM_IEEE8500/Run_8500Node_Unbal.dss`)
+/// plus `…/StorageTechNote/Example_9_3_Price/Storage_price.dss` for the Storage
+/// `DebugTrace` — 16 file comparisons and 1 517 59x cells per channel.
+/// Never guessed: the epilogue runs only after the per-case failure report, so
+/// a drive with ANY red case never reaches it and a partial run cannot found a
+/// fail-on-stale population. The row table is in the record
+/// (`docs/phase-records/golden-rebase.md`).
+#[cfg(windows)]
+const RUN_FILE_CONTENTS_COMPARED: (usize, usize, usize) = (7, 32, 3_035_190);
+
+/// `(cases, (case, channel) comparisons, declined cells)` — the same census for
+/// the cells the column maps deliberately do NOT compare.
+///
+/// Deliberate deviation from spec §2.3(5)'s `(files, names)`: the declined
+/// *names* are a STATIC property of the column maps
+/// (`harness::run_file_contents::PrintFmt::DeclinedG`), pinned where they are
+/// declared (`the_trace_layout_follows_its_own_header`) and by the both-numbers
+/// pin `the_two_sig_trace_columns_are_declined_on_both_channels`; what a run
+/// can silently change is how many cells fall into them, which is what this
+/// census pins.
+///
+/// **Measured `(4, 8, 14 832)` on 2026-09-12**, same drives as
+/// [`RUN_FILE_CONTENTS_COMPARED`]: the Storage trace's 36 declined columns over
+/// its 98 compared records (3 528 cells per channel) plus the below-floor angle
+/// cells of the three 8500-Node decks (1 293–1 297 per (deck, channel)). The
+/// two channels differ by two cells on `Run_8500Node.dss` (capi 1 293 / r4133
+/// 1 295) because the arm is two-sided — `|I| = max(|I_oracle|, |I_port|)` —
+/// so which cells fall below the case's own current floor is a property of the
+/// pair, not of the port alone.
+#[cfg(windows)]
+const RUN_FILE_CONTENTS_DECLINES: (usize, usize, usize) = (4, 8, 14_832);
+
+/// `(files accounting a tail, records per file)` — the Storage `DebugTrace`
+/// read-back tail, coordinator decision **D43(1)(iii)**.
+///
+/// `WriteTraceRecord` is unconditional at the END of `GetTerminalCurrents`,
+/// OUTSIDE the `IterminalSolutionCount <> SolutionCount` cache test (r4133
+/// `Version8/Source/PCElements/Storage.pas:2874`, test at `:2868-2871`; capi
+/// 0.14.5 `src/PCElements/Storage.pas:2356`, test at `:2348-2353`), so every
+/// terminal-current READ appends a record: the file's row count is a property
+/// of the reader as well as of the run. The two oracle transports read the
+/// element six times after the last solve and append six records; the port's
+/// `exec::view::snapshot_elements` recomputes ONCE at the converged `NodeV`
+/// (GOLDEN_REBASE G2.3) and appends two — so the port's file is the oracle's
+/// minus a constant tail, never longer (`compare_one` refuses that outright)
+/// and its solve records are compared cell by cell under the unchanged D40(1)
+/// rule.
+///
+/// Pinned per FILE and in BOTH directions: a gap that grows is a port that
+/// stopped writing solve records or a transport that grew an element read; a
+/// gap that shrinks is a port that started logging the gate's own capture; a
+/// file count that moves is the trace comparison going quiet (or a second deck
+/// starting one whose tail nobody measured). The per-file detail (case,
+/// channel, both row counts) is in
+/// `harness::run_file_contents::trace_tail_census`.
+///
+/// **Measured `(2, 4)` on 2026-09-12**: `Storage_price.dss` × both channels,
+/// oracle 102 data rows vs port 98 on each — 96 identical solve records (48
+/// hours × 2 iterations), oracle tail 6, port tail 2. Both numbers live in the
+/// pin
+/// `run_file_contents_pins::the_storage_trace_tail_is_the_readers_footprint`.
+#[cfg(windows)]
+const TRACE_READBACK_RECORDS: (usize, usize) = (2, 4);
+
+/// The G1.10b contents census, re-derived from this run and pinned in both
+/// directions — the [`assert_scratch_declines_are_the_pinned_population`] shape
+/// for a settlement that deliberately writes NO ledger rows.
+///
+/// Silent in the two documented situations that shape has: `DSS_GATE_ONLY` is
+/// set (a filtered run holds a filtered population — the measurement is still
+/// reported, just not asserted), and no live manifest case requests
+/// `compare_run_files` at all (a fact re-read from the manifests here, not
+/// assumed, so the assertion arms itself the moment the surface is forced or
+/// declared).
+pub(crate) fn assert_run_file_contents_census_is_the_pinned_population() {
+    // The surface is Windows-only for the reason `harness::run_files` is (the
+    // `r4133` transport is a Win64 DLL); a live case requesting it elsewhere is
+    // already refused by `assert_scratch_declines_are_the_pinned_population`.
+    #[cfg(windows)]
+    {
+        let rows = RUN_FILE_CONTENTS_ROWS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let sum = |f: fn(&RunFileContentsRow) -> usize| rows.iter().map(f).sum::<usize>();
+        let cases: BTreeSet<&str> = rows
+            .iter()
+            .filter(|r| r.files > 0)
+            .map(|r| r.case.as_str())
+            .collect();
+        let compared = (cases.len(), sum(|r| r.files), sum(|r| r.compared));
+        let declined_rows: Vec<&RunFileContentsRow> =
+            rows.iter().filter(|r| r.declined > 0).collect();
+        let declined_cases: BTreeSet<&str> =
+            declined_rows.iter().map(|r| r.case.as_str()).collect();
+        let declines = (
+            declined_cases.len(),
+            declined_rows.len(),
+            sum(|r| r.declined),
+        );
+        let trace = (sum(|r| r.trace_files), sum(|r| r.trace_tail));
+        // Per channel, because D40(9)'s STOP is per gating channel: a surface
+        // that compares everything on one channel and nothing on the other is
+        // exactly as masked as one that compares nothing at all.
+        let mut per_channel: BTreeMap<&str, (usize, usize, usize)> = BTreeMap::new();
+        for r in &rows {
+            let e = per_channel.entry(r.channel).or_default();
+            e.0 += r.files;
+            e.1 += r.compared;
+            e.2 += r.declined;
+        }
+        let report: Vec<String> = rows
+            .iter()
+            .filter(|r| r.files > 0)
+            .map(|r| {
+                format!(
+                    "{} [{}] -> {} file(s), {} compared / {} declined cell(s), \
+                     read-back tail {} over {} file(s)",
+                    r.case, r.channel, r.files, r.compared, r.declined, r.trace_tail, r.trace_files
+                )
+            })
+            .collect();
+        // `harness::run_files::contents_census` is the transport-side half —
+        // files matched and oracle bytes decoded, process-wide (this binary's
+        // fixtures included, which is why it is REPORTED and never asserted;
+        // the gate-only rows above are what the constants pin).
+        let transported = harness::run_files::contents_census();
+        eprintln!(
+            "corpus_gate run-file contents: compared {compared:?}, declines \
+             {declines:?}, read-back tail {trace:?}, per channel {per_channel:?} \
+             over {} visit(s); transported (process-wide) {transported:?}\n  {}",
+            rows.len(),
+            report.join("\n  ")
+        );
+        if std::env::var("DSS_GATE_ONLY").is_ok() {
+            return;
+        }
+        let all = build_unified_cases();
+        let requested = all
+            .iter()
+            .filter(|uc| uc.class == CaseClass::Live)
+            .any(|uc| uc.case.compare_run_files);
+        if !requested {
+            assert_eq!(
+                (compared.1, compared.2),
+                (0, 0),
+                "no manifest case requests `compare_run_files`, yet the contents \
+                 comparator ran on real gate cases:\n  {}",
+                report.join("\n  ")
+            );
+            eprintln!(
+                "corpus_gate run-file contents: the surface is not requested by any \
+                 live case - nothing to re-derive"
+            );
+            return;
+        }
+        // Every label the census carries must be a manifest case: the recorder
+        // is called only from the gate's runner, so a foreign label would mean
+        // the population had stopped being a fact about the corpus.
+        let gate_labels: BTreeSet<&str> = all.iter().map(|uc| uc.label.as_str()).collect();
+        let foreign: Vec<&str> = rows
+            .iter()
+            .map(|r| r.case.as_str())
+            .filter(|case| !gate_labels.contains(case))
+            .collect();
+        assert!(
+            foreign.is_empty(),
+            "the G1.10b contents census carries the label(s) {foreign:?}, which are \
+             not manifest cases. The recorder runs only at the gate's own call \
+             site, so an unrecognized producer fails instead of being counted."
+        );
+        assert_eq!(
+            compared,
+            RUN_FILE_CONTENTS_COMPARED,
+            "the G1.10b run-file CONTENTS population moved (measured {:?}, pinned \
+             {:?}). It is re-derived on every run and fails in BOTH directions: a \
+             smaller population means a report stopped travelling (a selection \
+             pattern that no longer matches, a deck that stopped exporting, a \
+             transport that stopped copying), a bigger one means a kind started \
+             being compared without anyone choosing its policy. Re-measure off a \
+             COMPLETED full drive, move the constant WITH the record, and re-read \
+             the pins in `run_file_contents_pins`.\n  {}",
+            compared,
+            RUN_FILE_CONTENTS_COMPARED,
+            report.join("\n  ")
+        );
+        assert_eq!(
+            declines,
+            RUN_FILE_CONTENTS_DECLINES,
+            "the G1.10b declined-cell population moved (measured {:?}, pinned \
+             {:?}). The declined SET is static (the column maps' \
+             `PrintFmt::DeclinedG` and the below-floor angle arm), so a moved cell \
+             count means a file grew or lost rows, or a column changed class. \
+             Re-measure off a COMPLETED full drive and move the constant WITH the \
+             record.\n  {}",
+            declines,
+            RUN_FILE_CONTENTS_DECLINES,
+            report.join("\n  ")
+        );
+        for (channel, (files, compared_cells, _)) in &per_channel {
+            assert!(
+                *files > 0 && *compared_cells > 0,
+                "the G1.10b contents census compared {compared_cells} cell(s) over \
+                 {files} file(s) on the gating channel `{channel}`. A surface that \
+                 is live on one channel and silent on the other is masked \
+                 (coordinator decision D40(9)): re-read the selection \
+                 (`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`), that transport's \
+                 copy step and the sidecar read."
+            );
+        }
+        for r in rows.iter().filter(|r| r.trace_files > 0) {
+            assert_eq!(
+                r.trace_tail,
+                r.trace_files * TRACE_READBACK_RECORDS.1,
+                "{} [{}]: the Storage `DebugTrace` read-back tail is {} record(s) \
+                 over {} file(s), not the pinned {} per file. The oracle's file is \
+                 the port's plus the records the transport's OWN post-solve \
+                 element reads appended (r4133 PCElements/Storage.pas:2874, capi \
+                 0.14.5 :2356) — a moved gap is a port that stopped writing solve \
+                 records, a transport that grew an element read, or a port that \
+                 started logging the gate's own capture. Re-measure and move the \
+                 constant WITH the record and the pin \
+                 `the_storage_trace_tail_is_the_readers_footprint`.",
+                r.case,
+                r.channel,
+                r.trace_tail,
+                r.trace_files,
+                TRACE_READBACK_RECORDS.1
+            );
+        }
+        assert_eq!(
+            trace.0, TRACE_READBACK_RECORDS.0,
+            "the Storage `DebugTrace` comparison ran on {} file(s), not the pinned \
+             {}. Fail-on-stale in both directions: fewer means the only deck that \
+             sets `debugtrace=yes` stopped reaching the surface (or its contents \
+             stopped being selected), more means another deck started writing a \
+             trace whose tail nobody measured.",
+            trace.0, TRACE_READBACK_RECORDS.0
+        );
+    }
+}
 
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.

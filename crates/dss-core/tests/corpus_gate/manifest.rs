@@ -687,6 +687,9 @@ pub(crate) const G1_SURFACE_FLAGS: &[G1Flag] = &[
     // `capture_guard::require_capture_opt` in `runner::compare_with_result`
     // (an empty created set is a legitimate answer, a missing capture is not).
     // G1.10b/c read the CONTENTS of what this row lists; the row stays as it is.
+    // G1.10b wired those contents on 2026-09-12 (`harness::run_file_contents`,
+    // selection `dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`) on this same
+    // flag — no sub-flag, no force-rule change; `compare_di` stays G1.10c's.
     G1Flag {
         name: "compare_run_files",
         sub_step: "G1.10a",
