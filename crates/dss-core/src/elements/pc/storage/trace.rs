@@ -29,16 +29,20 @@
 //!   with the phase/variable counts as they stand at that instant (r4133 builds
 //!   it inside the `CASE` arm) and the executive drains it through
 //!   [`crate::obj::base::DssObject::open_debug_traces`] before `end_edit`.
-//! * **`InShowResults` is NOT_PORTED.** r4133 skips the record while a
-//!   `Show`/`Export`/`Dump` command is running (`:2407`; the flag is set and
-//!   cleared around `DoShowCmd`/`DoExportCmd`, `Executive/ShowOptions.pas:204/393`,
-//!   `Executive/ExportOptions.pas:328/512`, `Executive/ExecHelper.pas:935`, and
-//!   lives as a global in `Common/DSSGlobals.pas:242`). The port has no such
-//!   global — a recorded narrowing, corpus-unreachable today: the only reachable
-//!   deck with a `debugtrace` Storage (`…/StorageTechNote/Example_9_3_Price/
-//!   Storage_price.dss`) issues no `Show`/`Export`/`Dump`. It is a *contents*
-//!   difference only (extra records), never a file-name one, and is flagged to
-//!   the G1.10b contents surface.
+//! * **`InShowResults` is honoured** (GOLDEN_REBASE G1.10b F0): r4133 skips the
+//!   record while a report command is assembling its file (`:2408`, inside
+//!   `WriteTraceRecord`'s `Try`), so a `Show`/`Export` that reads element
+//!   currents does not grow the trace. The flag is the DSS-instance global
+//!   `Common/DSSGlobals.pas:242`, raised and lowered around `DoShowCmd`
+//!   (`Executive/ShowOptions.pas:204`/`:393`) and `DoExportCmd`
+//!   (`Executive/ExportOptions.pas:328`/`:512`) and raised — never lowered — by
+//!   `DoSaveCmd` (`Executive/ExecHelper.pas:935`; that latch is an upstream
+//!   defect the port does not reproduce, see [`crate::exec`]'s save bracket).
+//!   The port keeps it on the circuit and reads it through
+//!   [`SysCtx::in_show_results`](crate::elements::traits::SysCtx). Only
+//!   `WriteTraceRecord` is gated: the dynamics record at the tail of
+//!   `IntegrateStates` (`:3676-3683`) tests `DebugTrace` alone in r4133, and so
+//!   does [`Storage::write_dynamics_trace_record`].
 //!
 //! Number formatting follows the two Pascal specs literally:
 //! `%-.g` ([`TRACE_G_SIG`]) and the `:8:2` / `:8:1` fixed fields
@@ -188,7 +192,11 @@ impl Storage {
         sys: &SysCtx,
         node_v: &[num_complex::Complex64],
     ) {
-        if !self.base.debug_trace || self.trace.path.is_none() {
+        // `If (Not InshowResults)` (`:2408`): a record is written only outside a
+        // report command — the `Show`/`Export` that reads this element's currents
+        // must not appear in its own debug trace. `DebugTrace` itself is Pascal's
+        // call-site test (`:2874`, `:2888`), kept here so both call sites share it.
+        if !self.base.debug_trace || sys.in_show_results || self.trace.path.is_none() {
             return;
         }
         // Pascal `Variable[i]` (`Get_Variable`) per column; read before the line
