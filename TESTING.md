@@ -576,7 +576,7 @@ are not obvious from the field names:
   `0.8660254037844387` with the analytic inverse. `harness::seq_band`
   (`mod.rs:4492`) is therefore `abs + rel·mean_j|Xph_j|` **plus**
   `SEQ_C012 · max_j|Xph_j|` (`SEQ_C012` = `5.229590094302253e-10`,
-  `mod.rs:4435`) on the r4133 three-phase arm alone — the capi channel keeps the
+  `mod.rs:4460`) on the r4133 three-phase arm alone — the capi channel keeps the
   ordinary `i_*`/`v_*` bands unwidened, because the transform is linear with
   unit row sums. The base is the **phase** magnitude, not the sequence one: the
   sequence base is measurably not a bound (`the_sequence_magnitude_base_is_not_a_bound`),
@@ -731,13 +731,13 @@ Five things that are not obvious from the field names:
   (`the_zero_terminal_total_power_shapes_are_the_measured_ones`,
   `a_zero_terminal_element_accepts_the_measured_capi_sentinels`).
 * **Two bands that were written twice are now written once.** The per-terminal
-  `(bv, bi)` walk lives in `harness::seq_terminal_bands` (`mod.rs:4550`), used
+  `(bv, bi)` walk lives in `harness::seq_terminal_bands` (`mod.rs:4557`), used
   by `compare_element_seq`, `compare_element_cplx_seq` **and** the ledger's
   `envelope_element`, so a ledger envelope can no longer be evaluated at a
   different number than the compare it bounds; and the per-conductor power
-  expression is the single `power_slot_band` (`mod.rs:3238`) that both
+  expression is the single `power_slot_band` (`mod.rs:3257`) that both
   `harness::phase_loss_band` and the new `harness::total_power_band`
-  (`mod.rs:3282`) sum — over a phase's conductors and over a terminal's
+  (`mod.rs:3289`) sum — over a phase's conductors and over a terminal's
   respectively. Both extractions are byte-faithful and pinned against literal
   transcriptions of the copies they replaced.
 
@@ -782,7 +782,7 @@ Five things about it that are not obvious from the field names:
   `CAPI/CAPI_CktElement.pas:672-687`), r4133 returns `'0'` (the `CktElementS`
   pre-`case` default, `DDLL/DCktElement.pas:421`; arm 4 at `:442-449` is guarded
   by `HasEnergyMeter` at `:444`). `harness::oracle_meter_name`
-  (`mod.rs:2762`) takes the channel and folds only that channel's spelling, so on
+  (`mod.rs:2787`) takes the channel and folds only that channel's spelling, so on
   the capi side a meter literally named `0` is a name like any other and a port
   that lost it reds (`a_meter_named_zero_reds_instead_of_passing`,
   `mod.rs:4055`). On the **r4133** side the collision is genuinely undecidable and
@@ -801,7 +801,7 @@ Five things about it that are not obvious from the field names:
 * **Two unrelated `node_order` fields share the name.** The per-element
   `ElementCap::node_order` (`mod.rs:1019`) is the bus-local node number per
   conductor per terminal; the checkpoint-level `CaseResult::node_order`
-  (`crates/dss-epri/src/capture.rs:181`) is the **Y node name order** of the
+  (`crates/dss-epri/src/capture.rs:184`) is the **Y node name order** of the
   whole circuit. They live in different JSON objects and share nothing but the
   word; both field docs say so.
 
@@ -839,7 +839,7 @@ knowing:
   channels did not: `GetPhaseLosses` opens with the same cache-aware
   `ComputeIterminal` as `Get_Powers`/`Get_Losses`, so on the two `newton*` decks
   no oracle reports it at the converged `NodeV` (CLAUDE.md bug 5 / G2.3). The
-  seventh `ElemChannels` bit (`ElemChannels::phase_losses`, `mod.rs:1713`) is
+  seventh `ElemChannels` bit (`ElemChannels::phase_losses`, `mod.rs:1722`) is
   `true` in `ALL` and `false` in `CURRENTS_ONLY`, and the exclusion was
   **measured before it was added, on BOTH gating channels**: both decks red on
   `Vsource.source` phase 0 at 55.5× / 34.4× the band, on figures bit-identical
@@ -1201,7 +1201,7 @@ semantics; comparator: `harness::compare_bus_seq_and_vll`
   `VLL_UPSTREAM_PAIRING_DECLINES` = (16, 196) (`mod.rs:14455`, the pairing walk
   differing from the port's) and `R4133_VLL_HANG_POPULATION` = (2, 12)
   (`mod.rs:14459`, the refused calls) — `assert_seq_vll_populations`
-  (`mod.rs:14508`), silent under `DSS_GATE_ONLY`, both directions pinned offline.
+  (`mod.rs:14514`), silent under `DSS_GATE_ONLY`, both directions pinned offline.
   A drop *or* a growth is a review, exactly as for `SC_STUDY_POPULATION`. Note
   `modes:makeposseq/makeposseq_gic.dss` carries none of them: `makeposseq` leaves
   its buses with one node each.
@@ -2200,7 +2200,12 @@ sweep.)
 `ExportPolicy` producers `golden_reports.rs` used were lifted byte-faithfully into
 `harness::export_policies` (SPLITTING_RULES protocol; the unchanged golden run and `golden_lock`
 are the proof) and both the goldens and the live surface call them —
-`every_compared_kind_uses_the_same_policy_as_its_golden`. On top of the policy each kind carries a
+`every_compared_kind_uses_the_same_policy_as_its_golden`, which pins each kind's policy VALUES
+(`sep`, header lines, `rel`, `abs`, column overrides) beside the producers' own
+`the_lifted_policy_values_are_the_ones_the_goldens_carried` and
+`the_lifted_policies_keep_their_separator_and_header_count`: those three are what stands between a
+re-tuned lifted policy and both surfaces, since `ReportKind::structure()` READS the golden policy
+and cannot disagree with it. On top of the policy each kind carries a
 **column map**: per column a quantity class and the Pascal print format, each cited to its r4133
 writer line (`Common/ExportResults.pas`; `PCElements/Storage.pas:1073-1085`/`:2401-2429` for the
 trace). A cell passes when the two sides differ by no more than the case's existing calibrated
@@ -2210,7 +2215,8 @@ the measured worst cell of each class are in `tests/TOLERANCE_NOTES.md` §"G1.10
 contents". Structure is checked before any value (header verbatim, data row count, field count, the
 row identity key, the writer's trailing separator), and an unmapped file, an unmapped column or an
 L-L `Export Profile` is a loud refusal, never a skip. The five measured cell classes are pinned
-with both numbers, the port side read live through the gate's own probe:
+with both numbers in `crates/dss-core/tests/run_file_contents_pins.rs`, the port side read live
+through the gate's own probe:
 `an_angle_of_a_residual_magnitude_is_gated_on_both_sides` (an angle is free only once the paired
 magnitude is below the case's current floor, the magnitude taken as the max of the two sides —
 two-sided, D40(1)), `the_angle_of_a_16_microamp_current_is_free_within_the_case_floor`,
@@ -2232,7 +2238,14 @@ recorded rather than compared, each by name with its reason, pinned by
 ad hoc is exactly what this file forbids) and the **deck-named** exports (`export … file=<name>`,
 today eight `large*` `Test/AutoTrans` cases, none of them forced) — *the file name does not
 identify the report kind*, so there is nothing to dispatch a column map on; should a forced case
-ever carry one, the remedy is a deck-derived command → file-kind map, never an ad-hoc compare.
+ever carry one, the remedy is a deck-derived command → file-kind map, never an ad-hoc compare. A
+third class joined them at the audit settlement: `capacity`, `ycurrents` and `ynodelist` DO have
+golden policies, but the only decks exporting them are `large*` rows the force rule never reaches
+(`ckt7`, `GFM_AmpsLimit_123`), so no column map could be written and MEASURED against the two
+oracles — they are named in the same census with that reason, and
+`every_default_export_name_the_corpus_produces_is_selected_or_declined` holds the selection and the
+census jointly exhaustive over the export kinds the vendored corpus actually issues, so declaring
+`compare_run_files` on such a row reds instead of silently skipping its contents.
 Inside the Storage `DebugTrace` the **36 `%-.g` columns per record are declined on BOTH channels**
 while 16 are compared: FPC prints them at 2 significant digits and the Delphi-built r4133 at ~15,
 so the two ORACLES disagree with each other (`1E4` port and capi against `9999` r4133) and there is
@@ -2240,7 +2253,12 @@ no side a tolerance could bridge — `the_two_sig_trace_columns_are_declined_on_
 the numbers, including the one cell where the port's two lanes part (`kWTotalLosses` renders `5.4`
 default / `5.5` parity via `compat::fmt_g`, against capi `5.5` and r4133 `5.45`). **Hand-down to
 WP-G4 `G4.1`:** once the `fmt_g` kernel dies the port prints at r4133's precision, so that decline
-must be re-measured and shrunk to capi-only.
+must be re-measured and shrunk to capi-only — and its SIZE re-measured with it: the audit
+settlement showed most of those columns would keep gross-error coverage under this surface's own
+rule even at two significant digits (`Sig(2)` gives `ulp = 0.1` at `kWTotalLosses ≈ 5.4`, which
+admits all three renders and still reds a > 2 % move), while the decline costs the only oracle
+comparison of the Storage state variables, `t` and `LoadMultiplier` (the `Storage_price.dss`
+manifest row declares no `compare_variables`).
 
 **One compared kind's row count is a property of the reader, not of the run** (D43(1)).
 `WriteTraceRecord` is unconditional at the end of `GetTerminalCurrents`, *outside* the
@@ -2296,6 +2314,32 @@ the surface existed — so, again, no ledger row.
 a column set the two oracles disagree on, or the gate's own reader footprint; no golden byte moved,
 `population.lock.json` came back byte-identical, and no existing `ExportPolicy` value or tolerance
 was touched.
+
+**What the audit settlement added to the surface** (2026-09-12, one commit on top; every change is
+a tightening or a record, no band and no census population moved). The cell rule is now pinned AT
+its boundary — `a_cell_at_the_band_boundary_decides_the_right_way` and
+`an_angle_at_the_band_boundary_decides_the_right_way` drive a cell 0.1 % outside `class floor +
+print ulp` (RED) and 0.1 % inside (PASS), so a fudge at either comparison site can no longer hide
+behind fixtures that sat a decade away — and
+`the_payload_of_a_j_cell_is_compared_after_the_marker_is_stripped` drives the numeric half of a
+`+j` cell, which D40(4) normalizes the MARKER of, never the value. A row of a group kind must be `head + k·group` wide, so an extra column is refused
+instead of being re-aligned onto a neighbouring column's class; the PVSystem register columns are
+classed **by name off the header** (`Max kW`/`Max kVA` at the power tier, D42(1)'s class for the
+same quantity) and therefore carry no repeating group at all.
+`nothing_declined_is_also_selected` now runs one produced NAME per census row through the shipped
+matcher (it compared a prose label against the glob patterns, which no label can satisfy). The
+`dss-epri` sidecar is the one destructive path of the surface, so both twins refuse a sidecar that
+is, contains or sits under the case directory before the recursive delete
+(`a_sidecar_inside_the_case_directory_is_refused_before_anything_is_deleted`; CLAUDE.md records two
+`.inputs` wipes of exactly that shape), and the shared Python fixture gained the near misses that
+give both matchers teeth (`nev_exp_ynodelist.csv`, a member under a run-created directory, a
+created directory). `do_export_cmd` brackets the flag with two bare statements, so
+`the_export_bracket_has_no_early_exit_between_its_two_statements` asserts that from the function's
+own source text — an early `return` added to an export arm would re-create upstream's `DoSaveCmd`
+latch silently. `every_compared_kind_uses_the_same_policy_as_its_golden` now asserts the per-kind
+policy VALUES (it compared `structure()` against the policy `structure()` reads). The
+`compare_di` row of the flag table above still reads `G1.10b`: the DI tree is G1.10c's surface
+(D42) and that row is the one lane-e's wiring commit edits, so it is corrected there.
 
 
 
@@ -3223,14 +3267,14 @@ two channels do not spell values identically, so the r4133 side runs a
 never on `capi_v0145`. One function holds the whole order —
 `harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:9460`) —
 and links 2-4 are `PropsPolicy` methods gated on `is_r4133` (`mod.rs:9740`,
-`:9778`; the channel type is `PropsChannel`, `mod.rs:9608`). Link 1 is the
+`:9778`; the channel type is `PropsChannel`, `mod.rs:9630`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
 `LANE_SKIP_PROPS` half stays channel-blind (row 1 below says so).
 
 | # | link | seam | what it does | if it does not claim |
 |---|---|---|---|---|
 | 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs:9383` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
-| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:8229` (channel rule at `:8226`) | value-only skip, per channel | fall through |
+| 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs:8244` (channel rule at `:8226`) | value-only skip, per channel | fall through |
 | 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs:9724` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
 | 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs:9778` | drops the **value** compare of that cell (name + index order still assert) | fall through |
 | 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs:9820` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
@@ -3320,7 +3364,7 @@ model quantity, and it is unreachable on `capi_v0145`
 `tests/TOLERANCE_NOTES.md` §"r4133 props display floor".
 
 **The `SKIP_PROPS` dispositions (plan §1.2).** `skip_prop` is channel-aware
-since RP2.1 (`skip_prop`, `mod.rs:8229`), because after RP4.1 a channel-blind row would
+since RP2.1 (`skip_prop`, `mod.rs:8244`), because after RP4.1 a channel-blind row would
 value-mask the r4133 channel by accident. Every one of the **17** `SKIP_PROPS`
 rows (`SKIP_PROPS`, `mod.rs:7797`) is dispositioned exactly once, in its own row comment —
 **17 = 10 + 7**, the first two lists below. The third list is a separate table
@@ -3329,9 +3373,9 @@ union it), shown here because `skip_prop` consults it on the same call:
 
 | list | rows | on r4133 | why |
 |---|---|---|---|
-| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:8122`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
+| `SKIP_PROPS_CAPI_ONLY` (`mod.rs:8153`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
 | `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs:8194`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
-| `LANE_SKIP_PROPS` (`mod.rs:8201`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
+| `LANE_SKIP_PROPS` (`mod.rs:8234`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
 
 *Partition lock:*
 `skip_props_disposition_tests::every_skip_props_row_has_an_r4133_disposition`

@@ -172,7 +172,7 @@ settlement also fixed the parent-guard resurrect behind the `Test/AutoTrans` res
 disabled-drop premise refuted — 15 of 223 pairs ARE listed); each channel's own walk is **asserted** over the port's raw terminal facts
 (**D15**/**D16**/**D21**) and the residue COUNTED into four fail-on-stale populations — (279, 279) / (18, 147) / (8, 11) / (0, 0) — the completeness
 direction added by its settlement (`assert_port_at_bus_is_s4`); the two r4133 mode rows go `Pure` → **Impure**, **0** new entries, no flag and no lock cell;
-**D34**'s unported executive commands sit at `ORPHANED_GAPS.md` §1.21. And **G1.10b** (2026-09-12, `lane-s`, `4bbc6405` + `9b07466a` + `<surface-sha>` + docs), the run files' **CONTENTS** — nine report kinds through the SAME `ExportPolicy`
+**D34**'s unported executive commands sit at `ORPHANED_GAPS.md` §1.21. And **G1.10b** (2026-09-12, `lane-s`, `4bbc6405` + `9b07466a` + `934a4275` + docs + settlement), the run files' **CONTENTS** — nine report kinds through the SAME `ExportPolicy`
 their goldens use (lifted into `harness::export_policies`), on **D40**'s *case floor + print ulp* rule, a derivation with **no new constant**: 7 cases / 32 file comparisons /
 **3 035 190** cells per drive, sidecar-transported, three fail-on-stale censuses per channel; classes C1–C5 all inside the rule (**0** new, 0 golden bytes, lock identical), the
 Storage trace's **36** `%-.g` columns declined on BOTH channels (the oracles disagree → **G4.1**) and its row count the reader's own footprint (**D43(1)**, 102 vs 98); two port
@@ -180,7 +180,7 @@ gaps landed ahead of it — the `InShowResults` bracket round Show/Export/Save (
 `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44), `FORCED_DERIVED_POPULATION` = (445, 314,
 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **57** / 33 causes; G1.10c, G1.11a–c and WP-G3–G5 remain.
 
-**Next.** **G1.10b** is complete on `lane-s` (2026-09-12, the three commits above) and awaits its audit pair and the landing into `update`; **G1.10c** runs on `lane-e`
+**Next.** **G1.10b** is complete on `lane-s` (2026-09-12, the three commits above + the audit settlement: 32 findings, 28 fixed / 4 recorded) and awaits the landing into `update`; **G1.10c** runs on `lane-e`
 (**D42** S-CLASS, **D44**) and **F0′** on `lane-m` (**D39** — the bridge suppresses report auto-display with r4133's own `AllowForms=No`/`ShowReports=No`/`ShowExport=No`,
 `Set Editor=` the safety net only); landings stay first-finished-first-landed (**D27**), one at a time. Then **G1.11′** in the main tree once G1.10b AND G1.10c have landed (**D37(1)**, `lane-e tmp/g111/brief.md`), then WP-G3 with G3.1 alone first (**D37(9)**, `lane-e tmp/g30/`). Queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 

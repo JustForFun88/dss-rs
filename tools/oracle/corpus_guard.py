@@ -229,6 +229,25 @@ def _resolve_selected(case_dir: str, created, patterns) -> list:
     return out
 
 
+def _refuse_sidecar_under_case_dir(case_dir: str, sidecar: str) -> None:
+    """Refuse a sidecar that is, contains, or sits under the case directory.
+
+    The sidecar is cleared with a recursive delete, so the one destructive path
+    of this surface states D40(6) itself rather than trusting its caller.
+
+    Twin: `crates/dss-epri/src/guard.rs::refuse_sidecar_under_case_dir`."""
+    c = os.path.abspath(case_dir)
+    d = os.path.abspath(sidecar)
+    if c == d or d.startswith(c + os.sep) or c.startswith(d + os.sep):
+        raise RuntimeError(
+            "run-file contents: the sidecar {} is the case directory {} or "
+            "shares a path with it. The bytes travel through a directory the "
+            "GATE owns under `target/` and this transport clears it with a "
+            "recursive delete (coordinator decision D40(6)); pointing it at a "
+            "corpus deck would delete vendored sources.".format(d, c)
+        )
+
+
 def copy_selected_contents(case_dir: str, created, patterns, sidecar):
     """Copy the selected members' bytes into the gate-owned sidecar directory
     and return the names copied, sorted - the capi transport's half of the
@@ -265,6 +284,11 @@ def copy_selected_contents(case_dir: str, created, patterns, sidecar):
             "reported either."
         )
     selected = _resolve_selected(case_dir, created, patterns)
+    # The next statement is a RECURSIVE DELETE of a path the request chose, so
+    # coordinator decision D40(6) ("the gate's OWN scratch - never inside
+    # `tests/corpus/` or the case directory") is enforced here, not only at the
+    # single construction site. Twin: `guard.rs::refuse_sidecar_under_case_dir`.
+    _refuse_sidecar_under_case_dir(case_dir, sidecar)
     shutil.rmtree(sidecar, ignore_errors=True)
     os.makedirs(sidecar, exist_ok=True)
     names = []
@@ -543,12 +567,25 @@ SELF_TEST_LEAK_AFTER_SWEEP = ["STOR_s1.CSV", "case.dss"]
 # text report next to it, and the selection patterns as they arrive in the run
 # request. The copy carries BYTES (CRLF included) - the decode happens once, on
 # the gate side (`guard.rs::decode_run_file`).
+# The near misses are part of the fixture on purpose (G1.10b audit settlement,
+# finding AT3-1): `*_exp_y.csv` must not take `NEV_EXP_YNodeList.csv` (the `*`
+# ends at a SUFFIX, not a substring), the `*` must not span `/` (a member of a
+# run-created tree), and a created DIRECTORY (trailing `/`) is never selected.
+# Mutating either matcher in either language moves the COPIED list and reds -
+# here and in the Rust twin, which runs this very table through its own matcher.
 SELF_TEST_CONTENTS_PATTERNS = ("*_exp_y.csv", "stor_*.csv")
 SELF_TEST_CONTENTS_WRITES = {
     "NEV_EXP_Y.CSV": b"Row,Col\r\n1,2\r\n",
     "NEV_VLN_Node.txt": b"not selected\n",
+    "NEV_EXP_YNodeList.csv": b"not selected either\n",
 }
-SELF_TEST_CONTENTS_CREATED = ["nev_exp_y.csv", "nev_vln_node.txt"]
+SELF_TEST_CONTENTS_CREATED = [
+    "nev_exp_y.csv",
+    "nev_vln_node.txt",
+    "nev_exp_ynodelist.csv",
+    "ckt7/nev_exp_y.csv",
+    "stor_tree/",
+]
 SELF_TEST_CONTENTS_COPIED = ["nev_exp_y.csv"]
 
 
@@ -610,8 +647,11 @@ def _self_test() -> int:
         for name, data in SELF_TEST_CONTENTS_WRITES.items():
             with open(os.path.join(tmp3, name), "wb") as fh:
                 fh.write(data)
-        side = os.path.join(tmp3, "sidecar")
-        os.makedirs(side)
+        # The gate's own scratch is a SIBLING of the case directory, never a
+        # child: `copy_selected_contents` refuses a sidecar that shares a path
+        # with the case (D40(6)).
+        side = tmp3 + "-sidecar"
+        os.makedirs(side, exist_ok=True)
         with open(os.path.join(side, "stale_exp_y.csv"), "wb") as fh:
             fh.write(b"from the previous case\n")
         contents_copied = copy_selected_contents(

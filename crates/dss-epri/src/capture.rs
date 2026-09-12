@@ -136,8 +136,11 @@ pub struct RunRequest {
     /// over a [`crate::guard::normalize_created_name`] member
     /// ([`crate::guard::RUN_FILE_CONTENTS_PATTERNS`], declared once on the gate
     /// side and shipped in the request so no transport re-derives it). Empty or
-    /// absent ⇒ the reply omits the key and is byte-identical to a pre-G1.10b
-    /// one. Twin request key: `oracle_server.py`'s `run_file_contents`.
+    /// absent ⇒ nothing is copied and the reply's `run_file_contents` is `null`
+    /// (the key is always serialized — `CaseResult` carries no
+    /// `skip_serializing_if`, exactly as for G1.10a's `run_files`; the gate's
+    /// field is `serde(default)`, so an off request reads back as "not
+    /// requested"). Twin request key: `oracle_server.py`'s `run_file_contents`.
     #[serde(default)]
     pub run_file_contents: Vec<String>,
     /// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the

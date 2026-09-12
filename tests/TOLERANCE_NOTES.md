@@ -2989,7 +2989,10 @@ calibrated floor plus exact arithmetic from the number's own print format. A cel
 
 Both terms are already-owned quantities. The first is the case's **existing** in-memory floor, read
 straight off `harness::Tolerances` through the same `tol_for(&c.kind)` the rest of the live gate uses
-— `Voltage → v_abs + v_rel·m`, `Current`/`Power → i_abs + i_rel·m`, `Admittance → y_abs + y_rel·m`,
+— `Voltage → v_abs + v_rel·m`, `Current`/`Power → i_abs + i_rel·m` (`i_abs` is an absolute term in
+**kW**, amps × 1 kV — so a column printed in MW carries `PowerMega → i_abs/1000 + i_rel·m`, the same
+band read in the printed unit; reading the kW-calibrated `abs` against MW numbers would be a 1000×
+widening, not a tightening), `Admittance → y_abs + y_rel·m`,
 `Pu → v_rel·m` (no absolute term), `Energy → energy_abs + energy_rel·m`, and **zero** for
 `Distance`, `Integer`, `Text` and the two quantities another gate already pins exactly
 (`Quantity::ExactElsewhere`, e.g. `Export Voltages`' `BasekV`, which G1.4a compares exactly on the
@@ -3012,8 +3015,16 @@ carries no floor of its own; it is compared by converting its magnitude column's
 `|I| = max(|I_oracle|, |I_port|)` — coordinator decision **D40(1)** — and wrap-aware via
 `harness::wrapped_deg`, plus the angle column's own print ulp. Two notes the rule depends on:
 
-* it **supersedes** the golden's one-sided `GateSpec::PrevCol(1e-6)` on the live surface only, and is
-  *tighter* than it wherever the magnitude is real — it can only produce a finding, never mask one;
+* it **supersedes** the golden's one-sided `GateSpec::PrevCol(1e-6)` on the live surface only. The
+  two are not orderable term by term, and the honest statement is the one that follows from the
+  definitions: the golden gate reads the ORACLE magnitude alone and then demands the angle EXACTLY
+  (the committed byte fixtures satisfy that), while this rule reads `max(|I_oracle|, |I_port|)` — so
+  it *sees* the class the one-sided gate structurally cannot (the oracle prints an exact `0` where
+  the port prints a `1.03e-11 A` residual, class C1), and in exchange it admits, on a real
+  magnitude, that magnitude's own band converted to degrees plus one print ulp (0.01° at
+  `|I| = 683 A`, 0.57° at 1e-3 A). It is therefore **stricter in coverage and looser in value** than
+  the golden's exact compare — never derived from a value the port produced alone, and the goldens
+  keep their own gate unchanged;
 * **D10's `√2·abs` factor does not apply here.** That factor is the image of a band that treats `re`
   and `im` separately; this band is the image of a **modulus** band, which is what
   `polar_angle_band` documents itself as and which is the tighter of the two.
@@ -3027,13 +3038,13 @@ the golden's one-sided gate deliberately holds.
 | --- | --- | --- |
 | `currents` | `Element` Text/Exact; then per terminal pair `\|I\| (A)` Current/`Sig(6)` + `Ang (deg)` Angle/`Fixed(2)` | `Common/ExportResults.pas:458`, the four `', %10.6g, %8.2f'` writes `:471`/`:474`/`:475`/`:480`, header `:551-555` |
 | `powers` | `Element` Text, `Terminal` Integer; `P`, `Q` and the four excess-kVA columns Power/`Fixed(1)` | `:1069`, header `:1095`, values `:1113-1126` |
-| `voltages` | `Bus` Text, `BasekV` ExactElsewhere/`Sig(5)`, `Node` Integer, `Magnitude (V)` Voltage/`Sig(6)`, angle `Fixed(2)`, `pu` Pu/`Sig(5)` | `:236`, header `:265-266`, bus row `:272`, quadruple `:288` |
+| `voltages` | `Bus` Text, `BasekV` ExactElsewhere/`Sig(5)`, `Node` Integer, `Magnitude (V)` Voltage/`Sig(6)`, `Angle (deg)` Angle/`Fixed(1)` (the writer's `%6.1f`), `pu` Pu/`Sig(5)` | `:236`, header `:265-266`, bus row `:272`, quadruple `:288` |
 | `profile` | `Name` Text, two `Distance` (km)/`Sig(6)` + two `puV` Pu/`Sig(6)`, seven integer plot columns | `:3371`, header `:3391`, `WriteNewLine` `:3356`/`:3363`/`:3364-3366` |
 | `y(dense)` | `Node` Text; per node `G (S)` and `+j B (S)` Admittance/`Sig(10)` | `:3069`, `:3078`, `:3090` |
 | `y(triplet)` | `Row`, `Col` Integer; `G (S)`, `B (S)` Admittance/`Sig(10)` | `:3052`, `:3059` |
-| `yprim` | `re (S)`, `im (S)` Admittance/`Sig(10)` | `:2874`, `:2876` |
-| `register` | `Year`, `Hour` Integer, `LDCurve`, `PVSystem` Text, each register Energy/`Fixed(0)` | `WriteMultiplePVSystemMeterFiles` `:1990`, `:2017`, `:2030` |
-| `storage-trace` | `Iteration`/`StorageModel` Integer, `Mode`/`LoadModel`/`CurrentType` Text, `Qnominalperphase`/`Pnominalperphase` Power/`Fixed(2)`, per phase `\|Iinj\|`/`\|Iterm\|` Current/`Fixed(1)` and `\|Vterm\|` Voltage/`Fixed(1)`; **36 `%-.g` columns declined** | `PCElements/Storage.pas:1073-1085` (header), `:2401-2429` (record) |
+| `yprim` | `re (S)`, `im (S)` Admittance/`Sig(10)` | `:2873` (the `Class.NAME` line), `:2876` |
+| `register` | `Year`, `Hour` Integer, `LDCurve`, `PVSystem` Text, then one column per register name read off the header — `kWh`/`kvarh`/`Hours`/`Price($)` Energy, `Max kW`/`Max kVA` Power (maxima of instantaneous power, the D42(1) class) — all `Fixed(0)` | `WriteMultiplePVSystemMeterFiles` `:1990`, header `:2017`/`:2018`, registers `:2030`; names `PCElements/PVsystem.pas:404-409` |
+| `storage-trace` | `Iteration`/`StorageModel` Integer, `Mode`/`LoadModel`/`CurrentType` Text, `Qnominalperphase`/`Pnominalperphase` PowerMega/`Fixed(2)`, per phase `\|Iinj\|`/`\|Iterm\|` Current/`Fixed(1)` and `\|Vterm\|` Voltage/`Fixed(1)`; **36 `%-.g` columns declined** | `PCElements/Storage.pas:1073-1085` (header), `:2401-2429` (record) |
 
 **The five measured classes, their worst cells and the pins that carry them** (measured live through
 the gate's own transports on the forced population, 2026-09-11/12; both numbers in every pin, the
@@ -3041,15 +3052,15 @@ port side read live so no literal can rot):
 
 | class | measured worst cell | why it is inside the rule | pin |
 | --- | --- | --- | --- |
-| C1 — the angle of a residual magnitude (49 cells) | `Run_8500Node.dss` [capi] `ieee8500_exp_currents.csv` row 2049: port `1.02898E-11 A ∠ 45.00°` vs oracle `0 ∠ 0.00°` | `\|I\| = 1.02898e-11 ≤ allowed = i_abs + i_rel·\|I\| = 1.0000000000010290e-5 A` → the angle carries no information and is declined; the magnitude column stays compared | `an_angle_of_a_residual_magnitude_is_gated_on_both_sides` |
-| C2 — angle print ulp (36) | same file row 934: `-74.04°` vs `-74.06°` at `\|I\| = 1.6957E-5 A` | band `= 57.29577951308232 · 1.00000016957e-5 / 1.6957e-5 + 0.01 = 33.7896…°` against `Δθ = 0.02°`; `Δ\|I\| = 3.8e-9 A` against `i_abs = 1e-5` — **compared, not declined** | `the_angle_of_a_16_microamp_current_is_free_within_the_case_floor` |
+| C1 — the angle of a residual magnitude (49 cells) | `Run_8500Node.dss` [capi] `ieee8500_exp_currents.csv` row 2049: port `1.02898E-11 A ∠ 45.00°` vs oracle `0 ∠ 0.00°` | `\|I\| = 1.02898e-11 ≤ allowed = i_abs + i_rel·\|I\| = 1.0000000000001029e-5 A` → the angle carries no information and is declined; the magnitude column stays compared | `an_angle_of_a_residual_magnitude_is_gated_on_both_sides` |
+| C2 — angle print ulp (36) | same file row 934: `-74.04°` vs `-74.06°` at `\|I\| = 1.6957E-5 A` | band `= 57.29577951308232 · 1.00000016957e-5 / 1.6957e-5 + 0.01 = 33.79887°` against `Δθ = 0.02°`; `Δ\|I\| = 3.8e-9 A` against `i_abs = 1e-5` — **compared, not declined** | `the_angle_of_a_16_microamp_current_is_free_within_the_case_floor` |
 | C3 — magnitude print ulp (13) | same file [r4133] row 927: `0.0374457` vs `0.0374458` | `Δ = 1e-7 A` = one unit in the last printed place of `%10.6g` at `3.74e-2` | `a_six_significant_digit_cell_may_move_by_one_ulp` |
 | C4 — near-zero cancellation (6) | `Run_8500Node_Unbal.dss` [capi] row 0: `2.88924E-9` vs `1.56542E-8 A`; `Run_NEV.dss` [r4133] `nev_exp_y.csv`: `-2.498001805E-16` vs `-1.110223025E-016 S` | `Δ = 1.276496e-8 A ≤ i_abs 1e-5`; `Δ = 1.38777878e-16 S ≤ y_abs 1e-6` — the absolute term, exactly what it is calibrated for | `a_cancellation_residual_cell_is_bounded_by_the_case_floor` |
 | C5 — `+j` and the three-digit exponent (4) | `nev_exp_y.csv`: `+j 2.220446049E-16` (port, capi) vs `+j 2.220446049E-016` (r4133) | a **tokenization normalization**, not a band: the marker is stripped on both sides (its presence asserted, so a lost layout still reds) and the two spellings parse to the same f64 | `the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically` |
 
 Each pin carries its own negative drive — the same cell moved past its floor reds — so none of the
 five admits anything beyond what is written above. The worst *magnitude* case, `1 %` of a real
-current, reds by five orders of magnitude (`5.969e-1 A` against a `1.16e-4 A` allowance), measured
+current, reds by 5.1e3× (`5.969e-1 A` against a `1.16e-4 A` allowance — three orders), measured
 in the corrupted-cell demo on both channels.
 
 **Two reductions of the surface that are NOT tolerances.** (1) The **36 `%-.g` columns** of the
@@ -3072,7 +3083,41 @@ positively by the fail-on-stale population `TRACE_READBACK_RECORDS`
 **One deliberate tightening, recorded because it is a choice.** `Quantity::Power` takes the
 `|V_kv| = 1` end of `assert_power_close`'s voltage-scaled band — the tighter end — because a report
 row carries no paired terminal voltage to scale with. If a power cell ever fails there, the fix is
-to carry the voltage into the map, never to widen the class.
+to carry the voltage into the map, never to widen the class. The **unit is part of the class** for
+the same reason: the trace's `Qnominalperphase`/`Pnominalperphase` print MW
+(r4133 `PCElements/Storage.pas:2418-2419`, `(…*3.0/1.0e6):8:2`), so they carry `PowerMega`, whose
+absolute term is the kW-calibrated `i_abs` divided by 1000. Nothing observable turns on it today
+(the `Fixed(2)` print ulp is 0.01 MW = 10 kW, three orders above either reading) — it is there so
+the class always names the unit its floor was calibrated in. The **PVSystem
+register columns are classed by name off the header** for the same reason: four of
+the six registers r4133 defines (`PCElements/PVsystem.pas:404-409`) are not
+accumulations, and `Max kW`/`Max kVA` are maxima of instantaneous power, which the
+gate bands at `i_abs + i_rel·m` everywhere else — three orders tighter than the
+accumulator band, and the class coordinator decision **D42(1)** gives exactly this
+quantity on the sibling DI surface. `kWh`, `kvarh`, `Hours` and `Price($)` keep the
+energy class. Nothing observable moves (the `:10:0` print ulp of 1.0 dominates every
+live register), and the layout loses its repeating group, so a register file wider
+than its own header is refused instead of re-aligned.
+
+**What the G4.1 hand-down must re-measure is the SIZE of the decline, not only its
+channel.** Most of the 36 declined columns would keep gross-error coverage under this
+surface's own rule even at two significant digits — `Sig(2)` gives `ulp = 0.1` at
+`kWTotalLosses ≈ 5.4`, which admits all three renders (`5.4`/`5.45`/`5.5`) and still
+reds a > 2 % move, and the widest zero-stripped cell (`1E4` against `9999`,
+`ulp = 1e3`) still reds a > 10 % move. They were declined as one SET because the
+oracles' disagreement is a property of the renderer, not of a column; the G1.10b test
+audit (finding AT2-2) measured that this costs the only oracle comparison of the
+Storage state variables, `t` and `LoadMultiplier` on `Storage_price.dss` (its manifest
+row declares no `compare_variables`). G4.1 re-measures both halves: shrink the decline
+to the capi channel, and state per column whether the rule already covers it.
+
+**The table above is checked against the code, not trusted.**
+`the_tolerance_notes_column_map_names_the_formats_the_layouts_declare` reads this section and
+asserts that the `Fixed(n)`/`Sig(n)` tokens of each kind's row are exactly the print formats that
+kind's `Layout` declares. It exists because the G1.10b audit found this table giving
+`Export Voltages`' angle column as `Fixed(2)` where the writer prints `%6.1f`
+(r4133 `Common/ExportResults.pas:288`) and the code maps `Fixed(1)`: a derivation table that
+misstates a print resolution yields a different band than the one in force.
 
 **Nothing else moved.** No `Tolerances` field, no tier, no existing `ExportPolicy` value, no golden
 byte; the lifted `harness::export_policies` producers are byte-faithful copies of the golden ones
