@@ -3746,7 +3746,7 @@ row against the pre-fix lock.
 
   merge: lane lane-b -> update, see git log
 
-- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c` + `<settle2>`) — the
+- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c` + `e2d2a83d`) — the
   demand-interval tree's CONTENTS compare live on both channels behind `compare_di`: each transport copies the
   run-created tree into a per-(case, channel) sidecar read before `created()` and before the capi teardown `clear`
   (slot asserted from both sources by `check_run_tail_order`, **D43(2)**); each column is banded at the gate's
@@ -3764,7 +3764,7 @@ row against the pre-fix lock.
   `a_register_file_of_an_unknown_width_fails`, `the_channel_tags_are_the_gates_one_vocabulary`,
   `the_di_pin_cases_are_the_manifest_rows`. Gate: **11 997 / 0 / 5** per lane, 526/526 (one **D23** foreign-`.tmp`
   red, green on the unmodified re-run; `tmp/g110c/settle2_gate_*.log`).
-  **Round 2** (`<settle2>`; the settlement's own audit, 6 findings — **4 fixed / 2 recorded**, table
+  **Round 2** (`e2d2a83d`; the settlement's own audit, 6 findings — **4 fixed / 2 recorded**, table
   `tmp/g110c/settle2.md`): `TIE_MAGNITUDES_HEX` records all three tied buses and asserts their bit-identity (SA-5),
   three wrapped assertion messages regain their continuations (SA-1), the whole-column pin's sensitivity is restated
   at its real scope (SA-3); SA-6 (those 8 736 rows are watched port-side only, neither narrowing existing in the
