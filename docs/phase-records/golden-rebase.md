@@ -3768,5 +3768,7 @@ row against the pre-fix lock.
   `tmp/g110c/settle2.md`): `TIE_MAGNITUDES_HEX` records all three tied buses and asserts their bit-identity (SA-5),
   three wrapped assertion messages regain their continuations (SA-1), the whole-column pin's sensitivity is restated
   at its real scope (SA-3); SA-6 (those 8 736 rows are watched port-side only, neither narrowing existing in the
-  tree) and SA-4 stand for the coordinator. Gate: **<totals>** per lane, 526/526
-  (`tmp/g110c/settle3_gate_*.log`).
+  tree) and SA-4 stand for the coordinator. Gate: five commands exit 0, **11 997 / 0 / 5** per lane, corpus 526/526
+  (`tmp/g110c/settle3_gate_*.log`) — the parity suite red four times in `Test/AutoTrans/` (and once on 13Bus's
+  foreign `.tmp`) while another lane's corpus gate ran: sweeps reported delete-pending files that were gone
+  afterwards, the cases pass scoped, and the suite is green on the quiet machine (**D23**).
