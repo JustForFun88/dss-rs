@@ -82,15 +82,31 @@ pub enum Quantity {
     Voltage,
     /// Amperes. Floor `i_abs + i_rel·m`.
     Current,
-    /// kW / kvar (or MW / Mvar — the scale cancels in `rel`, and `abs` is then
-    /// read 1000× tight, which is safe). Floor `i_abs + i_rel·m`.
+    /// kW / kvar. Floor `i_abs + i_rel·m`.
     ///
     /// The in-memory power band is voltage-scaled
     /// (`harness::assert_power_close`: `i_abs·max(|V_kv|,1) + i_rel·|S|`); a
     /// report row carries no paired terminal voltage, so this uses `|V_kv| = 1`
     /// — the **tighter** end of that band. Tightening is always safe; the
     /// `%11.1f` print ulp dominates it on every compared power column anyway.
+    ///
+    /// The unit is part of the class: `i_abs·1 kV` **is** an absolute term in
+    /// kW, so a column that prints MW carries [`Quantity::PowerMega`] instead —
+    /// reading a kW-calibrated `abs` against MW numbers would be a silent
+    /// **1000× widening**, not a tightening.
     Power,
+    /// MW / Mvar — [`Quantity::Power`] with its absolute term converted to the
+    /// printed unit: floor `i_abs/1000 + i_rel·m`.
+    ///
+    /// The relative term is scale-free, so only `abs` moves. The two columns
+    /// that need it are the Storage trace's `Qnominalperphase`/
+    /// `Pnominalperphase`, which r4133 writes as `(…*3.0/1.0e6):8:2`
+    /// (`PCElements/Storage.pas:2418-2419`) — i.e. MW at two decimals, where the
+    /// print ulp (0.01 MW = 10 kW) dominates both the kW-calibrated `1e-5` and
+    /// this converted `1e-8` by orders of magnitude. Nothing observable turns on
+    /// the conversion today; it is here so the class always names the unit its
+    /// floor was calibrated in.
+    PowerMega,
     /// Siemens. Floor `y_abs + y_rel·m`.
     Admittance,
     /// Per-unit voltage. Floor `v_rel·m`, with **no** absolute term: `v_abs` is
@@ -322,7 +338,7 @@ impl ReportKind {
         match self.golden_policy() {
             Some(p) => (p.sep, p.header_lines),
             // r4133 `PCElements/Storage.pas:1073-1085`: one header line written
-            // at edit time, records appended with `', '` separators (`:2412`).
+            // at edit time, records appended with `', '` separators (`:2411`).
             None => (',', 1),
         }
     }
@@ -405,7 +421,7 @@ struct Layout {
     /// any value so a failure names the row rather than a column index.
     id_col: Option<usize>,
     /// `Export Yprims` interleaves single-field `Class.NAME` lines with matrix
-    /// rows (r4133 `:2874`/`:2876`); a one-field row is the name line.
+    /// rows (r4133 `:2873`/`:2876`); a one-field row is the name line.
     name_rows: bool,
 }
 
@@ -550,7 +566,7 @@ fn y_triplet_layout() -> Layout {
 
 /// `Export Yprims`: a `Class.NAME` line then `Yorder` rows of `re, im,` pairs in
 /// `%-13.10g`, each ending with the separator (r4133
-/// `Common/ExportResults.pas:2874`, `:2876`).
+/// `Common/ExportResults.pas:2873`, `:2876`).
 fn yprim_layout() -> Layout {
     Layout {
         head: vec![],
@@ -568,15 +584,60 @@ fn yprim_layout() -> Layout {
 /// register in `:10:0` (r4133 `Common/ExportResults.pas:1990`
 /// `WriteMultiplePVSystemMeterFiles`, header `:2017`, name `:2029`, registers
 /// `:2030`).
-fn register_layout() -> Layout {
+///
+/// The register columns are classed **by name off the header** the writer
+/// emitted (`:2018` quotes `RegisterNames[i]`), not as one repeating group: four
+/// of the six PVSystem registers are not energy accumulations (r4133
+/// `PCElements/PVsystem.pas:404-409` — `kWh`, `kvarh`, `Max kW`, `Max kVA`,
+/// `Hours`, `Price($)`), and `Max kW`/`Max kVA` are maxima of instantaneous
+/// power, which the gate bands at `i_abs + i_rel·m` everywhere else — three
+/// orders tighter than the accumulator band. Coordinator decision **D42(1)**
+/// classes exactly this quantity (`Max/Peak …` powers) at `i_rel`/`i_abs` on the
+/// sibling DI surface; this map says the same thing about the same registers.
+/// `Hours` and `Price($)` accumulate like `kWh`/`kvarh` and keep the energy
+/// class. (G1.10b audit settlement, finding AC1-2; nothing observable moves —
+/// the `:10:0` print ulp of 1.0 dominates every reading on the live population.)
+///
+/// Because the columns come from the header there is no repeating group, so a
+/// data row wider than the header it was written under is a loud refusal
+/// (`compare_one`'s "outside the column map") instead of being absorbed into a
+/// group and judged under a neighbouring column's class.
+fn register_layout(header: &[String], ctx: &str) -> Layout {
+    let mut head = vec![
+        col("Year", Quantity::Integer, PrintFmt::Exact),
+        col("LDCurve", Quantity::Text, PrintFmt::Exact),
+        col("Hour", Quantity::Integer, PrintFmt::Exact),
+        col("PVSystem", Quantity::Text, PrintFmt::Exact),
+    ];
+    assert!(
+        header.len() > head.len(),
+        "{ctx}: the PVSystem register header is {} column(s); r4133 writes the \
+         four fixed columns (`Common/ExportResults.pas:2017`) and then one per \
+         register (`:2018`), so a register file must carry at least five",
+        header.len()
+    );
+    for name in &header[head.len()..] {
+        let n = name.trim().trim_matches('"').trim();
+        // `Max kW` / `Max kVA` (r4133 `PCElements/PVsystem.pas:406-407`) are
+        // maxima of instantaneous power, not accumulations.
+        let max_power = n.eq_ignore_ascii_case("Max kW") || n.eq_ignore_ascii_case("Max kVA");
+        head.push(if max_power {
+            col(
+                "Max register (kW / kVA)",
+                Quantity::Power,
+                PrintFmt::Fixed(0),
+            )
+        } else {
+            col(
+                "Register (accumulated)",
+                Quantity::Energy,
+                PrintFmt::Fixed(0),
+            )
+        });
+    }
     Layout {
-        head: vec![
-            col("Year", Quantity::Integer, PrintFmt::Exact),
-            col("LDCurve", Quantity::Text, PrintFmt::Exact),
-            col("Hour", Quantity::Integer, PrintFmt::Exact),
-            col("PVSystem", Quantity::Text, PrintFmt::Exact),
-        ],
-        group: vec![col("Register", Quantity::Energy, PrintFmt::Fixed(0))],
+        head,
+        group: vec![],
         trailing_empty: false,
         id_col: Some(3),
         name_rows: false,
@@ -589,13 +650,13 @@ fn register_layout() -> Layout {
 /// variable, then the trailing separator.
 ///
 /// The phase and variable counts are read off the **header** the edit-time
-/// writer emitted (`:1076-1082`) rather than guessed: the header is compared
+/// writer emitted (`:1077-1081`) rather than guessed: the header is compared
 /// verbatim between the two sides first, so both agree on it by the time this
-/// runs. The header additionally names `Vthev, Theta` (`:1084`) which the record
+/// runs. The header additionally names `Vthev, Theta` (`:1083`) which the record
 /// never writes (`:2427` is commented out upstream) — two header columns with no
 /// data column, which is why the variable count subtracts them.
 ///
-/// Columns `t` and `LoadMultiplier` (`:2412`) and every variable cell (`:2421`)
+/// Columns `t` and `LoadMultiplier` (`:2411`) and every variable cell (`:2424`)
 /// are `%-.g` → [`PrintFmt::DeclinedG`] (D40(3)).
 fn storage_trace_layout(header: &[String], ctx: &str) -> Layout {
     let count = |p: &str| header.iter().filter(|h| h.trim().starts_with(p)).count();
@@ -603,7 +664,7 @@ fn storage_trace_layout(header: &[String], ctx: &str) -> Layout {
     assert!(
         n_inj > 0 && n_inj == n_term && n_term == n_vterm,
         "{ctx}: the Storage trace header must carry one |Iinj_i|, |Iterm_i| and \
-         |Vterm_i| column per phase (r4133 PCElements/Storage.pas:1077-1079); \
+         |Vterm_i| column per phase (r4133 PCElements/Storage.pas:1078-1080); \
          got {n_inj}/{n_term}/{n_vterm} in {header:?}"
     );
     let fixed = 9 + 3 * n_inj;
@@ -611,11 +672,11 @@ fn storage_trace_layout(header: &[String], ctx: &str) -> Layout {
         header.len() >= fixed + 2,
         "{ctx}: the Storage trace header is {} columns, shorter than the nine \
          fixed + {} phase + the two `Vthev, Theta` names r4133 \
-         PCElements/Storage.pas:1076-1084 writes",
+         PCElements/Storage.pas:1077-1083 writes",
         header.len(),
         3 * n_inj
     );
-    // `:1084` appends `,Vthev, Theta`; `WriteTraceRecord` never writes them.
+    // `:1083` appends `,Vthev, Theta`; `WriteTraceRecord` never writes them.
     let n_vars = header.len() - fixed - 2;
     let mut head = vec![
         col("t", Quantity::Text, PrintFmt::DeclinedG),
@@ -626,10 +687,14 @@ fn storage_trace_layout(header: &[String], ctx: &str) -> Layout {
         col("StorageModel", Quantity::Integer, PrintFmt::Exact),
         col(
             "Qnominalperphase (Mvar)",
-            Quantity::Power,
+            Quantity::PowerMega,
             PrintFmt::Fixed(2),
         ),
-        col("Pnominalperphase (MW)", Quantity::Power, PrintFmt::Fixed(2)),
+        col(
+            "Pnominalperphase (MW)",
+            Quantity::PowerMega,
+            PrintFmt::Fixed(2),
+        ),
         col("CurrentType", Quantity::Text, PrintFmt::Exact),
     ];
     for _ in 0..n_inj {
@@ -666,7 +731,7 @@ fn storage_trace_layout(header: &[String], ctx: &str) -> Layout {
 /// bytes never leave the case directory. This table is where the reason lives,
 /// and [`tests::nothing_declined_is_also_selected`] holds the two halves
 /// consistent.
-pub const CONTENTS_NOT_SELECTED: [(&str, &str); 7] = [
+pub const CONTENTS_NOT_SELECTED: [(&str, &str); 8] = [
     (
         "monitor CSV",
         "A6: f32 channel data, and an unsampled monitor is a known oracle artifact \
@@ -704,6 +769,20 @@ pub const CONTENTS_NOT_SELECTED: [(&str, &str); 7] = [
          be chosen (8 `large*` AutoTrans cases today, none forced). The remedy, \
          if a forced case ever carries one, is a deck-derived command→file-kind \
          map — not a byte compare.",
+    ),
+    (
+        "capacity / ycurrents / ynodelist (golden policy, no column map)",
+        "a golden `ExportPolicy` exists for these three \
+         (`golden_reports::export_capacity_matches_oracle`, \
+         `::export_ycurrents_matches_oracle`, \
+         `::export_ynodelist_matches_oracle`), but the \
+         only corpus decks that export them are `large*` rows the G1.10a force \
+         rule never reaches (`ckt7`, `GFM_AmpsLimit_123`), so no column map was \
+         written and none could be MEASURED against the two oracles. Declaring \
+         `compare_run_files` on such a row must add the map first — \
+         [`tests::every_default_export_name_the_corpus_produces_is_selected_or_declined`] \
+         is what makes that a red instead of a silent skip (settlement of the \
+         G1.10b code audit, finding AC-4).",
     ),
 ];
 
@@ -795,8 +874,16 @@ pub fn trace_tail_census() -> Vec<TraceTail> {
 /// `(files, compared cells, declined cells)` over this process so far.
 ///
 /// A comparison census is the only thing that keeps a contents surface from
-/// silently comparing nothing: the scheduler epilogue asserts it fail-on-stale
-/// in BOTH directions (the `SCRATCH_FILE_DECLINES` shape).
+/// silently comparing nothing — but the GATED census is not this counter: these
+/// atomics are process-wide and this binary's own fixtures share them, so the
+/// scheduler epilogue re-derives its population from the per-call
+/// [`CellTally`] the runner records instead
+/// (`corpus_gate::scheduler::assert_run_file_contents_census_is_the_pinned_population`
+/// over `RUN_FILE_CONTENTS_COMPARED`/`RUN_FILE_CONTENTS_DECLINES`, fail-on-stale
+/// in BOTH directions, the `SCRATCH_FILE_DECLINES` shape). What these two
+/// accessors give is this module's own self-check view — used by
+/// [`tests::the_census_is_per_kind`] to prove a comparison lands on its own
+/// kind's row. (G1.10b audit settlement, finding AT1-4.)
 pub fn cell_census() -> (usize, usize, usize) {
     (
         FILES.load(Ordering::Relaxed),
@@ -832,6 +919,9 @@ fn class_floor(q: Quantity, tol: &Tolerances, m: f64) -> f64 {
     match q {
         Quantity::Voltage => tol.v_abs + tol.v_rel * m,
         Quantity::Current | Quantity::Power => tol.i_abs + tol.i_rel * m,
+        // The same band read in the unit the column prints: `i_abs` is an
+        // absolute term in kW (amps × 1 kV), so in MW it is `i_abs/1000`.
+        Quantity::PowerMega => tol.i_abs / 1000.0 + tol.i_rel * m,
         Quantity::Admittance => tol.y_abs + tol.y_rel * m,
         Quantity::Pu => tol.v_rel * m,
         Quantity::Energy => tol.energy_abs + tol.energy_rel * m,
@@ -916,7 +1006,8 @@ fn compare_cell(c: Col, tol: &Tolerances, port: &str, oracle: &str) -> Cell {
         Cell::Compared
     } else {
         Cell::Fail(format!(
-            "port {a} vs oracle {e}: |Δ| = {:e} > {band:e} = floor({:?}) {floor:e}              + ulp({:?}) {ulp:e}",
+            "port {a} vs oracle {e}: |Δ| = {:e} > {band:e} = floor({:?}) {floor:e} \
+             + ulp({:?}) {ulp:e}",
             (a - e).abs(),
             c.q,
             c.f
@@ -1108,7 +1199,7 @@ fn compare_one(
         ReportKind::YDense => y_dense_layout(),
         ReportKind::YTriplet => y_triplet_layout(),
         ReportKind::Yprim => yprim_layout(),
-        ReportKind::Register => register_layout(),
+        ReportKind::Register => register_layout(&header, ctx),
         ReportKind::StorageTrace => storage_trace_layout(&header, ctx),
     };
     let odata = &ol[header_lines..];
@@ -1186,6 +1277,26 @@ fn compare_one(
         } else {
             n
         };
+        // A repeating group wraps, so `col_at` answers for EVERY index once the
+        // group is non-empty — an extra column would be absorbed into the group
+        // and judged under a neighbouring column's quantity class and print
+        // format instead of being refused. The width of a group row is
+        // `head + k·group` by construction of every r4133 writer this module
+        // maps, so assert it. (G1.10b audit settlement, finding AT1-2; the
+        // group-free kinds are refused by `col_at` returning `None` below.)
+        if !layout.group.is_empty() {
+            assert!(
+                value_cols >= layout.head.len()
+                    && (value_cols - layout.head.len()) % layout.group.len() == 0,
+                "{ctx}: row {i} carries {value_cols} value column(s), which is not \
+                 {} fixed + a whole number of {}-column {} groups — the report grew \
+                 or lost a column inside the repeating group, where `col_at` would \
+                 silently re-align it onto a neighbouring column's class",
+                layout.head.len(),
+                layout.group.len(),
+                kind.label()
+            );
+        }
         for j in 0..value_cols {
             let Some(c) = layout.col_at(j) else {
                 panic!(
@@ -1206,6 +1317,23 @@ fn compare_one(
                         c.name
                     )
                 };
+                // The `+j` marker must agree on both sides here too: the
+                // tokenization (D40(4)) normalizes the marker away, and
+                // `compare_cell` asserts the two sides carry the same one so a
+                // layout change can never hide behind it. The angle arm does not
+                // go through `compare_cell`, so it states the same rule itself.
+                // (G1.10b audit settlement, finding AC1-5.)
+                for (f, what) in [(mj, "paired magnitude"), (j, "angle")] {
+                    assert_eq!(
+                        strip_j(&rf[f]).1,
+                        strip_j(&of[f]).1,
+                        "{ctx}: row {i} field {f} (the {what} of {}) carries the \
+                         `+j` marker on one side only (port {:?} vs oracle {:?})",
+                        c.name,
+                        rf[f],
+                        of[f]
+                    );
+                }
                 let (Ok(mo), Ok(mp)) = (
                     strip_j(&of[mj]).0.parse::<f64>(),
                     strip_j(&rf[mj]).0.parse::<f64>(),
@@ -1342,6 +1470,27 @@ mod tests {
             class_floor(Quantity::Power, &t, 1342.0),
             1e-5 + 1e-7 * 1342.0
         );
+        // The MW twin: the same band read in the printed unit — `abs` divided
+        // by 1000 (never multiplied: that would be a 1000× widening), `rel`
+        // untouched because it is scale-free.
+        assert_eq!(
+            class_floor(Quantity::PowerMega, &t, 1.342),
+            1e-5 / 1000.0 + 1e-7 * 1.342
+        );
+        // Tighter than reading the kW-calibrated `abs` against the same MW
+        // number, which is what the class did before the audit settlement…
+        assert!(
+            class_floor(Quantity::PowerMega, &t, 1.342) < class_floor(Quantity::Power, &t, 1.342),
+            "the MW class must be the TIGHTER reading of the same printed number"
+        );
+        // …and, scaled back to kW, EXACTLY the kW band — the unit identity the
+        // class exists for.
+        let mw_in_kw = class_floor(Quantity::PowerMega, &t, 1.342) * 1000.0;
+        let kw = class_floor(Quantity::Power, &t, 1342.0);
+        assert!(
+            (mw_in_kw - kw).abs() <= 1e-12 * kw,
+            "the MW floor scaled to kW is {mw_in_kw:e}, not the kW floor {kw:e}"
+        );
         assert_eq!(
             class_floor(Quantity::Admittance, &t, 4.6),
             1e-6 + 1e-8 * 4.6
@@ -1401,21 +1550,292 @@ mod tests {
 
     /// The declined-kind table is a census of what never travels, so nothing in
     /// it may also be selected, and every entry must carry a reason.
+    ///
+    /// The disjointness is asserted over a NAME each row stands for — the
+    /// spelling the corpus actually produces for that kind — run through the
+    /// shipped matcher. Until the G1.10b audit settlement this clause compared
+    /// the row's prose LABEL against the glob patterns
+    /// (`!patterns.any(|p| p.contains(what))`), which no label can ever satisfy:
+    /// the assertion was unconditionally true and a row naming a kind the gate
+    /// DOES select would have passed (findings AC1-1 / AT1-1 / AT3-2).
     #[test]
     fn nothing_declined_is_also_selected() {
-        for (what, why) in CONTENTS_NOT_SELECTED {
+        // One produced name per census row, in the table's own order — the
+        // same measured spellings the registered pin
+        // `run_file_contents_pins::a_report_without_a_policy_is_recorded_not_compared`
+        // uses (`tmp/g110b/census.txt`, `tmp/g110a/oracle_diff.txt`).
+        let witness: [(&str, &str); 8] = [
+            ("monitor CSV", "ieee13_mon_m1_1.csv"),
+            ("eventlog CSV", "ieee13_eventlog.csv"),
+            ("demand-interval tree (DI_yr_*)", "ckt7_di_yr_0.csv"),
+            ("Show / Dump text reports", "testygd_curr_elem.txt"),
+            (
+                "NCIM Jacobian / deltaF / deltaZ",
+                "kundur_two_area_jacobian.csv",
+            ),
+            ("cim100 XML", "ieee13_cim100.xml"),
+            (
+                "deck-named export (`export ... file=<name>`)",
+                "auto1bus_hl_current.txt",
+            ),
+            (
+                "capacity / ycurrents / ynodelist (golden policy, no column map)",
+                "ckt7_exp_capacity.csv",
+            ),
+        ];
+        let patterns: Vec<String> = dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert_eq!(witness.len(), CONTENTS_NOT_SELECTED.len());
+        for ((what, why), (row, name)) in CONTENTS_NOT_SELECTED.iter().zip(witness) {
             assert!(!why.trim().is_empty(), "{what}: a decline needs its reason");
+            assert_eq!(
+                *what, row,
+                "the census rows moved; the witness names below must move with them"
+            );
             assert!(
-                !dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS
-                    .iter()
-                    .any(|p| p.contains(what)),
-                "{what} is both declined and selected"
+                !dss_epri::guard::selects_contents(&patterns, name),
+                "{what}: {name:?} is claimed by a decline row AND selected by \
+                 `RUN_FILE_CONTENTS_PATTERNS` — one of the two halves moved"
+            );
+            assert!(
+                ReportKind::of(name, "").is_none(),
+                "{what}: {name:?} is claimed by a decline row but the column map \
+                 now dispatches it"
             );
         }
-        assert_eq!(CONTENTS_NOT_SELECTED.len(), 7);
+        assert_eq!(CONTENTS_NOT_SELECTED.len(), 8);
+    }
+
+    /// **The selection and the decline census are jointly exhaustive over the
+    /// export kinds the vendored corpus actually issues** — the settlement of
+    /// the G1.10b code audit's finding AC-4.
+    ///
+    /// Before it, three default-named kinds that DO have golden policies
+    /// (`capacity`, `ycurrents`, `ynodelist`, produced by the `large*` rows
+    /// `ckt7` and `GFM_AmpsLimit_123`) were neither selected nor named by a
+    /// census row: declaring `compare_run_files` on such a row would have
+    /// skipped their contents with no census movement and no recorded reason —
+    /// exactly the silence the census exists to prevent.
+    ///
+    /// The fixture is the measured export population of the corpus
+    /// (`tmp/g110b/sweep_exports.txt`: `monitors` 230, `currents` 28,
+    /// `losses` 24, `powers` 19, `voltages` 13, `monitor` 12, `eventlog` 10,
+    /// `profile` 2 and one each of `pvsystem`, `mon`, `deltaf`, `deltaz`,
+    /// `jacobian`, `y`, `yprims`, `capacity`, `ycurrents`, `ynodelist`,
+    /// `cim100`), each mapped to the name the run produces — r4133's default
+    /// `<CircuitName>_` + the `ExportOptions.pas:333-396` table entry, or a
+    /// deck-chosen name where the corpus always passes `file=`. Every one of
+    /// them must be either SELECTED (and carry a column map) or claimed by a
+    /// [`CONTENTS_NOT_SELECTED`] row that exists.
+    #[test]
+    fn every_default_export_name_the_corpus_produces_is_selected_or_declined() {
+        // (export sub-command, the produced file name, `None` = selected,
+        //  `Some(row)` = the census row that claims it)
+        let population: [(&str, &str, Option<&str>); 19] = [
+            ("currents", "ieee8500_exp_currents.csv", None),
+            ("powers", "ieee8500_exp_powers.csv", None),
+            ("voltages", "fbs_exp_voltages.csv", None),
+            ("profile", "ieee8500u_exp_profile.csv", None),
+            ("y", "nev_exp_y.csv", None),
+            ("yprims", "nev_exp_yprim.csv", None),
+            ("pvsystem /m", "exp_pv_pv.csv", None),
+            // Not an `Export` at all: the Storage `DebugTrace` writer G1.10a's
+            // F4a ported (r4133 `PCElements/Storage.pas:1075`).
+            ("(storage debugtrace)", "stor_storage1.csv", None),
+            (
+                "monitors",
+                "ieee13nodeckt_mon_m1_1.csv",
+                Some("monitor CSV"),
+            ),
+            ("monitor", "ieee13nodeckt_mon_m1_1.csv", Some("monitor CSV")),
+            ("mon", "ieee13nodeckt_mon_m1_1.csv", Some("monitor CSV")),
+            (
+                "eventlog",
+                "ppriority_exp_eventlog.csv",
+                Some("eventlog CSV"),
+            ),
+            (
+                "jacobian",
+                "kundur_two_area_jacobian.csv",
+                Some("NCIM Jacobian / deltaF / deltaZ"),
+            ),
+            (
+                "deltaf",
+                "kundur_two_area_deltaf.csv",
+                Some("NCIM Jacobian / deltaF / deltaZ"),
+            ),
+            (
+                "deltaz",
+                "kundur_two_area_deltaz.csv",
+                Some("NCIM Jacobian / deltaF / deltaZ"),
+            ),
+            ("cim100", "ieee13nodeckt_cim100x.xml", Some("cim100 XML")),
+            // The corpus issues `export losses file=<name>` on all 24 sites, so
+            // what it produces is a deck name, not `EXP_LOSSES.CSV`.
+            (
+                "losses file=…",
+                "auto1bus_hl_current.txt",
+                Some("deck-named export (`export ... file=<name>`)"),
+            ),
+            (
+                "capacity",
+                "ckt7_exp_capacity.csv",
+                Some("capacity / ycurrents / ynodelist (golden policy, no column map)"),
+            ),
+            (
+                "ycurrents",
+                "nev_exp_ycurrents.csv",
+                Some("capacity / ycurrents / ynodelist (golden policy, no column map)"),
+            ),
+        ];
+        let p: Vec<String> = dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        for (cmd, name, row) in population {
+            let selected = dss_epri::guard::selects_contents(&p, name);
+            match row {
+                None => {
+                    assert!(selected, "`export {cmd}` → {name} must be selected");
+                    assert!(
+                        ReportKind::of(name, "Row,Col,G,B").is_some(),
+                        "`export {cmd}` → {name} is selected but has no column map"
+                    );
+                }
+                Some(row) => {
+                    assert!(
+                        !selected,
+                        "`export {cmd}` → {name} is selected, but the census row \
+                         {row:?} says it is not compared — one of the two moved"
+                    );
+                    assert!(
+                        CONTENTS_NOT_SELECTED.iter().any(|(what, _)| *what == row),
+                        "`export {cmd}` → {name} is not compared and the census row \
+                         {row:?} that was to state the reason is gone"
+                    );
+                }
+            }
+        }
+        // `ynodelist` rides the same row as `ycurrents`; keeping it here makes
+        // the third name of that row a test subject too.
+        assert!(!dss_epri::guard::selects_contents(
+            &p,
+            "nev_exp_ynodelist.csv"
+        ));
+    }
+
+    /// **The `tests/TOLERANCE_NOTES.md` column-map table and the layouts here
+    /// are ONE claim**: the print formats the table names for a kind are the
+    /// formats that kind's [`Layout`] declares — settlement of the G1.10b audit
+    /// findings AC-1/T3, where the table gave `Export Voltages`' angle column as
+    /// `Fixed(2)` while the writer prints `%6.1f`
+    /// (r4133 `Common/ExportResults.pas:288`) and the code maps `Fixed(1)`.
+    ///
+    /// A derivation table that misstates a print resolution is worse than no
+    /// table: re-deriving the band from it produces a different number than the
+    /// one in force. `Exact` and `DeclinedG` carry no resolution and are not
+    /// part of the comparison (the table names them in prose).
+    #[test]
+    fn the_tolerance_notes_column_map_names_the_formats_the_layouts_declare() {
+        use std::collections::BTreeSet;
+        let doc = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("tests")
+            .join("TOLERANCE_NOTES.md");
+        let text = std::fs::read_to_string(&doc)
+            .unwrap_or_else(|e| panic!("{doc:?} carries the G1.10b derivation: {e}"));
+        let section = text
+            .split("## G1.10b run-file contents")
+            .nth(1)
+            .expect("the G1.10b section of TOLERANCE_NOTES.md is gone");
+
+        let hdr: Vec<String> = STORAGE_TRACE_HEADER
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+        let layouts: [(ReportKind, Layout); 9] = [
+            (ReportKind::Currents, currents_layout()),
+            (ReportKind::Powers, powers_layout()),
+            (ReportKind::Voltages, voltages_layout()),
+            (ReportKind::Profile, profile_layout()),
+            (ReportKind::YDense, y_dense_layout()),
+            (ReportKind::YTriplet, y_triplet_layout()),
+            (ReportKind::Yprim, yprim_layout()),
+            (
+                ReportKind::Register,
+                register_layout(&register_header(), "fixture"),
+            ),
+            (
+                ReportKind::StorageTrace,
+                storage_trace_layout(&hdr, "fixture"),
+            ),
+        ];
+        for (k, l) in layouts {
+            let declared: BTreeSet<String> = l
+                .head
+                .iter()
+                .chain(l.group.iter())
+                .filter_map(|c| match c.f {
+                    PrintFmt::Fixed(d) => Some(format!("Fixed({d})")),
+                    PrintFmt::Sig(s) => Some(format!("Sig({s})")),
+                    PrintFmt::Exact | PrintFmt::DeclinedG => None,
+                })
+                .collect();
+            let prefix = format!("| `{}` |", k.label());
+            let row = section
+                .lines()
+                .find(|ln| ln.trim_start().starts_with(&prefix))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "the TOLERANCE_NOTES column-map table has no row for `{}`",
+                        k.label()
+                    )
+                });
+            let mut named: BTreeSet<String> = BTreeSet::new();
+            for tag in ["Fixed(", "Sig("] {
+                let mut rest = row;
+                while let Some(at) = rest.find(tag) {
+                    let after = &rest[at + tag.len()..];
+                    let end = after.find(')').unwrap_or_else(|| {
+                        panic!("{}: an unterminated `{tag}` in the table row", k.label())
+                    });
+                    named.insert(format!("{tag}{})", &after[..end]));
+                    rest = &after[end..];
+                }
+            }
+            assert_eq!(
+                named,
+                declared,
+                "{}: the TOLERANCE_NOTES column map names {named:?} but the layout \
+                 declares {declared:?} — the derivation table must state the print \
+                 resolution that is actually in force",
+                k.label()
+            );
+        }
     }
 
     // -- the fixtures ---------------------------------------------------------
+
+    /// The Storage trace header as the edit-time writer emits it for the
+    /// `Storage_price.dss` element (r4133 `PCElements/Storage.pas:1077-1083`),
+    /// captured live by micro-part F1 (`tmp/g110b/f_F1.md`).
+    /// The PVSystem register header as `WriteMultiplePVSystemMeterFiles`
+    /// emits it (r4133 `Common/ExportResults.pas:2017`/`:2018` over
+    /// `PCElements/PVsystem.pas:404-409`), measured live on
+    /// `Test/PVSystemTest.dss` (`tmp/g110b/f_F1.md`).
+    const REGISTER_HEADER: &str = "Year, LDCurve, Hour, PVSystem, \"kWh\", \"kvarh\", \"Max kW\", \"Max kVA\", \"Hours\", \"Price($)\"";
+
+    fn register_header() -> Vec<String> {
+        REGISTER_HEADER
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect()
+    }
+
+    const STORAGE_TRACE_HEADER: &str = "t, Iteration, LoadMultiplier, Mode, LoadModel, StorageModel,  Qnominalperphase, Pnominalperphase, CurrentType, |Iinj1|, |Iinj2|, |Iinj3|, |Iterm1|, |Iterm2|, |Iterm3|, |Vterm1|, |Vterm2|, |Vterm3|, kWh, State,Vthev, Theta";
 
     /// `Export Currents` as `CalcAndWriteCurrents` writes it: one element, one
     /// terminal of two conductors plus the residual pair.
@@ -1631,6 +2051,115 @@ Line.X, 1.02898E-11, 45.00
     /// The measured C4 class on the admittance channel: `-2.498001805E-16` vs
     /// `-1.110223025E-016` S is a cancellation residual 10 orders under
     /// `y_abs = 1e-6`; a real stamp moving is not.
+    /// **The composition of the two terms is pinned at the boundary itself**,
+    /// not one decade away: a cell 0.1 % OUTSIDE `class_floor + ulp` reds and a
+    /// cell 0.1 % inside passes. Before the G1.10b audit settlement every value
+    /// fixture sat ≥ 10× outside the band (finding AT1-3), so a fudge at the
+    /// comparison site — `floor + 10·ulp`, `2·(floor + ulp)`, a stray additive
+    /// term — kept the whole file green even though both leaf functions are
+    /// pinned exactly.
+    ///
+    /// The drive is a `Sig(6)` magnitude of the `currents` map on the `feeder`
+    /// tier: band = `i_abs + i_rel·m` + `10^(1-6)·10^⌊log10 m⌋`, evaluated here
+    /// from the same two functions the comparator calls, so the assertion is
+    /// about their COMPOSITION and moves with a re-calibrated tier instead of
+    /// freezing a literal.
+    #[test]
+    fn a_cell_at_the_band_boundary_decides_the_right_way() {
+        let tol = tol_for("feeder");
+        let o = 683.41_f64;
+        let band = |m: f64| class_floor(Quantity::Current, &tol, m) + PrintFmt::Sig(6).ulp(m);
+        let d = band(o);
+        let row = |v: f64| {
+            format!(
+                "Line.L1,    {v:.12},   -31.05,    683.41,   148.95,         0,     0.00
+"
+            )
+        };
+        let oracle = currents(&row(o));
+        cmp(
+            "ieee13_exp_currents.csv",
+            &oracle,
+            &currents(&row(o + d * 0.999)),
+        );
+        let m = fails(
+            "ieee13_exp_currents.csv",
+            &oracle,
+            &currents(&row(o + d * 1.001)),
+        );
+        assert!(m.contains("|I| (A) of the currents map"), "{m}");
+        // The same one field down: the port BELOW the oracle by the same amount.
+        cmp(
+            "ieee13_exp_currents.csv",
+            &oracle,
+            &currents(&row(o - d * 0.999)),
+        );
+        let m = fails(
+            "ieee13_exp_currents.csv",
+            &oracle,
+            &currents(&row(o - d * 1.001)),
+        );
+        assert!(m.contains("|I| (A) of the currents map"), "{m}");
+    }
+
+    /// The angle arm's boundary, same reason (finding AT1-3): the admitted slack
+    /// is the paired magnitude's own band converted to degrees plus the angle
+    /// column's print ulp, and a move 0.1 % past it must red. The nearest angle
+    /// fixture before the settlement was 3× outside.
+    #[test]
+    fn an_angle_at_the_band_boundary_decides_the_right_way() {
+        let tol = tol_for("feeder");
+        let mag = 683.41_f64;
+        let allowed = class_floor(Quantity::Current, &tol, mag);
+        let slack = polar_angle_band(allowed, mag).expect("a real magnitude has a band")
+            + PrintFmt::Fixed(2).ulp(0.0);
+        let a = -31.05_f64;
+        let row = |v: f64| {
+            format!(
+                "Line.L1,    683.41,   {v:.9},    683.41,   148.95,         0,     0.00
+"
+            )
+        };
+        let oracle = currents(&row(a));
+        cmp(
+            "ieee13_exp_currents.csv",
+            &oracle,
+            &currents(&row(a + slack * 0.999)),
+        );
+        let m = fails(
+            "ieee13_exp_currents.csv",
+            &oracle,
+            &currents(&row(a + slack * 1.001)),
+        );
+        assert!(m.contains("Ang (deg) of the currents map"), "{m}");
+    }
+
+    /// The numeric half of a `+j` cell is compared like any other: D40(4)
+    /// normalizes the MARKER away, never the payload (finding AT1-6 — the
+    /// tokenization had negative drives only for the equal-value and
+    /// marker-asymmetry cases).
+    #[test]
+    fn the_payload_of_a_j_cell_is_compared_after_the_marker_is_stripped() {
+        let o = "4, 
+\"B1.1\", 0, +j -1.110223025E-016, 
+";
+        cmp(
+            "nev_exp_y.csv",
+            o,
+            "4, 
+\"B1.1\", 0, +j -2.498001805E-16, 
+",
+        );
+        let m = fails(
+            "nev_exp_y.csv",
+            o,
+            "4, 
+\"B1.1\", 0, +j -4.636999108, 
+",
+        );
+        assert!(m.contains("+j B (S) of the y(dense) map"), "{m}");
+    }
+
     #[test]
     fn a_near_zero_cell_is_bounded_by_its_class_floor() {
         let o = "4, \n\"B1.1\", -1.110223025E-016, +j 0, \n";
@@ -1654,10 +2183,14 @@ Line.X, 1.02898E-11, 45.00
     #[test]
     fn the_declined_g_columns_are_counted_not_skipped() {
         let orc = format!(
-            "{TRACE_HDR}1, 1, 1, Daily, PowerFlow, 1,     0.00,    -0.00, Injection,      0.6,      0.6,    277.1, 9999, 5.5, \n"
+            "{TRACE_HDR}1, 1, 1, Daily, PowerFlow, 1,     0.00,    -0.00, Injection, \
+             0.6, \
+             0.6,    277.1, 9999, 5.5, \n"
         );
         let port = format!(
-            "{TRACE_HDR}1, 1, 1, Daily, PowerFlow, 1,    -0.00,    -0.00, Injection,      0.6,      0.6,    277.1, 1E4, 5.4, \n"
+            "{TRACE_HDR}1, 1, 1, Daily, PowerFlow, 1,    -0.00,    -0.00, Injection, \
+             0.6, \
+             0.6,    277.1, 1E4, 5.4, \n"
         );
         let t = cmp("stor_storage1.csv", &orc, &port);
         // 2 `%-.g` scalars + 2 state variables per row.
@@ -1705,7 +2238,9 @@ Line.X, 1.02898E-11, 45.00
     /// trailing separator (r4133 `PCElements/Storage.pas:2401-2429`).
     fn trace_row(current_type: &str, vterm: &str) -> String {
         format!(
-            "1, 1, 1, Daily, PowerFlow, 1,     0.00,    -0.00, {current_type},      0.6,      0.6,    {vterm}, 9999, 5.5, \n"
+            "1, 1, 1, Daily, PowerFlow, 1,     0.00,    -0.00, {current_type}, \
+             0.6, \
+             0.6,    {vterm}, 9999, 5.5, \n"
         )
     }
 
@@ -1868,8 +2403,16 @@ Line.X, 1.02898E-11, 45.00
     /// element order is the report's contract.
     #[test]
     fn a_reordered_row_fails_on_the_identity_key() {
-        let o = "Element, Terminal, P(kW), Q(kvar)\n\"Load.L1\",   1,        1.0,        2.0\n\"Load.L2\",   1,        3.0,        4.0\n";
-        let p = "Element, Terminal, P(kW), Q(kvar)\n\"Load.L2\",   1,        3.0,        4.0\n\"Load.L1\",   1,        1.0,        2.0\n";
+        let o = "Element, Terminal, P(kW), Q(kvar)\n\"Load.L1\",   1, \
+                 1.0, \
+                 2.0\n\"Load.L2\",   1, \
+                 3.0, \
+                 4.0\n";
+        let p = "Element, Terminal, P(kW), Q(kvar)\n\"Load.L2\",   1, \
+                 3.0, \
+                 4.0\n\"Load.L1\",   1, \
+                 1.0, \
+                 2.0\n";
         let m = fails("x_exp_powers.csv", o, p);
         assert!(m.contains("row 0 identity (field 0) differs"), "{m}");
     }
@@ -1936,9 +2479,15 @@ Line.X, 1.02898E-11, 45.00
     /// (`tmp/g110b/f_F1.md`): a report that grows a column the map does not
     /// describe is a loud refusal, and here it is proved that today's widths are
     /// all covered.
+    ///
+    /// Scope, stated because the name is broader than the body: this is an
+    /// offline WIDTH fixture over the populations F1 measured, not a walk of
+    /// headers captured at run time. The run-time rail is
+    /// [`compare_one`]'s panic on a field outside the map — which fires on the
+    /// real files, on every drive, for any width this fixture does not know.
     #[test]
     fn every_column_of_every_captured_header_is_mapped() {
-        let hdr: Vec<String> = "t, Iteration, LoadMultiplier, Mode, LoadModel, StorageModel,  Qnominalperphase, Pnominalperphase, CurrentType, |Iinj1|, |Iinj2|, |Iinj3|, |Iterm1|, |Iterm2|, |Iterm3|, |Vterm1|, |Vterm2|, |Vterm3|, kWh, State,Vthev, Theta"
+        let hdr: Vec<String> = STORAGE_TRACE_HEADER
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
@@ -1957,7 +2506,11 @@ Line.X, 1.02898E-11, 45.00
             // A 12-order Yprim row: 24 cells + the trailing empty.
             (ReportKind::Yprim, yprim_layout(), 25),
             // 4 fixed + the six PVSystem registers.
-            (ReportKind::Register, register_layout(), 10),
+            (
+                ReportKind::Register,
+                register_layout(&register_header(), "fixture"),
+                10,
+            ),
             (
                 ReportKind::StorageTrace,
                 storage_trace_layout(&hdr, "fixture"),
@@ -1985,11 +2538,24 @@ Line.X, 1.02898E-11, 45.00
 
     /// The per-kind census is what tells a full drive that a kind compared
     /// nothing. It is a PROCESS counter shared with every other test in this
-    /// binary, so what is pinned here is that the two views agree: the same call
-    /// reports its work in the returned tally and lands it on its own kind's
-    /// row, and every other row's totals stay self-consistent.
+    /// binary and the binary runs its tests in parallel, so an EXACT per-row
+    /// equality is not available; what is pinned here is the DELTA this call
+    /// makes — the work it reports in its returned tally lands on its own kind's
+    /// row (never on another kind's and never nowhere), and the totals move with
+    /// it. The absolute populations are asserted where they are re-derived, in
+    /// the scheduler epilogue (`RUN_FILE_CONTENTS_COMPARED`).
     #[test]
     fn the_census_is_per_kind() {
+        let row_of = |label: &str| -> (usize, usize, usize) {
+            let (_, f, c, d) = cell_census_by_kind()
+                .iter()
+                .find(|(l, ..)| *l == label)
+                .copied()
+                .unwrap_or_else(|| panic!("the {label} census row exists"));
+            (f, c, d)
+        };
+        let before = row_of("currents");
+        let totals_before = cell_census();
         let t = cmp(
             "ieee13_exp_currents.csv",
             &currents(CURRENTS_ROW),
@@ -1998,6 +2564,20 @@ Line.X, 1.02898E-11, 45.00
         assert_eq!((t.files, t.compared, t.declined), (1, 7, 0));
         let rows = cell_census_by_kind();
         assert_eq!(rows.len(), ReportKind::ALL.len());
+        let after = row_of("currents");
+        assert!(
+            after.0 - before.0 >= t.files && after.1 - before.1 >= t.compared,
+            "the currents row moved by {:?}, less than this call's own tally \
+             {:?} — the comparison did not land on its kind's row",
+            (after.0 - before.0, after.1 - before.1),
+            (t.files, t.compared)
+        );
+        let totals_after = cell_census();
+        assert!(
+            totals_after.0 - totals_before.0 >= t.files
+                && totals_after.1 - totals_before.1 >= t.compared,
+            "the totals did not move with the per-kind row"
+        );
         let (_, files, cells, declined) = rows
             .iter()
             .find(|(l, ..)| *l == "currents")

@@ -5685,7 +5685,7 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
 /// `RunFileProbe::start` is deliberately absent: `fn start(` is a generic
 /// method name the needle below would over-count. Its half of the lifecycle is
 /// pinned through `finish_and_clean`, which no other module defines.
-const G1_10_PINS: [(&str, usize); 63] = [
+const G1_10_PINS: [(&str, usize); 72] = [
     // the three both-numbers pins (`crates/dss-core/tests/run_files_pins.rs`)
     (
         "visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port",
@@ -5839,6 +5839,45 @@ const G1_10_PINS: [(&str, usize); 63] = [
     // (`tests/harness/{run_file_contents,run_files}.rs`,
     // `crates/dss-epri/src/guard.rs`, `tests/corpus_gate/scheduler.rs`,
     // `tests/capture_order.rs`).
+    // The audit settlement (2026-09-12): the two producers' value pins — the
+    // only tests that can red on a RE-TUNED lifted `ExportPolicy`, which
+    // `every_compared_kind_uses_the_same_policy_as_its_golden` reads rather than
+    // re-states (finding T1) — and the two tables the settlement made
+    // mechanically exhaustive (findings AC-4, AC-1/T3).
+    (
+        "the_lifted_policy_values_are_the_ones_the_goldens_carried",
+        1,
+    ),
+    (
+        "the_lifted_policies_keep_their_separator_and_header_count",
+        1,
+    ),
+    (
+        "every_default_export_name_the_corpus_produces_is_selected_or_declined",
+        1,
+    ),
+    (
+        "the_tolerance_notes_column_map_names_the_formats_the_layouts_declare",
+        1,
+    ),
+    // The settlement's own drives: the two band-boundary decisions, the `+j`
+    // payload, the sidecar's refusal to delete a case directory and the
+    // source-text guard on the Export bracket (findings AT1-3, AT1-6, AC3-4,
+    // AT3-4).
+    ("a_cell_at_the_band_boundary_decides_the_right_way", 1),
+    ("an_angle_at_the_band_boundary_decides_the_right_way", 1),
+    (
+        "the_payload_of_a_j_cell_is_compared_after_the_marker_is_stripped",
+        1,
+    ),
+    (
+        "a_sidecar_inside_the_case_directory_is_refused_before_anything_is_deleted",
+        1,
+    ),
+    (
+        "the_export_bracket_has_no_early_exit_between_its_two_statements",
+        1,
+    ),
     ("compare_run_file_cells", 1),
     ("compare_run_file_contents", 1),
     ("read_sidecar", 1),

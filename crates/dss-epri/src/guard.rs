@@ -173,6 +173,17 @@ pub fn split_engine_scratch(names: &[String]) -> (Vec<String>, Vec<String>) {
 /// (`Jacobian`, `deltaF`, `deltaZ`, `cim100`), and a deck-named
 /// `export ... file=<name>`, whose file name does not identify the report kind.
 ///
+/// `exp_pv_*.csv` is matched with the ORACLE's spelling, which two r4133 writers
+/// share: `WriteMultiplePVSystemMeterFiles` (`Common/ExportResults.pas:1990`) and
+/// `WriteMultipleStorageMeterFiles` (`:2260`), the latter a cloned PVSystem
+/// literal that files Storage registers under `EXP_PV_<NAME>.CSV` too. The port
+/// does not reproduce that name (it writes `EXP_STORAGE_<NAME>.csv`, pinned by
+/// `golden_reports::export_storage_multifile_uses_the_storage_prefix`), so a deck
+/// issuing `export storage_meters /m` inside the forced population would fail the
+/// "both sides handed back DIFFERENT selected reports" rail loudly — never
+/// silently — and wiring one needs the port's spelling added here deliberately.
+/// No corpus deck does today (the live `/m` case is PVSystem's `EXP_PV_PV.CSV`).
+///
 /// Provenance: new coverage, not catch-up — the upstream harness's CSV compare
 /// is non-gating (`DSS-Python origin/fastdss tests/compare_outputs.py:517-527`
 /// prints `COMPARE CSV ERROR` with its `raise` commented out at `:527`, and
@@ -253,6 +264,37 @@ pub fn selects_contents<S: AsRef<str>>(patterns: &[S], name: &str) -> bool {
 /// case directory, or that the directory no longer lists as a file, is an error
 /// rather than a quietly missing file — the whole point of the surface is that
 /// every file the run wrote reaches the gate.
+/// Refuse a sidecar directory that is, contains, or sits under the case
+/// directory — the one destructive path of this surface (`remove_dir_all`).
+///
+/// Twin: `tools/oracle/corpus_guard.py::_refuse_sidecar_under_case_dir`.
+fn refuse_sidecar_under_case_dir(case_dir: &Path, sidecar: &Path) -> Result<(), String> {
+    let abs = |p: &Path| -> PathBuf {
+        std::fs::canonicalize(p).unwrap_or_else(|_| {
+            match (p.parent(), p.file_name()) {
+                // The sidecar itself need not exist yet; resolve its parent.
+                (Some(parent), Some(name)) => std::fs::canonicalize(parent)
+                    .map(|c| c.join(name))
+                    .unwrap_or_else(|_| p.to_path_buf()),
+                _ => p.to_path_buf(),
+            }
+        })
+    };
+    let (c, s) = (abs(case_dir), abs(sidecar));
+    if s == c || s.starts_with(&c) || c.starts_with(&s) {
+        return Err(format!(
+            "run-file contents: the sidecar {} is the case directory {} or shares \
+             a path with it. The bytes travel through a directory the GATE owns \
+             under `target/` and this transport clears it with a recursive delete \
+             (coordinator decision D40(6)); pointing it at a corpus deck would \
+             delete vendored sources.",
+            s.display(),
+            c.display()
+        ));
+    }
+    Ok(())
+}
+
 fn resolve_selected<S: AsRef<str>>(
     case_dir: &Path,
     created: &[String],
@@ -276,7 +318,13 @@ fn resolve_selected<S: AsRef<str>>(
     })?;
     let mut on_disk: BTreeMap<String, PathBuf> = BTreeMap::new();
     for entry in rd.flatten() {
-        if entry.file_type().map(|t| t.is_dir()).unwrap_or(true) {
+        // `unwrap_or(false)` — the same default `classify_into`/`collect_tree`
+        // take for an entry whose `file_type()` errors, because this module's
+        // contract is ONE classification with three producers. Treating it as a
+        // file here means the copy below refuses it loudly instead of the
+        // resolver silently reporting it as "no longer a file". (G1.10b audit
+        // settlement, finding AC3-6.)
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -375,7 +423,18 @@ pub fn copy_selected_contents<S: AsRef<str>>(
     })?;
     let selected = resolve_selected(case_dir, created, patterns)?;
     let dir = Path::new(sidecar);
-    let _ = std::fs::remove_dir_all(dir);
+    // The next statement is a RECURSIVE DELETE of a path the request chose, so
+    // coordinator decision D40(6) ("the gate's OWN scratch — never inside
+    // `tests/corpus/` or the case directory") is enforced here, not only at the
+    // single construction site: CLAUDE.md records two wipes of vendored sources
+    // from exactly this shape. (G1.10b audit settlement, finding AC3-4.)
+    refuse_sidecar_under_case_dir(case_dir, dir)?;
+    std::fs::remove_dir_all(dir).or_else(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => Ok(()),
+        _ => Err(format!(
+            "run-file contents: cannot clear the sidecar {sidecar}: {e}"
+        )),
+    })?;
     std::fs::create_dir_all(dir)
         .map_err(|e| format!("run-file contents: cannot create the sidecar {sidecar}: {e}"))?;
     let mut names = Vec::with_capacity(selected.len());
@@ -1108,7 +1167,11 @@ mod tests {
     /// checked — so a drift in the Python twin that the corpus happens not to
     /// exercise would ship silently. Here the four shared name lists are compared
     /// against THIS module's constants, the derived fifth is re-derived, and the
-    /// twin is executed. Python is resolved exactly as the corpus gate resolves
+    /// twin is executed — and, since G1.10b, the CONTENTS fixture's three lists
+    /// (`SELF_TEST_CONTENTS_{PATTERNS,CREATED,COPIED}`) are run through this
+    /// module's own selection matcher, so the two guards are pinned to select
+    /// the same members and not only to classify the same tree.
+    /// Python is resolved exactly as the corpus gate resolves
     /// it (`DSS_ORACLE_PYTHON`, default `python`); a missing interpreter FAILS,
     /// like every other oracle prerequisite (TESTING.md: the gate fails rather
     /// than skipping).
@@ -1132,7 +1195,10 @@ mod tests {
             assert_eq!(
                 py_list(&src, py),
                 rs,
-                "the shared G1.10a fixture drifted: `corpus_guard.py::{py}` no longer                  equals this module's constant. The two guards must classify the SAME                  tree, or `compare_run_files` compares two different surfaces on the                  two channels — change both sides in one commit."
+                "the shared G1.10a fixture drifted: `corpus_guard.py::{py}` no longer \
+                 equals this module's constant. The two guards must classify the SAME \
+                 tree, or `compare_run_files` compares two different surfaces on the \
+                 two channels — change both sides in one commit."
             );
         }
         // The fifth list is DERIVED on the Python side; pin the derivation itself
@@ -1141,7 +1207,8 @@ mod tests {
             src.contains(
                 "SELF_TEST_AFTER_SWEEP = sorted(SELF_TEST_PRE_EXISTING + (\"pre/New_Report.Txt\",))"
             ),
-            "`corpus_guard.py::SELF_TEST_AFTER_SWEEP` is no longer the pre-existing              files plus the sibling case's write under the pre-existing directory"
+            "`corpus_guard.py::SELF_TEST_AFTER_SWEEP` is no longer the pre-existing \
+             files plus the sibling case's write under the pre-existing directory"
         );
         let mut want: Vec<&str> = PRE_EXISTING.to_vec();
         want.push("pre/New_Report.Txt");
@@ -1152,6 +1219,38 @@ mod tests {
             "the swept tree's two sides disagree"
         );
 
+        // G1.10b: the CONTENTS half of the same fixture. The two guards must
+        // also SELECT the same members — the patterns arrive as data in the run
+        // request, so a matcher that drifted would change one channel's selected
+        // set silently. The twin's own (patterns, created) table is run through
+        // THIS module's matcher here, and the Python side asserts the same
+        // expectation against its own (`corpus_guard.py --self-test`), so one
+        // truth table crosses both languages. (Settlement of the G1.10b code
+        // audit, finding AC-7.)
+        let c_patterns = py_list(&src, "SELF_TEST_CONTENTS_PATTERNS");
+        let c_created = py_list(&src, "SELF_TEST_CONTENTS_CREATED");
+        let c_copied = py_list(&src, "SELF_TEST_CONTENTS_COPIED");
+        assert!(
+            !c_patterns.is_empty() && !c_created.is_empty() && !c_copied.is_empty(),
+            "the twin's CONTENTS fixture is empty — a vacuous cross-check"
+        );
+        for p in &c_patterns {
+            check_contents_pattern(p).unwrap_or_else(|e| {
+                panic!("`corpus_guard.py::SELF_TEST_CONTENTS_PATTERNS` carries {p:?}: {e}")
+            });
+        }
+        let selected: Vec<String> = c_created
+            .iter()
+            .filter(|n| selects_contents(&c_patterns, n.as_str()))
+            .cloned()
+            .collect();
+        assert_eq!(
+            selected, c_copied,
+            "the two guards select DIFFERENT files from the shared fixture: this \
+             module takes {selected:?} where `corpus_guard.py::SELF_TEST_CONTENTS_COPIED` \
+             says {c_copied:?} — change both matchers in one commit"
+        );
+
         let python = std::env::var("DSS_ORACLE_PYTHON").unwrap_or_else(|_| "python".to_string());
         let out = std::process::Command::new(&python)
             .arg(&script)
@@ -1159,13 +1258,16 @@ mod tests {
             .output()
             .unwrap_or_else(|e| {
                 panic!(
-                    "could not run the Python twin's self-test with {python:?}: {e}. The                      capi_v0145 transport needs a Python interpreter anyway (set                      DSS_ORACLE_PYTHON); this test fails rather than skipping."
+                    "could not run the Python twin's self-test with {python:?}: {e}. The \
+                     capi_v0145 transport needs a Python interpreter anyway (set \
+                     DSS_ORACLE_PYTHON); this test fails rather than skipping."
                 )
             });
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             out.status.success() && stdout.contains("OK corpus_guard self-test"),
-            "the Python guard twin failed its own shared-fixture self-test              (status {:?}).
+            "the Python guard twin failed its own shared-fixture self-test \
+             (status {:?}).
 --- stdout ---
 {stdout}
 --- stderr ---
@@ -1209,6 +1311,67 @@ mod tests {
             let err = check_contents_pattern(bad).expect_err("must be refused");
             assert!(err.contains(bad), "{err}");
         }
+    }
+
+    /// The sidecar is cleared with a recursive delete, so a sidecar that is, or
+    /// sits under, the case directory is refused before anything is removed
+    /// (coordinator decision D40(6); G1.10b audit settlement, finding AC3-4).
+    #[test]
+    fn a_sidecar_inside_the_case_directory_is_refused_before_anything_is_deleted() {
+        let root = std::env::temp_dir().join(format!(
+            "dss-epri-sidecar-guard-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let case = root.join("case");
+        std::fs::create_dir_all(case.join("keep")).expect("the fixture case dir");
+        std::fs::write(
+            case.join("keep").join("deck.dss"),
+            b"! vendored
+",
+        )
+        .expect("the deck");
+        let created = vec!["ieee13_exp_currents.csv".to_string()];
+        std::fs::write(
+            case.join("ieee13_exp_currents.csv"),
+            b"Element,
+",
+        )
+        .expect("the report");
+        let patterns = ["*_exp_currents.csv".to_string()];
+        for bad in [
+            case.clone(),
+            case.join("sidecar"),
+            case.join("keep"),
+            root.clone(),
+        ] {
+            let e = copy_selected_contents(
+                &case,
+                Some(&created),
+                &patterns,
+                Some(bad.to_string_lossy().as_ref()),
+            )
+            .expect_err("a sidecar sharing a path with the case directory must be refused");
+            assert!(e.contains("sidecar"), "{e}");
+            assert!(
+                case.join("keep").join("deck.dss").exists(),
+                "the refusal must happen BEFORE the recursive delete"
+            );
+        }
+        // A gate-owned sidecar beside it is accepted.
+        let ok = root.join("scratch");
+        let names = copy_selected_contents(
+            &case,
+            Some(&created),
+            &patterns,
+            Some(ok.to_string_lossy().as_ref()),
+        )
+        .expect("a sidecar outside the case directory is the normal path");
+        assert_eq!(
+            names.as_deref(),
+            Some(&["ieee13_exp_currents.csv".to_string()][..])
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// The selection: the six circuit-prefixed exports, the un-prefixed
@@ -1279,7 +1442,10 @@ mod tests {
         let created = names(&["nev_exp_y.csv", "nev_vln_node.txt"]);
         let p = pat(&RUN_FILE_CONTENTS_PATTERNS);
 
-        let side = root.join("sidecar");
+        // The sidecar is the gate's own scratch, a SIBLING of the case
+        // directory (`corpus_gate::engines::run_file_contents_dir`), never a
+        // child of it — `copy_selected_contents` refuses that outright.
+        let side = sidecar_beside(&root);
         let copied =
             copy_selected_contents(&root, Some(&created), &p, Some(side.to_str().unwrap()))
                 .unwrap()
@@ -1304,7 +1470,10 @@ mod tests {
     fn no_patterns_means_not_requested_and_touches_no_directory() {
         let root = tmp_root("contents-off");
         std::fs::create_dir_all(&root).unwrap();
-        let side = root.join("sidecar");
+        // The sidecar is the gate's own scratch, a SIBLING of the case
+        // directory (`corpus_gate::engines::run_file_contents_dir`), never a
+        // child of it — `copy_selected_contents` refuses that outright.
+        let side = sidecar_beside(&root);
         let empty: [&str; 0] = [];
         assert!(
             copy_selected_contents(
@@ -1337,7 +1506,11 @@ mod tests {
     #[test]
     fn the_sidecar_never_carries_a_previous_runs_file() {
         let root = tmp_root("contents-stale");
-        let side = root.join("sidecar");
+        // The sidecar is the gate's own scratch, a SIBLING of the case
+        // directory (`corpus_gate::engines::run_file_contents_dir`), never a
+        // child of it — `copy_selected_contents` refuses that outright.
+        let side = sidecar_beside(&root);
+        std::fs::create_dir_all(&root).unwrap();
         std::fs::create_dir_all(&side).unwrap();
         std::fs::write(side.join("stale_exp_y.csv"), b"from the previous case\n").unwrap();
         std::fs::write(root.join("NEV_EXP_Y.CSV"), b"fresh\n").unwrap();
@@ -1352,6 +1525,7 @@ mod tests {
         assert_eq!(copied, vec!["nev_exp_y.csv".to_string()]);
         assert!(!side.join("stale_exp_y.csv").exists());
         std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&side).ok();
     }
 
     /// A selected member the directory no longer lists is a LOUD failure, never
@@ -1369,7 +1543,7 @@ mod tests {
             &root,
             Some(&names(&["di_yr_0/x_exp_currents.csv"])),
             &pat(&["*_exp_currents.csv", "*/*_exp_currents.csv"]),
-            Some(root.join("sidecar").to_str().unwrap()),
+            Some(sidecar_beside(&root).to_str().unwrap()),
         )
         .expect_err("a two-star pattern is refused before anything is read");
         assert!(err.contains("exactly one `*`"), "{err}");
@@ -1391,6 +1565,15 @@ mod tests {
             .expect_err("no created set");
         assert!(err.contains("incomplete pre-run snapshot"), "{err}");
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// The gate's own scratch for a fixture case directory: a SIBLING, because
+    /// `copy_selected_contents` clears it recursively and refuses any path that
+    /// shares a prefix with the case directory (D40(6)).
+    fn sidecar_beside(case: &Path) -> PathBuf {
+        let mut p = case.as_os_str().to_os_string();
+        p.push("-sidecar");
+        PathBuf::from(p)
     }
 
     fn tmp_root(tag: &str) -> PathBuf {

@@ -1746,8 +1746,11 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > sidecar transport, the `%-.g` decline + the G4.1 hand-down, the `+j` tokenization, census rows for
 > the policy-less and deck-named kinds), **D43** (the reader-footprint accounting, the capi slot,
 > the `Save` divergence and the corrected citations, micro-part F2b, three commits).
-> **Riders:** **e** (the forced `export profile phases=all`) rides the existing `post` mechanism and
-> is compared on both 8500-Node decks; **d** (`save circuit`) stays as part a recorded it.
+> **Riders:** **e** (`export profile phases=all`) needed no forcing after all — both 8500-Node decks
+> issue it themselves (`IEEETestCases/8500-Node/Run_8500Node_Unbal.dss:40` and the GFM twin) and are
+> in the forced population, so the `profile` kind is compared live on them and no manifest `post`
+> entry was added (the note said "rides the existing `post` mechanism"; corrected at the audit
+> settlement); **d** (`save circuit`) stays as part a recorded it.
 > **Tier as executed:** §0's `opus-high+` row held; F0/F2/F3 ran at `xhigh` for the engine flag, the
 > floor derivation and the triage, and the two STOPs it took (the row count, the transport slot)
 > were scope questions, not tier questions.
@@ -2306,6 +2309,21 @@ report float text. Same commit: delete the `EVENTLOG_REROUNDED` fold and its
 `REROUND_VISITS`/`REROUND_HITS` accounting from `harness/lane.rs` (both lanes now
 emit native `%g` — the G2.2d parity guard and its cells go); regen the affected
 report families.
+
+**Hand-down from G1.10b (D40(3), 2026-09-12).** The live run-file contents
+surface declines the Storage `DebugTrace`'s 36 `%-.g` columns per record on
+**both** channels, because FPC renders them at 2 significant digits and the
+Delphi-built r4133 at ~15 — the two gating ORACLES disagree with each other, so
+no band exists (`the_two_sig_trace_columns_are_declined_on_both_channels`,
+`TESTING.md` §"G1.10b", `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents").
+Once this kernel dies the port prints at r4133's precision: re-measure that
+decline in the same commit and shrink it to the capi channel only — the decline
+must not outlive the kernel that justified it. Re-measure its SIZE as well: the
+G1.10b audit settlement showed most of those columns would keep gross-error
+coverage under the surface's own `class floor + print ulp` rule even at two
+significant digits (`tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents"), and
+the decline currently costs the only oracle comparison of the Storage state
+variables on `Storage_price.dss`.
 
 ### G4.2 — `fixed_w_script`
 

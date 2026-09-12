@@ -16,7 +16,7 @@
 //! (`PCElements/Storage.pas:2861-2871`) recomputes the model, which indexes
 //! `NodeV^[NodeRef^[i]]` (`CalcVTerminalPhase`), and the resulting access
 //! violation is caught by `TPCElement.GetCurrents`' `TRY … EXCEPT`
-//! (`PCElements/PCElement.pas:277`, `:304-306`), which reports DSS error 641
+//! (`PCElements/PCElement.pas:278`, `:304-306`), which reports DSS error 641
 //! ("Inadequate storage allotted for circuit element") instead of a current.
 //! The port has no access violation to catch, and `#![forbid(unsafe_code)]`
 //! turns the same read into a panic — which is what nine `get_currents`
