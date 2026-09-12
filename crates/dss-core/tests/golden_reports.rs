@@ -25,6 +25,7 @@ use dss_core::exec::Dss;
 use harness::lane;
 use harness::{
     ColSel, ColTol, ExportPolicy, GateSpec, RowPolicy, assert_value_matches_tol, compare_export,
+    export_policies,
 };
 use serde::Deserialize;
 
@@ -993,15 +994,7 @@ fn run_shared_exports(reports: &[(&str, ExportPolicy)]) {
 /// Rust↔oracle (incl. the `%6.1f` angle columns) → exact equality.
 #[test]
 fn export_voltages_matches_oracle() {
-    let policy = ExportPolicy {
-        sep: ',',
-        header_lines: 1,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 0.0,
-        col_tol: vec![],
-    };
-    run_feeder_export("export_voltages", &policy);
+    run_feeder_export("export_voltages", &export_policies::voltages_policy());
 }
 
 /// `Export BusCoords` (Pascal `ExportBusCoords`): X/Y of every coord-defined bus.
@@ -1088,15 +1081,7 @@ fn export_ynodelist_matches_oracle() {
 /// byte-identical, exact equality.
 #[test]
 fn export_powers_matches_oracle() {
-    let policy = ExportPolicy {
-        sep: ',',
-        header_lines: 1,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 0.0,
-        col_tol: vec![],
-    };
-    run_feeder_export("export_powers", &policy);
+    run_feeder_export("export_powers", &export_policies::powers_policy());
 }
 
 /// `Export Losses` (Pascal `ExportLosses`): per-PD-element total / load / no-load
@@ -3093,43 +3078,16 @@ fn export_seqpowers_matches_oracle() {
 // `0.00 == 0.00` check and every real-magnitude row's angle. A proven
 // cancellation floor, not a relaxation. (tests/TOLERANCE_NOTES.md)
 
-/// The noise gate for the angle columns of a paired magnitude/angle report: the
-/// angle of a real magnitude is byte-identical (exact, `rel = abs = 0`); only
-/// the angle of a **near-zero residual** magnitude (a per-terminal residual or
-/// an open-terminal conductor — faer-vs-KLU cancellation noise, observed e.g.
-/// `-33.69` vs `56.31`°) is skipped, gated on the paired magnitude (the
-/// immediately-preceding column, `PrevCol`); `thresh` (1e-6) sits far above that
-/// noise (≤ ~1e-8) and below the smallest real printed magnitude. Selected by
-/// index parity (`start`, then every other column is an angle) because these
-/// reports have **truncated headers** (`…, I_1, Ang_1, ...`) that name only the
-/// first pair.
-fn ang_tol(start: usize) -> ColTol {
-    ColTol {
-        sel: ColSel::Parity { start, parity: 1 },
-        rel: 0.0,
-        abs: 0.0,
-        gate: Some(GateSpec::PrevCol(1e-6)),
-    }
-}
-
 /// `Export Currents` (Pascal `ExportCurrents` + `CalcAndWriteCurrents`):
 /// per-terminal, per-conductor `|I|`/angle over the widest element, plus a
 /// per-terminal residual. Every real magnitude and angle is byte-identical →
 /// `rel = 0`. `abs = 1e-8` absorbs only the near-zero `Iresid` cancellation
 /// residuals (**observed**: `8.13e-9` vs `5.09e-9` A, and `3.6e-12` vs an exact
 /// oracle `0`) — 5 orders below the smallest real current. The angle of a
-/// residual/fill magnitude is noise, gated via [`ang_tol`].
+/// residual/fill magnitude is noise, gated via [`export_policies::ang_tol`].
 #[test]
 fn export_currents_matches_oracle() {
-    let policy = ExportPolicy {
-        sep: ',',
-        header_lines: 1,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 1e-8,
-        col_tol: vec![ang_tol(1)],
-    };
-    run_feeder_export("export_currents", &policy);
+    run_feeder_export("export_currents", &export_policies::currents_policy());
 }
 
 /// `Export NodeOrder` (Pascal `ExportNodeOrder` + `WriteNodeList`): `"Element",
@@ -3160,7 +3118,7 @@ fn export_elemcurrents_matches_oracle() {
         rows: RowPolicy::ExactOrdered,
         rel: 0.0,
         abs: 1e-10,
-        col_tol: vec![ang_tol(3)],
+        col_tol: vec![export_policies::ang_tol(3)],
     };
     run_feeder_export("export_elemcurrents", &policy);
 }
@@ -3318,15 +3276,7 @@ fn export_faultstudy_matches_oracle() {
 /// Row/Col and the `%.10g` G/B all exact.
 #[test]
 fn export_y_triplet_matches_oracle() {
-    let policy = ExportPolicy {
-        sep: ',',
-        header_lines: 1,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 0.0,
-        col_tol: vec![],
-    };
-    run_feeder_export("export_y_triplet", &policy);
+    run_feeder_export("export_y_triplet", &export_policies::y_triplet_policy());
 }
 
 /// `Export Yprims` (Pascal `ExportYprim`): every enabled PD/PC element's
@@ -3337,15 +3287,7 @@ fn export_y_triplet_matches_oracle() {
 /// report's contract (`ExactOrdered`).
 #[test]
 fn export_yprims_matches_oracle() {
-    let policy = ExportPolicy {
-        sep: ',',
-        header_lines: 0,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 0.0,
-        col_tol: vec![],
-    };
-    run_feeder_export("export_yprims", &policy);
+    run_feeder_export("export_yprims", &export_policies::yprims_policy());
 }
 
 // --- WP8.2 follow-up: the remaining solution-family exports ------------------
@@ -3532,7 +3474,7 @@ const CURRENTS_ANGLE_GATE_A: f64 = 0.12;
 /// whenever the (oracle) magnitude is below the pinnable-angle threshold — a
 /// residual / open-terminal / lightly-loaded-phase current whose printed angle is
 /// not determined to `%.2f` by the proven current floor (see
-/// [`CURRENTS_ANGLE_GATE_A`]). Unlike the IEEE13 `ang_tol` (`PrevCol`, which skips
+/// [`CURRENTS_ANGLE_GATE_A`]). Unlike the IEEE13 `export_policies::ang_tol` (`PrevCol`, which skips
 /// only a *strictly nonzero* sub-threshold magnitude), `MinCols`'s `< thresh`
 /// also covers the **exactly-zero** oracle magnitude — a terminal where KLU
 /// produces a structural 0 A while faer leaves a ~1e-12 A residual with a defined
@@ -3671,19 +3613,6 @@ fn export_monitors_match_oracle() {
 //      the DER out of the metered, regulated zone avoids the ~3e-5 metered-element
 //      coupling that would straddle the meter's Max kW rounding boundary.
 
-/// Register rows: `%10.0f` integers, byte-identical (no last-digit rounding
-/// straddle on these fixtures) — exact equality.
-fn register_policy() -> ExportPolicy {
-    ExportPolicy {
-        sep: ',',
-        header_lines: 1,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 0.0,
-        col_tol: vec![],
-    }
-}
-
 /// `Export Meters` (Pascal `ExportMeters`/`WriteSingleMeterFile`) + `Export Loads`
 /// (Pascal `ExportLoads`) on the daily-solved plain IEEE13 + EnergyMeter fixture.
 #[test]
@@ -3701,7 +3630,7 @@ fn export_meters_loads_match_oracle() {
         col_tol: vec![],
     };
     run_shared_exports(&[
-        ("export_meters", register_policy()),
+        ("export_meters", export_policies::register_policy()),
         ("export_loads", loads),
     ]);
 }
@@ -3712,9 +3641,9 @@ fn export_meters_loads_match_oracle() {
 #[test]
 fn export_der_registers_match_oracle() {
     run_shared_exports(&[
-        ("export_generators", register_policy()),
-        ("export_pvsystem_meters", register_policy()),
-        ("export_storage_meters", register_policy()),
+        ("export_generators", export_policies::register_policy()),
+        ("export_pvsystem_meters", export_policies::register_policy()),
+        ("export_storage_meters", export_policies::register_policy()),
     ]);
 }
 
@@ -3923,7 +3852,7 @@ fn export_storage_multifile_uses_the_storage_prefix() {
             compare_export(
                 &single,
                 &multi,
-                &register_policy(),
+                &export_policies::register_policy(),
                 "export_storage_multifile",
             );
         },
@@ -5086,21 +5015,6 @@ fn export_sections_edge_paths() {
     std::fs::remove_dir_all(&scratch).ok();
 }
 
-/// The shared `Export Profile` tolerance policy: the `%.6g` `puV` columns, the
-/// zone-build `Distance` constants and the integer Color/Thickness/Linetype/
-/// marker columns are all byte-identical — exact equality. The header line
-/// (incl. the appended `Title=…` tail) is compared verbatim.
-fn profile_policy() -> ExportPolicy {
-    ExportPolicy {
-        sep: ',',
-        header_lines: 1,
-        rows: RowPolicy::ExactOrdered,
-        rel: 0.0,
-        abs: 0.0,
-        col_tol: vec![],
-    }
-}
-
 /// `Export Profile` (Pascal `ExportProfile` + `WriteNewLine`) on the metered,
 /// solved IEEE13 feeder — all seven `PhasesToPlot` selector variants from one
 /// compile: the default (3-phase primary, the unguarded per-phase write), `all`
@@ -5112,22 +5026,22 @@ fn profile_policy() -> ExportPolicy {
 #[test]
 fn export_profile_variants_match_oracle() {
     run_shared_exports(&[
-        ("export_profile", profile_policy()),
-        ("export_profile_all", profile_policy()),
-        ("export_profile_primary", profile_policy()),
+        ("export_profile", export_policies::profile_policy()),
+        ("export_profile_all", export_policies::profile_policy()),
+        ("export_profile_primary", export_policies::profile_policy()),
         (
             "export_profile_ll3ph",
-            lane::profile_ll_policy(profile_policy()),
+            lane::profile_ll_policy(export_policies::profile_policy()),
         ),
         (
             "export_profile_llall",
-            lane::profile_ll_policy(profile_policy()),
+            lane::profile_ll_policy(export_policies::profile_policy()),
         ),
         (
             "export_profile_llprimary",
-            lane::profile_ll_policy(profile_policy()),
+            lane::profile_ll_policy(export_policies::profile_policy()),
         ),
-        ("export_profile_ph2", profile_policy()),
+        ("export_profile_ph2", export_policies::profile_policy()),
     ]);
 }
 

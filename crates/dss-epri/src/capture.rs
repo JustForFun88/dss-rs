@@ -4,7 +4,7 @@
 //!
 //! The response is JSON-shape-identical to the retired Oddie oracle's
 //! (`CaseResult { node_order, n_steps, checkpoints, autoadd_log }`, + G1.10a's
-//! `run_files` and `sweep_failed`), so the Rust
+//! `run_files` / `sweep_failed` and G1.10b's `run_file_contents`), so the Rust
 //! gate's `serde` deserialize accepts it unchanged (bit-diff-proven against the
 //! Python path by `xcheck_bridge.py`, itself retired with that stack in Phase
 //! E). Read order within a step matches `oracle_server` exactly — notably the
@@ -18,7 +18,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::dss::{Engine, EngineError, RelCalcResult};
-use crate::guard::CorpusGuard;
+use crate::guard::{CorpusGuard, copy_selected_contents};
 
 /// Retry a non-converged case in-process up to this many times
 /// (`oracle_server._RUN_ATTEMPTS`): absorbs the engine's occasional
@@ -131,6 +131,27 @@ pub struct RunRequest {
     /// still alive. Twin request key: `oracle_server.py`'s `run_files`.
     #[serde(default)]
     pub run_files: bool,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10b — the CONTENTS half: the gate's selection
+    /// of created-file names whose bytes this transport hands back, as patterns
+    /// over a [`crate::guard::normalize_created_name`] member
+    /// ([`crate::guard::RUN_FILE_CONTENTS_PATTERNS`], declared once on the gate
+    /// side and shipped in the request so no transport re-derives it). Empty or
+    /// absent ⇒ nothing is copied and the reply's `run_file_contents` is `null`
+    /// (the key is always serialized — `CaseResult` carries no
+    /// `skip_serializing_if`, exactly as for G1.10a's `run_files`; the gate's
+    /// field is `serde(default)`, so an off request reads back as "not
+    /// requested"). Twin request key: `oracle_server.py`'s `run_file_contents`.
+    #[serde(default)]
+    pub run_file_contents: Vec<String>,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the
+    /// gate-owned sidecar directory the selected files' BYTES are copied into
+    /// (never the case directory, never `tests/corpus/`). Required whenever
+    /// [`Self::run_file_contents`] is non-empty; the gate reads the copies from
+    /// there and deletes the directory inside the same bracket that owns the
+    /// case-dir claim. Twin request key: `oracle_server.py`'s
+    /// `run_file_contents_dir`.
+    #[serde(default)]
+    pub run_file_contents_dir: Option<String>,
     #[serde(default)]
     pub warn_and_continue: bool,
     // `full_csc` is accepted but ignored: the gate always requests it (true) and
@@ -182,6 +203,14 @@ pub struct CaseResult {
     /// the case on a non-empty list
     /// (`crates/dss-core/tests/corpus_gate/runner.rs::compare_with_result`).
     sweep_failed: Vec<String>,
+    /// G1.10b — the names (normalized like [`Self::run_files`], sorted) whose
+    /// CONTENTS this run copied into the request's sidecar directory. `None`
+    /// when the request carried no selection, which is what lets the gate's
+    /// presence rail tell "not requested" from `Some([])`, "requested, and this
+    /// deck wrote none of the selected reports". The gate asserts the sidecar
+    /// holds exactly these names, so a copy that silently lost one fails the
+    /// case (`crates/dss-core/tests/harness/run_files.rs::read_sidecar`).
+    run_file_contents: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -1159,6 +1188,21 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     // be reported honestly" (incomplete pre-run snapshot / failed listing); the
     // gate's presence rail turns that into a failed case.
     let run_files = if req.run_files { guard.created() } else { None };
+    // G1.10b / coordinator decision D40(6): the CONTENTS of the files the gate
+    // selected, copied out of the case directory into the gate's sidecar while
+    // the guard still holds them. It consumes the set just classified — never a
+    // second classification and never a second listing rule — and it is the one
+    // statement allowed between the classification and the sweep
+    // (`crates/dss-core/tests/capture_order.rs::check_run_file_contents_read_with_the_set`).
+    // The `Result` is carried past `finish()` rather than `?`-ed here so a copy
+    // failure still reports `sweep_failed`: a transport that skipped its sweep
+    // would leave the next producer a poisoned pre-run snapshot (D32(2)).
+    let run_file_contents = copy_selected_contents(
+        guard.dir(),
+        run_files.as_deref(),
+        &req.run_file_contents,
+        req.run_file_contents_dir.as_deref(),
+    );
 
     // D32(2): sweep NOW, not in `Drop`, so a removal the guard could not perform
     // is reported to the gate instead of being swallowed. Unconditional — the
@@ -1166,6 +1210,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     // `?` return above still sweeps through `Drop`, which prints the leak to
     // stderr; that case has already failed on the error itself.)
     let sweep_failed = guard.finish();
+    let run_file_contents = run_file_contents.map_err(EngineError::Other)?;
 
     Ok(CaseResult {
         node_order,
@@ -1174,6 +1219,7 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         autoadd_log,
         run_files,
         sweep_failed,
+        run_file_contents,
     })
 }
 

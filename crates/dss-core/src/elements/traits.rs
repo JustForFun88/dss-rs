@@ -516,6 +516,12 @@ pub struct SysCtx {
     /// (`solution/solution/power_flow.rs`), so the value a record sees is the
     /// iteration that produced it.
     pub iteration: i32,
+    /// `InShowResults` ([`Circuit::in_show_results`](crate::circuit::Circuit)) —
+    /// set while a `Show`/`Export`/`Save` command runs, so an element debug
+    /// trace does not record the report's own current/power reads (r4133
+    /// `PCElements/Storage.pas:2408` `WriteTraceRecord`). Read by the element
+    /// writers, never written by them.
+    pub in_show_results: bool,
     pub loads_need_updating: bool,
     pub neglect_load_y: bool,
     pub long_line_correction: bool,
@@ -588,6 +594,7 @@ impl SysCtx {
             dbl_hour: 0.0,
             solution_count: 0,
             iteration: 0,
+            in_show_results: false,
             loads_need_updating: true,
             neglect_load_y: false,
             long_line_correction: false,
