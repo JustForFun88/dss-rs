@@ -3746,37 +3746,27 @@ row against the pre-fix lock.
 
   merge: lane lane-b -> update, see git log
 
-- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c`) — the
+- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c` + `<settle2>`) — the
   demand-interval tree's CONTENTS compare live on both channels behind `compare_di`: each transport copies the
-  run-created tree into a per-(case, channel) sidecar and reads it before `created()` and before the capi teardown
-  `clear`, the slot asserted from both sources by `check_run_tail_order` (**D43(2)** orders the merged tail against
-  G1.10b). Each column is banded at the gate's existing calibrated tier for its quantity, positional over the port's
-  own `RegisterNames` (**D42(1)** S-CLASS — the brief's `di_policy()` fixture floor measured false against the two
-  oracles themselves): no `Tolerances` value, no new constant, no golden byte. **5** decks (**D42(3)**), forced on
-  every live case, census (5, 883, 72, **9 793 064**); ledger 57 → **61** entries / 33 → **35** causes — two ckt7
-  columns, one entry per channel, each with a both-numbers pin (**D44(1)**). Surface in `TESTING.md` §"G1.10c" and
-  `tests/TOLERANCE_NOTES.md` §G1.10c; no PRODUCT crate's `src` moved → `lane_diff` not owed (**D41**). Gate
-  (`tmp/g110c/gate.md`): five commands exit 0, 11 966 passed / 0 failed / 5 ignored per lane, corpus 526/526.
-  **Audit settlement** (`7818868c`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**,
-  none major). Fixed, code: the sidecar size check stats the DESTINATION (AC-1), a `..` member name is refused by
-  name (AC-3), the deck scanner stops reading `=1` as YES — `InterpretYesNo` never did, r4133
-  `Common/Utilities.pas:501-513` (AT3-2), the census is keyed by (case, **channel**) so a channel swap reds (AT3-3),
-  the register-width refusal gains its drive (AT1-3), `Channel::tag` delegates (AT3-4), both one-shot handles attach
-  the sidecar (AT3-5), the pins read their recipe and tier back out of the manifest (AT2-6/AC2-11) — six new drives,
-  all in `G1_10_PINS`. **AT-1** (the `di` key has no row, so the two scopes mask whole columns): the masked `kvarh`
-  column is pinned end to end off the port's own tree (`the_masked_kvarh_column_is_pinned_whole`; aggregates at this
-  file's own 1e-9 record identity — the parity lane's last printed digit moves the annual sum by 1 ulp), and
-  row-scoping the key is REFUSED as measured (the column's port-vs-oracle ratio is a continuum, largest PASSING cell
-  0.956 / 0.939 of the class). Citations corrected against the trunk (AC-4, AT-2, and AT2-1 — the kvarh cause's
-  `:2943-2949` was a **dss_capi** line attributed to r4133), the "four of five DI producers are `large`" count
-  (three are) at six sites plus a derived assertion (AC3-1/AT2-2), the 5e-8 counts restated per file with case
-  totals (AT3-1), the record and STATUS (AT-3/AC2-5/AC2-6/AC2-7). Recorded with reason, not changed: the withdrawn
-  D42(2) universals stay as explicitly measured-false (AC-8), the `DSS_GATE_ONLY` census early-return (AT-4, as its
-  three siblings), the vbase suffix match (AT-6), the 1e-4 energy tier as D42(1)'s residual (AT1-5), the safe-loud
-  `DiFileKind` fallback (AT1-7), the sidecar kept on a RED case for triage (AC-2, doc corrected), the stale prebuilt
-  test binaries (AT1-4) and the four pre-G1.10c garbled `guard.rs` messages (AC2-13, a repo-wide sweep).
-  Settlement gate (both lanes, `tmp/g110c/settle2_gate_*.log`): five commands exit 0, **11 997 passed / 0 failed /
-  5 ignored** per lane, corpus 526/526 — the default lane's first drive red once on ONE case with a foreign
-  `dad37f.tmp` in `IEEETestCases/13Bus/` on the r4133 channel (no DSS writer spells that; swept, never seen in six
-  drives before or since) and the unmodified re-run was green (**D23**); clippy re-run after touching all nine
-  changed `.rs` files (138 s / 119 s, not a cache hit).
+  run-created tree into a per-(case, channel) sidecar read before `created()` and before the capi teardown `clear`
+  (slot asserted from both sources by `check_run_tail_order`, **D43(2)**); each column is banded at the gate's
+  existing calibrated tier for its quantity, positional over the port's own `RegisterNames` (**D42(1)** S-CLASS —
+  the brief's `di_policy()` fixture floor measured false against the two oracles themselves: no `Tolerances` value,
+  no new constant, no golden byte). **5** decks (**D42(3)**), forced on every live case, census
+  (5, 883, 72, **9 793 064**); ledger 57 → **61** entries / 33 → **35** causes — two ckt7 columns, one entry per
+  channel, each with a both-numbers pin (**D44(1)**). Surface, class table and both exclusions: `TESTING.md`
+  §"G1.10c" + `tests/TOLERANCE_NOTES.md` §G1.10c; no PRODUCT crate's `src` moved → `lane_diff` not owed (**D41**).
+  Gate (`tmp/g110c/gate.md`): five commands exit 0, 11 966 / 0 / 5 per lane, corpus 526/526.
+  **Audit settlement** (`7818868c`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**, none
+  major; per-finding table `tmp/g110c/settle.md`, effects in the two documents above and in `G1_10_PINS`): six new
+  drives — `the_masked_kvarh_column_is_pinned_whole` (AT-1, the masked column pinned whole; row-scoping refused as
+  measured), `a_truncated_di_sidecar_copy_is_reported`, `a_di_member_name_that_escapes_its_sidecar_is_refused`,
+  `a_register_file_of_an_unknown_width_fails`, `the_channel_tags_are_the_gates_one_vocabulary`,
+  `the_di_pin_cases_are_the_manifest_rows`. Gate: **11 997 / 0 / 5** per lane, 526/526 (one **D23** foreign-`.tmp`
+  red, green on the unmodified re-run; `tmp/g110c/settle2_gate_*.log`).
+  **Round 2** (`<settle2>`; the settlement's own audit, 6 findings — **4 fixed / 2 recorded**, table
+  `tmp/g110c/settle2.md`): `TIE_MAGNITUDES_HEX` records all three tied buses and asserts their bit-identity (SA-5),
+  three wrapped assertion messages regain their continuations (SA-1), the whole-column pin's sensitivity is restated
+  at its real scope (SA-3); SA-6 (those 8 736 rows are watched port-side only, neither narrowing existing in the
+  tree) and SA-4 stand for the coordinator. Gate: **<totals>** per lane, 526/526
+  (`tmp/g110c/settle3_gate_*.log`).

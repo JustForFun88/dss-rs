@@ -2350,10 +2350,11 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
             .collect();
         assert!(
             wrong_channels.is_empty(),
-            "the demand-interval tree of these producers was not compared on exactly their              gating channels - a channel compared twice or not at all leaves the census              totals below untouched, so it is asserted here:
-  {}",
-            wrong_channels.join("
-  ")
+            "the demand-interval tree of these producers was not compared on \
+             exactly their gating channels — a channel compared twice or not at \
+             all leaves the census totals below untouched, so it is asserted \
+             here:\n  {}",
+            wrong_channels.join("\n  ")
         );
         let measured = (
             with_tree.len(),

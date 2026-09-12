@@ -4012,7 +4012,10 @@ G1.10c landed **four** such entries, all on
   to admit those 24: the other 8 736 rows are pinned end to end instead, live off the port's
   own tree, by `the_masked_kvarh_column_is_pinned_whole` (both files identical row for row,
   the annual net and absolute sums, both extremes with their Times, the cancellation and
-  capacitive-hour censuses). Row-scoping the ledger key was measured and refused: the
+  capacitive-hour censuses) — **port-side literals, not an oracle watch**: neither narrowing
+  that would restore one exists in the tree (no row component in the `di` key, no committed
+  oracle DI data), and the standing gap is stated in `tests/TOLERANCE_NOTES.md` §G1.10c for
+  the coordinator (settlement round 2, finding SA-6). Row-scoping the ledger key was measured and refused: the
   port-vs-oracle ratio across that column is a continuum — over the class on 20 / 17 cells,
   over half of it on 60 / 54, over a tenth on 968 / 963, largest PASSING cell 0.956 / 0.939 —
   so a key naming today's rows would red on the next last-bit move in either direction
@@ -4020,7 +4023,8 @@ G1.10c landed **four** such entries, all on
 * `di-ckt7-min-lv-bus-argmin-tie-{capi,r4133}` (cause `di-voltexception-argmin-tie`) — the
   `min lv bus` column of `di_voltexceptions_1.csv`: 7 316 of 8 760 rows name a different
   bus. It is the argmin of a **tied** minimum — on capi the three service buses carry
-  bit-identical per-unit magnitudes — and r4133 keeps the FIRST strict minimizer
+  bit-identical per-unit magnitudes, recorded bus by bus in `TIE_MAGNITUDES_HEX` and asserted
+  equal there (settlement round 2, finding SA-5) — and r4133 keeps the FIRST strict minimizer
   (`Meters/EnergyMeter.pas:3717`, inside `WriteVoltageReport` `:3620-3754`, whose LV arm
   opens at `:3707`), which the port's scan reproduces faithfully; its last-bit-different
   faer solution simply finds the strict minimum at another member of the tie. The **value**
@@ -4111,7 +4115,11 @@ gate instead of leaving a documented claim with no prover.
   channel set against its manifest `engines`, so a channel compared twice — which leaves every
   `DI_TREE_CENSUS` total unchanged — fails (AT3-3); and the deck scanner stops reading `=1` as
   YES, which neither engine does (`InterpretYesNo`, r4133 `Common/Utilities.pas:501-513`, capi
-  `:400-411`; AT3-2).
+  `:400-411`; AT3-2). **Round 2** (the settlement's own audit, 6 findings — 4 fixed / 2
+  recorded) adds no drive: `TIE_MAGNITUDES_HEX` records all three buses and asserts their
+  bit-identity (SA-5), the census message and two `guard.rs` messages regain their line
+  continuations (SA-1), and the whole-column pin's sensitivity claim is restated at the right
+  scope (SA-3, `tests/TOLERANCE_NOTES.md` §G1.10c).
 
 
 ## See also

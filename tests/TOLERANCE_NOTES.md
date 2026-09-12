@@ -3075,11 +3075,23 @@ epsilon every literal there carries) because the `oracle-parity` lane writes the
 last printed digit differently on a few hours and its annual net sum is
 `4432951.126747187` against the default lane's `4432951.126747186` — ONE ulp at 4.4e6
 (2.1e-16 relative; measured in the settlement's own gate, `tmp/g110c/settle_gate_*.log`).
-That identity leaves 4.4e-3 kvarh of slack on a sum whose cells the gate compares at
-≈ 0.15 kvarh each, i.e. it is ~34× TIGHTER than the per-cell band, so an off-row regression
-still reds. The discrete claims of the pin (row count, the Time↔row identity, the mirror
-file's cells character for character, the 118 cancellation-regime and 581 capacitive hours,
-both extremes' Times) stay exact. Row-scoping the key to the 24
+That identity leaves 4.4e-3 kvarh of slack on the sum, against the per-cell energy band
+(`energy_abs + energy_rel·|e|`) the gate applies to this column: **34.0× tighter at the
+column's largest hour** (0.1509 kvarh at |kvarh| = 1 508.1) and **12.3× at its median**
+(0.0545 at |kvarh| = 544.4), but on **54** of the 8 760 cells — those with |kvarh| < 43.3,
+i.e. precisely the small cancellation rows this exclusion is about — the gate's own band
+would be TIGHTER than the sum's slack (measured over the captured column; round-2 audit
+finding SA-3, correcting the settlement's "~34×" which was the worst case stated as if it
+were the rule). So the sum reds an off-row regression over the overwhelming majority of the
+column, and the small rows are watched instead by the discrete claims, which stay exact (row
+count, the Time↔row identity, the mirror file's cells character for character, the 118
+cancellation-regime and 581 capacitive hours — a cell drifting across the cancellation
+ceiling or changing sign moves a count — and both extremes with their Times). **What remains
+uncovered is stated, not masked**: those 8 736 rows are watched against port-side literals
+only; neither of the two narrowings that would restore an ORACLE watch on them exists in the
+tree (the `di` ledger key has no row component, and no oracle DI data is committed), so the
+standing gap is a coordinator decision, recorded here and in the G1.10c record (round-2
+finding SA-6). Row-scoping the key to the 24
 cells was measured and refused: the port-vs-oracle ratio across that column is a continuum
 (over the class on 20 / 17 cells, over half of it on 60 / 54, over a quarter on 193 / 192,
 over a tenth on 968 / 963, median 0.037, largest PASSING cell 0.956 on capi and 0.939 on
@@ -3097,12 +3109,13 @@ the port's scan is faithful to it, but the three service buses carry per-unit ma
 are bit-identical on capi, so a last-bit-different faer solution finds its strict minimum at a
 different member of the tie. The *value* column `Min LV Voltage` is inside the voltage class on
 all 7 316 rows — the surface loses no numeric coverage — and
-`di_pins::the_ckt7_min_lv_bus_is_an_argmin_over_a_tie` names the three buses, the hex
-magnitudes and the port's own three magnitudes (equal within `v_rel`) — and reads the port a
-second time at the oracle probe's OWN operating point (`compile Master_ckt7.dss` + one
-`solve`) so that the comparison against those hex magnitudes is state-for-state at the
-voltage class, replacing a hand-chosen 1 % cross-snapshot bound (G1.10c audit settlement,
-findings AC-6 / AT-5).
+`di_pins::the_ckt7_min_lv_bus_is_an_argmin_over_a_tie` names the three buses, records the hex
+magnitudes capi read at EACH of them (so the oracle's own bit-identity is asserted from that
+measurement instead of being claimed in prose — round-2 finding SA-5 / AT2-5) and the port's
+own three magnitudes (equal within `v_rel`) — and reads the port a second time at the oracle
+probe's OWN operating point (`compile Master_ckt7.dss` + one `solve`) so that the comparison
+against those hex magnitudes is state-for-state, bus for bus, at the voltage class, replacing
+a hand-chosen 1 % cross-snapshot bound (G1.10c audit settlement, findings AC-6 / AT-5).
 
 Both are exclusions of a single **`<file>:<column>`** key on one case, decided per column and
 pinned by value — the field-by-field shape this file's rules require — and neither widens
