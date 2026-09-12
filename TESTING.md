@@ -3904,9 +3904,15 @@ sub-step's population is five and not the six the plan's split originally named.
 population.** `force_di` arms every live case with **no `kind` test**
 (`FORCED_DI_POPULATION` = (522, 366, 101, 55), re-derived per run and fail-on-stale in both
 directions), deliberately *not* folded into the four-way equality the property / topology /
-incidence / run-file populations share (443): four of the five DI producers are
-`kind=large`, which that rule excludes. The cost is one `contains("/di_yr_")` per created
-name on the other 517 cases. The port-side probe bracket exists whenever
+incidence / run-file populations share (443): **three** of the five DI producers are
+`kind=large`, which that rule excludes (the other two are `feeder` and already inside it;
+the count read "four of five" until the G1.10c audit settlement, findings AC3-1 / AT2-2 —
+that counted the DI-free `Run_Demo1.dss`). On the two oracle transports the cost is one
+`contains("/di_yr_")` per created name on the other 517 cases; on the PORT side the rule
+newly brackets the ~79 live `large*` decks with a directory snapshot and a
+classification + sweep (measured at +5…9 s per lane, D42(9)'s threshold being ~60 s), so a
+port-side leak on those decks now fails the case loudly instead of being swept by the
+outer guard alone. The port-side probe bracket exists whenever
 `compare_run_files || compare_di`, while G1.10a's **comparison** stays gated on its own
 flag — this sub-step must not arm the created-file SET on `large` decks, and the reason is
 measured: ckt5's capi `EarlyAbort` after the deck's bogus `Export monitor ckt5mon` (the
@@ -3935,7 +3941,13 @@ not requested and `{}` when it was requested and the deck writes none — the pr
 fails a case whose flag is on with nothing captured. A sidecar that would lie inside the
 case directory is refused (the copies would be classified as the run's own output and
 swept), as is a copy whose size does not match its source, a member missing on read-back,
-and a member that is not UTF-8. All four are loud case failures, never a silent skip.
+and a member that is not UTF-8. All four are loud case failures, never a silent skip. The
+size check stats the **destination** (its Python twin always did; `std::fs::copy`'s own
+return value is the SOURCE's length on Windows, so checking that against the source could
+never fail), and a reply that spells a member with a `..`, a root or a drive prefix is
+refused by name before it is joined — drives `a_truncated_di_sidecar_copy_is_reported` and
+`a_di_member_name_that_escapes_its_sidecar_is_refused`, both added by the G1.10c audit
+settlement (findings AC-1 / AC-3).
 
 **Per file, then per cell.** The two sides' file sets must be equal (a missing or an extra
 member fails, naming both sets); then, per file, header line 1 **verbatim**, data-row count
@@ -3996,6 +4008,15 @@ G1.10c landed **four** such entries, all on
   cells (worst 4.021×). Pinned by
   `the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`, which re-derives the whole
   decomposition live, and by `the_ckt7_kvarh_scope_masks_that_column_and_nothing_else`.
+  The `di` field has no row selector, so the scope masks the whole column (2 × 8 760 cells)
+  to admit those 24: the other 8 736 rows are pinned end to end instead, live off the port's
+  own tree, by `the_masked_kvarh_column_is_pinned_whole` (both files identical row for row,
+  the annual net and absolute sums, both extremes with their Times, the cancellation and
+  capacitive-hour censuses). Row-scoping the ledger key was measured and refused: the
+  port-vs-oracle ratio across that column is a continuum — over the class on 20 / 17 cells,
+  over half of it on 60 / 54, over a tenth on 968 / 963, largest PASSING cell 0.956 / 0.939 —
+  so a key naming today's rows would red on the next last-bit move in either direction
+  (G1.10c audit settlement, finding AT-1).
 * `di-ckt7-min-lv-bus-argmin-tie-{capi,r4133}` (cause `di-voltexception-argmin-tie`) — the
   `min lv bus` column of `di_voltexceptions_1.csv`: 7 316 of 8 760 rows name a different
   bus. It is the argmin of a **tied** minimum — on capi the three service buses carry
@@ -4076,6 +4097,21 @@ gate instead of leaving a documented claim with no prover.
   `assert_di_census_is_the_pinned_population`, and the four fail-on-stale populations
   `FORCED_DI_POPULATION`, `DI_DECLARED_IN_MANIFEST`, `DI_TREE_CENSUS`, `DI_TREE_CASES` plus the
   DI-free `CloseDI` case `DI_FREE_CLOSEDI_CASE`.
+* **The audit settlement's six drives** (2026-09-12):
+  `the_masked_kvarh_column_is_pinned_whole` (`di_pins.rs` — the whole excluded column, finding
+  AT-1), `a_truncated_di_sidecar_copy_is_reported` (`crates/dss-epri/src/guard.rs` — the
+  destination-stat size check, AC-1), `a_di_member_name_that_escapes_its_sidecar_is_refused`
+  (`corpus_gate/runner.rs` — the `..`-proof containment, AC-3),
+  `a_register_file_of_an_unknown_width_fails` (`harness/di.rs` — the register family's own width
+  refusal, which no drive reached, AT1-3), `the_channel_tags_are_the_gates_one_vocabulary`
+  (`corpus_gate/engines.rs` — `Channel::tag` delegates to `PropsChannel::tag` instead of
+  re-spelling it, AT3-4) and `the_di_pin_cases_are_the_manifest_rows` (`di_pins.rs` — the pins'
+  run recipe and the tier they band at are read back out of `solvable_now.json`, AT2-6 / AC2-11).
+  The same settlement keys the DI census by (case, **channel**) and asserts each producer's
+  channel set against its manifest `engines`, so a channel compared twice — which leaves every
+  `DI_TREE_CENSUS` total unchanged — fails (AT3-3); and the deck scanner stops reading `=1` as
+  YES, which neither engine does (`InterpretYesNo`, r4133 `Common/Utilities.pas:501-513`, capi
+  `:400-411`; AT3-2).
 
 
 ## See also

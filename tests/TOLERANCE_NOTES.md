@@ -2998,9 +2998,12 @@ five **yearly** runs of 720 … 8 760 steps on 1 255 … 2 998-bus feeders, wher
 an accumulation over hundreds or thousands of independently solved steps, each of which the
 gate itself only claims to reproduce at the case's own `v_rel`/`i_rel`/`energy_rel` tier.
 
-Measured, on the R part's captured trees: under `rel = 5e-8` the port fails **26 280** cells on
-ckt5 alone — and, decisively, **the two ORACLES fail it against each other** on **23 065** ckt7
-cells and **1 440** 123Bus cells. A band that two KLU-based reference engines cannot hold
+Measured, on the R part's captured trees, PER FILE (the scope the three numbers are stated at —
+corrected by the G1.10c audit settlement, finding AT3-1, which re-measured the case totals in
+brackets): under `rel = 5e-8` the port fails **26 280** cells of ckt5's `DI_Totals_1.csv`
+(84 781 over the whole case) — and, decisively, **the two ORACLES fail it against each other**
+on **23 065** cells of each ckt7 register file (46 130 per case) and **1 440** of each 123Bus
+register file (2 884). A band that two KLU-based reference engines cannot hold
 against one another is not a floor the port could be held to; it measures the run length, not
 the port. Adopting it would have meant either thousands of ledger rows or a swept widening,
 both refused. So the fixture keeps its own floor (nothing about the goldens changes) and the
@@ -3063,7 +3066,25 @@ cells) — and **no engine-independent value exists at that scale**: `|capi − 
 class outright on 6 of the 24 cells (worst **4.021×** at Time 359, capi `1.01464560883437`
 against r4133 `1.01383583996829`). All of that is asserted live, over all 24 cells, by
 `di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`; the literals there are
-expected values, not tolerances. **The rejected alternative was a widening**: adding a row-scale
+expected values, not tolerances. The exclusion masks the whole column (the `di` scope is
+`<file>:<column>`), so the other 8 736 rows are pinned end to end by
+`di_pins::the_masked_kvarh_column_is_pinned_whole` — again expected values (the annual net
+and absolute sums, both extremes, two censuses), never a band: the sums and the two extreme
+values are recorded through that file's own `assert_records` identity (1e-9 relative, the
+epsilon every literal there carries) because the `oracle-parity` lane writes the column's
+last printed digit differently on a few hours and its annual net sum is
+`4432951.126747187` against the default lane's `4432951.126747186` — ONE ulp at 4.4e6
+(2.1e-16 relative; measured in the settlement's own gate, `tmp/g110c/settle_gate_*.log`).
+That identity leaves 4.4e-3 kvarh of slack on a sum whose cells the gate compares at
+≈ 0.15 kvarh each, i.e. it is ~34× TIGHTER than the per-cell band, so an off-row regression
+still reds. The discrete claims of the pin (row count, the Time↔row identity, the mirror
+file's cells character for character, the 118 cancellation-regime and 581 capacitive hours,
+both extremes' Times) stay exact. Row-scoping the key to the 24
+cells was measured and refused: the port-vs-oracle ratio across that column is a continuum
+(over the class on 20 / 17 cells, over half of it on 60 / 54, over a quarter on 193 / 192,
+over a tenth on 968 / 963, median 0.037, largest PASSING cell 0.956 on capi and 0.939 on
+r4133), so a key naming today's failing rows would red on the next last-bit move in either
+direction without anything having regressed (G1.10c audit settlement, finding AT-1). **The rejected alternative was a widening**: adding a row-scale
 term (`+ i_rel · row Max kVA`) to the energy class admits all 20 capi cells with 1.4–2.6×
 margin and costs 0 ledger rows, but it widens EVERY energy cell on EVERY `large` deck by
 ≈ 5e-3 (50× the class's own `abs`) — hiding real regressions to admit a handful of cells, which
@@ -3077,7 +3098,11 @@ are bit-identical on capi, so a last-bit-different faer solution finds its stric
 different member of the tie. The *value* column `Min LV Voltage` is inside the voltage class on
 all 7 316 rows — the surface loses no numeric coverage — and
 `di_pins::the_ckt7_min_lv_bus_is_an_argmin_over_a_tie` names the three buses, the hex
-magnitudes and the port's own three magnitudes (equal within `v_rel`).
+magnitudes and the port's own three magnitudes (equal within `v_rel`) — and reads the port a
+second time at the oracle probe's OWN operating point (`compile Master_ckt7.dss` + one
+`solve`) so that the comparison against those hex magnitudes is state-for-state at the
+voltage class, replacing a hand-chosen 1 % cross-snapshot bound (G1.10c audit settlement,
+findings AC-6 / AT-5).
 
 Both are exclusions of a single **`<file>:<column>`** key on one case, decided per column and
 pinned by value — the field-by-field shape this file's rules require — and neither widens

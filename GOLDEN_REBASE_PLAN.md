@@ -1704,7 +1704,8 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > **The brief's floor did not survive measurement, and the settlement is a reuse, not a band**
 > (**D42(1)**, settlement **S-CLASS**): under the brief's `di_policy()` (rel 5e-8, abs 0 — a
 > floor calibrated on ONE 24-step daily IEEE13 fixture) the two ORACLES disagree with *each
-> other* on 23 065 ckt7 and 1 440 123Bus cells, so the live rule bands each column at the
+> other* on 23 065 cells of each ckt7 register file and 1 440 of each 123Bus one (46 130 /
+> 2 884 per case — per-file/per-case scopes corrected by the audit settlement), so the live rule bands each column at the
 > gate's **existing calibrated tier for the physical quantity it carries** (`tol_for`), chosen
 > positionally off the port's own `RegisterNames` with the oracle header asserted verbatim and
 > an unclassified column failing the case. **No `Tolerances` value moved, no constant was
@@ -1736,15 +1737,18 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > fixes the merged tail order** against G1.10b's opposite finding: DI contents before
 > `created()`, the run-file contents copy after the capi teardown `clear`.
 > **Force rule and cost** (**D42(4)**): `force_di` arms **every live case** with no `kind`
-> test — four of the five producers are `kind=large`, which G1.10a's rule excludes — under its
+> test — three of the five producers are `kind=large`, which G1.10a's rule excludes (the
+> audit settlement corrected the count and named the port-side probe the rule newly brackets
+> on the ~79 live `large*` decks, +5…9 s per lane) — under its
 > own `FORCED_DI_POPULATION` = (522, 366, 101, 55), deliberately outside the four-way equality;
 > G1.10a's *comparison* stays on its own flag (ckt5's capi `EarlyAbort` after the deck's bogus
 > `Export monitor ckt5mon` costs that channel one created file — **D42(8)**, recorded for
 > G1.10a's owner, not acted on). The epilogue census `DI_TREE_CENSUS` = (5, 883, 72,
 > **9 793 064**) is re-derived fail-on-stale in both directions, each number derivable; the
 > whole surface costs ≈ +5…9 s per lane per full gate (A/B-measured — the full-gate clock is
-> load-dominated with three lanes gating at once). **No `crates/*/src` file moved**
-> (`crates/dss-epri` + `tests/` only), so `lane_diff` is **not owed** (**D41**'s rule) and the
+> load-dominated with three lanes gating at once). **No PRODUCT crate's `src` moved**
+> (`crates/dss-epri`, the test-only bridge, + `tests/` only), so `lane_diff` is **not owed**
+> (**D41**'s rule) and the
 > two lanes were verified equal on the surface instead: the same 9 793 064-cell population
 > compares in both, and the pins' exact `f64` literals hold in both.
 > Coordinator decisions applied: **D7** (lane `lane-e`), **D41** (the lane round and the

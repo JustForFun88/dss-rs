@@ -2703,6 +2703,15 @@ struct RunFileRule {
     /// The classification call. It must appear exactly once in the transport's
     /// **code**: a second classification would report one set while the guard
     /// sweeps another.
+    ///
+    /// The clause counts the literal spelling below, so the DI read's own
+    /// classification pass (`created_di_files` → `classify`, one statement
+    /// earlier) is not one of them (G1.10c audit settlement, finding AT3-6).
+    /// That door is bounded rather than closed: a DI file appearing BETWEEN the
+    /// two passes lands in `created()` and in the sweep but not in the sidecar,
+    /// which reaches the gate as a file-set or row-count RED, never as a silent
+    /// pass — and both oracles write DI rows only inside `solve` / `closedi`,
+    /// which have long returned by then.
     created: &'static str,
     /// The WPG.5 `autoadd_log` read — a file read off disk, of a file the run
     /// itself created, so it must precede the classification.

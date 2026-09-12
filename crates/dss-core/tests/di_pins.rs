@@ -182,6 +182,11 @@ const TIE_BUSES: [&str; 3] = ["s1x_1001577", "s2x_1001577", "s3x_1001577"];
 struct PortRun {
     trees: BTreeMap<&'static str, DiTree>,
     ckt7_tie: Vec<(String, Vec<f64>)>,
+    /// The same three buses at the operating point the capi probe used for
+    /// [`TIE_MAGNITUDES_HEX`] — `compile Master_ckt7.dss` + one `solve`
+    /// (`tmp/g110c/probe_tie.py`), so the two sides of that comparison are the
+    /// same feeder at the same point (audit findings AC-6 / AT-5).
+    ckt7_snapshot_tie: Vec<(String, Vec<f64>)>,
 }
 
 static PORT: OnceLock<PortRun> = OnceLock::new();
@@ -256,7 +261,56 @@ fn run_di_cases() -> PortRun {
         probe.finish_and_clean(&ctx);
         trees.insert(case.label, tree);
     }
-    PortRun { trees, ckt7_tie }
+    PortRun {
+        trees,
+        ckt7_tie,
+        ckt7_snapshot_tie: ckt7_snapshot_tie(),
+    }
+}
+
+/// Repeat, on the port, the probe that measured [`TIE_MAGNITUDES_HEX`] on
+/// `capi_v0145`: `clear` → `compile Master_ckt7.dss` → one `solve` → the three
+/// tied buses' per-node per-unit magnitudes (`tmp/g110c/probe_tie.py`).
+///
+/// The yearly run above ends at hour 8 760 of the loadshape; the oracle triple
+/// is a snapshot of the same feeder at its own point, and the two are NOT the
+/// same state. Reading the port at the probe's point is what makes
+/// [`the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`]'s oracle comparison a
+/// measurement at the case's calibrated voltage class instead of a hand-chosen
+/// cross-snapshot band (audit findings AC-6 / AT-5).
+///
+/// Its own run-file bracket: the compile writes the same droppings every other
+/// run of this deck does, and they are swept here exactly as the gate sweeps
+/// them.
+fn ckt7_snapshot_tie() -> Vec<(String, Vec<f64>)> {
+    let deck =
+        corpus_deck("electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss");
+    let ctx = "di_pins:ckt7-snapshot";
+    let probe = RunFileProbe::start(&deck.to_string_lossy());
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    dss.command("solve");
+    assert!(
+        dss.circuit().is_some(),
+        "{ctx}: `compile` left the port with no active circuit ({:?})",
+        dss.errors()
+    );
+    let tie = TIE_BUSES
+        .iter()
+        .map(|bus| {
+            let v = dss
+                .bus_voltages(bus)
+                .unwrap_or_else(|| panic!("{ctx}: bus {bus} is not in the circuit"));
+            (
+                (*bus).to_string(),
+                v.pu_vmag_angle.iter().map(|(mag, _)| *mag).collect(),
+            )
+        })
+        .collect();
+    drop(dss);
+    probe.finish_and_clean(ctx);
+    tie
 }
 
 /// One case's tree, or a panic naming the case.
@@ -431,6 +485,77 @@ fn nothing_excluded(_: &str) -> bool {
     false
 }
 
+/// **The pins measure the state the GATE measures** — [`DI_CASES`]' run recipe
+/// and the tier the pins band at are read back out of
+/// `tests/corpus/manifests/solvable_now.json` instead of being trusted
+/// (G1.10c audit settlement, findings AT2-6 and AC2-11).
+///
+/// Two ways this could rot silently without it: a manifest edit to `post` or
+/// `n_steps` would leave the pins running the case at a DIFFERENT operating
+/// point than the gate while both stay green; and the two ckt7 exclusion pins
+/// band at `tol_for("large")` by hand, which is only the gate's own band
+/// (`runner.rs`, `tol_for(&c.kind)`) while that row stays `kind=large`.
+#[test]
+fn the_di_pin_cases_are_the_manifest_rows() {
+    let path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "corpus",
+        "manifests",
+        "solvable_now.json",
+    ]
+    .iter()
+    .collect();
+    let text = std::fs::read_to_string(&path).expect("the manifest is readable");
+    let doc: serde_json::Value = serde_json::from_str(&text).expect("the manifest is JSON");
+    let rows = doc["cases"].as_array().expect("cases is an array");
+    for case in DI_CASES {
+        let want_path = case
+            .rel
+            .strip_prefix("electricdss-tst/")
+            .expect("a corpus-relative deck path");
+        let row = rows
+            .iter()
+            .find(|r| r["path"] == want_path)
+            .unwrap_or_else(|| panic!("{}: no manifest row for {want_path}", case.label));
+        assert_eq!(
+            row["compare_di"], true,
+            "{}: the pin runs a case the gate does not compare",
+            case.label
+        );
+        let post: Vec<&str> = row["post"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|c| c.as_str().expect("a post command is a string"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(
+            post, case.post,
+            "{}: the manifest's `post` moved — the pin would measure another state \
+             than the gate",
+            case.label
+        );
+        assert_eq!(
+            row["n_steps"].as_u64().unwrap_or(1) as usize,
+            case.n_steps,
+            "{}: the manifest's `n_steps` moved",
+            case.label
+        );
+        if case.label == "ckt7" {
+            assert_eq!(
+                row["kind"], "large",
+                "the two ckt7 exclusion pins band at `tol_for(\"large\")`; the gate \
+                 bands the same cells at `tol_for(&c.kind)`, so the two agree only \
+                 while this row is `large`"
+            );
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // (1) the ckt7 hourly `kvarh` column — D44(1).
 // ---------------------------------------------------------------------------
@@ -555,6 +680,21 @@ const ORACLE_WORST_RATIO: f64 = 4.021027186072549;
 /// The per-channel cell counts the two ledger entries carry (`measured.cells`).
 const KVARH_CLASS_FAILS: (usize, usize) = (20, 17);
 
+/// The WHOLE masked column on the port's own side, measured 2026-09-12 from the
+/// live tree (audit finding AT-1 — see
+/// [`the_masked_kvarh_column_is_pinned_whole`]): 8 760 rows, their annual net
+/// and absolute sums (left-to-right `f64`, the file's own row order), the two
+/// extremes with the Time that carries them, and two censuses — the rows inside
+/// the cancellation regime the exclusion rests on ([`KVARH_ABS_MAX`]) and the
+/// rows whose hour nets out capacitive.
+const KVARH_COLUMN_ROWS: usize = 8760;
+const KVARH_COLUMN_SUM: f64 = 4432951.126747186;
+const KVARH_COLUMN_SUM_ABS: f64 = 4861124.562446087;
+const KVARH_COLUMN_MAX: (usize, f64) = (4190, 1508.08783575459);
+const KVARH_COLUMN_MIN: (usize, f64) = (8665, -825.561843850456);
+const KVARH_CANCELLING_ROWS: usize = 118;
+const KVARH_NEGATIVE_ROWS: usize = 581;
+
 /// **`Example_ckt7/DI_yr_0/{DI_Totals,25607}_1.csv:kvarh` — no engine computes
 /// an independent value there** (`tests/corpus/ledger.json`
 /// `di-ckt7-hourly-kvarh-cancels-{capi,r4133}`, cause
@@ -562,9 +702,16 @@ const KVARH_CLASS_FAILS: (usize, usize) = (20, 17);
 /// **D44(1)**).
 ///
 /// The EnergyMeter integrates every zone element's kvar over the hour (r4133
-/// `Version8/Source/Meters/EnergyMeter.pas:2262-2318` `TakeSample` →
-/// `Integrate`, written out by `WriteDemandIntervalData` `:2943-2949`; the port
-/// `crates/dss-core/src/solution/meters/demand_interval.rs`). On ckt7 the
+/// `Version8/Source/Meters/EnergyMeter.pas:1267` `TakeSample` → `:1324`
+/// `Integrate(Reg_kvarh, S_Local.im, Delta_Hrs)`, `Integrate` itself at
+/// `:1247`, the zone's own kvar summed in `Accumulate_Load` `:2247-2318`
+/// (`:2264`); written out by `WriteDemandIntervalData` `:2990`, the hourly
+/// register row at `:3001-3003`; the port
+/// `crates/dss-core/src/solution/meters/demand_interval.rs`). Citation
+/// corrected by the G1.10c audit settlement, finding AT2-1: the range that
+/// stood here was `Accumulate_Load`'s body under `TakeSample`'s name, and its
+/// `:2943-2949` was the **dss_capi 0.14.5** `WriteDemandIntervalData` (capi
+/// `src/Meters/EnergyMeter.pas:2944`) attributed to r4133. On ckt7 the
 /// capacitive and inductive halves of the feeder very nearly cancel, and the
 /// three claims below are the decomposition CLAUDE.md asks for — measured, not
 /// argued, over ALL 24 excluded cells:
@@ -880,6 +1027,168 @@ fn the_ckt7_kvarh_scope_masks_that_column_and_nothing_else() {
     }
 }
 
+/// **The masked column, end to end** — the exclusion above hides
+/// `2 × 8 760` cells to admit 24, so the other 8 736 rows are pinned here
+/// (GOLDEN_REBASE G1.10c audit finding **AT-1**).
+///
+/// **Why the ledger scope is not narrowed to the 24 cells instead.** Measured
+/// 2026-09-12 over the R part's captures: the port-vs-oracle ratio across this
+/// column is a CONTINUUM, not a set of 24 outliers — over the energy class on
+/// `20 / 17` cells (capi / r4133), over half of it on `60 / 54`, over a quarter
+/// on `193 / 192`, over a tenth on `968 / 963`, median `0.037`, and the largest
+/// PASSING cell sits at `0.956 / 0.939` of the class. A `<file>:<column>:<row>`
+/// key naming today's 20 and 17 would therefore red on the next last-bit move
+/// in EITHER direction — a `0.956` cell crossing, or a listed row healing into
+/// a dead selector — with nothing having regressed. The exclusion stays
+/// column-scoped and the column is pinned instead.
+///
+/// What the pin asserts, live, off the port's own tree: the two files carry the
+/// column identically on all 8 760 rows; its annual net and absolute sums, both
+/// extremes with their Times, and the two censuses are the measured literals
+/// ([`KVARH_COLUMN_SUM`] …); and every one of the 24 excluded cells lies inside
+/// the cancellation regime the exclusion rests on. A regression on ANY row of
+/// the column moves at least one of those numbers.
+///
+/// What still gates the same physics against the oracles on all 8 760 rows: the
+/// SAME hourly reactive-energy integration at system level —
+/// `Example_ckt7/DI_yr_0/DI_SystemMeter_1.csv:kvarh`, which is not excluded on
+/// either channel and whose worst measured ratio is `0.0048` — plus the `kWh`,
+/// `Zone kvarh` and `Max kVA` columns of these very files.
+#[test]
+fn the_masked_kvarh_column_is_pinned_whole() {
+    let tree = tree_of("ckt7");
+    let ctx = "ckt7 kvarh column";
+    let meter = lines_of(&tree[KVARH_FILES[1]]);
+    let totals = lines_of(&tree[KVARH_FILES[0]]);
+    let jk = column_of(&meter, "kvarh", ctx);
+    let jk_t = column_of(&totals, "kvarh", ctx);
+
+    assert_eq!(
+        (meter.len() - 1, totals.len() - 1),
+        (KVARH_COLUMN_ROWS, KVARH_COLUMN_ROWS),
+        "{ctx}: the two files hold {} and {} data rows, recorded {KVARH_COLUMN_ROWS} \
+         each",
+        meter.len() - 1,
+        totals.len() - 1
+    );
+
+    let mut vals = Vec::with_capacity(KVARH_COLUMN_ROWS);
+    for r in 0..KVARH_COLUMN_ROWS {
+        // …so `vals[Time - 1]` below is the row the ledger and this file spell
+        // `Time`, the same identity `row_of_time` states for the 24.
+        assert_eq!(
+            cell(&meter, r, 0),
+            (r + 1).to_string(),
+            "{ctx}: data row {r} spells its Time column {:?}",
+            cell(&meter, r, 0)
+        );
+        assert_eq!(
+            cell(&meter, r, jk),
+            cell(&totals, r, jk_t),
+            "{ctx}: row {r} — ckt7 has ONE EnergyMeter, so `DI_Totals` must mirror \
+             the meter's own file on every row, not only on the 24 the exclusion \
+             names"
+        );
+        vals.push(number(&meter, r, jk, ctx));
+    }
+
+    // Left-to-right over the file's own row order: expected VALUES of a
+    // deterministic reduction, recorded through the file's own `assert_records`
+    // identity (1e-9 relative — the epsilon every literal in this file is
+    // recorded at, not a comparison band). Measured 2026-09-12 in the
+    // settlement's own gate: the `oracle-parity` lane writes this column's last
+    // printed digit differently on a handful of hours, so its annual net sum is
+    // 4432951.126747187 against the default lane's 4432951.126747186 — ONE ulp
+    // at 4.4e6 (2.1e-16 relative), the precision-compat kernels' own footprint.
+    // The identity leaves 4.4e-3 kvarh of slack on this sum, i.e. 34x TIGHTER
+    // than the per-cell energy band the gate compares this very column at
+    // (`energy_abs + energy_rel·|e|` ≈ 0.15 kvarh on its largest hour), so an
+    // off-row regression still reds here.
+    let sum: f64 = vals.iter().sum();
+    let sum_abs: f64 = vals.iter().map(|v| v.abs()).sum();
+    assert_records(
+        sum,
+        KVARH_COLUMN_SUM,
+        &format!(
+            "{ctx}: the annual net reactive energy of the masked column — the \
+             exclusion masks every cell of this column, so this sum (with the one \
+             below) is what stands between an off-row regression and the gate"
+        ),
+    );
+    assert_records(
+        sum_abs,
+        KVARH_COLUMN_SUM_ABS,
+        &format!(
+            "{ctx}: the annual SUM OF |kvarh| — the net sum alone cannot see two \
+             rows moving in opposite directions"
+        ),
+    );
+
+    let arg_max = (1..=KVARH_COLUMN_ROWS)
+        .max_by(|a, b| vals[a - 1].abs().total_cmp(&vals[b - 1].abs()))
+        .expect("a non-empty column");
+    assert_eq!(
+        arg_max,
+        KVARH_COLUMN_MAX.0,
+        "{ctx}: the column's largest |kvarh| is now the hour {arg_max} ({}), \
+         recorded {:?}",
+        vals[arg_max - 1],
+        KVARH_COLUMN_MAX
+    );
+    assert_records(
+        vals[arg_max - 1],
+        KVARH_COLUMN_MAX.1,
+        &format!("{ctx}: the column's largest |kvarh|, at Time {arg_max}"),
+    );
+    let arg_min = (1..=KVARH_COLUMN_ROWS)
+        .min_by(|a, b| vals[a - 1].total_cmp(&vals[b - 1]))
+        .expect("a non-empty column");
+    assert_eq!(
+        arg_min,
+        KVARH_COLUMN_MIN.0,
+        "{ctx}: the column's most negative kvarh is now the hour {arg_min} ({}), \
+         recorded {:?}",
+        vals[arg_min - 1],
+        KVARH_COLUMN_MIN
+    );
+    assert_records(
+        vals[arg_min - 1],
+        KVARH_COLUMN_MIN.1,
+        &format!("{ctx}: the column's most negative kvarh, at Time {arg_min}"),
+    );
+
+    let cancelling: BTreeSet<usize> = (1..=KVARH_COLUMN_ROWS)
+        .filter(|t| vals[t - 1].abs() <= KVARH_ABS_MAX)
+        .collect();
+    assert_eq!(
+        cancelling.len(),
+        KVARH_CANCELLING_ROWS,
+        "{ctx}: {} rows of the column are inside the cancellation regime \
+         (|kvarh| ≤ {KVARH_ABS_MAX}), recorded {KVARH_CANCELLING_ROWS}",
+        cancelling.len()
+    );
+    assert_eq!(
+        vals.iter().filter(|v| **v < 0.0).count(),
+        KVARH_NEGATIVE_ROWS,
+        "{ctx}: the column nets out capacitive on {} hours, recorded \
+         {KVARH_NEGATIVE_ROWS}",
+        vals.iter().filter(|v| **v < 0.0).count()
+    );
+
+    let outside: Vec<usize> = CKT7_KVARH
+        .iter()
+        .map(|(time, _, _)| *time)
+        .filter(|t| !cancelling.contains(t))
+        .collect();
+    assert!(
+        outside.is_empty(),
+        "{ctx}: the excluded cells at Times {outside:?} are no longer inside the \
+         cancellation regime the exclusion rests on — the 24 masked cells must be \
+         a subset of the {KVARH_CANCELLING_ROWS} rows where the hour's summands \
+         cancel"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // (2) the ckt7 `Min LV Bus` column — D42(2)(b), data confirmed by D44(4).
 // ---------------------------------------------------------------------------
@@ -929,7 +1238,11 @@ const TIE_MAGNITUDES_HEX: [&str; 3] = [
 /// [`TIE_MAGNITUDES_HEX`] (bit-identical at each of the three buses on
 /// `capi_v0145`); the port's own three magnitudes are read LIVE here and agree
 /// across the three buses inside the case's own voltage class, which is what
-/// makes each of the three a correct answer.
+/// makes each of the three a correct answer — and the port is read a second
+/// time at the probe's OWN operating point ([`ckt7_snapshot_tie`]) so that the
+/// comparison against the oracle triple is state-for-state at that same class,
+/// not the cross-snapshot 1 % band this pin used to close with (audit findings
+/// AC-6 / AT-5).
 ///
 /// The value column carries everything the name column loses:
 /// [`the_ckt7_min_lv_bus_scope_masks_that_column_and_nothing_else`] shows `Min
@@ -993,7 +1306,13 @@ fn the_ckt7_min_lv_bus_is_an_argmin_over_a_tie() {
             );
         }
     }
-    // …and the oracle's own tie, at the same three buses.
+    // …and the oracle's own tie, at the same three buses AND at the same
+    // operating point: `tmp/g110c/probe_tie.py` read capi after
+    // `compile Master_ckt7.dss` + one `solve`, so the port is read there too
+    // ([`ckt7_snapshot_tie`]) instead of holding the yearly run's last state
+    // against a snapshot. Both sides are then the same state and the comparison
+    // is the case's own calibrated voltage class — the 1 % cross-snapshot band
+    // that stood here is gone (audit findings AC-6 / AT-5).
     let tied: Vec<f64> = TIE_MAGNITUDES_HEX.iter().map(|h| hex_f64(h)).collect();
     assert_eq!(
         first.len(),
@@ -1002,15 +1321,32 @@ fn the_ckt7_min_lv_bus_is_an_argmin_over_a_tie() {
         tied.len(),
         first.len()
     );
-    let port_min = first.iter().copied().fold(f64::MAX, f64::min);
-    let oracle_min = tied.iter().copied().fold(f64::MAX, f64::min);
-    assert!(
-        (port_min - oracle_min).abs() <= 0.01 * oracle_min,
-        "{ctx}: the tied minimum is {port_min} pu in the port and {oracle_min} pu on \
-         capi_v0145 ({TIE_MAGNITUDES_HEX:?}); the two are snapshots of the same \
-         feeder at different points of its loadshape, but the voltage they tie AT \
-         must still be the same one"
+    assert_eq!(
+        run.ckt7_snapshot_tie.len(),
+        TIE_BUSES.len(),
+        "{ctx}: the snapshot probe must read all three tied buses"
     );
+    for (name, mags) in &run.ckt7_snapshot_tie {
+        assert_eq!(
+            mags.len(),
+            tied.len(),
+            "{ctx}: at the probe's point {name} has {} nodes, capi_v0145 measured \
+             {}",
+            mags.len(),
+            tied.len()
+        );
+        for (k, (a, e)) in mags.iter().zip(&tied).enumerate() {
+            assert!(
+                (a - e).abs() <= tol.v_abs + tol.v_rel * e.abs(),
+                "{ctx}: at the probe's point (compile + one solve) node {} of {name} \
+                 is {a:e} pu in the port and {e:e} pu on capi_v0145 \
+                 ({TIE_MAGNITUDES_HEX:?}) — the oracle's three buses carry ONE \
+                 bit-identical magnitude vector, and the port must meet it at the \
+                 voltage class for the tie, and therefore this exclusion, to be real",
+                k + 1
+            );
+        }
+    }
 }
 
 /// The drive behind [`the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`]: with the

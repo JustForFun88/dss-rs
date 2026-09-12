@@ -1764,15 +1764,27 @@ fn the_run_files_surface_is_declared_on_every_gating_channel() {
 ///
 /// Unlike [`force_run_files`] the rule carries **no `large` test**, so this is
 /// the one forced surface whose population is not the shared
-/// `live non-`large`` set: four of the five decks that produce a DI tree are
+/// `live non-`large`` set: THREE of the five decks that produce a DI tree are
 /// `kind=large` (`EPRITestCircuits/ckt5`, `ckt7`,
-/// `Examples/StoCtrl_Current_PeakShave`, plus the DI-free
-/// `Storage-Quasi-Static-Example/Run_Demo1.dss`), so the `large` test would
-/// leave ONE producer gated and silently drop 4 of the 5. It is affordable
-/// because the selection is a filter over a set the guard already computes for
-/// [`force_run_files`] - one `/di_yr_` test per created name
-/// (`dss_epri::guard::is_di_member`) - so a case with no DI tree pays a string
-/// test and answers the empty set. That is also why
+/// `Examples/StoCtrl_Current_PeakShave`; the other two,
+/// `Examples/StoCtrl_SeasonTarget` and `IEEETestCases/123Bus`, are `feeder` and
+/// so already inside [`force_run_files`]' set), so the `large` test would leave
+/// TWO producers gated and silently drop 3 of the 5. (The count read "four of
+/// five" until the G1.10c audit settlement, findings AC3-1 / AT2-2: it counted
+/// the DI-FREE `Storage-Quasi-Static-Example/Run_Demo1.dss`, which is `large`
+/// and writes no tree - four of the SIX `CloseDI` decks are `large`.) The rule
+/// costs, on the two oracle transports, one `/di_yr_` test per created name
+/// (`dss_epri::guard::is_di_member`) over a walk their guards already do - a
+/// case with no DI tree pays a string test and answers the empty set. On the
+/// PORT side it is not free: [`super::runner`] builds its `RunFileProbe`
+/// whenever `compare_run_files || compare_di`, so the ~79 live `large*` decks
+/// outside [`FORCED_RUN_FILES_POPULATION`] get a directory snapshot before the
+/// run and a classification + sweep after it for the first time - the cost
+/// [`force_run_files`] names as its own reason for excluding them. Measured at
+/// +5...9 s per lane per full gate (D42(9)'s threshold is ~60 s), and it makes
+/// the port sweep its own droppings on those decks, so a port-side leak there
+/// now fails the case loudly instead of being swept by the outer guard alone.
+/// That is also why
 /// [`FORCED_DI_POPULATION`] is deliberately NOT folded into the four-way
 /// equality below (coordinator decision D42(4)): it is a DIFFERENT population,
 /// and saying so out loud is the point.
@@ -1904,8 +1916,28 @@ fn the_di_forcing_rule_is_every_live_case() {
     assert!(
         FORCED_DI_POPULATION.0 > FORCED_RUN_FILES_POPULATION.0,
         "the DI rule has no `large` test, so its population must exceed the shared \
-         `live non-`large`` set; if the two are equal the `large` decks - four of the five DI \
+         `live non-`large`` set; if the two are equal the `large` decks - three of the five DI \
          producers - have silently dropped out"
+    );
+    // …and how many producers a `large` test WOULD gate, derived from the
+    // manifest instead of written into the doc above (G1.10c audit settlement,
+    // findings AC3-1 / AT2-2: the doc's count was wrong, so it is re-derived
+    // here and fails on stale in both directions).
+    let producer_kinds: Vec<&str> = cases
+        .iter()
+        .filter(|uc| DI_TREE_CASES.contains(&uc.label.as_str()))
+        .map(|uc| uc.case.kind.as_str())
+        .collect();
+    let large = producer_kinds
+        .iter()
+        .filter(|k| k.starts_with("large"))
+        .count();
+    assert_eq!(
+        (producer_kinds.len(), large),
+        (DI_TREE_CASES.len(), 3),
+        "the five DI producers' kinds are {producer_kinds:?}: a `large` test on the \
+         forcing rule would leave {large} of them gated and drop the rest - the number \
+         the [`force_di`] doc states"
     );
 }
 
@@ -2208,6 +2240,10 @@ const DI_TREE_CENSUS: (usize, usize, usize, usize) = (5, 883, 72, 9_793_064);
 
 /// The case labels that produced a demand-interval tree — the identity half of
 /// [`DI_TREE_CENSUS`] (a count alone would let one producer replace another).
+/// Since the G1.10c audit settlement (finding AT3-3) the accounting behind it is
+/// keyed by (label, CHANNEL) and each producer's channel set is asserted against
+/// its manifest `engines`, so a channel compared twice — which leaves every
+/// total in [`DI_TREE_CENSUS`] unchanged — fails too.
 const DI_TREE_CASES: [&str; 5] = [
     "solvable_now:Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
     "solvable_now:Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
@@ -2261,10 +2297,10 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
         let account = harness::di::di_account();
         let (gate_rows, fixture_rows): (Vec<_>, Vec<_>) = account
             .iter()
-            .partition(|(label, _)| gate_labels.contains(label.as_str()));
+            .partition(|((label, _), _)| gate_labels.contains(label.as_str()));
         let foreign: Vec<&String> = fixture_rows
             .iter()
-            .map(|(label, _)| label)
+            .map(|((label, _), _)| label)
             .filter(|label| !label.starts_with("unit:"))
             .collect();
         assert!(
@@ -2274,11 +2310,51 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
              population is a fact about the corpus, so an unrecognized producer fails instead \
              of being counted or dropped."
         );
-        let with_tree: Vec<&str> = gate_rows
+        // One row per (case, CHANNEL) since the audit settlement (AT3-3), so the
+        // producer list is the DISTINCT labels — the rows are sorted by label
+        // first, so consecutive dedup is exact.
+        let mut with_tree: Vec<&str> = gate_rows
             .iter()
             .filter(|(_, (_, files, _))| *files > 0)
-            .map(|(label, _)| label.as_str())
+            .map(|((label, _), _)| label.as_str())
             .collect();
+        with_tree.dedup();
+        // …and each producer must carry exactly its own gating channels: a
+        // channel SWAP (the same case compared twice on one channel) leaves
+        // every total below unchanged and is invisible without this.
+        let mut channels: std::collections::BTreeMap<&str, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for ((label, channel), (_, files, _)) in &gate_rows {
+            if *files > 0 {
+                channels
+                    .entry(label.as_str())
+                    .or_default()
+                    .push(channel.as_str());
+            }
+        }
+        let wrong_channels: Vec<String> = channels
+            .iter()
+            .filter_map(|(label, got)| {
+                let engines = cases
+                    .iter()
+                    .find(|uc| uc.label == *label)
+                    .map(|uc| uc.case.engines.as_str())
+                    .unwrap_or("");
+                let want: Vec<&str> = match engines {
+                    "both" => vec!["capi_v0145", "r4133"],
+                    "r4133" => vec!["r4133"],
+                    _ => vec!["capi_v0145"],
+                };
+                (*got != want).then(|| format!("{label}: {got:?}, expected {want:?}"))
+            })
+            .collect();
+        assert!(
+            wrong_channels.is_empty(),
+            "the demand-interval tree of these producers was not compared on exactly their              gating channels - a channel compared twice or not at all leaves the census              totals below untouched, so it is asserted here:
+  {}",
+            wrong_channels.join("
+  ")
+        );
         let measured = (
             with_tree.len(),
             gate_rows.iter().map(|(_, (c, _, _))| *c).sum::<usize>(),
@@ -2289,8 +2365,8 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
         let report: Vec<String> = gate_rows
             .iter()
             .filter(|(_, (_, files, _))| *files > 0)
-            .map(|(label, (c, f, n))| {
-                format!("{label} -> {c} comparison(s), {f} file(s), {n} cell(s)")
+            .map(|((label, channel), (c, f, n))| {
+                format!("{label} [{channel}] -> {c} comparison(s), {f} file(s), {n} cell(s)")
             })
             .collect();
         if !requested {

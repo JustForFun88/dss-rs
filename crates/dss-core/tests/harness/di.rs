@@ -34,8 +34,19 @@
 //! 24-step daily IEEE13 fixture, and it stays exactly that: this module does not
 //! call it, move it or re-tune it. The live population is 720…8 760-step yearly
 //! runs on 1 255…2 998-bus feeders, where the two ORACLES disagree with EACH
-//! OTHER on 23 065 ckt7 cells and 1 440 123Bus cells above that band — a policy
+//! OTHER on 23 065 cells of each ckt7 register file (46 130 per case) and 1 440
+//! of each 123Bus register file (2 884) above that band — a policy
 //! no engine can satisfy is not a floor (coordinator decision **D42(1)**).
+//!
+//! Nor does the surface ride [`super::compare_export`], for the same reason in
+//! the other direction (named here after the G1.10c audit, finding AC-7): that
+//! comparator carries ONE `(rel, abs, header_lines)` policy for a whole file,
+//! and the rule below needs a per-COLUMN class vector. [`compare_di_file`] is
+//! therefore its own CSV walker over the same shared primitives
+//! ([`super::report_lines`], [`super::split_fields`],
+//! [`super::assert_value_matches_tol`]) and keeps every structural assertion
+//! `compare_export` makes — header verbatim, row count exact, per-row field
+//! count exact — unconditionally.
 //!
 //! # The rule: a DI cell is compared at its own quantity's calibrated tier
 //!
@@ -50,7 +61,7 @@
 //! The classification is **positional**, never a regex over free text:
 //!
 //! * a register file's columns are `TEnergyMeterObj.RegisterNames` in order
-//!   (r4133 `EnergyMeter.pas:1009-1044` for the 32 fixed names,
+//!   (r4133 `EnergyMeter.pas:1009-1043` for the 32 fixed names,
 //!   `:3090-3119` `AssignVoltBaseRegisterNames` for the five voltage-base
 //!   blocks; the port's own table is
 //!   `crates/dss-core/src/elements/meter/energymeter/mod.rs:604` +
@@ -78,10 +89,15 @@
 //!
 //! # Vacuity
 //!
-//! [`di_census`] is re-derived on every run — cases with a non-empty tree,
-//! (case, channel) comparisons performed, files compared, cells compared — and
-//! is pinned fail-on-stale in BOTH directions by the scheduler, so "the
-//! comparator ran and compared nothing" cannot pass. An EMPTY tree is a
+//! The accounting is re-derived on every run — cases with a non-empty tree,
+//! (case, channel) comparisons performed, files compared, cells compared. What
+//! the scheduler pins fail-on-stale in BOTH directions is [`di_account`], the
+//! per-case-LABEL table: [`di_census`]'s three process-global counters also
+//! carry this module's own `unit:` fixtures and would move with the test
+//! filter, which is why they are a lower bound for the unit drives and never
+//! the pinned population (the same reason [`DI_ACCOUNT`]'s own doc gives;
+//! corrected by the G1.10c audit settlement, finding AT1-2). So "the comparator
+//! ran and compared nothing" cannot pass. An EMPTY tree is a
 //! legitimate answer (a deck that issues `CloseDI` without `DemandInterval`
 //! writes no DI file on any of the three producers); an ABSENT capture on a case
 //! that set the flag is not, and [`super::capture_guard`] fails it here.
@@ -180,7 +196,7 @@ impl DiClass {
 const VBASE_START: usize = NUM_EM_REGISTERS - 5 * NUM_EM_VBASE;
 
 /// The 32 fixed EnergyMeter registers, in register order, with the quantity each
-/// one accumulates: r4133 `Meters/EnergyMeter.pas:1009-1042`, the port
+/// one accumulates: r4133 `Meters/EnergyMeter.pas:1009-1043`, the port
 /// `crates/dss-core/src/elements/meter/energymeter/mod.rs:604-638`
 /// (`default_register_names`). The order IS the DI file's column order
 /// (r4133 `:2963`, `:3323`, `:3530`, `:3605`), which is what makes this table
@@ -276,7 +292,8 @@ const OVERLOAD_COLUMNS: [(&str, DiClass); 10] = [
 
 /// `DI_VoltExceptions_<n>.csv` — the voltage-exception report. Header literal
 /// r4133 `EnergyMeter.pas:3862-3863`, rows
-/// `TEnergyMeter.WriteVoltageReport` `:3620-3695`; the port
+/// `TEnergyMeter.WriteVoltageReport` `:3620-3754` (the primary arm opens at
+/// `:3648`, the LV arm at `:3707`); the port
 /// `solution/meters/demand_interval.rs:373-383` / `:910`.
 const VOLT_EXCEPTION_COLUMNS: [(&str, DiClass); 13] = [
     ("Hour", DiClass::Index),
@@ -456,7 +473,7 @@ fn column_specs(kind: DiFileKind, header: &[String], ctx: &str) -> Vec<ColumnSpe
                     register_name_matches(j - 1, &names[j]),
                     "{ctx}: register {} of this file is spelled {:?}, but the port's \
                      own register table has {} there (r4133 \
-                     `Meters/EnergyMeter.pas:1009-1042` / `:3090-3119`). The DI class \
+                     `Meters/EnergyMeter.pas:1009-1043` / `:3090-3119`). The DI class \
                      table is positional over `RegisterNames`, so a register that \
                      moved or was renamed fails the case instead of inheriting its \
                      neighbour's band.",
@@ -567,7 +584,17 @@ static CELLS: AtomicUsize = AtomicUsize::new(0);
 /// (`harness::run_files::scratch_decline_table`): partition the rows into
 /// manifest cases and `unit:` fixtures, refuse a label that is neither, and pin
 /// the manifest half.
-static DI_ACCOUNT: Mutex<BTreeMap<String, (usize, usize, usize)>> = Mutex::new(BTreeMap::new());
+/// Keyed by (label, CHANNEL) since the G1.10c audit settlement (finding AT3-3):
+/// the totals alone cannot tell a channel SWAP — the same case compared twice
+/// on one channel — from a correct pair, so the scheduler asserts each
+/// producer's channel set as well as the pinned totals.
+static DI_ACCOUNT: Mutex<BTreeMap<DiAccountKey, DiAccountRow>> = Mutex::new(BTreeMap::new());
+
+/// One row of [`DI_ACCOUNT`]: `(case label, channel tag)`.
+type DiAccountKey = (String, String);
+
+/// What that row counts: `(comparisons, files, cells)`.
+type DiAccountRow = (usize, usize, usize);
 
 /// The four numbers the scheduler pins fail-on-stale in BOTH directions
 /// (coordinator decision D42; `GOLDEN_REBASE_PLAN.md` §1.1(f) non-vacuity): a
@@ -612,10 +639,11 @@ pub fn di_excluded_columns() -> Vec<(String, String)> {
     lock(&DI_EXCLUDED).iter().cloned().collect()
 }
 
-/// The census BY CASE LABEL — `(label, (comparisons, files, cells))`, see
-/// [`DI_ACCOUNT`]. The scheduler pins the manifest half of this table and
-/// refuses a label that is neither a manifest case nor a `unit:` fixture.
-pub fn di_account() -> Vec<(String, (usize, usize, usize))> {
+/// The census BY (CASE LABEL, CHANNEL) — `((label, channel), (comparisons,
+/// files, cells))`, see [`DI_ACCOUNT`]. The scheduler pins the manifest half of
+/// this table, asserts each producer's channel set, and refuses a label that is
+/// neither a manifest case nor a `unit:` fixture.
+pub fn di_account() -> Vec<(DiAccountKey, DiAccountRow)> {
     lock(&DI_ACCOUNT)
         .iter()
         .map(|(k, v)| (k.clone(), *v))
@@ -689,14 +717,20 @@ pub fn compare_di(
     // (case, channel), after the comparison: a case that FAILED never reaches
     // it, which is what keeps a census read off a partial run impossible.
     let mut acct = lock(&DI_ACCOUNT);
-    let row = acct.entry(label.to_string()).or_default();
+    let row = acct
+        .entry((label.to_string(), channel.to_string()))
+        .or_default();
     row.0 += 1;
     row.1 += port.len();
     row.2 += cells;
 }
 
-/// One member of the tree: header verbatim, row and field counts exact, cells by
-/// their column's class. Returns the number of cells compared (an excluded
+/// One member of the tree: header line 1 compared character for character after
+/// the shared CRLF/LF fold below (`report_lines` trims each line's trailing
+/// whitespace and drops blank lines — the only difference the word "verbatim"
+/// does not cover, named after the G1.10c audit, finding AC1-4), row and field
+/// counts exact, cells by their column's class. Returns the number of cells
+/// compared (an excluded
 /// column's cells are not counted), which the caller folds into the per-case
 /// half of the census ([`DI_ACCOUNT`]).
 #[track_caller]
@@ -1169,6 +1203,33 @@ mod tests {
         assert!(msg.contains("power cell differs"), "{msg}");
     }
 
+    /// A register file of a THIRD width fails the case — the other arm of "an
+    /// unclassified column fails", which only the fixed-shape reports drove
+    /// until the G1.10c audit settlement (finding AT1-3). Softening this refusal
+    /// into "classify the first 68 columns and ignore the rest" would leave
+    /// every other drive in this module green.
+    #[test]
+    fn a_register_file_of_an_unknown_width_fails() {
+        let name = "case/di_yr_1/feeder_1.csv";
+        let header = register_header("\"Hour\"");
+        let row = register_row("1", 4.5);
+        // One register short of the shape the engines write, header and row
+        // alike — so this is a width refusal, not a row/field-count one.
+        let cut = |s: &str| {
+            s.rsplit_once(',')
+                .expect("more than one column")
+                .0
+                .to_string()
+        };
+        let t = tree(&[(name, file(&[&cut(&header), &cut(&row)]))]);
+        let msg = panic_message({
+            let t = t.clone();
+            move || compare(&t, &t)
+        });
+        assert!(msg.contains("header columns"), "{msg}");
+        assert!(msg.contains("the only two shapes"), "{msg}");
+    }
+
     /// An exclusion drops that column's CELLS and nothing else — and it is
     /// recorded, so the ledger's fail-on-stale rule can see it fired.
     #[test]
@@ -1309,9 +1370,16 @@ mod tests {
         assert!(di_tree_cases().iter().any(|c| c == "unit:di-census"));
     }
 
-    /// The three fixed-shape tables reproduce the header literal the engines
-    /// write, byte for byte — so "the table is the engine's own layout" is
-    /// checked, not asserted in prose.
+    /// The three fixed-shape tables spell their columns in the order and with
+    /// the ASCII case of the Pascal header literals cited above — a second
+    /// transcription of the same three lines, so it catches a table that DRIFTS
+    /// (a column inserted, moved or re-cased) but not a mistranscription made
+    /// consistently in both places (G1.10c audit, finding AC1-2). What checks
+    /// the tables against a header nobody in this file typed is the live gate:
+    /// [`column_specs`] asserts every fixed report's own header, column by
+    /// column, on all five cases × two channels, and
+    /// [`the_fixed_register_table_is_the_ports_own_register_names`] drives the
+    /// register half off a live engine.
     #[test]
     fn the_static_column_tables_spell_the_headers_the_engines_write() {
         // r4133 `Meters/EnergyMeter.pas:3430-3431` (`Create_Meter_Space('"Hour", ')`

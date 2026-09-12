@@ -161,9 +161,10 @@ pub fn is_di_member(name: &str) -> bool {
 /// the original, and G1.10a must still see its name) into a directory the gate
 /// owns, outside `tests/corpus/`.
 ///
-/// Every failure is returned, never swallowed: a copy that cannot be made or
-/// whose size does not match the source fails the case loudly rather than
-/// shipping a short file the comparator would read as a row-count divergence.
+/// Every failure is returned, never swallowed: a copy that cannot be made, or
+/// whose DESTINATION does not match the source in size ([`verify_sidecar_size`]),
+/// fails the case loudly rather than shipping a short file the comparator would
+/// read as a row-count divergence.
 ///
 /// Twin: `tools/oracle/corpus_guard.py::copy_di_tree`.
 pub fn copy_di_tree(
@@ -183,17 +184,39 @@ pub fn copy_di_tree(
         }
         let copied = std::fs::copy(src, &dest)
             .map_err(|e| format!("cannot copy the DI file {src:?} to {dest:?}: {e}"))?;
-        let want = std::fs::metadata(src)
-            .map_err(|e| format!("cannot stat the DI file {src:?}: {e}"))?
-            .len();
-        if copied != want {
-            return Err(format!(
-                "the DI file {src:?} is {want} bytes but {copied} were copied to                  {dest:?} — the sidecar must be a byte-for-byte copy, or the                  comparator reads a truncated file as a divergence"
-            ));
-        }
+        verify_sidecar_size(src, &dest, copied)?;
         out.insert(name.clone(), name.clone());
     }
     Ok(out)
+}
+
+/// The size check behind [`copy_di_tree`]: the DESTINATION is stat-ed, exactly
+/// as the Python twin does (`tools/oracle/corpus_guard.py::copy_di_tree`,
+/// `os.path.getsize(dest)`).
+///
+/// `copied` — what `std::fs::copy` reported — is checked too, but it can never
+/// be the whole check: on Windows `std::fs::copy` is `CopyFileExW` and its
+/// return value is the length it read from the SOURCE, so comparing it against
+/// the source's own metadata is a validation that cannot fail. A short or
+/// later-truncated sidecar copy would otherwise reach the comparator as a
+/// row-count divergence — the very misdiagnosis this check exists to prevent
+/// (GOLDEN_REBASE G1.10c audit finding AC-1).
+fn verify_sidecar_size(src: &Path, dest: &Path, copied: u64) -> Result<(), String> {
+    let want = std::fs::metadata(src)
+        .map_err(|e| format!("cannot stat the DI file {src:?}: {e}"))?
+        .len();
+    let got = std::fs::metadata(dest)
+        .map_err(|e| format!("cannot stat the DI sidecar copy {dest:?}: {e}"))?
+        .len();
+    if got != want || copied != want {
+        return Err(format!(
+            "the DI file {src:?} is {want} bytes but its sidecar copy {dest:?} is \
+             {got} ({copied} reported copied) — the sidecar must be a \
+             byte-for-byte copy, or the comparator reads a truncated file as a \
+             divergence"
+        ));
+    }
+    Ok(())
 }
 
 /// Partition a created-file set into `(compared, engine-internal scratch)`.
@@ -1101,11 +1124,37 @@ mod tests {
                 std::fs::read_to_string(&copied).expect("the sidecar copy is readable"),
                 "run-written
 ",
-                "the sidecar copy of {name} (at {rel}) is byte-for-byte the file the                  run wrote"
+                "the sidecar copy of {name} (at {rel}) is byte-for-byte the run's own file"
             );
         }
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&sidecar);
+    }
+
+    /// The size check of [`copy_di_tree`] fires on a destination that does not
+    /// match the source — the drive the check needs, since its own `copied`
+    /// argument comes from the SOURCE on Windows and can never disagree with it
+    /// (GOLDEN_REBASE G1.10c audit finding AC-1).
+    #[test]
+    fn a_truncated_di_sidecar_copy_is_reported() {
+        let root = scratch_dir("di-size");
+        write(&root, "di_yr_0/di_totals_1.csv", "0123456789");
+        let src = root.join("di_yr_0").join("di_totals_1.csv");
+        let dest = root.join("sidecar.csv");
+        let copied = std::fs::copy(&src, &dest).expect("the copy succeeds");
+        assert_eq!(copied, 10, "the fixture is ten bytes");
+        verify_sidecar_size(&src, &dest, copied).expect("a faithful copy passes");
+
+        // Truncate the DESTINATION after the copy: `std::fs::copy` already
+        // returned `Ok(10)`, so only a stat of the destination can see this.
+        std::fs::write(&dest, "01234").expect("the truncation succeeds");
+        let err = verify_sidecar_size(&src, &dest, copied)
+            .expect_err("a short sidecar copy must be reported, never shipped");
+        assert!(
+            err.contains("is 10 bytes") && err.contains("is 5"),
+            "the refusal names both sizes: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// The selection rule itself: a `DI_yr_*` DIRECTORY segment anywhere above
