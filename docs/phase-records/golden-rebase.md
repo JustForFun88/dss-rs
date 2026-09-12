@@ -3746,17 +3746,16 @@ row against the pre-fix lock.
 
   merge: lane lane-b -> update, see git log
 
-- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c` + `e2d2a83d`) — the
+- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c` + `e2d2a83d` + docs) — the
   demand-interval tree's CONTENTS compare live on both channels behind `compare_di`: each transport copies the
   run-created tree into a per-(case, channel) sidecar read before `created()` and before the capi teardown `clear`
   (slot asserted from both sources by `check_run_tail_order`, **D43(2)**); each column is banded at the gate's
-  existing calibrated tier for its quantity, positional over the port's own `RegisterNames` (**D42(1)** S-CLASS —
-  the brief's `di_policy()` fixture floor measured false against the two oracles themselves: no `Tolerances` value,
-  no new constant, no golden byte). **5** decks (**D42(3)**), forced on every live case, census
-  (5, 883, 72, **9 793 064**); ledger 57 → **61** entries / 33 → **35** causes — two ckt7 columns, one entry per
-  channel, each with a both-numbers pin (**D44(1)**). Surface, class table and both exclusions: `TESTING.md`
-  §"G1.10c" + `tests/TOLERANCE_NOTES.md` §G1.10c; no PRODUCT crate's `src` moved → `lane_diff` not owed (**D41**).
-  Gate (`tmp/g110c/gate.md`): five commands exit 0, 11 966 / 0 / 5 per lane, corpus 526/526.
+  existing calibrated tier for its quantity (**D42(1)** S-CLASS — the brief's `di_policy()` fixture floor measured
+  false against the two oracles themselves: no `Tolerances` value, no new constant, no golden byte). **5** decks
+  (**D42(3)**), forced on every live case, census (5, 883, 72, **9 793 064**); ledger 57 → **61** entries / 33 →
+  **35** causes — two ckt7 columns, one entry per channel, each with a both-numbers pin (**D44(1)**). Details:
+  `TESTING.md` §"G1.10c", `tests/TOLERANCE_NOTES.md` §G1.10c. Gate (`tmp/g110c/gate.md`): five commands exit 0,
+  **11 966 / 0 / 5** per lane, corpus 526/526; no PRODUCT crate's `src` moved → `lane_diff` not owed (**D41**).
   **Audit settlement** (`7818868c`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**, none
   major; per-finding table `tmp/g110c/settle.md`, effects in the two documents above and in `G1_10_PINS`): six new
   drives — `the_masked_kvarh_column_is_pinned_whole` (AT-1, the masked column pinned whole; row-scoping refused as

@@ -170,11 +170,11 @@ r4133 `Visualize` `.DSV`/`.dbl` pair, a *product* divergence) — with **D25** e
 settlement also fixed the parent-guard resurrect behind the `Test/AutoTrans` residue below. And **G1.4d** (2026-09-06, `lane-b`, `62c616eb` + `1acc1f53` + `dff755b5` + `247e2339`/`04d8bb98`), the bus **at-bus lists** — **the bus chain closes here**: the port answers **S4**, neither oracle's criterion
 (D26's disabled-drop premise refuted — 15 of 223 pairs ARE listed); each channel's own walk is **asserted** over the port's raw terminal facts (**D15**/**D16**/**D21**) and the residue COUNTED into four
 fail-on-stale populations — (279, 279) / (18, 147) / (8, 11) / (0, 0) — the completeness direction added by its settlement (`assert_port_at_bus_is_s4`); the two r4133 mode rows go `Pure` → **Impure**, **0** new
-entries, no flag and no lock cell; **D34**'s unported executive commands sit at `ORPHANED_GAPS.md` §1.21 (and `lane-m`'s zone-boundary decision at §1.20). And **G1.10c** (2026-09-12, `lane-e`, `f9b995b7` + `7818868c` + `e2d2a83d`), the **demand-interval tree's contents** — five
+entries, no flag and no lock cell; **D34**'s unported executive commands sit at `ORPHANED_GAPS.md` §1.21 (and `lane-m`'s zone-boundary decision at §1.20). And **G1.10c** (2026-09-12, `lane-e`, `f9b995b7` + `7818868c` + `e2d2a83d` + docs), the **demand-interval tree's contents** — five
 decks, 36 files per channel, **9 793 064** cells compared at each column's own calibrated tier (**D42(1)** S-CLASS: the brief's `di_policy()` fixture floor is refuted — the two ORACLES fail it against each other on
 46 130 ckt7 + 2 884 123Bus cells — so **no** `Tolerances` value, constant or golden byte moved), forced on **every** live case, captured into a per-channel sidecar before the capi teardown `clear` (**D43(2)** orders the merged tail
 against G1.10b); **+4** entries / 2 causes on the new exclusion-only **`di`** field, both ckt7 columns (`kvarh`, a cross-engine indeterminate whose pin asserts the measured decomposition after **D44** withdrew
-D42(2)'s two universals; `min lv bus`, an argmin over a bit-identical tie), `DI_TREE_CENSUS` **(5, 883, 72, 9 793 064)**, `lane_diff` not owed (dss-epri + tests only); its audit settlement (8 reports, **34** findings — 27 fixed / 7 recorded / 0 refuted) pinned the masked `kvarh` column whole (row-scoping REFUSED as measured), keyed the census by (case, **channel**), dropped the scanner's non-`InterpretYesNo` `=1` reading and corrected six citation/count sites. The lanes' micro decks met here: corpus **526**
+D42(2)'s two universals; `min lv bus`, an argmin over a bit-identical tie), `DI_TREE_CENSUS` **(5, 883, 72, 9 793 064)**, `lane_diff` not owed (dss-epri + tests only); its audit settlement (8 reports, **34** findings — 27 fixed / 7 recorded / 0 refuted) pinned the masked `kvarh` column whole (row-scoping REFUSED as measured), keyed the census by (case, **channel**), dropped the scanner's non-`InterpretYesNo` `=1` reading and corrected six citation/count sites; a round-2 settlement of that settlement's own audit (6 findings — 4 fixed / 2 recorded) recorded all three tied buses' oracle magnitudes and restated the whole-column pin's sensitivity at its measured scope, leaving SA-6 (those 8 736 `kvarh` rows are watched port-side only — neither narrowing exists in the tree) for the coordinator. The lanes' micro decks met here: corpus **526**
 cases / 522 live; `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44), `FORCED_DERIVED_POPULATION` = (445, 314, 87, 44), `FORCED_DI_POPULATION` = (522,
 366, 101, 55) — the one forced surface outside that equality; no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **61** / 35 causes; G1.10b, G1.11a–c and WP-G3–G5 remain.
 
@@ -336,22 +336,21 @@ each row's measured cost.
   re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
-- **`CorpusGuard` leaks deck-written artifacts under concurrency — root cause FOUND and FIXED at GOLDEN_REBASE G1.10a (2026-09-06); the item stays OPEN**
-  (first seen G1.2 2026-08-29; drop-order mechanism measured at G1.6b). Unfiltered `cargo test --workspace` runs intermittently leave untracked deck-written
-  exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the decks' own
-  `export … file=` lines). **Forty-two sightings** 2026-08-29 … 2026-09-06 (G1.10a ×8, the RP rounds ×10, four merges ×7, G1.7 ×4, G1.8 and G1.6(i) ×3 each,
-  the rest across G1.0–G1.6(ii); the `lane-b` chain retired its tally — nearly every unfiltered run left a set), 1 … 36 files per run; every set was removed
-  before its commit and no tracked corpus or golden byte ever moved — hygiene only. **Two mechanisms fixed.** The drop-order race (**D33(2)**):
-  `runner::CorpusGuard` now holds an exclusive claim on the *canonicalized* case dir from before the pre-run photograph until after the sweep **and** the
-  restore, and the contention it owed measured negative. The parent-guard **resurrect** (`728332b6`): `Test/` holds 36 manifest cases and `Test/AutoTrans/`
-  five — two claim keys, concurrent by design — so the parent photographed the child's live output and its `restore` wrote back a file the child's own guard
-  had swept; both Rust guards now leave a GONE entry gone (an overwritten one is still restored; `corpus_guard.py` always did), pinned by
-  `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`, 9 leaked before / 0 after. **Residual:** `kind=large*` decks are skipped by
-  `force_run_files`, so no `RunFileProbe` brackets them and a survivor reads as *pre-existing* next run, silently shrinking a created-file set (a bracketed
-  producer's leak now fails the case loudly through `sweep_failed`). The same shape hides in **gitignored** droppings: two stale `*_SavedVoltages.dbl` in the
-  main tree (one dating from 2026-09-04) read as pre-existing and shrank `SCRATCH_FILE_DECLINES` to (8, 8) until this merge deleted them by name. The
-  single-case `espvlcontrol` "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced
-  a circuit and prints the deck's size on disk.
+- **`CorpusGuard` leaks deck-written artifacts under concurrency — root cause FOUND and FIXED at GOLDEN_REBASE G1.10a (2026-09-06); the item stays OPEN** (first seen G1.2 2026-08-29; drop-order mechanism
+  measured at G1.6b). Unfiltered `cargo test --workspace` runs intermittently leave untracked deck-written exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/`
+  (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the decks' own `export … file=` lines). **Forty-two sightings** 2026-08-29 … 2026-09-06 (G1.10a ×8, the RP rounds ×10, four merges ×7, G1.7 ×4, G1.8 and G1.6(i)
+  ×3 each, the rest across G1.0–G1.6(ii); the `lane-b` chain retired its tally — nearly every unfiltered run left a set), 1 … 36 files per run; every set was removed before its commit and no tracked corpus
+  or golden byte ever moved — hygiene only. **Two mechanisms fixed.** The drop-order race (**D33(2)**): `runner::CorpusGuard` now holds an exclusive claim on the *canonicalized* case dir from before the
+  pre-run photograph until after the sweep **and** the restore, and the contention it owed measured negative. The parent-guard **resurrect** (`728332b6`): `Test/` holds 36 manifest cases and
+  `Test/AutoTrans/` five — two claim keys, concurrent by design — so the parent photographed the child's live output and its `restore` wrote back a file the child's own guard had swept; both Rust guards
+  now leave a GONE entry gone (an overwritten one is still restored; `corpus_guard.py` always did), pinned by `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`, 9 leaked before / 0 after.
+  **Residual, narrowed at G1.10c (2026-09-12):** `kind=large*` decks are still outside `force_run_files`, but `force_di` arms every live case and the port's `RunFileProbe` bracket is built on
+  `compare_run_files || compare_di`, so the ~79 live `large*` decks now get a snapshot, classification and sweep too and a leak there fails the case loudly through `sweep_failed`; what stays open is the
+  non-live population and G1.10a's file-set COMPARISON on `large` decks (ckt5's capi `EarlyAbort` costs that channel one member, **D42(8)**). G1.10c's settlement recorded one more shape for that surface's
+  owner: the presence re-check after the sweep has no bounded re-list, so a delete-pending entry (a scanner still holding a just-written export) is reported as a leak — four parity reds in
+  `Test/AutoTrans/` under concurrent load, every file gone from disk afterwards, the cases green scoped and on the quiet machine (**D23**). The same shape hides in **gitignored** droppings: two stale
+  `*_SavedVoltages.dbl` in the main tree (one dating from 2026-09-04) read as pre-existing and shrank `SCRATCH_FILE_DECLINES` to (8, 8) until this merge deleted them by name. The single-case `espvlcontrol`
+  "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced a circuit and prints the deck's size on disk.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
   (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `BusTotalMiles` and its siblings are
   zeroed per meter on its `SequenceList`'s FROM bus and read on the TO bus, so a zone-boundary bus
