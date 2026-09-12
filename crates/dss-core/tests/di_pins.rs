@@ -1100,10 +1100,18 @@ fn the_masked_kvarh_column_is_pinned_whole() {
     // printed digit differently on a handful of hours, so its annual net sum is
     // 4432951.126747187 against the default lane's 4432951.126747186 — ONE ulp
     // at 4.4e6 (2.1e-16 relative), the precision-compat kernels' own footprint.
-    // The identity leaves 4.4e-3 kvarh of slack on this sum, i.e. 34x TIGHTER
-    // than the per-cell energy band the gate compares this very column at
-    // (`energy_abs + energy_rel·|e|` ≈ 0.15 kvarh on its largest hour), so an
-    // off-row regression still reds here.
+    // The identity leaves 4.4e-3 kvarh of slack on this sum against the per-cell
+    // energy band the gate compares this very column at
+    // (`energy_abs + energy_rel·|e|`): 34.0x tighter at the largest hour
+    // (0.1509 kvarh at |kvarh| = 1508.1), 12.3x at the column's median
+    // (0.0545 at |kvarh| = 544.4) — but on 54 of the 8 760 cells, those with
+    // |kvarh| < 43.3, the gate's own band is TIGHTER than this sum's slack
+    // (round-2 audit finding SA-3; measured over the captured column). So the
+    // sum reds an off-row regression on the overwhelming majority of the
+    // column; on the smallest cancellation rows — the ones the exclusion is
+    // about — the watchers are the two censuses below (a cell drifting across
+    // the cancellation ceiling or changing sign moves a count) and the two
+    // extremes with their Times, not this sum.
     let sum: f64 = vals.iter().sum();
     let sum_abs: f64 = vals.iter().map(|v| v.abs()).sum();
     assert_records(
@@ -1206,13 +1214,40 @@ const MIN_LV_BUS_COUNTS: [(&str, usize); 3] = [
 /// 6 941 + 375: the rows where the port and both oracles name a different bus —
 /// the number both ledger entries carry.
 const MIN_LV_BUS_DIFFERING_ROWS: usize = 7316;
-/// The three buses' per-unit node magnitudes on `capi_v0145`, bit for bit, at
-/// each of the three (`tmp/g110c/probe_tie.py`: `Bus.puVmagAngle[0::2]` after a
-/// snapshot solve of `Master_ckt7.dss`) — the tie itself.
-const TIE_MAGNITUDES_HEX: [&str; 3] = [
-    "0x1.c26d89b2b06a6p-1",
-    "0x1.c5736ad8e99ddp-1",
-    "0x1.c69388d539fa3p-1",
+/// The tie itself on `capi_v0145`, recorded BUS BY BUS: each tied bus's three
+/// per-unit node magnitudes, bit for bit, as `tmp/g110c/probe_tie.py` read them
+/// (`Bus.puVmagAngle[0::2]` after `clear` → `compile Master_ckt7.dss` → one
+/// `solve`; re-read 2026-09-12, `tmp/g110c/probe_tie_run2.txt`, identical).
+///
+/// The three rows are equal to each other — that equality IS the tie this
+/// exclusion rests on, so it is recorded as three measurements and asserted
+/// below, never summarized into one vector (audit finding AT2-5, settlement
+/// round 2 SA-5).
+const TIE_MAGNITUDES_HEX: [(&str, [&str; 3]); 3] = [
+    (
+        "s1x_1001577",
+        [
+            "0x1.c26d89b2b06a6p-1",
+            "0x1.c5736ad8e99ddp-1",
+            "0x1.c69388d539fa3p-1",
+        ],
+    ),
+    (
+        "s2x_1001577",
+        [
+            "0x1.c26d89b2b06a6p-1",
+            "0x1.c5736ad8e99ddp-1",
+            "0x1.c69388d539fa3p-1",
+        ],
+    ),
+    (
+        "s3x_1001577",
+        [
+            "0x1.c26d89b2b06a6p-1",
+            "0x1.c5736ad8e99ddp-1",
+            "0x1.c69388d539fa3p-1",
+        ],
+    ),
 ];
 
 /// **`Example_ckt7/DI_yr_0/DI_VoltExceptions_1.csv:Min LV Bus` — an argmin over
@@ -1235,8 +1270,10 @@ const TIE_MAGNITUDES_HEX: [&str; 3] = [
 /// `<` scan reports. Both numbers: the port names `s2x_1001577` on **6 941**
 /// rows and `s3x_1001577` on **375** where both oracles name `s1x_1001577` on
 /// all **8 760** — 7 316 differing rows. The oracle side of the tie is
-/// [`TIE_MAGNITUDES_HEX`] (bit-identical at each of the three buses on
-/// `capi_v0145`); the port's own three magnitudes are read LIVE here and agree
+/// [`TIE_MAGNITUDES_HEX`], which records ALL THREE buses' magnitudes as capi
+/// read them, so their bit-identity is asserted from that measurement here
+/// instead of being claimed in prose (audit finding AT2-5 / round-2 SA-5); the
+/// port's own three magnitudes are read LIVE here and agree
 /// across the three buses inside the case's own voltage class, which is what
 /// makes each of the three a correct answer — and the port is read a second
 /// time at the probe's OWN operating point ([`ckt7_snapshot_tie`]) so that the
@@ -1312,35 +1349,61 @@ fn the_ckt7_min_lv_bus_is_an_argmin_over_a_tie() {
     // ([`ckt7_snapshot_tie`]) instead of holding the yearly run's last state
     // against a snapshot. Both sides are then the same state and the comparison
     // is the case's own calibrated voltage class — the 1 % cross-snapshot band
-    // that stood here is gone (audit findings AC-6 / AT-5).
-    let tied: Vec<f64> = TIE_MAGNITUDES_HEX.iter().map(|h| hex_f64(h)).collect();
+    // that stood here is gone (audit findings AC-6 / AT-5). The oracle side is
+    // recorded per BUS, so its own tie is asserted from that measurement rather
+    // than resting on prose (audit finding AT2-5, round-2 SA-5): the three rows
+    // must name the three scanned buses and carry the SAME hex magnitudes.
+    assert_eq!(
+        TIE_MAGNITUDES_HEX.map(|(bus, _)| bus),
+        TIE_BUSES,
+        "{ctx}: the oracle table must record every tied bus, in the scan's order"
+    );
+    let (first_oracle_bus, oracle_first) = TIE_MAGNITUDES_HEX[0];
+    for (bus, mags) in TIE_MAGNITUDES_HEX {
+        assert_eq!(
+            mags, oracle_first,
+            "{ctx}: capi_v0145 read {bus} as {mags:?} and {first_oracle_bus} as \
+             {oracle_first:?} — this exclusion rests on the oracle's three buses \
+             carrying ONE bit-identical magnitude vector; were they ever to \
+             differ, the oracle's argmin would be meaningful and the exclusion \
+             wrong"
+        );
+    }
     assert_eq!(
         first.len(),
-        tied.len(),
+        oracle_first.len(),
         "{ctx}: capi_v0145 measured {} magnitudes per bus, the port has {}",
-        tied.len(),
+        oracle_first.len(),
         first.len()
     );
     assert_eq!(
         run.ckt7_snapshot_tie.len(),
-        TIE_BUSES.len(),
+        TIE_MAGNITUDES_HEX.len(),
         "{ctx}: the snapshot probe must read all three tied buses"
     );
-    for (name, mags) in &run.ckt7_snapshot_tie {
+    for ((name, mags), (oracle_bus, oracle_hex)) in
+        run.ckt7_snapshot_tie.iter().zip(TIE_MAGNITUDES_HEX)
+    {
+        assert_eq!(
+            name, oracle_bus,
+            "{ctx}: the snapshot probe read {name} where capi_v0145 recorded \
+             {oracle_bus} — the two sides are compared bus for bus"
+        );
+        let expect: Vec<f64> = oracle_hex.iter().map(|h| hex_f64(h)).collect();
         assert_eq!(
             mags.len(),
-            tied.len(),
+            expect.len(),
             "{ctx}: at the probe's point {name} has {} nodes, capi_v0145 measured \
              {}",
             mags.len(),
-            tied.len()
+            expect.len()
         );
-        for (k, (a, e)) in mags.iter().zip(&tied).enumerate() {
+        for (k, (a, e)) in mags.iter().zip(&expect).enumerate() {
             assert!(
                 (a - e).abs() <= tol.v_abs + tol.v_rel * e.abs(),
                 "{ctx}: at the probe's point (compile + one solve) node {} of {name} \
                  is {a:e} pu in the port and {e:e} pu on capi_v0145 \
-                 ({TIE_MAGNITUDES_HEX:?}) — the oracle's three buses carry ONE \
+                 ({oracle_hex:?}) — the oracle's three buses carry ONE \
                  bit-identical magnitude vector, and the port must meet it at the \
                  voltage class for the tie, and therefore this exclusion, to be real",
                 k + 1

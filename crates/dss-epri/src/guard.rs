@@ -1105,7 +1105,8 @@ mod tests {
         assert_eq!(
             names,
             DI_FILES.map(String::from).to_vec(),
-            "the DI selection is the created-file classification narrowed to the              file members of a `DI_yr_*` tree"
+            "the DI selection is the created-file classification narrowed to the \
+             file members of a `DI_yr_*` tree"
         );
         assert_eq!(
             map.keys().cloned().collect::<Vec<_>>(),
@@ -1113,7 +1114,8 @@ mod tests {
         );
         assert!(
             !root.join("DI_yr_0").exists(),
-            "the guard sweeps the run-created DI tree, which is exactly why the              contents have to be copied out before it does"
+            "the guard sweeps the run-created DI tree, which is exactly why the \
+             contents have to be copied out before it does"
         );
         for name in DI_FILES {
             let rel = map.get(name).expect("every member is mapped");
