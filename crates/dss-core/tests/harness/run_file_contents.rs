@@ -1629,11 +1629,18 @@ mod tests {
     /// deck-chosen name where the corpus always passes `file=`. Every one of
     /// them must be either SELECTED (and carry a column map) or claimed by a
     /// [`CONTENTS_NOT_SELECTED`] row that exists.
+    ///
+    /// The table therefore has **20** rows: those 19 export kinds plus the
+    /// Storage `DebugTrace` writer, which is not an `Export` at all but lands
+    /// in the same created-file set and so has to be selected by the same
+    /// patterns (settlement of the settlement audit's finding SA-5, which
+    /// measured that the table declared "19" while holding 18 export kinds and
+    /// one non-export, with `ynodelist` asserted only half-way after the loop).
     #[test]
     fn every_default_export_name_the_corpus_produces_is_selected_or_declined() {
         // (export sub-command, the produced file name, `None` = selected,
         //  `Some(row)` = the census row that claims it)
-        let population: [(&str, &str, Option<&str>); 19] = [
+        let population: [(&str, &str, Option<&str>); 20] = [
             ("currents", "ieee8500_exp_currents.csv", None),
             ("powers", "ieee8500_exp_powers.csv", None),
             ("voltages", "fbs_exp_voltages.csv", None),
@@ -1689,6 +1696,11 @@ mod tests {
                 "nev_exp_ycurrents.csv",
                 Some("capacity / ycurrents / ynodelist (golden policy, no column map)"),
             ),
+            (
+                "ynodelist",
+                "nev_exp_ynodelist.csv",
+                Some("capacity / ycurrents / ynodelist (golden policy, no column map)"),
+            ),
         ];
         let p: Vec<String> = dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS
             .iter()
@@ -1718,12 +1730,6 @@ mod tests {
                 }
             }
         }
-        // `ynodelist` rides the same row as `ycurrents`; keeping it here makes
-        // the third name of that row a test subject too.
-        assert!(!dss_epri::guard::selects_contents(
-            &p,
-            "nev_exp_ynodelist.csv"
-        ));
     }
 
     /// **The `tests/TOLERANCE_NOTES.md` column-map table and the layouts here
