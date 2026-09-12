@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use dss_core::exec::Dss;
 use serde_json::json;
 
-use crate::engines::{CaseResult, Channel, Oracle};
+use crate::engines::{CaseResult, Channel, Oracle, run_file_contents_dir};
 use crate::harness::{
     self, ExportPolicy, RelCalcOutcome, RowPolicy, Tolerances, capture_guard,
     compare_all_properties, compare_ctrlqueue, compare_discrete, compare_element_channels,
@@ -1885,10 +1885,62 @@ pub(crate) fn compare_with_result(
         harness::run_files::compare_run_files(
             channel_tag(channel),
             oc.run_files.as_deref(),
-            &port_files,
+            &port_files.created,
             &excluded,
             label,
         );
+        // G1.10b: the CONTENTS of the members the gate selected. The oracle's
+        // bytes came back through the case's sidecar directory (coordinator
+        // decision D40(6)); read them — which also deletes the directory, inside
+        // this case's `CorpusGuard` bracket — and pair them with the port's,
+        // which the probe above read in place before its sweep. The same
+        // `excluded` closure partitions both surfaces: a name whose PRESENCE is
+        // triaged has no contents to compare either.
+        let oracle_contents = harness::run_files::read_sidecar(
+            &run_file_contents_dir(case_path),
+            oc.run_file_contents.as_deref(),
+            channel_tag(channel),
+            label,
+        );
+        let matched = harness::run_files::compare_run_file_contents(
+            channel_tag(channel),
+            oracle_contents.as_ref(),
+            &port_files.contents,
+            &excluded,
+            label,
+        );
+        // The per-report-kind CELL comparison (G1.10b micro-part F2): each kind's
+        // column map — quantity class + Pascal `Format` per column, cited to the
+        // r4133 writer — under the `case floor + print ulp` rule of coordinator
+        // decision D40(1), on exactly the pairs F1's structural rails (presence,
+        // the sidecar/reply agreement, the two sides selecting the same files)
+        // just certified. `tol` is this case's own calibrated floor, the same one
+        // the in-memory comparators above used on the very numbers these files
+        // re-print.
+        // The returned `CellTally` (and the process-wide
+        // `harness::run_file_contents::trace_tail_census`) carry the Storage
+        // `DebugTrace` read-back tail this (case, channel) measured — the
+        // oracle transport's own post-solve element reads minus the port's
+        // single G2.3 recompute (coordinator decision D43(1)(iii)). The
+        // scheduler epilogue, not this call, holds it against the re-derived
+        // `TRACE_READBACK_RECORDS` fail-on-stale in both directions.
+        let tally = harness::run_file_contents::compare_run_file_cells(
+            channel_tag(channel),
+            &matched,
+            &tol,
+            label,
+        );
+        // The census is recorded HERE and never inside that comparator
+        // (coordinator decision D24, the `record_seq_arm` line above): the
+        // `harness::run_file_contents` fixtures call it in this same test
+        // binary, several of them on the Storage-trace kind, so a
+        // comparator-side census would read the gating population plus the
+        // fixtures under the mandatory `cargo test --workspace` shape. Recorded
+        // for EVERY gated (case, channel) — `files = 0` included — so that "the
+        // surface was requested and compared nothing" is visible rather than
+        // absent (`scheduler::assert_run_file_contents_census_is_the_pinned_
+        // population`, the gate's epilogue).
+        crate::scheduler::record_run_file_contents(label, channel_tag(channel), tally);
     }
 }
 

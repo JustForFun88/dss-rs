@@ -298,6 +298,29 @@ pub struct Circuit {
     pub duplicates_allowed: bool,
     pub zones_locked: bool,
     pub meter_zones_computed: bool,
+    /// `InShowResults` — true while a report command is assembling its file, so
+    /// the element debug traces stay out of the report's own element reads.
+    ///
+    /// r4133 keeps it in the DSS-instance globals (`Common/DSSGlobals.pas:242`,
+    /// seeded `FALSE` in the unit's `initialization` block at `:2044` — never by
+    /// `clear`) and the executive brackets it around `DoShowCmd`
+    /// (`Executive/ShowOptions.pas:204`/`:393`) and `DoExportCmd`
+    /// (`Executive/ExportOptions.pas:328`/`:512`); `DoSaveCmd` sets it too
+    /// (`Executive/ExecHelper.pas:935`) — see [`crate::exec`]'s save bracket for
+    /// the one deliberate divergence there. Its consumers are the element debug
+    /// traces: r4133 `PCElements/Storage.pas:2408`, `PCElements/generator.pas:1450`,
+    /// `PCElements/PVsystem.pas:1831`, `PCElements/WindGen.pas:1607`,
+    /// `Controls/RegControl.pas:1346`/`:1366` and `Common/ControlQueue.pas:493`
+    /// (of those only Storage's writer is ported today — whoever ports another
+    /// must gate it here too).
+    ///
+    /// The port has no DSS-global bag, and the flag's only consumer reads it
+    /// through [`SysCtx`](crate::elements::traits::SysCtx), which is built from
+    /// the circuit ([`crate::solution::solution::sys_ctx`]) — so it lives here
+    /// and only the executive writes it. Balanced brackets keep it `false`
+    /// between commands, which is what makes the (global vs per-circuit)
+    /// lifetime difference unobservable.
+    pub in_show_results: bool,
     pub log_events: bool,
     /// `TrapezoidalIntegration` (meter integration rule; reset by `Set mode=`).
     pub trapezoidal_integration: bool,
@@ -515,6 +538,7 @@ impl Circuit {
             duplicates_allowed: false,
             zones_locked: false,
             meter_zones_computed: false,
+            in_show_results: false,
             log_events: false,
             trapezoidal_integration: false,
             em_di: Default::default(),

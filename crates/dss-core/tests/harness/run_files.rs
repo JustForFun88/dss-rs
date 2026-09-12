@@ -28,7 +28,20 @@
 //! executive writes to disk — `Export`, `Show`, `Dump`, `Visualize`, the
 //! `CloseDI` demand-interval tree, `Save`, the monitor CSVs' NAMES (their
 //! contents stay out: monitor data is f32 and unsampled-monitor comparison is a
-//! known oracle artifact, `TESTING.md`; G1.10b owns the contents question).
+//! known oracle artifact, `TESTING.md`).
+//!
+//! # The CONTENTS half (G1.10b)
+//!
+//! Sub-step G1.10b adds the bytes of the members the gate SELECTS
+//! ([`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`] — the report CSVs whose kind
+//! its own name identifies). The selection is computed once on the gate side and
+//! travels in the run request, so neither oracle transport re-derives it; the
+//! two transports copy the selected files into a gate-owned sidecar directory
+//! (coordinator decision D40(6)) at the same strictly-last point inside the
+//! guard scope where they classify the set, and this module's probe reads them
+//! in place ([`RunFileProbe::finish_and_clean`]). [`read_sidecar`] decodes and
+//! deletes; [`compare_run_file_contents`] pairs the sides by name and hands the
+//! pairs to the per-report cell comparison.
 //!
 //! Provenance: new coverage, not catch-up. The upstream harness never compared
 //! this set — fastdss's `tests/compare_outputs.py` skips a name missing on the
@@ -123,6 +136,22 @@ pub struct RunFileProbe {
     guard: CorpusGuard,
 }
 
+/// What one port run left on disk: the created-file SET (G1.10a) and the
+/// CONTENTS of the members the gate selected (G1.10b).
+///
+/// One struct because both halves must be taken from the SAME bracket, before
+/// the sweep: reading the contents after `finish()` would read files that are
+/// already gone, and re-bracketing to get them would classify a different run.
+pub struct RunFileReport {
+    /// Every filesystem entry the run created under the case dir, normalized
+    /// and sorted — the surface [`compare_run_files`] compares.
+    pub created: Vec<String>,
+    /// The decoded contents of the created members the gate selected
+    /// ([`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`]), keyed by normalized
+    /// name — the surface [`compare_run_file_contents`] compares.
+    pub contents: BTreeMap<String, String>,
+}
+
 impl RunFileProbe {
     /// Snapshot the case directory before the Rust engine touches it.
     pub fn start(case_path: &str) -> RunFileProbe {
@@ -151,8 +180,23 @@ impl RunFileProbe {
     ///    order-coupling cannot hide on the one producer that used to report
     ///    its leak to stderr only (`dss_epri::guard::CorpusGuard`'s `Drop`).
     #[track_caller]
-    pub fn finish_and_clean(mut self, ctx: &str) -> Vec<String> {
+    pub fn finish_and_clean(mut self, ctx: &str) -> RunFileReport {
         let created = self.guard.created();
+        // G1.10b: the port's half of the CONTENTS surface, taken while the files
+        // are still on disk — inside this bracket and before the sweep, which is
+        // the same "strictly last, inside the guard scope" point the two oracle
+        // transports copy at (`crates/dss-epri/src/capture.rs`,
+        // `tools/oracle/oracle_server.py`). No sidecar here: the gate and this
+        // producer are one process, so the bytes need no transport — but the
+        // selection and the decode are the shared ones, so a difference between
+        // the sides can only be the numbers in the files.
+        let contents = created.as_deref().map(|names| {
+            dss_epri::guard::read_selected_contents(
+                self.guard.dir(),
+                names,
+                &dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS[..],
+            )
+        });
         // Sweep + restore NOW instead of on drop: `finish` hands back what it
         // could not remove, where the drop path can only print it.
         let leaked = self.guard.finish();
@@ -167,7 +211,7 @@ impl RunFileProbe {
             leaked.len(),
             leaked.join(", "),
         );
-        created.unwrap_or_else(|| {
+        let created = created.unwrap_or_else(|| {
             panic!(
                 "{ctx}: the port's run-file probe could not list the case directory \
                  (incomplete pre-run snapshot, or a `read_dir` failure during the \
@@ -175,7 +219,11 @@ impl RunFileProbe {
                  an incomplete listing fails the case instead of being reported as \
                  what the run created."
             )
-        })
+        });
+        let contents = contents
+            .expect("the created set is Some here, so the contents read ran")
+            .unwrap_or_else(|e| panic!("{ctx}: {e}"));
+        RunFileReport { created, contents }
     }
 }
 
@@ -236,6 +284,185 @@ pub fn scratch_decline_table() -> BTreeMap<String, Vec<String>> {
         out.entry(case.clone()).or_default().push(name.clone());
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// GOLDEN_REBASE G1.10b — the CONTENTS of the selected run-produced files.
+// ---------------------------------------------------------------------------
+
+/// One selected report as all three producers wrote it, ready for the
+/// per-report cell comparison.
+///
+/// The texts are already decoded and newline-folded by
+/// [`dss_epri::guard::decode_run_file`], so the pair differs only where the
+/// engines' NUMBERS differ.
+pub struct MatchedRunFile {
+    /// The normalized created-set member (`nev_exp_y.csv`).
+    pub name: String,
+    /// The gating channel's bytes, decoded.
+    pub oracle: String,
+    /// The port's bytes, decoded.
+    pub port: String,
+}
+
+/// Files whose contents were handed to the comparison, and their total decoded
+/// byte count — the non-vacuity half of this surface, exactly as
+/// [`COMPARED`] is for the SET.
+static CONTENTS_FILES: AtomicUsize = AtomicUsize::new(0);
+static CONTENTS_BYTES: AtomicUsize = AtomicUsize::new(0);
+
+/// `(files, decoded bytes)` matched on this surface so far, for the gate
+/// epilogue's fail-on-stale census.
+pub fn contents_census() -> (usize, usize) {
+    (
+        CONTENTS_FILES.load(Ordering::Relaxed),
+        CONTENTS_BYTES.load(Ordering::Relaxed),
+    )
+}
+
+/// Read one channel's sidecar directory (coordinator decision D40(6)) and
+/// delete it, returning the decoded contents keyed by normalized name.
+///
+/// * `dir` — the gate-owned sidecar this case's transport copied into
+///   (`corpus_gate::engines::run_file_contents_dir`).
+/// * `reported` — the names the transport says it copied (`CaseResult::
+///   run_file_contents`). `None` is "the request carried no selection" and is
+///   passed straight through, so the presence rail in
+///   [`compare_run_file_contents`] is the single place that decides whether a
+///   missing capture fails the case.
+///
+/// Every disagreement between the reply and the directory is LOUD: a reported
+/// name with no file, or a file the reply did not name, fails the case — so a
+/// lost copy, or a file no transport of this run wrote, can never be compared as
+/// this run's output.
+///
+/// What makes one sidecar per case safe against the OTHER channel is not that
+/// assertion (both channels copy the same names, so it cannot tell them apart —
+/// G1.10b audit settlement, finding AT4-8) but three facts: `run_one_case`
+/// drives a `both` case's channels strictly in sequence (fetch, compare, then
+/// the next channel), `dss_epri::guard::copy_selected_contents` and its Python
+/// twin `remove_dir_all` the sidecar before each copy, and this function deletes
+/// it as it reads.
+#[track_caller]
+pub fn read_sidecar(
+    dir: &std::path::Path,
+    reported: Option<&[String]>,
+    channel: &str,
+    label: &str,
+) -> Option<BTreeMap<String, String>> {
+    let reported = reported?;
+    let ctx = format!("{label} [{channel}] run-file contents");
+    let mut on_disk: BTreeSet<String> = BTreeSet::new();
+    if dir.exists() {
+        let rd = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("{ctx}: cannot list the sidecar {}: {e}", dir.display()));
+        for entry in rd.flatten() {
+            on_disk.insert(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    let want: BTreeSet<String> = reported.iter().cloned().collect();
+    assert_eq!(
+        on_disk,
+        want,
+        "{ctx}: the `{channel}` transport reported {} copied report(s) but its sidecar \
+         {} holds {}. The bytes of this surface travel through a gate-owned directory \
+         the transport wipes and refills per case; a name in one and not the other \
+         means a copy was lost, or a file from another run survived — either way the \
+         case fails here instead of comparing a set that is not this run's.",
+        want.len(),
+        dir.display(),
+        on_disk.len(),
+    );
+    let mut out = BTreeMap::new();
+    for name in reported {
+        let path = dir.join(name);
+        let bytes = std::fs::read(&path)
+            .unwrap_or_else(|e| panic!("{ctx}: cannot read {}: {e}", path.display()));
+        let text =
+            dss_epri::guard::decode_run_file(&bytes, name).unwrap_or_else(|e| panic!("{ctx}: {e}"));
+        out.insert(name.clone(), text);
+    }
+    // The gate owns the directory, so it removes it in the same bracket that
+    // owns the case-dir claim — a sidecar that outlived its case would be read
+    // by nobody and would grow the build tree by ~19 MB per drive.
+    let _ = std::fs::remove_dir_all(dir);
+    Some(out)
+}
+
+/// Pair one channel's selected report contents with the port's, and hand the
+/// pairs to the per-report cell comparison.
+///
+/// Structure before values, exactly like [`compare_run_files`]: the presence
+/// rail first (a flag-gated `None` fails the case), then the ledger partition
+/// applied to BOTH sides by name, then the assertion that the two sides
+/// selected the SAME files. The last one cannot fail while the set comparator
+/// passes — the selection is a pure function of the created set
+/// ([`dss_epri::guard::selects_contents`]) — so it is a statement of that
+/// invariant, and it fires if a transport ever starts filtering on its own.
+///
+/// * `excluded` — the same `run_files` ledger scopes the SET comparator uses: a
+///   name whose PRESENCE is triaged has no contents to compare either, and the
+///   call marks the scope hit, which keeps `ledger.json` fail-on-stale.
+///
+/// Returns the matched pairs; the per-report-kind policy comparison
+/// (`GOLDEN_REBASE_PLAN.md` G1.10b micro-part F2) is applied to exactly these.
+#[track_caller]
+pub fn compare_run_file_contents(
+    channel: &str,
+    oracle: Option<&BTreeMap<String, String>>,
+    port: &BTreeMap<String, String>,
+    excluded: &dyn Fn(&str) -> bool,
+    label: &str,
+) -> Vec<MatchedRunFile> {
+    let ctx = format!("{label} [{channel}] run-file contents");
+    let oracle =
+        capture_guard::require_capture_opt("compare_run_files (contents)", channel, oracle, &ctx);
+
+    let mut excluded_names: BTreeSet<String> = BTreeSet::new();
+    let mut keep = |m: &BTreeMap<String, String>| -> BTreeMap<String, String> {
+        m.iter()
+            .filter(|(n, _)| {
+                if excluded(n) {
+                    excluded_names.insert((*n).clone());
+                    false
+                } else {
+                    true
+                }
+            })
+            .map(|(n, t)| (n.clone(), t.clone()))
+            .collect()
+    };
+    let oracle_kept = keep(oracle);
+    let port_kept = keep(port);
+
+    let oracle_names: Vec<&String> = oracle_kept.keys().collect();
+    let port_names: Vec<&String> = port_kept.keys().collect();
+    assert_eq!(
+        oracle_names, port_names,
+        "{ctx}: the two sides handed back DIFFERENT selected reports.\n  \
+         oracle: {oracle_names:?}\n  port:   {port_names:?}\n  \
+         ledger-excluded on this case+channel: {excluded_names:?}\n  \
+         The selection is a pure function of the created-file set \
+         (`dss_epri::guard::selects_contents` over \
+         `dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`), which the set comparator \
+         already proved equal — so this can only mean a producer filtered on its \
+         own, or a copy was lost between the case directory and the sidecar."
+    );
+
+    let mut matched = Vec::with_capacity(oracle_kept.len());
+    for (name, oracle_text) in oracle_kept {
+        let port_text = port_kept
+            .get(&name)
+            .expect("the two name lists were just asserted equal");
+        CONTENTS_FILES.fetch_add(1, Ordering::Relaxed);
+        CONTENTS_BYTES.fetch_add(oracle_text.len(), Ordering::Relaxed);
+        matched.push(MatchedRunFile {
+            name,
+            oracle: oracle_text,
+            port: port_text.clone(),
+        });
+    }
+    matched
 }
 
 // ---------------------------------------------------------------------------
@@ -574,20 +801,37 @@ mod tests {
         let before: BTreeSet<String> = walk(&root);
         let probe = RunFileProbe::start(case.to_str().unwrap());
         std::fs::write(root.join("EXP_Y.CSV"), b"y\n").unwrap();
+        // A real `Export Voltages`: the executive prefixes the circuit name
+        // (r4133 `Executive/ExportOptions.pas:401`), which is what the G1.10b
+        // selection matches — the un-prefixed `EXP_Y.CSV` above therefore stays
+        // a SET member whose CONTENTS nobody asked for.
+        std::fs::write(root.join("Fbs_EXP_VOLTAGES.CSV"), b"Bus,V\r\n a,1\r\n").unwrap();
         std::fs::create_dir_all(root.join("DI_yr_0/Sub")).unwrap();
         std::fs::write(root.join("DI_yr_0/Sub/deep.DBL"), b"d\n").unwrap();
         // Stands for a concurrently running sibling case writing into its own
         // (here pre-existing) directory: neither reported nor swept — D30(2).
         std::fs::write(root.join("pre/New_Report.Txt"), b"r\n").unwrap();
-        let created = probe.finish_and_clean("unit:probe");
+        let report = probe.finish_and_clean("unit:probe");
 
         assert_eq!(
-            created,
+            report.contents.keys().collect::<Vec<_>>(),
+            vec!["fbs_exp_voltages.csv"],
+            "the probe reads the CONTENTS of the SELECTED members only — the \
+             created `di_yr_0/` tree, the sibling case's file and the un-prefixed \
+             `exp_y.csv` are not reports whose kind their own name identifies"
+        );
+        assert_eq!(
+            report.contents["fbs_exp_voltages.csv"], "Bus,V\n a,1\n",
+            "and it decodes them with the newline fold both transports apply"
+        );
+        assert_eq!(
+            report.created,
             vec![
                 "di_yr_0/".to_string(),
                 "di_yr_0/sub/".to_string(),
                 "di_yr_0/sub/deep.dbl".to_string(),
                 "exp_y.csv".to_string(),
+                "fbs_exp_voltages.csv".to_string(),
             ],
             "the probe reports the case dir's own entries and the created \
              directory's whole tree, and nothing under a PRE-EXISTING \
@@ -644,9 +888,182 @@ mod tests {
             .share_mode(FILE_SHARE_READ)
             .open(root.join("STOR_storage1.CSV"))
             .expect("open the created file the way an engine holds its trace");
-        let created = probe.finish_and_clean("unit:port-leak");
+        let report = probe.finish_and_clean("unit:port-leak");
         drop(held);
-        unreachable!("the probe must fail the case, not report {created:?}");
+        unreachable!(
+            "the probe must fail the case, not report {:?}",
+            report.created
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // G1.10b — the CONTENTS transport: the sidecar read and the pairing rails.
+    // -----------------------------------------------------------------------
+
+    fn m(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(n, t)| ((*n).to_string(), (*t).to_string()))
+            .collect()
+    }
+
+    fn sidecar(tag: &str, files: &[(&str, &[u8])]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "dss_run_file_contents_{tag}_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, bytes) in files {
+            std::fs::write(dir.join(name), bytes).unwrap();
+        }
+        dir
+    }
+
+    /// "The request carried no selection" travels as `None` all the way to the
+    /// presence rail — [`read_sidecar`] never invents an empty map for it.
+    #[test]
+    fn an_unrequested_sidecar_stays_none() {
+        let dir = std::env::temp_dir().join("dss_run_file_contents_never_created");
+        assert!(read_sidecar(&dir, None, "r4133", "unit:contents-off").is_none());
+    }
+
+    /// The happy path: the bytes decode with folded newlines, and the gate
+    /// DELETES the directory it just read (it owns the scratch).
+    #[test]
+    fn the_sidecar_is_decoded_and_then_removed() {
+        let dir = sidecar("read", &[("nev_exp_y.csv", b"Row,Col\r\n1,2\r\n")]);
+        let got = read_sidecar(
+            &dir,
+            Some(&v(&["nev_exp_y.csv"])),
+            "capi_v0145",
+            "unit:contents-read",
+        )
+        .expect("requested");
+        assert_eq!(got["nev_exp_y.csv"], "Row,Col\n1,2\n");
+        assert!(!dir.exists(), "the gate owns the sidecar and removes it");
+    }
+
+    /// A name the reply promised but the sidecar does not hold fails the case —
+    /// a lost copy can never shrink the compared set in silence.
+    #[test]
+    #[should_panic(expected = "copied report(s) but its sidecar")]
+    fn a_report_missing_from_the_sidecar_fails_the_case() {
+        let dir = sidecar("lost", &[("nev_exp_y.csv", b"y\n")]);
+        let _ = read_sidecar(
+            &dir,
+            Some(&v(&["nev_exp_y.csv", "nev_exp_yprim.csv"])),
+            "r4133",
+            "unit:contents-lost",
+        );
+    }
+
+    /// ...and the other direction: a file the reply did NOT name (the other
+    /// channel's leftover, or an earlier case's) fails too, which is what makes
+    /// one sidecar per case safe.
+    #[test]
+    #[should_panic(expected = "copied report(s) but its sidecar")]
+    fn a_stale_file_in_the_sidecar_fails_the_case() {
+        let dir = sidecar(
+            "stale",
+            &[("nev_exp_y.csv", b"y\n"), ("other_exp_y.csv", b"old\n")],
+        );
+        let _ = read_sidecar(
+            &dir,
+            Some(&v(&["nev_exp_y.csv"])),
+            "capi_v0145",
+            "unit:contents-stale",
+        );
+    }
+
+    /// Invalid UTF-8 is REFUSED, never lossily decoded into `U+FFFD`s that
+    /// would compare equal to each other.
+    #[test]
+    #[should_panic(expected = "is not valid UTF-8")]
+    fn a_non_utf8_report_fails_loudly() {
+        let dir = sidecar("utf8", &[("nev_exp_y.csv", &[b'a', 0xFF, b'\n'])]);
+        let _ = read_sidecar(
+            &dir,
+            Some(&v(&["nev_exp_y.csv"])),
+            "r4133",
+            "unit:contents-utf8",
+        );
+    }
+
+    /// The presence rail: the manifest flag is on, so a channel that reported
+    /// no contents at all fails the case instead of comparing nothing.
+    #[test]
+    #[should_panic(expected = "compare_run_files (contents)")]
+    fn an_absent_contents_capture_fails_the_case() {
+        compare_run_file_contents(
+            "r4133",
+            None,
+            &m(&[("nev_exp_y.csv", "y\n")]),
+            &nothing_excluded,
+            "unit:contents-presence",
+        );
+    }
+
+    /// The pairs come back keyed by name, and the census moves with them — a
+    /// contents surface that matched nothing would otherwise pass vacuously.
+    #[test]
+    fn the_matched_pairs_carry_both_sides_and_move_the_census() {
+        let before = contents_census();
+        let matched = compare_run_file_contents(
+            "capi_v0145",
+            Some(&m(&[("nev_exp_y.csv", "a\n"), ("stor_s1.csv", "b\n")])),
+            &m(&[("nev_exp_y.csv", "a\n"), ("stor_s1.csv", "c\n")]),
+            &nothing_excluded,
+            "unit:contents-pairs",
+        );
+        assert_eq!(
+            matched.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            vec!["nev_exp_y.csv", "stor_s1.csv"]
+        );
+        // F1 pairs; it does not compare cells — the differing `stor_s1.csv`
+        // travels to the caller intact (micro-part F2 is what reds on it).
+        assert_eq!(matched[1].oracle, "b\n");
+        assert_eq!(matched[1].port, "c\n");
+        let after = contents_census();
+        assert!(after.0 >= before.0 + 2 && after.1 > before.1);
+    }
+
+    /// The ledger partition drops a triaged NAME from both sides — the same
+    /// `run_files` scopes the set comparator honours, so a name whose presence
+    /// is triaged has no contents to compare either.
+    #[test]
+    fn a_ledger_scope_drops_the_contents_of_that_name_on_both_sides() {
+        let excluded = |n: &str| n == "stor_s1.csv";
+        let matched = compare_run_file_contents(
+            "capi_v0145",
+            Some(&m(&[("nev_exp_y.csv", "a\n"), ("stor_s1.csv", "b\n")])),
+            &m(&[("nev_exp_y.csv", "a\n"), ("stor_s1.csv", "zzz\n")]),
+            &excluded,
+            "unit:contents-ledger",
+        );
+        assert_eq!(
+            matched.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+            vec!["nev_exp_y.csv"]
+        );
+    }
+
+    /// The two sides must have SELECTED the same files: the selection is a pure
+    /// function of the created set, so an asymmetry means a producer filtered on
+    /// its own or a copy was lost.
+    #[test]
+    #[should_panic(expected = "handed back DIFFERENT selected reports")]
+    fn an_asymmetric_selection_fails_the_case() {
+        compare_run_file_contents(
+            "r4133",
+            Some(&m(&[
+                ("nev_exp_y.csv", "a\n"),
+                ("nev_exp_yprim.csv", "b\n"),
+            ])),
+            &m(&[("nev_exp_y.csv", "a\n")]),
+            &nothing_excluded,
+            "unit:contents-asym",
+        );
     }
 
     fn walk(dir: &std::path::Path) -> BTreeSet<String> {

@@ -241,6 +241,16 @@ fn corpus_gate_all_cases_match_engines() {
     // predicate is read off the manifests, so a re-masked `compare_run_files`
     // request reds here instead of silently emptying the census.
     scheduler::assert_scratch_declines_are_the_pinned_population();
+    // And for G1.10b's CONTENTS surface, which writes no ledger rows either: the
+    // non-vacuity census of what the per-report column maps actually compared
+    // (files, cells, and the cells they deliberately declined), plus the Storage
+    // `DebugTrace` read-back tail — the records the ORACLE transport's own
+    // post-solve element reads appended and the port's single G2.3 recompute did
+    // not (coordinator decision D43(1)(iii)). Re-derived from this run and
+    // pinned in both directions, per gating channel: a contents surface that
+    // compares nothing is otherwise indistinguishable from one that compares
+    // everything (D40(9)).
+    scheduler::assert_run_file_contents_census_is_the_pinned_population();
     // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
     // two per-row asserts BELOW say nothing when NO row was visited, which is
     // exactly what a re-mask of the r4133 property request would produce — a

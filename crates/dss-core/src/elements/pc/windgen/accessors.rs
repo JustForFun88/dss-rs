@@ -281,7 +281,17 @@ impl CktElement for WindGen {
     /// in the normal post-solve path the counts match and both engines fill from
     /// the cached `Iterminal`, so the divergence is unobservable.
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
-        if !self.cd.enabled {
+        // No node references yet: an element declared after the last
+        // `SetNodeRef` sweep has an empty `node_ref` (the port's model of
+        // r4133's `NodeRef := nil`, `Common/CktElement.pas:186`, allocated only
+        // by `SetNodeRef` `:547-558`, which `ReProcessBusDefs` re-runs for
+        // enabled elements at Y build). Answer with the zero vector the base
+        // trait's `get_currents` default returns there, instead of indexing an
+        // empty array: r4133 dereferences the nil pointer and lets the access
+        // violation surface as DSS error 641 out of `TPCElement.GetCurrents`'
+        // `TRY ... EXCEPT` (`PCElements/PCElement.pas:278`, `:304-306`) -- the
+        // same `Curr` vector its `not Enabled` arm writes (`:298-300`).
+        if !self.cd.enabled || self.cd.node_ref.is_empty() {
             curr.fill(Complex64::ZERO);
             return;
         }
