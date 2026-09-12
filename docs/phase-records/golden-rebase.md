@@ -3768,9 +3768,11 @@ row against the pre-fix lock.
   (`to_opendss/74`); both states are corpus-unreachable, hence no row. Surface, pins and declines are
   described in `TESTING.md` §"G1.10b — the CONTENTS of the selected run files", the derivation in
   `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents", the names in `G1_10_PINS` (40 → **63**, **72** after the settlement) and
-  `G1_10_CONSTS` (3 → **6**). Commits `4bbc6405` (F0) + `9b07466a` (F2b) + `934a4275` (surface) + docs;
-  five-command gate green in both lanes (526/526 corpus cases, ledger 57 entries / 1 573 hits / 0 stale),
-  and `lane_diff` measured **PASS, max |Δ| = 0.000e0** on all eight kinds over 3 221 146 records.
+  `G1_10_CONSTS` (3 → **6**). Commits `4bbc6405` (F0) + `9b07466a` (F2b) + `934a4275` (surface) +
+  `a4bbfd32` + `f93eb4ec` (the two settlement rounds) + docs; five-command gate green in both lanes,
+  identical per lane: **12 442 passed / 0 failed / 5 ignored** at the surface commit, **12 574 / 0 / 5**
+  after the settlements (`corpus_gate` 493 → 498 / 0, 526/526 cases, ledger 57 entries / 1 573 hits /
+  0 stale), and `lane_diff` **PASS, max |Δ| = 0.000e0** on all eight kinds over 3 221 146 records.
   **Audit settlement** (2026-09-12, `a4bbfd32`; ten reports — 8 split + 2 first-pass — per-finding
   table in `tmp/g110b/settle.md`): **32 findings — 28 fixed / 4 recorded / 0 refuted**, none a
   behavioural regression, every fix a tightening of the proof layer. The substantive ones: the cell
@@ -3786,17 +3788,14 @@ row against the pre-fix lock.
   `read_sidecar` leaves behind, a both-sides-empty `Export Yprims`, and the 36 declined `%-.g`
   columns (**G4.1** must re-measure the decline's SIZE, not only its channel). No band, census
   population, golden byte, ledger row or lock cell moved; `G1_10_PINS` 63 → **72**; under
-  `crates/*/src` only comment lines and `#[cfg(test)]` code. Gate both lanes **12 574 passed /
-  0 failed / 5 ignored**, corpus 526/526, ledger 57 / 1 573 hits / 0 stale; three earlier
-  default-lane attempts died on the two documented environmental classes (**D23**/**D33(2)**,
+  `crates/*/src` only comment lines and `#[cfg(test)]` code. Three earlier default-lane gate
+  attempts died on the two documented environmental classes (**D23**/**D33(2)**,
   `tmp/g110b/settle_gate_4{,b,c,d}.log`).
-  **Round 2** (2026-09-12, on top of `a4bbfd32`; report `tmp/g110b/audit_settle/report.md`, table in
-  `tmp/g110b/settle2.md`): the settlement audit raised **5 findings — 5 fixed / 0 recorded / 0
-  refuted**, all record accuracy — the surface pin count (`G1_10_PINS` 40 → **63**, not 67), this
-  block's length, the five-command gate re-run AFTER the record edit so it covers the prose the
-  doc rails read (the two doc-reading binaries re-run once more in both lanes after the totals below
-  were stamped), `lane_diff` re-measured instead of exempted under **D41** (**PASS, max |Δ| =
-  0.000e0** on all eight kinds, 526 cases / 3 221 146 records, `tmp/g110b/settle2_lane_diff.log`), and
-  the export-exhaustiveness fixture's 20th row (`ynodelist` was asserted only half-way). Gate both
-  lanes **12 574 passed / 0 failed / 5 ignored / 0 filtered**, `corpus_gate` 498 / 0; no band,
-  population, golden byte, ledger row or lock cell moved.
+  **Round 2** (2026-09-12, `f93eb4ec` on top of `a4bbfd32`; report `tmp/g110b/audit_settle/report.md`,
+  table in `tmp/g110b/settle2.md`): the settlement audit raised **5 findings — 5 fixed / 0 recorded /
+  0 refuted**, all record accuracy — the surface pin count (`G1_10_PINS` 40 → **63**, not 67), this
+  block's length, the five-command gate re-run AFTER the record edit so it covers the prose the doc
+  rails read (the two doc-reading binaries re-run once more in both lanes after the totals were
+  stamped), `lane_diff` re-measured instead of exempted under **D41** (the numbers above,
+  `tmp/g110b/settle2_lane_diff.log`), and the export-exhaustiveness fixture's 20th row (`ynodelist`
+  was asserted only half-way). No band, population, golden byte, ledger row or lock cell moved.
