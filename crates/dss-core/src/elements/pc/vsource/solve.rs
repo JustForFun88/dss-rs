@@ -312,6 +312,23 @@ impl CktElement for VSource {
     /// and reports its own `YPrim·V - Iinj` terminal current.
     #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
+        // No node references yet: an element declared after the last
+        // `SetNodeRef` sweep has an empty `node_ref` (the port's model of
+        // r4133's `NodeRef := nil`, `Common/CktElement.pas:186`, allocated only
+        // by `SetNodeRef` `:547-558`, which `ReProcessBusDefs` re-runs for
+        // enabled elements at Y build). r4133 indexes the nil pointer right
+        // below and lets the access violation surface out of this procedure's
+        // own `TRY ... EXCEPT` as DSS error 327 -- `TVsourceObj.GetCurrents`,
+        // `PCElements/Vsource.pas:1182-1220`; the port answers
+        // with the zero vector the base trait's `get_currents` default returns
+        // for an unmapped element. The `Enabled` test the other PC classes
+        // inherit from `TPCElement.GetCurrents` is deliberately NOT added here:
+        // this override carries none, so a disabled element goes on reporting
+        // `YPrim*Vterminal - Iinj` from its last mapping, as upstream does.
+        if self.cd.node_ref.is_empty() {
+            curr.fill(Complex64::ZERO);
+            return;
+        }
         if sys.ncim
             && self.cd.node_ref.first() == Some(&1)
             && self.ncim_swing_stamped_at == Some(sys.solution_count)

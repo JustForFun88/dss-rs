@@ -5659,10 +5659,10 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
     );
 }
 
-/// The G1.10a (run-file artifacts, part a — the created-file SET) names the
-/// operational docs and the phase record cite, with the number of definitions
-/// each one must have in the tree: the [`G1_9_PINS`] / [`G1_7_PINS`] /
-/// [`G1_8_PINS`] pattern, fourth instance.
+/// The G1.10a/b (run-file artifacts: the created-file SET and the CONTENTS of
+/// the reports it selects) names the operational docs and the phase record cite,
+/// with the number of definitions each one must have in the tree: the
+/// [`G1_9_PINS`] / [`G1_7_PINS`] / [`G1_8_PINS`] pattern, fourth instance.
 ///
 /// The registry is load-bearing here for the same reason it was in G1.8, twice
 /// over. (1) G1.10a lands exactly **one** `ledger.json` row (the `Visualize`
@@ -5676,10 +5676,16 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
 /// that the corpus gate compiles but the product never links; a rename there
 /// is invisible to every product test.
 ///
+/// G1.10b adds its own twenty-three rows for the same reason, one notch
+/// sharper: that sub-step lands **zero** `ledger.json` rows — every measured
+/// divergence is a cell inside the D40(1) rule, a column set the two ORACLES
+/// disagree on, or the gate's own reader footprint — so a deleted or renamed
+/// pin there would leave the whole surface described by prose with no prover.
+///
 /// `RunFileProbe::start` is deliberately absent: `fn start(` is a generic
 /// method name the needle below would over-count. Its half of the lifecycle is
 /// pinned through `finish_and_clean`, which no other module defines.
-const G1_10_PINS: [(&str, usize); 44] = [
+const G1_10_PINS: [(&str, usize); 76] = [
     // the three both-numbers pins (`crates/dss-core/tests/run_files_pins.rs`)
     (
         "visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port",
@@ -5795,15 +5801,120 @@ const G1_10_PINS: [(&str, usize); 44] = [
         "a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output",
         1,
     ),
+    // ---- GOLDEN_REBASE G1.10b (the CONTENTS of the selected run files) ----
+    // The sub-step lands **0** ledger rows: every measured divergence is either
+    // a cell inside the D40(1) `case floor + print ulp` rule, a declined column
+    // set the two ORACLES disagree on, or the gate's own reader footprint — so
+    // these names, and nothing else, are the written record of the surface.
+    //
+    // The five measured cell classes and the two declines
+    // (`crates/dss-core/tests/run_file_contents_pins.rs`, port values read live
+    // through the gate's own `RunFileProbe`).
+    ("an_angle_of_a_residual_magnitude_is_gated_on_both_sides", 1),
+    (
+        "the_angle_of_a_16_microamp_current_is_free_within_the_case_floor",
+        1,
+    ),
+    ("a_six_significant_digit_cell_may_move_by_one_ulp", 1),
+    (
+        "a_cancellation_residual_cell_is_bounded_by_the_case_floor",
+        1,
+    ),
+    (
+        "the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically",
+        1,
+    ),
+    ("the_two_sig_trace_columns_are_declined_on_both_channels", 1),
+    ("a_report_without_a_policy_is_recorded_not_compared", 1),
+    ("the_storage_trace_tail_is_the_readers_footprint", 1),
+    ("every_compared_kind_uses_the_same_policy_as_its_golden", 1),
+    ("every_compared_kind_is_mutation_gated_on_its_own_report", 1),
+    // D40(7)/D43(3): the `InShowResults` port (micro-part F0) — the flag the
+    // authority raises around Show/Export/Save, and the one place the port
+    // deliberately diverges from it (`src/exec/tests/in_show_results.rs`).
+    ("a_report_does_not_grow_a_storage_debug_trace", 1),
+    ("a_show_that_aborts_mid_dispatch_still_lowers_the_flag", 1),
+    ("save_scopes_the_flag_instead_of_latching_it", 1),
+    // D43(4): the `node_ref` guard the nine PC `get_currents` overrides were
+    // missing (micro-part F2b, `src/exec/tests/late_created_element.rs`).
+    (
+        "a_report_on_an_element_created_after_the_last_solve_reads_as_ground",
+        1,
+    ),
+    (
+        "the_late_element_reports_its_current_once_the_next_solve_maps_it",
+        1,
+    ),
+    // The surface itself: the cell comparator, the sidecar transport and the
+    // shared selection/decode the three producers run
+    // (`tests/harness/{run_file_contents,run_files}.rs`,
+    // `crates/dss-epri/src/guard.rs`, `tests/corpus_gate/scheduler.rs`,
+    // `tests/capture_order.rs`).
+    // The audit settlement (2026-09-12): the two producers' value pins — the
+    // only tests that can red on a RE-TUNED lifted `ExportPolicy`, which
+    // `every_compared_kind_uses_the_same_policy_as_its_golden` reads rather than
+    // re-states (finding T1) — and the two tables the settlement made
+    // mechanically exhaustive (findings AC-4, AC-1/T3).
+    (
+        "the_lifted_policy_values_are_the_ones_the_goldens_carried",
+        1,
+    ),
+    (
+        "the_lifted_policies_keep_their_separator_and_header_count",
+        1,
+    ),
+    (
+        "every_default_export_name_the_corpus_produces_is_selected_or_declined",
+        1,
+    ),
+    (
+        "the_tolerance_notes_column_map_names_the_formats_the_layouts_declare",
+        1,
+    ),
+    // The settlement's own drives: the two band-boundary decisions, the `+j`
+    // payload, the sidecar's refusal to delete a case directory and the
+    // source-text guard on the Export bracket (findings AT1-3, AT1-6, AC3-4,
+    // AT3-4).
+    ("a_cell_at_the_band_boundary_decides_the_right_way", 1),
+    ("an_angle_at_the_band_boundary_decides_the_right_way", 1),
+    (
+        "the_payload_of_a_j_cell_is_compared_after_the_marker_is_stripped",
+        1,
+    ),
+    (
+        "a_sidecar_inside_the_case_directory_is_refused_before_anything_is_deleted",
+        1,
+    ),
+    (
+        "the_export_bracket_has_no_early_exit_between_its_two_statements",
+        1,
+    ),
+    ("compare_run_file_cells", 1),
+    ("compare_run_file_contents", 1),
+    ("read_sidecar", 1),
+    ("decode_run_file", 1),
+    ("check_contents_pattern", 1),
+    ("check_run_file_contents_read_with_the_set", 1),
+    ("trace_tail_census", 1),
+    (
+        "assert_run_file_contents_census_is_the_pinned_population",
+        1,
+    ),
 ];
 
 /// The G1.10a **constants** the same documents cite by name — the `fn {pin}(`
 /// needle cannot see them, and all three are fail-on-stale populations whose
 /// whole value is that a silent drift reds somewhere.
-const G1_10_CONSTS: [(&str, usize); 3] = [
+const G1_10_CONSTS: [(&str, usize); 6] = [
     ("SCRATCH_FILE_DECLINES", 1),
     ("FORCED_RUN_FILES_POPULATION", 1),
     ("RUN_FILES_DECLARED_IN_MANIFEST", 1),
+    // G1.10b: what the contents surface compared, what it declined, and the
+    // read-back tail it accounts (D43(1)) — all three re-derived on every drive
+    // and asserted fail-on-stale in BOTH directions by the scheduler epilogue.
+    ("RUN_FILE_CONTENTS_COMPARED", 1),
+    ("RUN_FILE_CONTENTS_DECLINES", 1),
+    ("TRACE_READBACK_RECORDS", 1),
 ];
 
 /// The documents that cite the G1.10a names, same rule as [`G1_9_PIN_DOCS`].

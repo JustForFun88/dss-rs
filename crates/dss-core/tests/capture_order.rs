@@ -2683,8 +2683,36 @@ struct RunFileRule {
     /// (the explicit sweep, Rust side). `None` on the Python side, where the
     /// scope is the `with` block and its end is found by indentation.
     guard_close: Option<&'static str>,
+    /// The name the classification binds — the created-file SET. The G1.10b
+    /// contents copy must CONSUME it, so it can never hand back a file the set
+    /// does not name.
+    created_var: &'static str,
+    /// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the
+    /// CONTENTS copy, as line prefixes in order (a call wrapped over several
+    /// lines is several entries, because the check below reads the tail line by
+    /// line). It is the ONE thing that may sit between the classification and
+    /// the teardown, it consumes [`Self::created_var`], and it copies bytes —
+    /// it issues no command and performs no model read, so the classification is
+    /// still the last READ of the run (D33(3)).
+    /// [`check_run_file_contents_read_with_the_set`] states that relation on its
+    /// own; declaring it here is what keeps the statement whitelist exact.
+    contents: &'static [&'static str],
+    /// Whether the contents copy comes BEFORE this transport's teardown.
+    ///
+    /// True on r4133, which has no teardown at all. **False on capi, and that is
+    /// MEASURED** (`tmp/g110b/probe_f1_stor_handle.py`, G1.10b F1): dss_capi
+    /// 0.14.5 holds a Storage `debugtrace` stream open for the life of the object
+    /// (`src/PCElements/Storage.pas:872`) with a share mode that denies READ, so
+    /// before the teardown `clear` the file cannot be opened at all
+    /// (`PermissionError: [Errno 13]`), and after it reads whole (28 777 bytes on
+    /// `Storage_price.dss`). Moving the copy past the teardown is safe for every
+    /// other selected report because the export writers close their file as they
+    /// return — `fbs_EXP_VOLTAGES.csv` is byte-identical before and after the
+    /// teardown (349 bytes, sha256:0e8329e54fab84ee, measured on the same probe).
+    contents_first: bool,
     /// The EXACT statement sequence this transport may still run after the
-    /// classification, as line prefixes, in order (D33(3)). Empty for a
+    /// classification AND its contents copy, as line prefixes, in order
+    /// (D33(3)). Empty for a
     /// transport that needs no teardown. Pinning the sequence rather than a
     /// membership set is what states F4c's half of the rule: the teardown
     /// `clear` is the sole statement of its `try` block, because the statement
@@ -2707,6 +2735,13 @@ struct RunFileRule {
 const CAPI_RUN_FILES: RunFileRule = RunFileRule {
     lang: Lang::Python,
     created: "guard.created()",
+    created_var: "run_files",
+    contents: &[
+        "run_file_contents = _copy_selected_contents(",
+        "guard.dir, run_files, contents_patterns, contents_dir",
+        ")",
+    ],
+    contents_first: false,
     autoadd: "autoadd_log = fh.read()",
     guard_open: "with _CorpusGuard(",
     guard_close: None,
@@ -2728,6 +2763,16 @@ const CAPI_RUN_FILES: RunFileRule = RunFileRule {
 const R4133_RUN_FILES: RunFileRule = RunFileRule {
     lang: Lang::Rust,
     created: "guard.created()",
+    created_var: "run_files",
+    contents: &[
+        "let run_file_contents = copy_selected_contents(",
+        "guard.dir(),",
+        "run_files.as_deref(),",
+        "&req.run_file_contents,",
+        "req.run_file_contents_dir.as_deref(),",
+        ");",
+    ],
+    contents_first: true,
     autoadd: "read_autoadd_log(engine",
     guard_open: "CorpusGuard::new(",
     guard_close: Some("guard.finish()"),
@@ -2898,31 +2943,47 @@ fn check_run_files_last(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         .map(|l| code_of(l, r.lang).trim())
         .filter(|s| !s.is_empty())
         .collect();
+    // G1.10b: the contents copy and the D32(2)(a) teardown, in this transport's
+    // measured order ([`RunFileRule::contents_first`]). Nothing else, ever.
+    let allowed: Vec<&str> = if r.contents_first {
+        r.contents
+            .iter()
+            .chain(r.teardown.iter())
+            .copied()
+            .collect()
+    } else {
+        r.teardown
+            .iter()
+            .chain(r.contents.iter())
+            .copied()
+            .collect()
+    };
     for (i, stmt) in stmts.iter().enumerate() {
-        match r.teardown.get(i) {
+        match allowed.get(i) {
             Some(want) if stmt.starts_with(want) => {}
             _ => {
                 return Err(format!(
                     "{rel}: statement {i} after the run-file classification is `{stmt}`, \
-                     but D33(3) allows exactly the D32(2)(a) teardown, in this order: \
-                     {:?}. The classification is the last READ of the run; the teardown \
-                     is not a read, and its `clear` is the SOLE statement of its `try` \
-                     block. If the teardown itself changed, change this rule with it — \
-                     deliberately.",
-                    r.teardown
+                     but D33(3) + D40(6) allow exactly the G1.10b contents copy and then \
+                     the D32(2)(a) teardown, in this order: {allowed:?}. The \
+                     classification is the last READ of the run; the copy moves bytes \
+                     and the teardown is not a read, and that `clear` is the SOLE \
+                     statement of its `try` block. If either changed, change this rule \
+                     with it — deliberately."
                 ));
             }
         }
     }
-    if stmts.len() != r.teardown.len() {
+    if stmts.len() != allowed.len() {
         return Err(format!(
             "{rel}: the guard scope ends after {} statement(s) following the run-file \
-             classification, but the declared D32(2)(a) teardown has {}: {:?}. A teardown \
-             that shrank silently is the leak D32(2)(a) closed (dss_capi's Storage trace \
-             stream, `src/PCElements/Storage.pas:872`) coming back.",
+             classification, but the declared G1.10b contents copy plus the D32(2)(a) \
+             teardown have {}: {allowed:?}. A teardown that shrank silently is the leak \
+             D32(2)(a) closed (dss_capi's Storage trace stream, \
+             `src/PCElements/Storage.pas:872`) coming back; a contents copy that \
+             vanished silently is the G1.10b surface comparing nothing.",
             stmts.len(),
-            r.teardown.len(),
-            r.teardown
+            allowed.len(),
         ));
     }
     Ok(())
@@ -2940,6 +3001,225 @@ fn r4133_capture_classifies_the_run_files_last() {
     let rel = "crates/dss-epri/src/capture.rs";
     check_run_files_last(&read_source(rel), &R4133_CALLS, &R4133_RUN_FILES, rel)
         .unwrap_or_else(|e| panic!("{e}"));
+}
+
+/// `GOLDEN_REBASE_PLAN.md` G1.10b, coordinator decision D40(6) — the CONTENTS
+/// copy is read WITH the set, from the set, inside the guard scope.
+///
+/// The set comparator (G1.10a) and the contents comparator must describe the
+/// same instant of the filesystem, so the copy has to sit at the same strictly
+/// last point as the classification. Four clauses, each a pure function of one
+/// transport's source text so they can be shown to have teeth
+/// ([`the_run_file_contents_gate_rejects_an_early_detached_or_duplicated_copy`]):
+///
+/// 1. the copy appears exactly once in the transport's code — a second one would
+///    overwrite the sidecar with a different run's bytes;
+/// 2. it sits inside the guard scope, whose sweep removes exactly those files;
+/// 3. it is the FIRST statement after the classification, so nothing can write
+///    (or delete) a selected report in between;
+/// 4. it CONSUMES the classified set, so it can only ever hand back files that
+///    set names — the selection is then a pure function of the set on all three
+///    producers (`dss_epri::guard::selects_contents`).
+fn check_run_file_contents_read_with_the_set(
+    src: &str,
+    a: &Anchors,
+    r: &RunFileRule,
+    rel: &str,
+) -> Result<(), String> {
+    let head =
+        r.contents.first().copied().ok_or_else(|| {
+            format!("{rel}: this transport declares no G1.10b contents copy at all")
+        })?;
+    let run = offset_after(src, a.run, 0, rel)?;
+    let created = offset_after(src, r.created, run, rel)?;
+    let copy = offset_after(src, head, run, rel)?;
+
+    // 1. exactly once.
+    let n = code_only(src, r.lang).matches(head).count();
+    if n != 1 {
+        return Err(format!(
+            "{rel}: `{head}` appears {n} times in this transport's code. The run-file \
+             CONTENTS are copied exactly once, with the classification — a second copy \
+             wipes the gate's sidecar and refills it from a different instant of the \
+             run (the copy clears the directory before it writes, \
+             `dss_epri::guard::copy_selected_contents`)."
+        ));
+    }
+
+    // 2. inside the guard scope, whose sweep removes exactly these files.
+    let guard_open = offset_after(src, r.guard_open, run, rel)?;
+    let scope_end = match r.guard_close {
+        Some(close) => line_start_at(src, offset_after(src, close, guard_open, rel)?),
+        None => py_block_end(src, guard_open),
+    };
+    if copy <= guard_open || copy >= scope_end {
+        return Err(format!(
+            "{rel}: the G1.10b contents copy (byte {copy}) sits OUTSIDE the guard scope \
+             (bytes {guard_open}..{scope_end}). The guard sweeps exactly the files it \
+             classified; outside its scope they are already gone."
+        ));
+    }
+
+    // 3. the copy's SLOT in the tail after the classification: immediately after
+    //    it on a transport with no teardown, and immediately after the teardown
+    //    on capi, whose held Storage stream is unreadable until that `clear`
+    //    closes it ([`RunFileRule::contents_first`] carries the measurement).
+    let after = src[created..]
+        .find('\n')
+        .map_or(src.len(), |i| created + i + 1);
+    let tail: Vec<&str> = src[after..scope_end]
+        .lines()
+        .map(|l| code_of(l, r.lang).trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let want = if r.contents_first {
+        0
+    } else {
+        r.teardown.len()
+    };
+    let at = tail.iter().position(|s| s.starts_with(head));
+    if at != Some(want) {
+        return Err(format!(
+            "{rel}: the G1.10b contents copy `{head}` is statement {at:?} of the tail \
+             after the run-file classification, but this transport declares it as \
+             statement {want} ({tail:?}). The SET and the BYTES describe the same \
+             instant of the filesystem, so only the declared D32(2)(a) teardown may \
+             stand between them — on capi it MUST, because its held Storage \
+             `debugtrace` stream (`src/PCElements/Storage.pas:872`) denies READ until \
+             that `clear` closes it, and on r4133 there is no teardown to stand there."
+        ));
+    }
+
+    // 4. it consumes the classified set.
+    let stmt_end = {
+        let mut e = line_start_at(src, copy);
+        for _ in 0..r.contents.len() {
+            e = src[e..].find('\n').map_or(src.len(), |j| e + j + 1);
+        }
+        e
+    };
+    let stmt = &src[line_start_at(src, copy)..stmt_end];
+    if !stmt.contains(r.created_var) {
+        return Err(format!(
+            "{rel}: the G1.10b contents copy does not consume `{}` — the name the \
+             classification binds. It must, or the selection stops being a pure \
+             function of the created-file set and a transport can hand back a file the \
+             set does not name (or miss one it does).",
+            r.created_var
+        ));
+    }
+
+    Ok(())
+}
+
+#[test]
+fn capi_capture_copies_the_run_file_contents_with_the_set() {
+    let rel = "tools/oracle/oracle_server.py";
+    check_run_file_contents_read_with_the_set(&read_source(rel), &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn r4133_capture_copies_the_run_file_contents_with_the_set() {
+    let rel = "crates/dss-epri/src/capture.rs";
+    check_run_file_contents_read_with_the_set(
+        &read_source(rel),
+        &R4133_CALLS,
+        &R4133_RUN_FILES,
+        rel,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+}
+
+/// Non-vacuity for the four clauses above, on the synthetic capi shape and then
+/// on the REAL transport sources (corrupted in memory only — nothing on disk is
+/// touched).
+#[test]
+fn the_run_file_contents_gate_rejects_an_early_detached_or_duplicated_copy() {
+    let rel = "synthetic";
+    let ok = SYNTH_CAPI_RUN;
+    check_run_file_contents_read_with_the_set(ok, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    // (3) a statement wedged between the classification and the copy.
+    let wedged = insert_after(ok, "guard.created()", "        run_files.sort()");
+    let err = check_run_file_contents_read_with_the_set(&wedged, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a statement ran between the set and its bytes");
+    assert!(err.contains("run_files.sort()"), "{err}");
+
+    // (3) the copy hoisted BEFORE the classification: it would then select from
+    // a set nobody has classified yet.
+    let early = move_line_after(ok, "run_file_contents = _copy", "autoadd_log = fh.read()");
+    let err = check_run_file_contents_read_with_the_set(&early, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("copied before the classification");
+    assert!(err.contains("is statement None"), "{err}");
+
+    // (3) the capi copy pulled IN FRONT of the teardown — the measured slot:
+    // dss_capi's held Storage `debugtrace` stream denies READ until that `clear`
+    // closes it, so the copy would fail on `STOR_<name>.csv` with
+    // `PermissionError: [Errno 13]` (`tmp/g110b/probe_f1_stor_handle.py`).
+    let before_teardown = move_line_after(
+        ok,
+        "run_file_contents = _copy_selected_contents(",
+        "run_files = guard.created()",
+    );
+    let err = check_run_file_contents_read_with_the_set(
+        &before_teardown,
+        &CAPI_CALLS,
+        &CAPI_RUN_FILES,
+        rel,
+    )
+    .expect_err("copied before the teardown released the trace stream");
+    assert!(err.contains("denies READ until"), "{err}");
+
+    // (4) a copy that does not consume the classified set.
+    let detached = ok.replace(
+        "guard.dir, run_files, contents_patterns, contents_dir",
+        "guard.dir, guard.created(), contents_patterns, contents_dir",
+    );
+    let err =
+        check_run_file_contents_read_with_the_set(&detached, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+            .expect_err("the copy re-classified instead of consuming the set");
+    assert!(err.contains("does not consume `run_files`"), "{err}");
+
+    // (1) a second copy.
+    let twice = insert_after(
+        ok,
+        "contents_patterns, contents_dir",
+        "        run_file_contents = _copy_selected_contents(again)",
+    );
+    let err = check_run_file_contents_read_with_the_set(&twice, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("copied twice");
+    assert!(err.contains("appears 2 times"), "{err}");
+
+    // the anchor itself: a rename must fail loudly, never vacuously pass.
+    let renamed = ok.replace("_copy_selected_contents(", "_stash_contents(");
+    let err =
+        check_run_file_contents_read_with_the_set(&renamed, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+            .expect_err("the anchor is gone");
+    assert!(err.contains("could not find"), "{err}");
+
+    // (2) on the REAL r4133 source: the copy pushed past the sweep.
+    let rel = "crates/dss-epri/src/capture.rs";
+    let src = read_source(rel);
+    let escaped = move_line_after(
+        &src,
+        "let run_file_contents = copy_selected_contents(",
+        "let sweep_failed = guard.finish();",
+    );
+    let err =
+        check_run_file_contents_read_with_the_set(&escaped, &R4133_CALLS, &R4133_RUN_FILES, rel)
+            .expect_err("copied after the sweep");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    // ... and on the REAL capi source: the copy dropped altogether.
+    let rel = "tools/oracle/oracle_server.py";
+    let src = read_source(rel);
+    let dropped = drop_line(&src, "run_file_contents = _copy_selected_contents(");
+    let err =
+        check_run_file_contents_read_with_the_set(&dropped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+            .expect_err("the copy is gone");
+    assert!(err.contains("could not find"), "{err}");
 }
 
 /// A synthetic capi `run_case` in the real transport's shape, so the mutations
@@ -2965,6 +3245,9 @@ def run_case(d, req):
         except Exception as e:
             teardown_error = f"{e}"
             log(f"teardown clear raised for {case_path}: {teardown_error}")
+        run_file_contents = _copy_selected_contents(
+            guard.dir, run_files, contents_patterns, contents_dir
+        )
     sweep_failed = guard.sweep_failed
     return {}
 "#;
@@ -3114,6 +3397,12 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
     }
     let autoadd_log = read_autoadd_log(engine, &req.case_path);
     let run_files = if req.run_files { guard.created() } else { None };
+    let run_file_contents = copy_selected_contents(
+        guard.dir(),
+        run_files.as_deref(),
+        &req.run_file_contents,
+        req.run_file_contents_dir.as_deref(),
+    );
     let sweep_failed = guard.finish();
     Ok(CaseResult { run_files, sweep_failed })
 }

@@ -78,6 +78,21 @@ impl Dss {
         }
     }
 
+    /// The `InShowResults` bracket (r4133's DSS-instance global,
+    /// `Common/DSSGlobals.pas:242`; the port keeps it on the circuit — see
+    /// [`Circuit::in_show_results`]). `Show`, `Export` and `Save` raise it while
+    /// they assemble their file so the element debug traces do not record the
+    /// report's own current/power reads (r4133 `PCElements/Storage.pas:2408`).
+    ///
+    /// A no-op with no circuit: r4133 writes its global unconditionally, but
+    /// every consumer is a circuit element, and `Show`/`Export` never reach the
+    /// dispatch before the executive's #301 pre-circuit guard.
+    fn set_in_show_results(&mut self, on: bool) {
+        if let Some(ckt) = self.circuit.as_mut() {
+            ckt.in_show_results = on;
+        }
+    }
+
     /// Pascal `DoExportCmd` (`ExportOptions.pas:127`): read the report keyword,
     /// resolve it against `ExportCommands`, dispatch to the matching exporter.
     ///
@@ -309,6 +324,13 @@ impl Dss {
         self.parser.next_param(&self.vars);
         let explicit = self.parser.make_string(&self.vars);
 
+        // `InShowResults := True` (r4133 `ExportOptions.pas:328`) — at Pascal's own
+        // position: after the keyword/option/filename parse and after the two
+        // guards (which `Exit` with the flag still down), before the dispatch.
+        // No arm below returns early, so the clear at the tail is unconditional,
+        // exactly like Pascal's `:512`.
+        self.set_in_show_results(true);
+
         use crate::report::export;
         match ptr {
             1 => self.export_with(&explicit, "EXP_VOLTAGES.csv", export::export_voltages),
@@ -516,6 +538,12 @@ impl Dss {
                     .push(format!("Export \"{name}\" is not ported yet."));
             }
         }
+        // `InShowResults := False` (r4133 `ExportOptions.pas:512`). Pascal clears
+        // it one statement earlier — before `SetLastResultFile`/`@lastexportfile`
+        // (`:514-516`), which the port runs inside each arm ([`Dss::write_export`],
+        // [`Dss::set_export_last_file`]) — and nothing in that tail touches an
+        // element, so the two orders are observationally the same.
+        self.set_in_show_results(false);
     }
 
     /// The retired-CDPSM-profile arm (Pascal `DoSimpleMsg(DSS, _('<profile>
@@ -1564,6 +1592,28 @@ impl Dss {
     /// unknown→#24700 error land in the later WP8.4 steps. Reports change **no**
     /// electrical state (PHASE8_PLAN §2.5).
     pub(crate) fn do_show_cmd(&mut self) {
+        // `InShowResults := True` / `:= False` (r4133 `ShowOptions.pas:204` /
+        // `:393`), the bracket that keeps the element debug traces out of the
+        // report's own element reads (r4133 `PCElements/Storage.pas:2408`).
+        //
+        // r4133 raises the flag *after* its keyword parse and abort guards (which
+        // `Exit` with the flag still down) and lowers it after the dispatch, where
+        // no arm exits early. The port brackets the whole command instead, because
+        // three of its arms return early (`Show Y` with no Y built, `Show Yprim`
+        // with no active element, `Show Faults`/`Show Zsc` on an unknown bus) and
+        // Rust has no `finally`. The window that differs — the keyword lookup, the
+        // #24700 error and the "must be solved" guard — reads the parser, the
+        // command list and `Solution.NodeV.len()` only: it touches no element, so
+        // no trace record can be written in it.
+        self.set_in_show_results(true);
+        self.show_dispatch();
+        self.set_in_show_results(false);
+    }
+
+    /// `DoShowCmd`'s body — the keyword parse, the two abort guards and the
+    /// dispatch. Split out of [`Dss::do_show_cmd`] so its early returns stay
+    /// inside the `InShowResults` bracket (see there).
+    fn show_dispatch(&mut self) {
         // Pascal `DSS.Parser.NextParam; Param := AnsiLowerCase(StrValue)`.
         self.parser.next_param(&self.vars);
         let param = self.parser.make_string(&self.vars).to_ascii_lowercase();
@@ -2330,6 +2380,31 @@ impl Dss {
     ///    `GlobalResult`/`LastResultFile` (compat-tagged below) while the
     ///    file I/O uses the normalized join (same file either way).
     pub(crate) fn do_save_cmd(&mut self) {
+        // `InShowResults := True` (r4133 `ExecHelper.pas:935`, right after the
+        // parameter loop — the same flag `Show`/`Export` raise).
+        //
+        // **r4133 never lowers it again.** `DoSaveCmd` leaves through four paths
+        // (`meters` `Exit` `:953`, `circuit` `:957`, `voltages` `:961`, and the
+        // class-file tail `:980-981`) and none restores the flag, which is a
+        // DSS-instance global seeded only in `DSSGlobals`' `initialization`
+        // (`:2044` — not even `clear` resets it). So in the authority ONE `Save`
+        // silently suppresses every element debug-trace record for the rest of the
+        // session. That contradicts the balanced brackets of the two sibling
+        // commands (`ShowOptions.pas:204`/`:393`, `ExportOptions.pas:328`/`:512`)
+        // and the flag's own meaning, so it is an upstream defect and CLAUDE.md's
+        // policy (2026-08-02) forbids reproducing it in any lane: the port scopes
+        // the flag to the command. Corpus-unreachable (no vendored deck issues
+        // `Save` — GOLDEN_REBASE G1.10b §1), pinned with both behaviours by
+        // `exec::tests::in_show_results::save_scopes_the_flag_instead_of_latching_it`.
+        self.set_in_show_results(true);
+        self.save_dispatch();
+        self.set_in_show_results(false);
+    }
+
+    /// `DoSaveCmd`'s body — the parameter loop and the four dispatch paths.
+    /// Split out of [`Dss::do_save_cmd`] so its three early returns stay inside
+    /// the `InShowResults` bracket (see there).
+    fn save_dispatch(&mut self) {
         // Pascal `ExecCommands.pas` `SaveCommands := TCommandList.Create(...)`
         // (built once at startup there; construction is cheap and pure here).
         let save_commands = CommandList::new(["class", "file", "dir", "keepdisabled"]);

@@ -393,7 +393,8 @@ const STORAGE_TRACE_HEADER_3PH: &str = "t, Iteration, LoadMultiplier, Mode, Load
      Rated VDC, Avg duty cycle, Target (Amps), Series L, Max. Amps (phase),Vthev, Theta\n";
 
 /// A scratch output directory for one trace test, removed by the caller.
-fn trace_scratch(tag: &str) -> std::path::PathBuf {
+/// Shared with [`super::in_show_results`], whose tests trace the same element.
+pub(super) fn trace_scratch(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("dss_stor_trace_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("scratch dir");

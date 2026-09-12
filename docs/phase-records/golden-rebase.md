@@ -3585,7 +3585,8 @@ row against the pre-fix lock.
   `the_event_log_capture_creates_no_file`; **D32(1)** Storage `DebugTrace` was a **port gap** on the
   authority channel (both oracles write `STOR_<name>.CSV` at edit time, r4133
   `PCElements/Storage.pas:1073-1085`) — ported in its own commit, open-append-close, name compared
-  here and contents handed to G1.10b (the two ORACLES disagree there in 16 columns, FPC `%-.g` = 2
+  here and contents handed to G1.10b (the two ORACLES disagree there in 16 columns — G1.10b measured
+  **36** declined columns per record against 16 compared, 2026-09-12 — FPC `%-.g` = 2
   significant digits vs Delphi ~15); **D32(2)/D33** the leak is closed loudly (a dropping surviving
   the sweep fails the case naming its producer; the capi transport clears before sweeping, guarded
   because dss_capi 0.14.5 faults on that `clear` after an AutoAdd solve — recorded in
@@ -3696,7 +3697,8 @@ row against the pre-fix lock.
   (`Examples/HarmonicsVariableLoad`, `IEEETestCases/13Bus` — the latter from 2026-09-04) read as
   pre-existing and suppressed a decline; deleted by name, the re-drive measured the pinned `(9, 9)`
   and left zero droppings. Frontier (USER WIND-DOWN): `lane-b` G1.4d lands last; F0′ (**D39**),
-  G1.10b (STOPPED at spec), G1.10c, the G1.11′ docs close-out and WP-G3 open the next session.
+  G1.10b (STOPPED at spec — settled by **D40** and landed 2026-09-12, its own block at the end of this
+  section), G1.10c, the G1.11′ docs close-out and WP-G3 open the next session.
 
   merge: lane lane-s -> update, see git log
 
@@ -3775,3 +3777,57 @@ row against the pre-fix lock.
   `operational_docs_line_citations_point_at_the_line_they_name`.
 
   merge: lane lane-b -> update, see git log
+
+- **G1.10b** (2026-09-12, lane `lane-s`, decisions **D7**/**D40**/**D43**, **D33(6)** re-measured) — the
+  **CONTENTS** of the run files G1.10a's set names, live on both gating channels. Nine report kinds go
+  through the SAME `ExportPolicy` their byte goldens use (the seven producers lifted byte-faithfully into
+  `harness::export_policies`) plus a per-column map of quantity class and Pascal print format cited to the
+  r4133 writer (`Common/ExportResults.pas`, `PCElements/Storage.pas:1077-1083`/`:2411-2424`), under
+  D40(1)'s cell rule *case floor + print ulp* — a derivation of the calibrated `tol_for` floors onto a
+  printed surface with **no new numeric constant**. Bytes travel through a gate-owned sidecar; the capi
+  copy runs after the D32(2)(a) teardown `clear` (dss_capi holds the Storage trace stream open denying
+  read — D43(2)), the slot asserted from both transports' source text. Census **7 cases / 32 file
+  comparisons / 3 035 190 cells** per drive, fail-on-stale in both directions and per channel; the STOP's
+  classes C1–C5 all fell inside the rule; the trace's **36** `%-.g` columns are declined on BOTH channels
+  (the two oracles disagree — hand-down to **G4.1**) and its row count is accounted as the gate's own
+  reader footprint (**D43(1)**, oracle 102 vs port 98 over 96 identical solve records). **0 ledger rows**,
+  0 golden bytes, `population.lock.json` byte-identical, no `ExportPolicy` value or tolerance moved. Two
+  port gaps landed in their own commits ahead of the surface: the `InShowResults` bracket round
+  **Show/Export/Save** (consumer guard `Storage.pas:2408`; `DoSaveCmd`'s never-lowered latch is an upstream
+  defect the port does not reproduce — `to_opendss/72`) and the nine PC `node_ref` guards
+  (`to_opendss/74`); both states are corpus-unreachable, hence no row. Surface, pins and declines are
+  described in `TESTING.md` §"G1.10b — the CONTENTS of the selected run files", the derivation in
+  `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents", the names in `G1_10_PINS` (40 → **63**, **72** after the settlement) and
+  `G1_10_CONSTS` (3 → **6**). Commits `4bbc6405` (F0) + `9b07466a` (F2b) + `934a4275` (surface) +
+  `a4bbfd32` + `f93eb4ec` (the two settlement rounds) + docs; five-command gate green in both lanes,
+  identical per lane: **12 442 passed / 0 failed / 5 ignored** at the surface commit, **12 574 / 0 / 5**
+  after the settlements (`corpus_gate` 493 → 498 / 0, 526/526 cases, ledger 57 entries / 1 573 hits /
+  0 stale), and `lane_diff` **PASS, max |Δ| = 0.000e0** on all eight kinds over 3 221 146 records.
+  **Audit settlement** (2026-09-12, `a4bbfd32`; ten reports — 8 split + 2 first-pass — per-finding
+  table in `tmp/g110b/settle.md`): **32 findings — 28 fixed / 4 recorded / 0 refuted**, none a
+  behavioural regression, every fix a tightening of the proof layer. The substantive ones: the cell
+  rule is pinned AT its boundary (±0.1 %, value and angle); a group row must be `head + k·group`
+  wide; the PVSystem `Max kW`/`Max kVA` registers move to the power tier (**D42(1)**'s class for the
+  same quantity); `nothing_declined_is_also_selected`,
+  `every_compared_kind_uses_the_same_policy_as_its_golden` and
+  `every_default_export_name_the_corpus_produces_is_selected_or_declined` stop being tautologies;
+  both sidecar twins refuse a path shared with the case directory before their recursive delete; and
+  `the_tolerance_notes_column_map_names_the_formats_the_layouts_declare` ties the derivation table to
+  the layouts (`Export Voltages`' angle is `Fixed(1)`, writer `%6.1f`, `ExportResults.pas:288`).
+  Recorded, not fixed: the `compare_di` label (G1.10c's row), the sidecar a case failing before
+  `read_sidecar` leaves behind, a both-sides-empty `Export Yprims`, and the 36 declined `%-.g`
+  columns (**G4.1** must re-measure the decline's SIZE, not only its channel). No band, census
+  population, golden byte, ledger row or lock cell moved; `G1_10_PINS` 63 → **72**; under
+  `crates/*/src` only comment lines and `#[cfg(test)]` code. Three earlier default-lane gate
+  attempts died on the two documented environmental classes (**D23**/**D33(2)**,
+  `tmp/g110b/settle_gate_4{,b,c,d}.log`).
+  **Round 2** (2026-09-12, `f93eb4ec` on top of `a4bbfd32`; report `tmp/g110b/audit_settle/report.md`,
+  table in `tmp/g110b/settle2.md`): the settlement audit raised **5 findings — 5 fixed / 0 recorded /
+  0 refuted**, all record accuracy — the surface pin count (`G1_10_PINS` 40 → **63**, not 67), this
+  block's length, the five-command gate re-run AFTER the record edit so it covers the prose the doc
+  rails read (the two doc-reading binaries re-run once more in both lanes after the totals were
+  stamped), `lane_diff` re-measured instead of exempted under **D41** (the numbers above,
+  `tmp/g110b/settle2_lane_diff.log`), and the export-exhaustiveness fixture's 20th row (`ynodelist`
+  was asserted only half-way). No band, population, golden byte, ledger row or lock cell moved.
+
+  merge: lane lane-s -> update, see git log
