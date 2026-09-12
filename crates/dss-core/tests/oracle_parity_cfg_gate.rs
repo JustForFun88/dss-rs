@@ -5692,7 +5692,7 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
 /// shared fixture's fifth list lives in the PYTHON twin
 /// (`tools/oracle/corpus_guard.py`), which this scan does not read — its Rust
 /// half is `DI_FILES`.
-const G1_10_PINS: [(&str, usize); 93] = [
+const G1_10_PINS: [(&str, usize); 99] = [
     // the three both-numbers pins (`crates/dss-core/tests/run_files_pins.rs`)
     (
         "visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port",
@@ -5902,6 +5902,19 @@ const G1_10_PINS: [(&str, usize); 93] = [
     ("deck_enables_demand_interval", 1),
     ("case_enables_demand_interval", 1),
     ("assert_di_census_is_the_pinned_population", 1),
+    // the G1.10c audit settlement (2026-09-12): the three drives that close
+    // findings AT-1 (the masked column is pinned whole), AC-1 (the sidecar size
+    // check stats the DESTINATION) and AC-3 (a member name that escapes its
+    // sidecar is refused).
+    ("the_masked_kvarh_column_is_pinned_whole", 1),
+    ("a_truncated_di_sidecar_copy_is_reported", 1),
+    ("a_di_member_name_that_escapes_its_sidecar_is_refused", 1),
+    // …and the three the second audit round added: the register family's own
+    // width refusal (AT1-3), the one channel vocabulary (AT3-4) and the
+    // manifest linkage of the pins' run recipe and tier (AT2-6 / AC2-11).
+    ("a_register_file_of_an_unknown_width_fails", 1),
+    ("the_channel_tags_are_the_gates_one_vocabulary", 1),
+    ("the_di_pin_cases_are_the_manifest_rows", 1),
 ];
 
 /// The G1.10a **constants** the same documents cite by name — the `fn {pin}(`

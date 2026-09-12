@@ -1849,8 +1849,11 @@ pub(crate) fn compare_with_result(
     // snapshot and can never be mis-attributed to the port.
     //
     // G1.10c: the probe is also the port-side producer of the demand-interval
-    // tree's CONTENTS, and four of the five DI cases are `kind = large` (so not
-    // forced for run files), so it exists whenever EITHER surface is armed. The
+    // tree's CONTENTS, and three of the five DI cases are `kind = large` (so not
+    // forced for run files; the count read "four" until the G1.10c audit
+    // settlement, findings AC3-1 / AT2-2), so it exists whenever EITHER surface
+    // is armed — which is also what gives the ~79 live `large*` decks a
+    // port-side snapshot/sweep bracket they did not have before. The
     // two COMPARISONS stay independently gated below: arming G1.10a's file-set
     // comparison on a `large` deck is a decision for that surface's owner, not
     // a side effect of this one: on `EPRITestCircuits/ckt5` the deck exports a
@@ -1955,13 +1958,7 @@ fn read_di_sidecar(
     members
         .iter()
         .map(|(name, rel)| {
-            let path = dir.join(rel);
-            assert!(
-                path.starts_with(&dir),
-                "{label}: the `{channel}` transport placed the demand-interval file \
-                 {name} at {rel:?}, which is outside its own sidecar \
-                 directory {dir:?}"
-            );
+            let path = sidecar_member_path(&dir, name, rel, channel, label);
             let bytes = std::fs::read(&path).unwrap_or_else(|e| {
                 panic!(
                     "{label}: the `{channel}` transport reported the demand-interval \
@@ -1982,6 +1979,39 @@ fn read_di_sidecar(
             (name.clone(), text)
         })
         .collect()
+}
+
+/// Where one member of a transport's demand-interval reply is read from —
+/// `dir` joined with the transport's own relative name, refused unless that
+/// name stays inside `dir`.
+///
+/// `Path::starts_with` is a COMPONENT-prefix test and normalizes nothing, so
+/// `dir.join("../evil")` passes it while `fs::read` then leaves the sidecar
+/// (GOLDEN_REBASE G1.10c audit finding AC-3). The containment is therefore
+/// asserted on the relative name's own components first: every one must be a
+/// plain segment — no `..`, no root, no drive prefix. Both transports build
+/// these names with `dss_epri::guard::normalize_created_name` over a walk
+/// rooted at the case directory, so anything else is a transport bug and fails
+/// the case here instead of reading an arbitrary file as if it were a DI
+/// report.
+#[cfg(windows)]
+fn sidecar_member_path(dir: &Path, name: &str, rel: &str, channel: &str, label: &str) -> PathBuf {
+    assert!(
+        Path::new(rel)
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_))),
+        "{label}: the `{channel}` transport spelled the demand-interval file \
+         {name} as {rel:?}, which is not a plain path inside its own sidecar \
+         directory {dir:?} — a `..`, a root or a drive prefix would read \
+         outside it"
+    );
+    let path = dir.join(rel);
+    assert!(
+        path.starts_with(dir),
+        "{label}: the `{channel}` transport placed the demand-interval file \
+         {name} at {rel:?}, which is outside its own sidecar directory {dir:?}"
+    );
+    path
 }
 
 /// One-shot convenience for the opt-in report tests: snapshot the case dir,
@@ -2142,5 +2172,44 @@ pub(crate) fn panic_msg(e: Box<dyn std::any::Any + Send>) -> String {
         s.clone()
     } else {
         "unknown panic".to_string()
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    /// [`sidecar_member_path`] refuses a transport-supplied name that leaves
+    /// the sidecar directory — the containment `Path::starts_with` alone does
+    /// NOT give (GOLDEN_REBASE G1.10c audit finding AC-3).
+    #[test]
+    fn a_di_member_name_that_escapes_its_sidecar_is_refused() {
+        let dir = Path::new(r"C:\gate\di\case\r4133");
+        let ok = sidecar_member_path(
+            dir,
+            "di_yr_0/totals_1.csv",
+            "di_yr_0/totals_1.csv",
+            "r4133",
+            "unit:di",
+        );
+        assert_eq!(ok, dir.join("di_yr_0").join("totals_1.csv"));
+
+        for escape in [
+            "../evil.csv",
+            "di_yr_0/../../evil.csv",
+            r"C:\evil.csv",
+            r"\evil.csv",
+        ] {
+            let msg = std::panic::catch_unwind(|| {
+                sidecar_member_path(dir, "di_yr_0/totals_1.csv", escape, "r4133", "unit:di")
+            })
+            .map(|p| panic!("{escape:?} was accepted and resolved to {p:?}"))
+            .map_err(panic_msg)
+            .unwrap_err();
+            assert!(
+                msg.contains("not a plain path inside its own sidecar directory"),
+                "{escape:?} must be refused by name, not by luck: {msg}"
+            );
+        }
     }
 }

@@ -1209,10 +1209,20 @@ impl EpriOneShot {
     }
 
     /// Spawn a fresh worker, ping-verify, run the request, quit.
+    ///
+    /// The r4133 sidecar is attached HERE too, not only in [`Channel::call`]:
+    /// the attachment is idempotent (a request that already carries `di_dir`
+    /// passes through untouched), and the three cross-transport tests that
+    /// build a request by hand and call this one-shot directly must drive the
+    /// SAME request shape the scheduler sends — otherwise the capi half of such
+    /// a test would get a sidecar and the r4133 half the transport's loud "asked
+    /// for the demand-interval tree without a sidecar directory" (G1.10c audit
+    /// settlement, finding AT3-5).
     pub(crate) fn call(&self, req: &Value) -> Resp {
+        let req = attach_di_sidecar(req, crate::harness::PropsChannel::R4133.tag());
         let mut w = spawn_epri_worker(&self.bin);
         assert_epri(&mut w, self.timeout);
-        let out = match w.request(req, self.timeout) {
+        let out = match w.request(&req, self.timeout) {
             Some(r) => r,
             None => Resp {
                 ok: false,
@@ -1229,7 +1239,9 @@ impl EpriOneShot {
 // GOLDEN_REBASE G1.10c: the DI sidecar directory.
 // ---------------------------------------------------------------------------
 
-/// The `capi_v0145` channel tag, spelled once (`harness::PropsChannel::tag`).
+/// The `capi_v0145` channel tag. It cannot be `PropsChannel::CapiV0145.tag()`
+/// (not a `const fn`), so [`the_channel_tags_are_the_gates_one_vocabulary`] ties
+/// the two spellings instead (G1.10c audit settlement, finding AT3-4).
 const CAPI_TAG: &str = "capi_v0145";
 
 /// The gate's own scratch root, `<target dir>/corpus_gate`.
@@ -1290,8 +1302,20 @@ fn case_key(case_path: &str) -> String {
 /// later, after the port has re-run the same case in the same directory. The
 /// transport therefore COPIES the selected files into this directory (never
 /// moves them: the guard must still sweep the original and G1.10a must still see
-/// its name), and the runner deletes it inside the same guarded bracket that
-/// asked for it.
+/// its name).
+///
+/// Lifetime, as it actually is (GOLDEN_REBASE G1.10c audit finding AC-2): the
+/// directory is prepared — and emptied of the previous run's copies — where the
+/// channel identity lives — in [`Channel::call`] (`attach_di_sidecar` →
+/// [`prepare_di_sidecar`]) as the request that asks for the tree goes out, and
+/// in the two one-shot handles' own calls ([`Oracle::run_case`],
+/// [`EpriOneShot::call`]) so a request built by hand carries one too (finding
+/// AT3-5); the attachment is idempotent. The
+/// runner removes it inside its own `CorpusGuard` bracket after a SUCCESSFUL
+/// compare (`runner.rs`, [`remove_di_sidecar`]). A case that FAILED keeps its
+/// copies deliberately, for triage, and the next run of that case empties them.
+/// No guard ever sweeps this tree — it lives under the gate's own scratch root,
+/// outside every case directory.
 pub(crate) fn di_sidecar_dir(case_path: &str, channel: &str) -> PathBuf {
     gate_scratch_root()
         .join("di")
@@ -1325,7 +1349,10 @@ pub(crate) fn remove_di_sidecar(case_path: &str, channel: &str) {
 /// itself. A request that does not ask for the tree is passed through untouched,
 /// so every other command stays byte-identical.
 fn attach_di_sidecar(req: &Value, channel: &str) -> Value {
-    if req.get("di").and_then(Value::as_bool) != Some(true) {
+    // Idempotent: the r4133 one-shot attaches on its own way out too, so a
+    // request that already carries its sidecar is passed through rather than
+    // re-prepared (finding AT3-5).
+    if req.get("di").and_then(Value::as_bool) != Some(true) || req.get("di_dir").is_some() {
         return req.clone();
     }
     let case_path = req
@@ -1352,12 +1379,21 @@ pub(crate) enum Channel<'a> {
 }
 
 impl Channel<'_> {
-    /// This channel's tag, spelled as `harness::PropsChannel::tag` spells it —
-    /// the gate's one vocabulary for the two gating channels.
+    /// This channel's tag, DELEGATED to `harness::PropsChannel::tag` — the
+    /// gate's one vocabulary for the two gating channels, and the same spelling
+    /// the sidecar read-back resolves the directory through
+    /// (`runner::channel_tag`). It was a second copy of the two literals until
+    /// the G1.10c audit settlement (finding AT3-4): a re-spelling on one side
+    /// then failed loudly (a member missing from the sidecar) rather than
+    /// silently, but nothing tied the two.
     pub(crate) fn tag(&self) -> &'static str {
         match self {
-            Channel::CapiPool(_) | Channel::CapiOneShot(_) => CAPI_TAG,
-            Channel::EpriPool(_) | Channel::EpriOneShot(_) => "r4133",
+            Channel::CapiPool(_) | Channel::CapiOneShot(_) => {
+                crate::harness::PropsChannel::CapiV0145.tag()
+            }
+            Channel::EpriPool(_) | Channel::EpriOneShot(_) => {
+                crate::harness::PropsChannel::R4133.tag()
+            }
         }
     }
 
@@ -1420,6 +1456,17 @@ mod di_sidecar_tests {
             full.di.expect("a tree")["ieee13/di_yr_0/totals_1.csv"],
             "ieee13/di_yr_0/totals_1.csv",
         );
+    }
+
+    /// The two channel tags are ONE vocabulary: the sidecar is written under
+    /// [`Channel::tag`] and read back through `harness::PropsChannel::tag`
+    /// (`runner::channel_tag`), so a re-spelling on either side must be
+    /// impossible rather than merely loud (G1.10c audit settlement, finding
+    /// AT3-4).
+    #[test]
+    fn the_channel_tags_are_the_gates_one_vocabulary() {
+        assert_eq!(CAPI_TAG, crate::harness::PropsChannel::CapiV0145.tag());
+        assert_eq!("r4133", crate::harness::PropsChannel::R4133.tag());
     }
 
     /// The sidecar is per (case, channel), lives in the gate's own scratch, and

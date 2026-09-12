@@ -1442,12 +1442,22 @@ fn the_gictransformer_channel_guard_refuses_a_capi_gated_deck() {
 /// opens the statement) so the many decks that carry the commented-out demand
 /// interval block — `IEEETestCases/LVTestCase/Master.dss:27-39` is the corpus's
 /// example — read as what they are: off.
+///
+/// The VALUE is read exactly as the executive reads it: `InterpretYesNo` takes
+/// the first character and answers TRUE only for `y` and `t` — `n`, `f` and
+/// **everything else, `1` included**, are FALSE in both engines (r4133
+/// `Version8/Source/Common/Utilities.pas:501-513`, capi 0.14.5
+/// `src/Common/Utilities.pas:400-411`: the same `case` with the same `ELSE
+/// Result := FALSE`). The scanner accepted `1` until the G1.10c audit
+/// settlement (finding AT3-2) — a deck spelled `set demand=1` writes no DI tree
+/// on any of the three engines, so demanding a `compare_di` declaration for it
+/// would pin an empty surface.
 pub(crate) fn deck_enables_demand_interval(text: &str) -> bool {
     for line in text.lines() {
         for (name, value) in option_pairs(line) {
             if name.len() >= 3
                 && "demandinterval".starts_with(&name)
-                && matches!(value.as_bytes().first(), Some(b'y' | b't' | b'1'))
+                && matches!(value.as_bytes().first(), Some(b'y' | b't'))
             {
                 return true;
             }
@@ -1569,7 +1579,8 @@ pub(crate) fn case_enables_demand_interval(entry: &str) -> bool {
 
 /// Non-vacuity for the scanner above (§1.1(f)): it must read the abbreviation
 /// the corpus actually uses, refuse the prefixes the executive resolves to a
-/// DIFFERENT option, refuse an explicit `no`, and refuse both comment forms.
+/// DIFFERENT option, refuse every value `InterpretYesNo` reads as FALSE (an
+/// explicit `no`, and `1`/`0` — finding AT3-2), and refuse both comment forms.
 #[test]
 fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
     for on in [
@@ -1578,7 +1589,7 @@ fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
         "set mode=yearly DemandInterval=yes overloadreport=yes DIVerbose=yes",
         "set demand = true",
         "set demandinterval =yes",
-        "  set dem=1   ! the shortest prefix that reaches this option",
+        "  set dem=yes   ! the shortest prefix that reaches this option",
     ] {
         assert!(
             deck_enables_demand_interval(on),
@@ -1600,6 +1611,13 @@ fn the_demand_interval_scanner_reads_the_option_and_its_abbreviation() {
         // A prose mention is not a setting.
         "! demand interval files are closed below",
         "closedi",
+        // `InterpretYesNo` answers TRUE for `y`/`t` only: `1`, `0` and every
+        // other spelling fall through its `ELSE Result := FALSE` in BOTH
+        // engines (r4133 `Common/Utilities.pas:501-513`, capi `:400-411`), so a
+        // deck spelled this way writes no DI tree and must not be required to
+        // declare `compare_di` (G1.10c audit settlement, finding AT3-2).
+        "set dem=1",
+        "set demandinterval=0",
     ] {
         assert!(
             !deck_enables_demand_interval(off),
