@@ -3746,7 +3746,7 @@ row against the pre-fix lock.
 
   merge: lane lane-b -> update, see git log
 
-- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `<settlement>`) — the
+- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c`) — the
   demand-interval tree's CONTENTS compare live on both channels behind `compare_di`: each transport copies the
   run-created tree into a per-(case, channel) sidecar and reads it before `created()` and before the capi teardown
   `clear`, the slot asserted from both sources by `check_run_tail_order` (**D43(2)** orders the merged tail against
@@ -3757,7 +3757,7 @@ row against the pre-fix lock.
   columns, one entry per channel, each with a both-numbers pin (**D44(1)**). Surface in `TESTING.md` §"G1.10c" and
   `tests/TOLERANCE_NOTES.md` §G1.10c; no PRODUCT crate's `src` moved → `lane_diff` not owed (**D41**). Gate
   (`tmp/g110c/gate.md`): five commands exit 0, 11 966 passed / 0 failed / 5 ignored per lane, corpus 526/526.
-  **Audit settlement** (`<settlement>`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**,
+  **Audit settlement** (`7818868c`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**,
   none major). Fixed, code: the sidecar size check stats the DESTINATION (AC-1), a `..` member name is refused by
   name (AC-3), the deck scanner stops reading `=1` as YES — `InterpretYesNo` never did, r4133
   `Common/Utilities.pas:501-513` (AT3-2), the census is keyed by (case, **channel**) so a channel swap reds (AT3-3),
