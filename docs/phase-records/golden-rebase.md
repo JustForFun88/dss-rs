@@ -3767,46 +3767,36 @@ row against the pre-fix lock.
   defect the port does not reproduce — `to_opendss/72`) and the nine PC `node_ref` guards
   (`to_opendss/74`); both states are corpus-unreachable, hence no row. Surface, pins and declines are
   described in `TESTING.md` §"G1.10b — the CONTENTS of the selected run files", the derivation in
-  `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents", the names in `G1_10_PINS` (40 → **67**, **72** after the settlement) and
+  `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents", the names in `G1_10_PINS` (40 → **63**, **72** after the settlement) and
   `G1_10_CONSTS` (3 → **6**). Commits `4bbc6405` (F0) + `9b07466a` (F2b) + `934a4275` (surface) + docs;
   five-command gate green in both lanes (526/526 corpus cases, ledger 57 entries / 1 573 hits / 0 stale),
   and `lane_diff` measured **PASS, max |Δ| = 0.000e0** on all eight kinds over 3 221 146 records.
-  **Audit settlement** (2026-09-12, one commit on top of the surface; two audit passes, 8 split
-  reports + the 2 first-pass ones, per-finding table in `tmp/g110b/settle.md`): **32 distinct
-  findings — 28 fixed / 4 recorded / 0 refuted** (one sub-claim refuted: the dropped-row mutation
-  clause's `"row count"`/`"MORE"` substrings are specific, unlike the re-order clause's `"row"`).
-  None was a behavioural regression; the fixes are tightenings and records, and no band, census
-  population, golden byte, ledger row or lock cell moved. The substantive ones: the cell rule is now
-  pinned AT its boundary (0.1 % out RED / 0.1 % in PASS, value and angle — the nearest fixture was a
-  decade away, so a fudge at the comparison site passed); a group row must be `head + k·group` wide,
-  so an extra column is refused instead of re-aligned; the PVSystem registers are classed by name off
-  the header, `Max kW`/`Max kVA` at the power tier (D42(1)'s class for the same quantity) instead of
-  the accumulator band; `nothing_declined_is_also_selected` and
-  `every_compared_kind_uses_the_same_policy_as_its_golden` were tautologies and now assert produced
-  NAMES and per-kind policy VALUES; both sidecar twins refuse a directory that shares a path with the
-  case dir before their recursive delete, and the shared Python fixture gained the near misses that
-  give both matchers teeth; `the_export_bracket_has_no_early_exit_between_its_two_statements` holds
-  the one bracket that is not structural; `capacity`/`ycurrents`/`ynodelist` became an eighth census
-  row held exhaustive by `every_default_export_name_the_corpus_produces_is_selected_or_declined`; the
-  MW trace columns carry `Quantity::PowerMega` (the doc called the kW floor read against MW numbers
-  "1000× tight"; it was 1000× loose); the derivation table's `Export Voltages` angle (`Fixed(2)` →
-  `Fixed(1)`, writer `%6.1f` at `ExportResults.pas:288`) is now checked against the code by
-  `the_tolerance_notes_column_map_names_the_formats_the_layouts_declare`, with the C1/C2 arithmetic,
-  the angle rule's unprovable "tighter … never masks" sentence, eleven `harness/mod.rs` line
-  citations and nine Pascal citations corrected. Recorded, not fixed: the `compare_di` label
-  (G1.10c's row on `lane-e`), the sidecar left behind by a case that fails BEFORE `read_sidecar`
-  (disk only — the transport wipes it before each copy), a both-sides-empty `Export Yprims` file
-  comparing zero cells (no live path), and the 36 declined `%-.g` columns costing the only oracle
-  comparison of the Storage state variables (D40(3) is a ruling; the G4.1 hand-down now has to
-  re-measure the decline's SIZE as well as its channel). `G1_10_PINS` 67 → **72**. Under
-  `crates/*/src` this settlement moves comment lines and `#[cfg(test)]` test code only, so the
-  compiled product is unchanged and the measured `lane_diff` above still stands. Gate after the
-  settlement, both lanes: **12 574 passed / 0 failed / 5 ignored / 0 filtered** (12 442 + 132 = the
-  five new harness unit tests in each of the 26 harness-linking binaries, plus the two crate-local
-  ones), corpus **526/526**, ledger **57** entries / **1 573** hits / 0 stale, contents census
-  unmoved. Three earlier default-lane attempts died on the two documented environmental classes and
-  are kept for the record (`tmp/g110b/settle_gate_4{,b,c,d}.log`): the ckt24 capi oracle's 120 s
-  timeout while other lanes were building (that case alone needs 86 s — `settle_probe_ckt24.log`,
-  and the corpus phase ran 492-610 s against 158-178 s quiet) and the `Test/AutoTrans`
-  shared-directory dropping race (**D23**/**D33(2)**); the clean-tree re-run
-  (`settle_gate_4e.log`) is green.
+  **Audit settlement** (2026-09-12, `a4bbfd32`; ten reports — 8 split + 2 first-pass — per-finding
+  table in `tmp/g110b/settle.md`): **32 findings — 28 fixed / 4 recorded / 0 refuted**, none a
+  behavioural regression, every fix a tightening of the proof layer. The substantive ones: the cell
+  rule is pinned AT its boundary (±0.1 %, value and angle); a group row must be `head + k·group`
+  wide; the PVSystem `Max kW`/`Max kVA` registers move to the power tier (**D42(1)**'s class for the
+  same quantity); `nothing_declined_is_also_selected`,
+  `every_compared_kind_uses_the_same_policy_as_its_golden` and
+  `every_default_export_name_the_corpus_produces_is_selected_or_declined` stop being tautologies;
+  both sidecar twins refuse a path shared with the case directory before their recursive delete; and
+  `the_tolerance_notes_column_map_names_the_formats_the_layouts_declare` ties the derivation table to
+  the layouts (`Export Voltages`' angle is `Fixed(1)`, writer `%6.1f`, `ExportResults.pas:288`).
+  Recorded, not fixed: the `compare_di` label (G1.10c's row), the sidecar a case failing before
+  `read_sidecar` leaves behind, a both-sides-empty `Export Yprims`, and the 36 declined `%-.g`
+  columns (**G4.1** must re-measure the decline's SIZE, not only its channel). No band, census
+  population, golden byte, ledger row or lock cell moved; `G1_10_PINS` 63 → **72**; under
+  `crates/*/src` only comment lines and `#[cfg(test)]` code. Gate both lanes **12 574 passed /
+  0 failed / 5 ignored**, corpus 526/526, ledger 57 / 1 573 hits / 0 stale; three earlier
+  default-lane attempts died on the two documented environmental classes (**D23**/**D33(2)**,
+  `tmp/g110b/settle_gate_4{,b,c,d}.log`).
+  **Round 2** (2026-09-12, on top of `a4bbfd32`; report `tmp/g110b/audit_settle/report.md`, table in
+  `tmp/g110b/settle2.md`): the settlement audit raised **5 findings — 5 fixed / 0 recorded / 0
+  refuted**, all record accuracy — the surface pin count (`G1_10_PINS` 40 → **63**, not 67), this
+  block's length, the five-command gate re-run AFTER the record edit so it covers the prose the
+  doc rails read (the two doc-reading binaries re-run once more in both lanes after the totals below
+  were stamped), `lane_diff` re-measured instead of exempted under **D41** (**PASS, max |Δ| =
+  0.000e0** on all eight kinds, 526 cases / 3 221 146 records, `tmp/g110b/settle2_lane_diff.log`), and
+  the export-exhaustiveness fixture's 20th row (`ynodelist` was asserted only half-way). Gate both
+  lanes **12 574 passed / 0 failed / 5 ignored / 0 filtered**, `corpus_gate` 498 / 0; no band,
+  population, golden byte, ledger row or lock cell moved.
