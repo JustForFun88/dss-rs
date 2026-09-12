@@ -238,3 +238,55 @@ fn save_scopes_the_flag_instead_of_latching_it() {
 
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+/// **The `Export` bracket is two bare statements, so the property that makes it
+/// safe is asserted from the source itself** (G1.10b audit settlement, finding
+/// AT3-4).
+///
+/// `do_show_cmd` and `do_save_cmd` were split into `*_dispatch` helpers exactly
+/// so their early returns stay inside the bracket;
+/// [`crate::exec::Dss::do_export_cmd`] instead raises the flag at Pascal's own
+/// position (`Executive/ExportOptions.pas:328`) and clears it at the tail
+/// (`:512`) around a ~200-line `match` whose arms are claimed to return
+/// normally. A single `return` or `?` added to one of those arms would re-create
+/// upstream's `DoSaveCmd` latch — every Storage debug trace muted for the rest of
+/// the session — and no runtime test would see it, because the arm that leaks is
+/// the arm nobody drove. This reads the function's own text and refuses any exit
+/// between the two statements, which is the claim the code comment makes.
+#[test]
+fn the_export_bracket_has_no_early_exit_between_its_two_statements() {
+    let src = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/exec/report.rs"),
+    )
+    .expect("`exec/report.rs` is this crate's own source");
+    let at = src
+        .find("fn do_export_cmd")
+        .expect("`do_export_cmd` is where the Export bracket lives");
+    let body = &src[at..];
+    let raise = body
+        .find("self.set_in_show_results(true);")
+        .expect("the Export bracket raises the flag");
+    let clear = body
+        .find("self.set_in_show_results(false);")
+        .expect("the Export bracket lowers the flag");
+    assert!(raise < clear, "the bracket must raise before it clears");
+    let inside = &body[raise..clear];
+    for exit in ["return", "?;", "?)", "?."] {
+        let mut rest = inside;
+        while let Some(i) = rest.find(exit) {
+            let line = rest[..i].rsplit('\n').next().unwrap_or("");
+            // Comments and doc text may name the construct; code may not.
+            assert!(
+                line.trim_start().starts_with("//") || line.contains("/// "),
+                "`do_export_cmd` grew an early exit ({exit:?}) between \
+                 `set_in_show_results(true)` and `set_in_show_results(false)`: \
+                 the flag would stay up for the rest of the session, exactly the \
+                 r4133 `DoSaveCmd` latch this sub-step refuses to reproduce \
+                 (`save_scopes_the_flag_instead_of_latching_it`). Split the arm \
+                 into an `export_dispatch` helper the way `do_show_cmd` and \
+                 `do_save_cmd` are split, so the bracket stays structural."
+            );
+            rest = &rest[i + exit.len()..];
+        }
+    }
+}

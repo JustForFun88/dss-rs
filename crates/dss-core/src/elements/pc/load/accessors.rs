@@ -153,7 +153,7 @@ impl CktElement for Load {
         // trait's `get_currents` default returns there, instead of indexing an
         // empty array: r4133 dereferences the nil pointer and lets the access
         // violation surface as DSS error 641 out of `TPCElement.GetCurrents`'
-        // `TRY ... EXCEPT` (`PCElements/PCElement.pas:277`, `:304-306`) -- the
+        // `TRY ... EXCEPT` (`PCElements/PCElement.pas:278`, `:304-306`) -- the
         // same `Curr` vector its `not Enabled` arm writes (`:298-300`).
         if !self.cd.enabled || self.cd.node_ref.is_empty() {
             curr.fill(Complex64::ZERO);

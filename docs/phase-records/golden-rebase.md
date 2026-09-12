@@ -3748,65 +3748,65 @@ row against the pre-fix lock.
 
   merge: lane lane-b -> update, see git log
 
-- **G1.10b** (2026-09-12, lane `lane-s`, decisions **D7**/**D40**/**D43**, with **D33(6)** re-measured) —
-  the **CONTENTS** of the run files G1.10a's set already names, live on both gating channels. Settlement
-  **S-B**: nine report kinds, each compared through the SAME `ExportPolicy` its golden uses (the seven
-  producers lifted byte-faithfully into `harness::export_policies`, both callers sharing them —
-  `every_compared_kind_uses_the_same_policy_as_its_golden`), plus a per-column map of quantity class and
-  Pascal print format cited to the r4133 writer (`Common/ExportResults.pas`,
-  `PCElements/Storage.pas:1073-1085`/`:2401-2429`), under D40(1)'s cell rule *case floor + print ulp* — a
-  derivation of the calibrated `tol_for` floors onto a printed surface, **no new numeric constant**
-  (`tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents"). The bytes travel through a gate-owned sidecar
-  under `target/`, copied inside each transport's guard scope; the capi copy runs after the D32(2)(a)
-  teardown `clear` because dss_capi holds the Storage trace stream open denying *read* (D43(2)), a slot
-  asserted from both transports' source text by `check_run_file_contents_read_with_the_set`.
-  Census: **7 cases / 32 file comparisons / 3 035 190 cells** per drive (16 files, ≈1.52 M cells per
-  channel), pinned fail-on-stale in both directions and per channel by
-  `assert_run_file_contents_census_is_the_pinned_population` over `RUN_FILE_CONTENTS_COMPARED`,
-  `RUN_FILE_CONTENTS_DECLINES` and `TRACE_READBACK_RECORDS`.
-  **0 new ledger entries** (57 / 33 causes, 1 573 hits), 0 golden bytes, `population.lock.json`
-  byte-identical, no `ExportPolicy` value and no tolerance moved. The STOP's five cell classes C1–C5 all
-  fell inside the rule and are pinned with both numbers, port side read live
-  (`an_angle_of_a_residual_magnitude_is_gated_on_both_sides`,
-  `the_angle_of_a_16_microamp_current_is_free_within_the_case_floor`,
-  `a_six_significant_digit_cell_may_move_by_one_ulp`,
-  `a_cancellation_residual_cell_is_bounded_by_the_case_floor`,
-  `the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically`), with
-  `every_compared_kind_is_mutation_gated_on_its_own_report` driving every kind on its own live report
-  (scale / swap / drop / re-order RED, last-place respelling PASS) and
-  `a_report_without_a_policy_is_recorded_not_compared` holding the policy-less and deck-named exports as
-  recorded-not-compared. Two oracle-vs-oracle facts cost 0 rows each: the Storage trace's **36** `%-.g`
-  columns per record (D33(6) had estimated 16, which is the COMPARED count) are declined on both channels
-  because FPC prints 2 significant digits and the Delphi-built r4133 ~15
-  (`the_two_sig_trace_columns_are_declined_on_both_channels`; hand-down to **G4.1** — re-measure and
-  shrink to capi-only once `fmt_g` dies), and that file's row count is the reader's own footprint
-  (**D43(1)**: `WriteTraceRecord` fires outside the `Iterminal` cache test, r4133 `Storage.pas:2874` /
-  capi `:2356`, so oracle 102 rows vs port 98 over 96 identical solve records — the gap is *accounted*,
-  not skipped, by `the_storage_trace_tail_is_the_readers_footprint`).
-  **Two port gaps landed in their own commits ahead of the surface** (CLAUDE.md "port gaps immediately"):
-  the AC-5 hand-down `InShowResults` suppression, bracketed round **Show/Export/Save** as r4133 does
-  (`ShowOptions.pas:204`/`:393`, `ExportOptions.pas:328`/`:512`, `ExecHelper.pas:935` = `DoSaveCmd` — D43(3)
-  corrects D40(7); consumer guard `Storage.pas:2408`), whose never-lowered `DoSaveCmd` latch is an upstream
-  defect the port does not reproduce (`save_scopes_the_flag_instead_of_latching_it`, `to_opendss/72`,
-  beside `a_report_does_not_grow_a_storage_debug_trace` and
-  `a_show_that_aborts_mid_dispatch_still_lowers_the_flag`); and the `node_ref` guard nine PC
-  `get_currents` overrides were missing (**D43(4)**), where r4133 raises error 641 and capi 0.14.5 writes
-  the previous element's currents out of its scratch buffer
-  (`a_report_on_an_element_created_after_the_last_solve_reads_as_ground`,
-  `the_late_element_reports_its_current_once_the_next_solve_maps_it`, `to_opendss/74`). Both states are
-  corpus-unreachable, so neither is a ledger row. Details in `TESTING.md` §"G1.10b — the CONTENTS of the
-  selected run files", the plan's §G1.10 "part b as executed" note and `G1_10_PINS` (40 → **63** names,
-  `G1_10_CONSTS` 3 → **6**).
-  Commits `4bbc6405` (F0, the `InShowResults` bracket), `9b07466a` (F2b, the `node_ref` guards),
-  `<surface-sha>` (the surface: transports, comparator, census, pins) + docs.
-  **Gate at the docs stage, both lanes:** `cargo fmt --all --check` rc 0; full `corpus_gate`
-  **493 passed / 0 failed** per lane with **526/526** cases green (178.4 s default, 154.1 s parity), ledger
-  **57** entries / **1 573** hits / 0 stale / 0 unhit and the contents census identical on both lanes —
-  compared `(7, 32, 3 035 190)`, declines `(4, 8, 14 832)`, read-back tail `(2, 8)`, per channel
-  `capi_v0145 (16, 1 517 596, 7 415)` / `r4133 (16, 1 517 594, 7 417)`; `oracle_parity_cfg_gate` **25 / 0**
-  (the pin registry and both citation walkers), `population_lock` **3 / 0** with the lock byte-identical,
-  `golden_lock` **4 / 0** with `tests/golden/**` untouched. The micro-parts' own runs add
-  `golden_reports` **589–590 / 0**, `run_file_contents_pins` **388 / 0**, `run_files_pins` **381 / 0**,
-  `capture_order` **40 / 0** and `--lib` **1 628 / 0**, each in both lanes. `lane_diff` is **owed** by F0
-  and F2b (`crates/dss-core/src` moved), expected max |Δ| = **0** — the trace writer is not in the
-  `lane_dump` stream and the `node_ref` guard is unreachable on any deck that solves.
+- **G1.10b** (2026-09-12, lane `lane-s`, decisions **D7**/**D40**/**D43**, **D33(6)** re-measured) — the
+  **CONTENTS** of the run files G1.10a's set names, live on both gating channels. Nine report kinds go
+  through the SAME `ExportPolicy` their byte goldens use (the seven producers lifted byte-faithfully into
+  `harness::export_policies`) plus a per-column map of quantity class and Pascal print format cited to the
+  r4133 writer (`Common/ExportResults.pas`, `PCElements/Storage.pas:1077-1083`/`:2411-2424`), under
+  D40(1)'s cell rule *case floor + print ulp* — a derivation of the calibrated `tol_for` floors onto a
+  printed surface with **no new numeric constant**. Bytes travel through a gate-owned sidecar; the capi
+  copy runs after the D32(2)(a) teardown `clear` (dss_capi holds the Storage trace stream open denying
+  read — D43(2)), the slot asserted from both transports' source text. Census **7 cases / 32 file
+  comparisons / 3 035 190 cells** per drive, fail-on-stale in both directions and per channel; the STOP's
+  classes C1–C5 all fell inside the rule; the trace's **36** `%-.g` columns are declined on BOTH channels
+  (the two oracles disagree — hand-down to **G4.1**) and its row count is accounted as the gate's own
+  reader footprint (**D43(1)**, oracle 102 vs port 98 over 96 identical solve records). **0 ledger rows**,
+  0 golden bytes, `population.lock.json` byte-identical, no `ExportPolicy` value or tolerance moved. Two
+  port gaps landed in their own commits ahead of the surface: the `InShowResults` bracket round
+  **Show/Export/Save** (consumer guard `Storage.pas:2408`; `DoSaveCmd`'s never-lowered latch is an upstream
+  defect the port does not reproduce — `to_opendss/72`) and the nine PC `node_ref` guards
+  (`to_opendss/74`); both states are corpus-unreachable, hence no row. Surface, pins and declines are
+  described in `TESTING.md` §"G1.10b — the CONTENTS of the selected run files", the derivation in
+  `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents", the names in `G1_10_PINS` (40 → **67**, **72** after the settlement) and
+  `G1_10_CONSTS` (3 → **6**). Commits `4bbc6405` (F0) + `9b07466a` (F2b) + `934a4275` (surface) + docs;
+  five-command gate green in both lanes (526/526 corpus cases, ledger 57 entries / 1 573 hits / 0 stale),
+  and `lane_diff` measured **PASS, max |Δ| = 0.000e0** on all eight kinds over 3 221 146 records.
+  **Audit settlement** (2026-09-12, one commit on top of the surface; two audit passes, 8 split
+  reports + the 2 first-pass ones, per-finding table in `tmp/g110b/settle.md`): **32 distinct
+  findings — 28 fixed / 4 recorded / 0 refuted** (one sub-claim refuted: the dropped-row mutation
+  clause's `"row count"`/`"MORE"` substrings are specific, unlike the re-order clause's `"row"`).
+  None was a behavioural regression; the fixes are tightenings and records, and no band, census
+  population, golden byte, ledger row or lock cell moved. The substantive ones: the cell rule is now
+  pinned AT its boundary (0.1 % out RED / 0.1 % in PASS, value and angle — the nearest fixture was a
+  decade away, so a fudge at the comparison site passed); a group row must be `head + k·group` wide,
+  so an extra column is refused instead of re-aligned; the PVSystem registers are classed by name off
+  the header, `Max kW`/`Max kVA` at the power tier (D42(1)'s class for the same quantity) instead of
+  the accumulator band; `nothing_declined_is_also_selected` and
+  `every_compared_kind_uses_the_same_policy_as_its_golden` were tautologies and now assert produced
+  NAMES and per-kind policy VALUES; both sidecar twins refuse a directory that shares a path with the
+  case dir before their recursive delete, and the shared Python fixture gained the near misses that
+  give both matchers teeth; `the_export_bracket_has_no_early_exit_between_its_two_statements` holds
+  the one bracket that is not structural; `capacity`/`ycurrents`/`ynodelist` became an eighth census
+  row held exhaustive by `every_default_export_name_the_corpus_produces_is_selected_or_declined`; the
+  MW trace columns carry `Quantity::PowerMega` (the doc called the kW floor read against MW numbers
+  "1000× tight"; it was 1000× loose); the derivation table's `Export Voltages` angle (`Fixed(2)` →
+  `Fixed(1)`, writer `%6.1f` at `ExportResults.pas:288`) is now checked against the code by
+  `the_tolerance_notes_column_map_names_the_formats_the_layouts_declare`, with the C1/C2 arithmetic,
+  the angle rule's unprovable "tighter … never masks" sentence, eleven `harness/mod.rs` line
+  citations and nine Pascal citations corrected. Recorded, not fixed: the `compare_di` label
+  (G1.10c's row on `lane-e`), the sidecar left behind by a case that fails BEFORE `read_sidecar`
+  (disk only — the transport wipes it before each copy), a both-sides-empty `Export Yprims` file
+  comparing zero cells (no live path), and the 36 declined `%-.g` columns costing the only oracle
+  comparison of the Storage state variables (D40(3) is a ruling; the G4.1 hand-down now has to
+  re-measure the decline's SIZE as well as its channel). `G1_10_PINS` 67 → **72**. Under
+  `crates/*/src` this settlement moves comment lines and `#[cfg(test)]` test code only, so the
+  compiled product is unchanged and the measured `lane_diff` above still stands. Gate after the
+  settlement, both lanes: **12 574 passed / 0 failed / 5 ignored / 0 filtered** (12 442 + 132 = the
+  five new harness unit tests in each of the 26 harness-linking binaries, plus the two crate-local
+  ones), corpus **526/526**, ledger **57** entries / **1 573** hits / 0 stale, contents census
+  unmoved. Three earlier default-lane attempts died on the two documented environmental classes and
+  are kept for the record (`tmp/g110b/settle_gate_4{,b,c,d}.log`): the ckt24 capi oracle's 120 s
+  timeout while other lanes were building (that case alone needs 86 s — `settle_probe_ckt24.log`,
+  and the corpus phase ran 492-610 s against 158-178 s quiet) and the `Test/AutoTrans`
+  shared-directory dropping race (**D23**/**D33(2)**); the clean-tree re-run
+  (`settle_gate_4e.log`) is green.

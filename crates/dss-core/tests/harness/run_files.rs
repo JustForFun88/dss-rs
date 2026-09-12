@@ -332,9 +332,17 @@ pub fn contents_census() -> (usize, usize) {
 ///   missing capture fails the case.
 ///
 /// Every disagreement between the reply and the directory is LOUD: a reported
-/// name with no file, or a file the reply did not name, fails the case. That is
-/// what makes one sidecar per case safe — a leftover from the other channel or
-/// from an earlier case cannot be quietly read as this run's output.
+/// name with no file, or a file the reply did not name, fails the case — so a
+/// lost copy, or a file no transport of this run wrote, can never be compared as
+/// this run's output.
+///
+/// What makes one sidecar per case safe against the OTHER channel is not that
+/// assertion (both channels copy the same names, so it cannot tell them apart —
+/// G1.10b audit settlement, finding AT4-8) but three facts: `run_one_case`
+/// drives a `both` case's channels strictly in sequence (fetch, compare, then
+/// the next channel), `dss_epri::guard::copy_selected_contents` and its Python
+/// twin `remove_dir_all` the sidecar before each copy, and this function deletes
+/// it as it reads.
 #[track_caller]
 pub fn read_sidecar(
     dir: &std::path::Path,

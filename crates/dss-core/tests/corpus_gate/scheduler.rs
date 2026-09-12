@@ -2051,7 +2051,12 @@ const RUN_FILE_CONTENTS_DECLINES: (usize, usize, usize) = (4, 8, 14_832);
 /// and its solve records are compared cell by cell under the unchanged D40(1)
 /// rule.
 ///
-/// Pinned per FILE and in BOTH directions: a gap that grows is a port that
+/// Pinned per (case, channel) ROW as `tail == files × 4` and in BOTH
+/// directions — one trace file per row today, so that is per file (G1.10b audit
+/// settlement, finding AT4-9: the doc said "per FILE", which the row-level
+/// assertion only implies while `trace_files == 1`; the per-file detail is in
+/// `harness::run_file_contents::trace_tail_census`, which the pin reads). A gap
+/// that grows is a port that
 /// stopped writing solve records or a transport that grew an element read; a
 /// gap that shrinks is a port that started logging the gate's own capture; a
 /// file count that moves is the trace comparison going quiet (or a second deck
@@ -2202,6 +2207,11 @@ pub(crate) fn assert_run_file_contents_census_is_the_pinned_population() {
             RUN_FILE_CONTENTS_DECLINES,
             report.join("\n  ")
         );
+        // This loop walks the channels that PRODUCED rows: a channel that
+        // produced none passes it vacuously and is caught by the exact
+        // `RUN_FILE_CONTENTS_COMPARED` triple above instead (a silent channel
+        // halves `compared`). Stated because the message below promises more
+        // than the loop alone delivers (G1.10b audit settlement, finding AT4-9).
         for (channel, (files, compared_cells, _)) in &per_channel {
             assert!(
                 *files > 0 && *compared_cells > 0,

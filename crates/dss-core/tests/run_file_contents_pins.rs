@@ -406,7 +406,7 @@ fn an_angle_of_a_residual_magnitude_is_gated_on_both_sides() {
 ///
 /// The band is the image of the magnitude's own floor:
 /// `Δθ ≤ rad2deg·(i_abs + i_rel·|I|)/|I| + ulp(%8.2f)`
-/// `= 57.29577951308232 · 1.0000016957e-5 / 1.6957e-5 + 0.01 = 33.7896…°`, and
+/// `= 57.29577951308232 · 1.00000016957e-5 / 1.6957e-5 + 0.01 = 33.79887°`, and
 /// the measured `Δθ` is `0.02°`. The current is three orders of magnitude under
 /// the case's own `i_abs = 1e-5 A`, so its argument is nearly unconstrained —
 /// but the MAGNITUDES had to meet at `Δ|I| = 3.8e-9 A`, four orders inside the
@@ -606,7 +606,7 @@ fn the_two_oracle_exponent_spellings_of_a_j_cell_meet_numerically() {
 ///
 /// `TStorageObj.WriteTraceRecord` renders `t`, `LoadMultiplier` and every state
 /// variable with `Format('%-.g', …)` (r4133 `PCElements/Storage.pas:2401-2429`,
-/// the record write at `:2412`/`:2421`). FPC reads that empty precision as **2**
+/// the record write at `:2411`/`:2424`). FPC reads that empty precision as **2**
 /// significant digits and the Delphi-built r4133 DLL as ~15, so the two GATING
 /// ORACLES disagree with each other on those columns — measured on
 /// `Storage_price.dss` row 2: `Vref` port/capi `1E4` vs r4133 `9999`;
@@ -772,9 +772,18 @@ fn the_storage_trace_tail_is_the_readers_footprint() {
 // What is recorded and never compared.
 // ---------------------------------------------------------------------------
 
-/// **A report without a policy is RECORDED, never compared ad hoc** — the seven
+/// **A report without a policy is RECORDED, never compared ad hoc** — the eight
 /// census rows of `harness::run_file_contents::CONTENTS_NOT_SELECTED`
 /// (coordinator decision **D40(5)**).
+///
+/// The eighth row is the G1.10b audit settlement (finding AC-4): `capacity`,
+/// `ycurrents` and `ynodelist` DO have golden policies, but only `large*` decks
+/// export them, so they were neither selected nor recorded — the hole the
+/// census exists to prevent. They are now named with their reason, and
+/// `harness::run_file_contents::tests::
+/// every_default_export_name_the_corpus_produces_is_selected_or_declined`
+/// holds the selection and this table jointly exhaustive over the export kinds
+/// the vendored corpus actually issues.
 ///
 /// The bytes of these files never leave the case directory: the gate ships the
 /// selection as data (`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`) and neither
@@ -789,11 +798,11 @@ fn a_report_without_a_policy_is_recorded_not_compared() {
     for (what, why) in CONTENTS_NOT_SELECTED {
         assert!(!why.trim().is_empty(), "{what}: a decline needs its reason");
     }
-    assert_eq!(CONTENTS_NOT_SELECTED.len(), 7);
+    assert_eq!(CONTENTS_NOT_SELECTED.len(), 8);
 
     // Real created-set members, measured on the corpus (`tmp/g110b/census.txt`,
     // `tmp/g110a/oracle_diff.txt`), each with the census row that claims it.
-    let declined: [(&str, &str); 7] = [
+    let declined: [(&str, &str); 8] = [
         ("ieee13_mon_m1_1.csv", "monitor CSV"),
         ("ieee13_eventlog.csv", "eventlog CSV"),
         ("ckt7_di_yr_0.csv", "demand-interval tree (DI_yr_*)"),
@@ -806,6 +815,10 @@ fn a_report_without_a_policy_is_recorded_not_compared() {
         (
             "auto1bus_hl_current.txt",
             "deck-named export (`export ... file=<name>`)",
+        ),
+        (
+            "ckt7_exp_capacity.csv",
+            "capacity / ycurrents / ynodelist (golden policy, no column map)",
         ),
     ];
     for (name, row) in declined {
@@ -864,15 +877,55 @@ fn a_report_without_a_policy_is_recorded_not_compared() {
 /// over.
 #[test]
 fn every_compared_kind_uses_the_same_policy_as_its_golden() {
-    for k in ReportKind::ALL {
-        let (sep, header_lines) = k.structure();
+    // The per-kind VALUES, literal, in one place: which policy each kind is
+    // pointed at is a fact about this table, and the values are the ones the
+    // byte goldens carry. `ReportKind::structure()` READS `golden_policy()`, so
+    // asserting the two against each other would be a tautology — the teeth are
+    // here and in `harness::export_policies::tests::
+    // the_lifted_policy_values_are_the_ones_the_goldens_carried`, which pins the
+    // same numbers on the producers' side. (Settlement of the G1.10b test audit,
+    // finding T1.)
+    //
+    // (kind, sep, header lines, rel, abs, column overrides)
+    let want: [(ReportKind, char, usize, f64, f64, usize); 9] = [
+        (ReportKind::Currents, ',', 1, 0.0, 1e-8, 1),
+        (ReportKind::Powers, ',', 1, 0.0, 0.0, 0),
+        (ReportKind::Voltages, ',', 1, 0.0, 0.0, 0),
+        (ReportKind::Profile, ',', 1, 0.0, 0.0, 0),
+        (ReportKind::YDense, ',', 1, 0.0, 0.0, 0),
+        (ReportKind::YTriplet, ',', 1, 0.0, 0.0, 0),
+        (ReportKind::Yprim, ',', 0, 0.0, 0.0, 0),
+        (ReportKind::Register, ',', 1, 0.0, 0.0, 0),
+        // The Storage `DebugTrace` is the one kind with no golden at all (it is
+        // not an `Export` report), so its two structural parameters are declared
+        // with their r4133 citation instead of borrowed.
+        (ReportKind::StorageTrace, ',', 1, f64::NAN, f64::NAN, 0),
+    ];
+    assert_eq!(want.len(), ReportKind::ALL.len());
+    for (k, sep, header_lines, rel, abs, overrides) in want {
+        assert_eq!(
+            k.structure(),
+            (sep, header_lines),
+            "{}: the live structure moved",
+            k.label()
+        );
         match k.golden_policy() {
-            Some(p) => assert_eq!(
-                (sep, header_lines),
-                (p.sep, p.header_lines),
-                "{}: the live structure must be the golden's",
-                k.label()
-            ),
+            Some(p) => {
+                assert_eq!(
+                    (p.sep, p.header_lines),
+                    (sep, header_lines),
+                    "{}: the golden policy's framing moved",
+                    k.label()
+                );
+                assert_eq!(p.rel, rel, "{}: the golden policy's rel moved", k.label());
+                assert_eq!(p.abs, abs, "{}: the golden policy's abs moved", k.label());
+                assert_eq!(
+                    p.col_tol.len(),
+                    overrides,
+                    "{}: the golden policy's column overrides moved",
+                    k.label()
+                );
+            }
             None => assert_eq!(
                 k,
                 ReportKind::StorageTrace,
@@ -880,9 +933,12 @@ fn every_compared_kind_uses_the_same_policy_as_its_golden() {
             ),
         }
     }
-    assert_eq!(ReportKind::Yprim.structure(), (',', 0));
-    assert_eq!(ReportKind::Currents.structure(), (',', 1));
-    assert_eq!(ReportKind::StorageTrace.structure(), (',', 1));
+    // Two kinds deliberately share one policy (both `Export Y` arms) — a
+    // re-point of either would move the pair apart.
+    assert_eq!(
+        ReportKind::YDense.golden_policy().map(|p| p.header_lines),
+        ReportKind::YTriplet.golden_policy().map(|p| p.header_lines)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1098,7 +1154,9 @@ fn pick_cell(kind: ReportKind, text: &str, target: Target, min_abs: f64) -> (usi
     }
     let (r, j, v, _) = best.unwrap_or_else(|| {
         panic!(
-            "the {} report carries no cell with |v| >= {min_abs:e} in its first              {SCAN_ROWS} row(s) — the drive cannot move a cell that does not              exist; re-measure the report before weakening the drive",
+            "the {} report carries no cell with |v| >= {min_abs:e} in its first \
+             {SCAN_ROWS} row(s) — the drive cannot move a cell that does not \
+             exist; re-measure the report before weakening the drive",
             kind.label()
         )
     });
@@ -1142,7 +1200,14 @@ fn field_count(kind: ReportKind, text: &str, row: usize) -> usize {
 /// The drives run on the engine's OWN live reports — real headers, real widths,
 /// real values, read through the same `RunFileProbe` the gate uses — with the
 /// mutation applied to the port side, which is the honest direction: it is the
-/// port the gate is there to catch. The only fixture is `Export Y triplet`, the
+/// port the gate is there to catch.
+///
+/// Scope, since the docs say "on both channels" about this surface: the drives
+/// run under ONE channel label because `compare_run_file_cells` uses the label
+/// only as a message prefix (`harness::run_file_contents`) — the comparison is
+/// channel-independent by construction. What is two-channel is the live census
+/// (files and cells asserted non-zero per gating channel) and the decline pin,
+/// which loops both labels. The only fixture is `Export Y triplet`, the
 /// one mapped kind no corpus deck exports today; its absence from the live
 /// population is itself recorded (`corpus_gate::scheduler`'s per-kind census).
 ///
@@ -1249,9 +1314,20 @@ fn every_compared_kind_is_mutation_gated_on_its_own_report() {
         let msg = panic_message(|| {
             compare_labeled(&label, "capi_v0145", d.file, &slice, &reordered);
         });
+        // The message must name one of the three shapes a moved row can fail
+        // as — the identity key, a `Yprim` element-name line, a changed field
+        // count, or a cell of this kind's own map. `contains("row")` alone was
+        // satisfied by nearly any panic (G1.10b test audit, finding T5).
+        let shapes = [
+            "identity (field".to_string(),
+            "element name differs".to_string(),
+            "field count differs".to_string(),
+            format!("of the {} map", kind.label()),
+        ];
         assert!(
-            msg.contains("row"),
-            "{}: a re-ordered row (or a moved row identity) must RED: {msg}",
+            shapes.iter().any(|sh| msg.contains(sh)),
+            "{}: a re-ordered row (or a moved row identity) must RED on one of \
+             {shapes:?}: {msg}",
             kind.label()
         );
 
