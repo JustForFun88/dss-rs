@@ -95,7 +95,7 @@ fn port_run_files(rel: &str, n_steps: usize) -> (Vec<String>, Vec<String>) {
     // members the gate selects; these pins are about the set, so they take
     // that half (the contents have their own pins).
     let created = probe
-        .finish_and_clean(&format!("run_files_pins:{rel}"))
+        .finish_and_clean(&format!("run_files_pins:{rel}"), false)
         .created;
     let fired = plots.lock().unwrap_or_else(|e| e.into_inner()).clone();
     (created, fired)

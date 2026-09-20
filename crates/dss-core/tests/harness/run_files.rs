@@ -49,6 +49,23 @@
 //! of failing on a CSV mismatch (`except: print("COMPARE CSV ERROR:", fn)`,
 //! `:517-524`).
 //!
+//! # The demand-interval tenant (G1.10c)
+//!
+//! Sub-step **G1.10c** compares the CONTENTS of the run-created demand-interval
+//! tree (`<OutputDirectory><CaseName>/DI_yr_<year>/*`, r4133
+//! `Version8/Source/Meters/EnergyMeter.pas:824`). Its members are the very
+//! classification described here, narrowed by
+//! [`dss_epri::guard::is_di_member`], and the port's producer is
+//! [`RunFileProbe::di_tree`] — the same bracket, read before the sweep. The two
+//! surfaces stay independently flagged (`compare_run_files` vs `compare_di`):
+//! the probe exists whenever either is set, but neither arms the other's
+//! comparison.
+//!
+//! That surface is new coverage too: the upstream harness reads the same CSVs
+//! out of its two output archives but can never fail on one — a name missing on
+//! the other side is skipped (fastdss `tests/compare_outputs.py:416-421`), and a
+//! cell mismatch is PRINTED, with the `raise` commented out (`:517-527`).
+//!
 //! # One classification, three producers
 //!
 //! The two oracle transports report the set from the very `CorpusGuard` that
@@ -149,6 +166,11 @@ pub struct RunFileReport {
     /// The decoded contents of the created members the gate selected
     /// ([`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`]), keyed by normalized
     /// name — the surface [`compare_run_file_contents`] compares.
+    ///
+    /// EMPTY when the caller did not arm that surface
+    /// ([`RunFileProbe::finish_and_clean`]'s `want_contents`): the port then
+    /// reads nothing, exactly as the two oracle transports are shipped no
+    /// selection patterns and answer `None`.
     pub contents: BTreeMap<String, String>,
 }
 
@@ -158,6 +180,60 @@ impl RunFileProbe {
         RunFileProbe {
             guard: CorpusGuard::new(case_path),
         }
+    }
+
+    /// The run-created demand-interval tree's CONTENTS, `normalized member name
+    /// -> file text` — the port's producer for the `compare_di` surface
+    /// (GOLDEN_REBASE G1.10c).
+    ///
+    /// Read inside the probe's own bracket, after the Rust engine has been
+    /// dropped (so `close_all_di_files` has run and every stream is flushed —
+    /// `crates/dss-core/src/solution/meters/demand_interval.rs:515-570`) and
+    /// before [`RunFileProbe::finish_and_clean`], which sweeps the tree away.
+    /// The borrow checker states that half of the rule: `finish_and_clean`
+    /// consumes the probe, so no DI read can follow it.
+    ///
+    /// No sidecar here — unlike the two oracle transports, the port runs in this
+    /// process, so the contents are simply read into memory.
+    ///
+    /// Fails the case, never skips, in three situations: the classification
+    /// cannot be reported honestly (as in `finish_and_clean`); a member the
+    /// classification just listed cannot be read; a member is not valid UTF-8.
+    /// A DI file is a CSV the engines write through their own text formatters,
+    /// so a non-UTF-8 byte is a bug on some producer, not a reason to compare
+    /// less.
+    #[track_caller]
+    pub fn di_tree(&self, ctx: &str) -> BTreeMap<String, String> {
+        let members = self.guard.created_di_files().unwrap_or_else(|| {
+            panic!(
+                "{ctx}: the port's run-file probe could not list the case directory \
+                 (incomplete pre-run snapshot, or a `read_dir` failure during the \
+                 run), so the demand-interval tree cannot be reported honestly. The \
+                 DI contents are compared file by file, so an incomplete listing \
+                 fails the case instead of being reported as what the run wrote."
+            )
+        });
+        members
+            .into_iter()
+            .map(|(path, name)| {
+                let bytes = std::fs::read(&path).unwrap_or_else(|e| {
+                    panic!(
+                        "{ctx}: the port wrote the demand-interval file {name} \
+                         ({path:?}), the run-file classification listed it, and it \
+                         cannot be read back: {e}"
+                    )
+                });
+                let text = String::from_utf8(bytes).unwrap_or_else(|e| {
+                    panic!(
+                        "{ctx}: the port's demand-interval file {name} ({path:?}) is \
+                         not valid UTF-8 ({e}). The DI files are CSV text on all \
+                         three producers; a non-UTF-8 byte is a writer bug, never a \
+                         reason to compare the file loosely."
+                    )
+                });
+                (name, text)
+            })
+            .collect()
     }
 
     /// Classify what the run created, then sweep it away — and fail the case if
@@ -179,8 +255,21 @@ impl RunFileProbe {
     ///    oracle's `sweep_failed`; this is the port's half of that rail, so the
     ///    order-coupling cannot hide on the one producer that used to report
     ///    its leak to stderr only (`dss_epri::guard::CorpusGuard`'s `Drop`).
+    ///
+    /// `want_contents` arms the G1.10b half. The probe's bracket now opens for
+    /// a `compare_di`-only case too (coordinator decision D42(4): the port
+    /// `RunFileProbe` exists whenever `compare_run_files || compare_di`), and
+    /// `compare_di` is FORCED on every live case — `large` decks included —
+    /// while `compare_run_files` is not. Reading and strictly decoding the
+    /// selected reports there would give an un-armed surface a failure path the
+    /// oracle transports do not have (`engines::build_run_request` ships the
+    /// patterns only under `compare_run_files`, and `copy_selected_contents`
+    /// answers `None` without them): `4Bus-YYD/YYD-Master.DSS` is `large`,
+    /// exports `Voltages`/`Currents` under names the selection matches, and
+    /// nothing compares them. Merge settlement of the lane-e G1.10c landing,
+    /// finding MC-2.
     #[track_caller]
-    pub fn finish_and_clean(mut self, ctx: &str) -> RunFileReport {
+    pub fn finish_and_clean(mut self, ctx: &str, want_contents: bool) -> RunFileReport {
         let created = self.guard.created();
         // G1.10b: the port's half of the CONTENTS surface, taken while the files
         // are still on disk — inside this bracket and before the sweep, which is
@@ -190,13 +279,17 @@ impl RunFileProbe {
         // producer are one process, so the bytes need no transport — but the
         // selection and the decode are the shared ones, so a difference between
         // the sides can only be the numbers in the files.
-        let contents = created.as_deref().map(|names| {
-            dss_epri::guard::read_selected_contents(
-                self.guard.dir(),
-                names,
-                &dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS[..],
-            )
-        });
+        let contents = want_contents
+            .then(|| {
+                created.as_deref().map(|names| {
+                    dss_epri::guard::read_selected_contents(
+                        self.guard.dir(),
+                        names,
+                        &dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS[..],
+                    )
+                })
+            })
+            .flatten();
         // Sweep + restore NOW instead of on drop: `finish` hands back what it
         // could not remove, where the drop path can only print it.
         let leaked = self.guard.finish();
@@ -220,9 +313,12 @@ impl RunFileProbe {
                  what the run created."
             )
         });
-        let contents = contents
-            .expect("the created set is Some here, so the contents read ran")
-            .unwrap_or_else(|e| panic!("{ctx}: {e}"));
+        let contents = match contents {
+            // `created` is `Some` here (the `unwrap_or_else` above fails the
+            // case otherwise), so an armed read always ran.
+            Some(read) => read.unwrap_or_else(|e| panic!("{ctx}: {e}")),
+            None => BTreeMap::new(),
+        };
         RunFileReport { created, contents }
     }
 }
@@ -811,7 +907,7 @@ mod tests {
         // Stands for a concurrently running sibling case writing into its own
         // (here pre-existing) directory: neither reported nor swept — D30(2).
         std::fs::write(root.join("pre/New_Report.Txt"), b"r\n").unwrap();
-        let report = probe.finish_and_clean("unit:probe");
+        let report = probe.finish_and_clean("unit:probe", true);
 
         assert_eq!(
             report.contents.keys().collect::<Vec<_>>(),
@@ -888,7 +984,7 @@ mod tests {
             .share_mode(FILE_SHARE_READ)
             .open(root.join("STOR_storage1.CSV"))
             .expect("open the created file the way an engine holds its trace");
-        let report = probe.finish_and_clean("unit:port-leak");
+        let report = probe.finish_and_clean("unit:port-leak", true);
         drop(held);
         unreachable!(
             "the probe must fail the case, not report {:?}",
@@ -1064,6 +1160,128 @@ mod tests {
             &nothing_excluded,
             "unit:contents-asym",
         );
+    }
+
+    /// GOLDEN_REBASE G1.10c — the port's own DI producer: the contents are read
+    /// from the probe's bracket BEFORE the sweep, keyed exactly like the two
+    /// oracle transports key them, and only the `DI_yr_*` tree's FILE members
+    /// are in the map while the created-file SET still holds everything.
+    #[test]
+    fn the_port_probe_reads_the_di_tree_before_it_sweeps() {
+        let root = std::env::temp_dir().join(format!(
+            "dss_run_files_di_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::create_dir_all(&root).unwrap();
+        let case = root.join("case.dss");
+        std::fs::write(&case, b"! deck\n").unwrap();
+
+        let probe = RunFileProbe::start(case.to_str().unwrap());
+        // what a `CloseDI` run leaves behind, plus one ordinary export and one
+        // the G1.10b selection DOES match (the circuit-name prefix) — this case
+        // arms `compare_di` only, so its contents must stay unread.
+        std::fs::write(root.join("EXP_Y.CSV"), b"Y\n").unwrap();
+        std::fs::write(
+            root.join("Ieee13_EXP_CURRENTS.CSV"),
+            b"Element,I\r\n l1,2\r\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("IEEE13/DI_yr_0/Sub")).unwrap();
+        std::fs::write(
+            root.join("IEEE13/DI_yr_0/Totals_1.CSV"),
+            b"Hour, kWh\n1, 2\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("IEEE13/DI_yr_0/Sub/deep.CSV"), b"deep\n").unwrap();
+
+        let di = probe.di_tree("unit:port-di");
+        assert_eq!(
+            di.keys().cloned().collect::<Vec<_>>(),
+            vec![
+                "ieee13/di_yr_0/sub/deep.csv".to_string(),
+                "ieee13/di_yr_0/totals_1.csv".to_string(),
+            ],
+            "only the DI tree's FILE members, normalized like every other created \
+             name — the export and the two directory members are not DI contents"
+        );
+        assert_eq!(di["ieee13/di_yr_0/totals_1.csv"], "Hour, kWh\n1, 2\n");
+
+        // G1.10b turned the probe's report into a struct; the DI read must leave
+        // its `created` half exactly as it was.
+        let report = probe.finish_and_clean("unit:port-di", false);
+        let created = &report.created;
+        assert!(
+            created.contains(&"exp_y.csv".to_string())
+                && created.contains(&"ieee13/di_yr_0/".to_string())
+                && created.contains(&"ieee13/di_yr_0/totals_1.csv".to_string()),
+            "the created-file SET is unchanged by the DI read: {created:?}"
+        );
+        assert!(
+            created.contains(&"ieee13_exp_currents.csv".to_string()) && report.contents.is_empty(),
+            "a `compare_di`-only case leaves the G1.10b surface un-armed: the \
+             selected report is still in the SET, and the port reads no contents \
+             for it ({created:?} / {:?})",
+            report.contents
+        );
+        assert!(
+            !root.join("IEEE13").exists(),
+            "the probe sweeps the DI tree it just read — which is why the contents \
+             have to be taken while the guard is alive"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// The port reads the selected reports' CONTENTS only when the caller armed
+    /// that surface — the mirror of the two oracle transports, which are shipped
+    /// no selection patterns unless `compare_run_files` is set and then answer
+    /// `None` (`engines::build_run_request`,
+    /// `dss_epri::guard::copy_selected_contents`).
+    ///
+    /// The probe's bracket opens for `compare_run_files || compare_di`
+    /// (coordinator decision D42(4)) and `compare_di` is forced on every live
+    /// case, `large` decks included; without this gate the port alone would read
+    /// and strictly UTF-8-decode files nothing compares (merge settlement of the
+    /// lane-e G1.10c landing, finding MC-2).
+    #[test]
+    fn the_port_probe_reads_no_contents_when_that_surface_is_off() {
+        let root = std::env::temp_dir().join(format!(
+            "dss_run_files_off_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::create_dir_all(&root).unwrap();
+        let case = root.join("case.dss");
+        std::fs::write(&case, b"! deck\n").unwrap();
+        let selected = root.join("Fbs_EXP_VOLTAGES.CSV");
+
+        let probe = RunFileProbe::start(case.to_str().unwrap());
+        std::fs::write(&selected, b"Bus,V\r\n a,1\r\n").unwrap();
+        let off = probe.finish_and_clean("unit:contents-off", false);
+        assert_eq!(
+            off.created,
+            vec!["fbs_exp_voltages.csv".to_string()],
+            "the created SET is unaffected by the contents gate"
+        );
+        assert!(
+            off.contents.is_empty(),
+            "nothing is read when the surface is off: {:?}",
+            off.contents
+        );
+
+        // The same fixture with the surface armed — the teeth: the gate above is
+        // what is being asserted, not the absence of a matching file.
+        let probe = RunFileProbe::start(case.to_str().unwrap());
+        std::fs::write(&selected, b"Bus,V\r\n a,1\r\n").unwrap();
+        let on = probe.finish_and_clean("unit:contents-on", true);
+        assert_eq!(on.created, off.created);
+        assert_eq!(
+            on.contents.get("fbs_exp_voltages.csv").map(String::as_str),
+            Some("Bus,V\n a,1\n"),
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 
     fn walk(dir: &std::path::Path) -> BTreeSet<String> {

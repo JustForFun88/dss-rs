@@ -145,7 +145,7 @@
 //! G1.10a's surface is not a model read at all: it is the SET of files the run
 //! created under the case's DataPath, classified by the very `CorpusGuard` pass
 //! that sweeps the corpus clean. Being per-**run**, its contract is a position
-//! rather than a capture group, and [`check_run_files_last`] asserts all of it
+//! rather than a capture group, and [`check_run_tail_order`] asserts all of it
 //! from both transports' source text:
 //!
 //! * **strictly last of the run** — after every per-step capture above and after
@@ -159,6 +159,8 @@
 //!   classification returns, so reading outside it would report a set nothing
 //!   removed (the Python guard raises on that by design; the Rust one cannot
 //!   express it, `finish()` consuming the guard);
+//! * **the demand-interval read sits in front of it** (G1.10c) — see the fourth
+//!   rule below;
 //! * **nothing but the teardown after it** (D33(3)) — the one statement the capi
 //!   transport may still run is the D32(2)(a) teardown `clear`, which releases
 //!   dss_capi's never-closed Storage trace stream (`src/PCElements/Storage.pas:872`
@@ -167,6 +169,29 @@
 //!   counterpart, so its tail is empty. A teardown is not a read: it comes after
 //!   the classification, so the compared surface stays exactly the run
 //!   `clear → compile → post → n × solve` on both channels.
+//!
+//! # The fourth ordering rule: the demand-interval read (G1.10c, D42(6))
+//!
+//! G1.10c compares the CONTENTS of the run-created demand-interval tree, read
+//! from the same guard in the same tail. Its slot — **after the `autoadd_log`
+//! read, before `created()` and before the capi teardown `clear`** — is
+//! contractual, not cosmetic, and [`check_run_tail_order`] asserts it from both
+//! transports' source text together with everything above:
+//!
+//! * **before the teardown `clear`** — that `clear` destroys the circuit, which
+//!   FLUSHES the in-flight demand-interval cycle over the file on the capi
+//!   channel: the R part measured all 8 file digests moving on
+//!   `123Bus/Run_YearlySim.dss`, 7 of 8 on `StoCtrl_Current_PeakShave/master.dss`
+//!   and 4 of 6 on `StoCtrl_SeasonTarget/Run_example.dss`, while r4133's `clear`
+//!   moves none. A DI read after the teardown would compare capi's *next* cycle
+//!   against the port's *previous* one — a guaranteed red with a pure-ordering
+//!   cause;
+//! * **before `created()`** — which stays the LAST read of the run (D33(3));
+//! * **inside the guard scope, a direct statement of it** — the sweep removes
+//!   exactly the files whose contents were just copied out, and a read nested in
+//!   the retry loop would describe an attempt that was thrown away;
+//! * **exactly once** — a second read would report one tree while the sidecar
+//!   holds another.
 //!
 //! The upstream harness compares no file set at all — fastdss
 //! `tests/compare_outputs.py:517-524` prints a CSV mismatch and carries on — so
@@ -2667,12 +2692,26 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
 /// The two transports express that scope differently — Python opens it with
 /// `with _CorpusGuard(…) as guard:` and ends it by indentation, Rust binds the
 /// guard and consumes it with an explicit `finish()` — so the rule carries both
-/// spellings and [`check_run_files_last`] resolves the end accordingly.
+/// spellings and [`check_run_tail_order`] resolves the end accordingly.
 struct RunFileRule {
     lang: Lang,
+    /// The G1.10c demand-interval read: the statement that copies the
+    /// run-created `DI_yr_*` tree out of the case directory. It must appear
+    /// exactly once in the transport's **code**, after the `autoadd_log` read
+    /// and before both [`Self::created`] and [`Self::teardown`].
+    di: &'static str,
     /// The classification call. It must appear exactly once in the transport's
     /// **code**: a second classification would report one set while the guard
     /// sweeps another.
+    ///
+    /// The clause counts the literal spelling below, so the DI read's own
+    /// classification pass (`created_di_files` → `classify`, one statement
+    /// earlier) is not one of them (G1.10c audit settlement, finding AT3-6).
+    /// That door is bounded rather than closed: a DI file appearing BETWEEN the
+    /// two passes lands in `created()` and in the sweep but not in the sidecar,
+    /// which reaches the gate as a file-set or row-count RED, never as a silent
+    /// pass — and both oracles write DI rows only inside `solve` / `closedi`,
+    /// which have long returned by then.
     created: &'static str,
     /// The WPG.5 `autoadd_log` read — a file read off disk, of a file the run
     /// itself created, so it must precede the classification.
@@ -2734,6 +2773,7 @@ struct RunFileRule {
 /// the whitelist for exactly that reason.
 const CAPI_RUN_FILES: RunFileRule = RunFileRule {
     lang: Lang::Python,
+    di: "di = capture_di(guard",
     created: "guard.created()",
     created_var: "run_files",
     contents: &[
@@ -2762,6 +2802,7 @@ const CAPI_RUN_FILES: RunFileRule = RunFileRule {
 /// reply is built, and **nothing** may run in between.
 const R4133_RUN_FILES: RunFileRule = RunFileRule {
     lang: Lang::Rust,
+    di: "let di = if req.di",
     created: "guard.created()",
     created_var: "run_files",
     contents: &[
@@ -2823,10 +2864,12 @@ fn py_block_end(text: &str, at: usize) -> usize {
     text.len()
 }
 
-/// The whole run-file rule as a pure function of one transport's source text,
-/// so it can be shown to have teeth
-/// ([`the_run_file_gate_rejects_an_early_escaped_or_nested_classification`]).
-fn check_run_files_last(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> Result<(), String> {
+/// The whole run-TAIL rule as a pure function of one transport's source text —
+/// G1.10a's created-file classification and G1.10c's demand-interval read, whose
+/// slots are defined against each other — so it can be shown to have teeth
+/// ([`the_run_file_gate_rejects_an_early_escaped_or_nested_classification`],
+/// [`the_run_tail_gate_rejects_a_misplaced_di_read`]).
+fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> Result<(), String> {
     let run = offset_after(src, a.run, 0, rel)?;
     let created = offset_after(src, r.created, run, rel)?;
     let guard_open = offset_after(src, r.guard_open, run, rel)?;
@@ -2876,11 +2919,88 @@ fn check_run_files_last(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         ));
     }
 
-    // 4. inside the guard scope: the sweep removes exactly what it returns.
+    // The guard's scope and the indentation of its own statements — the frame
+    // both the classification (clauses 4/5) and the G1.10c demand-interval read
+    // (clause 3b) are placed in.
     let scope_end = match r.guard_close {
         Some(close) => line_start_at(src, offset_after(src, close, guard_open, rel)?),
         None => py_block_end(src, guard_open),
     };
+    let scope_indent = match r.lang {
+        Lang::Python => indent_at(src, next_code_line(src, guard_open)),
+        Lang::Rust => indent_at(src, guard_open),
+    };
+
+    // 3b. GOLDEN_REBASE G1.10c (coordinator decision D42(6)): the
+    //     demand-interval tree's CONTENTS are copied out in this same tail, and
+    //     their slot is measured, not cosmetic — see this file's fourth
+    //     ordering rule. The frame is checked first (exactly once, inside the
+    //     scope, not nested), then the three slot comparisons in the order a
+    //     read can drift through them, so every mistake reports its own
+    //     violation instead of the next one.
+    let di = offset_after(src, r.di, run, rel)?;
+    let n_di = code_only(src, r.lang).matches(r.di).count();
+    if n_di != 1 {
+        return Err(format!(
+            "{rel}: `{}` appears {n_di} times in this transport's code. The \
+             demand-interval tree is copied out exactly once, in the run tail — a \
+             second read would report one tree while the sidecar holds another.",
+            r.di
+        ));
+    }
+    if di <= guard_open || di >= scope_end {
+        return Err(format!(
+            "{rel}: the G1.10c demand-interval read (byte {di}) sits OUTSIDE the guard \
+             scope (bytes {guard_open}..{scope_end}). The guard sweeps the very tree \
+             it copies out; outside the scope the files are already gone."
+        ));
+    }
+    let di_indent = indent_at(src, di);
+    if di_indent != scope_indent {
+        return Err(format!(
+            "{rel}: the G1.10c demand-interval read is indented {di_indent} where the \
+             guard scope's own statements are indented {scope_indent} — it is nested. \
+             The retry loop recompiles in-process; a read inside it copies out the \
+             tree of an attempt that was thrown away."
+        ));
+    }
+    if di <= autoadd {
+        return Err(format!(
+            "{rel}: the G1.10c demand-interval read (byte {di}) runs BEFORE the WPG.5 \
+             `autoadd_log` read (byte {autoadd}). It belongs to the run TAIL, after \
+             every per-step read and after the AutoAddLog, or it describes a \
+             filesystem the run had not finished writing."
+        ));
+    }
+    if let Some(first) = r.teardown.first() {
+        // Resolved from the guard's OPENING, not from the classification: a
+        // mutation that moves the classification past the teardown must still
+        // be told where the teardown is, or this clause would report a missing
+        // anchor instead of the misplacement it is looking for.
+        let teardown = offset_after(src, first, guard_open, rel)?;
+        if di >= teardown {
+            return Err(format!(
+                "{rel}: the G1.10c demand-interval read (byte {di}) runs AFTER this \
+                 transport's D32(2)(a) teardown (byte {teardown}). The teardown \
+                 `clear` destroys the circuit, which FLUSHES the in-flight \
+                 demand-interval cycle over the file on the capi channel (measured: \
+                 8/8, 7/8 and 4/6 file digests move on the three DI cases whose run \
+                 leaves the streams open, while r4133's `clear` moves none), so a \
+                 read placed after it compares one engine's NEXT cycle against the \
+                 port's previous one."
+            ));
+        }
+    }
+    if di >= created {
+        return Err(format!(
+            "{rel}: the G1.10c demand-interval read (byte {di}) runs AFTER the \
+             run-file classification (byte {created}), which is the LAST read of the \
+             run (D33(3)). The DI contents are read in front of it, from the same \
+             guard, while the tree is still on disk."
+        ));
+    }
+
+    // 4. inside the guard scope: the sweep removes exactly what it returns.
     if created <= guard_open || created >= scope_end {
         return Err(format!(
             "{rel}: the run-file classification (byte {created}) sits OUTSIDE the guard \
@@ -2893,10 +3013,6 @@ fn check_run_files_last(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
     // 5. a direct statement of that scope, not nested in the retry loop — which
     //    recompiles in-process, so a classification inside it describes the
     //    wrong attempt's filesystem.
-    let scope_indent = match r.lang {
-        Lang::Python => indent_at(src, next_code_line(src, guard_open)),
-        Lang::Rust => indent_at(src, guard_open),
-    };
     let created_indent = indent_at(src, created);
     if created_indent != scope_indent {
         return Err(format!(
@@ -2992,14 +3108,14 @@ fn check_run_files_last(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
 #[test]
 fn capi_capture_classifies_the_run_files_last() {
     let rel = "tools/oracle/oracle_server.py";
-    check_run_files_last(&read_source(rel), &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    check_run_tail_order(&read_source(rel), &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .unwrap_or_else(|e| panic!("{e}"));
 }
 
 #[test]
 fn r4133_capture_classifies_the_run_files_last() {
     let rel = "crates/dss-epri/src/capture.rs";
-    check_run_files_last(&read_source(rel), &R4133_CALLS, &R4133_RUN_FILES, rel)
+    check_run_tail_order(&read_source(rel), &R4133_CALLS, &R4133_RUN_FILES, rel)
         .unwrap_or_else(|e| panic!("{e}"));
 }
 
@@ -3238,6 +3354,7 @@ def run_case(d, req):
             capture_inc_matrix(d, ckt)
         if want_autoadd_log:
             autoadd_log = fh.read()
+        di = capture_di(guard, di_dir, case_path) if want_di else None
         run_files = guard.created() if want_run_files else None
         teardown_error = None
         try:
@@ -3252,6 +3369,38 @@ def run_case(d, req):
     return {}
 "#;
 
+/// The r4133 `run_case` in the real transport's shape — the Rust spelling of the
+/// guard scope, where the guard is consumed by an explicit `finish()` and the
+/// tail holds the G1.10b contents copy alone (that transport has no teardown).
+/// Shared by the two
+/// mutation tests below so both run against the SAME [`R4133_CALLS`] /
+/// [`R4133_RUN_FILES`] constants the real gate applies.
+const SYNTH_R4133_RUN: &str = "\
+pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineError> {
+    let mut guard = CorpusGuard::new(&req.case_path);
+    for attempt in 1..=RUN_ATTEMPTS {
+        capture_aggregates(engine)?;
+        capture_all_elements(engine)?;
+        capture_discrete(engine)?;
+        capture_reliability(engine)?;
+        capture_all_properties(engine)?;
+        capture_topology(engine)?;
+        capture_inc_matrix(engine)?;
+    }
+    let autoadd_log = read_autoadd_log(engine, &req.case_path);
+    let di = if req.di { capture_di(&guard, req)? } else { None };
+    let run_files = if req.run_files { guard.created() } else { None };
+    let run_file_contents = copy_selected_contents(
+        guard.dir(),
+        run_files.as_deref(),
+        &req.run_file_contents,
+        req.run_file_contents_dir.as_deref(),
+    );
+    let sweep_failed = guard.finish();
+    Ok(CaseResult { run_files, sweep_failed })
+}
+";
+
 /// Non-vacuity (§1.1(f)) for the capi half of the run-file rule: the gate above
 /// passes on the real source, so this one shows each of its six clauses rejects
 /// the corresponding mistake. No file on disk is mutated.
@@ -3259,24 +3408,24 @@ def run_case(d, req):
 fn the_run_file_gate_rejects_an_early_escaped_or_nested_classification() {
     let rel = "synthetic";
     let ok = SYNTH_CAPI_RUN;
-    check_run_files_last(ok, &CAPI_CALLS, &CAPI_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
+    check_run_tail_order(ok, &CAPI_CALLS, &CAPI_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
 
     // (2) classified before the last per-step captures.
     let early = move_line_after(ok, "guard.created()", "capture_all_elements(ckt, derived)");
-    let err = check_run_files_last(&early, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&early, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("classified mid-step");
     assert!(err.contains("runs BEFORE"), "{err}");
     assert!(err.contains("must follow every per-step read"), "{err}");
 
     // (3) classified before the AutoAddLog is read off disk.
     let before_log = move_line_after(ok, "guard.created()", "capture_inc_matrix(d, ckt)");
-    let err = check_run_files_last(&before_log, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&before_log, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("classified before the autoadd read");
     assert!(err.contains("autoadd_log"), "{err}");
 
     // (4) classified after the guard scope closed.
     let escaped = move_line_after(ok, "guard.created()", "sweep_failed = guard.sweep_failed");
-    let err = check_run_files_last(&escaped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&escaped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("classified outside the scope");
     assert!(err.contains("OUTSIDE the guard scope"), "{err}");
 
@@ -3286,26 +3435,26 @@ fn the_run_file_gate_rejects_an_early_escaped_or_nested_classification() {
         "        run_files = guard.created()",
         "            run_files = guard.created()",
     );
-    let err = check_run_files_last(&nested, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&nested, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("classified inside the retry loop");
     assert!(err.contains("nested"), "{err}");
 
     // (6a) another command issued after the classification.
     let extra_cmd = insert_after(ok, "guard.created()", "        d.Text.Command = \"solve\"");
-    let err = check_run_files_last(&extra_cmd, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&extra_cmd, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("a command followed the classification");
     assert!(err.contains("solve"), "{err}");
 
     // (6b) another READ issued after the classification.
     let extra_read = insert_after(ok, "guard.created()", "        capture_topology(ckt)");
-    let err = check_run_files_last(&extra_read, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&extra_read, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("a capture followed the classification");
     assert!(err.contains("capture_topology"), "{err}");
 
     // (6c) any other statement in the tail — not a read, not a command, but not
     // the teardown either.
     let extra_stmt = insert_after(ok, "guard.created()", "        run_files.sort()");
-    let err = check_run_files_last(&extra_stmt, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&extra_stmt, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("a statement followed the classification");
     assert!(err.contains("run_files.sort()"), "{err}");
 
@@ -3313,19 +3462,19 @@ fn the_run_file_gate_rejects_an_early_escaped_or_nested_classification() {
     // D33(1) needs (the pinned 0.14.5 faults on that `clear` after an AutoAdd
     // solve) and F4c asked this rule to state. Same statements, wrong order.
     let unguarded = move_line_after(ok, "d.Text.Command", "teardown_error = None");
-    let err = check_run_files_last(&unguarded, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&unguarded, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("the teardown clear left its try block");
     assert!(err.contains("SOLE statement of its `try` block"), "{err}");
 
     // (1) a second classification.
     let twice = insert_after(ok, "guard.created()", "        again = guard.created()");
-    let err = check_run_files_last(&twice, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&twice, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("classified twice");
     assert!(err.contains("appears 2 times"), "{err}");
 
     // the anchor itself: a rename must fail loudly, never vacuously pass.
     let renamed = ok.replace("guard.created()", "guard.classify()");
-    let err = check_run_files_last(&renamed, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&renamed, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("the anchor is gone");
     assert!(err.contains("could not find"), "{err}");
 }
@@ -3344,7 +3493,7 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
         "run_files = guard.created()",
         "with _CorpusGuard(case_path) as guard:",
     );
-    let err = check_run_files_last(&hoisted, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&hoisted, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("classified before the first step");
     assert!(err.contains("runs BEFORE"), "{err}");
     let escaped = move_line_after(
@@ -3352,8 +3501,28 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
         "run_files = guard.created()",
         "sweep_failed = guard.sweep_failed",
     );
-    let err = check_run_files_last(&escaped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+    let err = check_run_tail_order(&escaped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
         .expect_err("classified after the guard scope closed");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    // G1.10c: the same two claims for the demand-interval read, on the real capi
+    // source — hoisted in front of the `autoadd_log` read it must follow, and
+    // pushed past the guard scope whose sweep removes the tree it copies out.
+    let hoisted_di = move_line_after(
+        &src,
+        "di = capture_di(guard",
+        "with _CorpusGuard(case_path) as guard:",
+    );
+    let err = check_run_tail_order(&hoisted_di, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the DI read was hoisted in front of the autoadd read");
+    assert!(err.contains("runs BEFORE the WPG.5"), "{err}");
+    let escaped_di = move_line_after(
+        &src,
+        "di = capture_di(guard",
+        "sweep_failed = guard.sweep_failed",
+    );
+    let err = check_run_tail_order(&escaped_di, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the DI read left the guard scope");
     assert!(err.contains("OUTSIDE the guard scope"), "{err}");
 
     let rel = "crates/dss-epri/src/capture.rs";
@@ -3363,7 +3532,7 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
         "let run_files = if req.run_files",
         "let mut guard = CorpusGuard::new(",
     );
-    let err = check_run_files_last(&hoisted, &R4133_CALLS, &R4133_RUN_FILES, rel)
+    let err = check_run_tail_order(&hoisted, &R4133_CALLS, &R4133_RUN_FILES, rel)
         .expect_err("classified before the first step");
     assert!(err.contains("runs BEFORE"), "{err}");
     let escaped = move_line_after(
@@ -3371,51 +3540,157 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
         "let run_files = if req.run_files",
         "let sweep_failed = guard.finish();",
     );
-    let err = check_run_files_last(&escaped, &R4133_CALLS, &R4133_RUN_FILES, rel)
+    let err = check_run_tail_order(&escaped, &R4133_CALLS, &R4133_RUN_FILES, rel)
         .expect_err("classified after the sweep");
     assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    // G1.10c on the real r4133 source: the DI read hoisted in front of the
+    // `autoadd_log` read, and the same read issued twice.
+    let hoisted_di = move_line_after(
+        &src,
+        "let di = if req.di",
+        "let mut guard = CorpusGuard::new(",
+    );
+    let err = check_run_tail_order(&hoisted_di, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("the DI read was hoisted in front of the autoadd read");
+    assert!(err.contains("runs BEFORE the WPG.5"), "{err}");
+    let twice_di = insert_after(
+        &src,
+        "let di = if req.di",
+        "    let di = if req.di { capture_di(&guard, req)? } else { None };",
+    );
+    let err = check_run_tail_order(&twice_di, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("the DI tree was copied out twice");
+    assert!(err.contains("appears 2 times"), "{err}");
+}
+
+/// Non-vacuity for the G1.10c half of the rule on the capi transport: the DI
+/// read's slot — after `autoadd_log`, before the classification and before the
+/// D32(2)(a) teardown — is asserted, so each way of losing it must be rejected.
+///
+/// Four drives, each moving the ONE statement the real transport runs: past the
+/// classification, past the teardown `clear` (the measured hazard — that `clear`
+/// flushes the in-flight demand-interval cycle over the file), out of the guard
+/// scope entirely, and duplicated. No file on disk is mutated.
+#[test]
+fn the_run_tail_gate_rejects_a_misplaced_di_read() {
+    let rel = "synthetic";
+    let ok = SYNTH_CAPI_RUN;
+    check_run_tail_order(ok, &CAPI_CALLS, &CAPI_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
+
+    // (1) read after the created-file classification, which is the last read.
+    let after_created = move_line_after(ok, "di = capture_di(guard", "run_files = guard.created()");
+    let err = check_run_tail_order(&after_created, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the DI read followed the classification");
+    assert!(
+        err.contains("runs AFTER the run-file classification"),
+        "{err}"
+    );
+
+    // (2) read after the teardown `clear` — the measured hazard.
+    let after_teardown = insert_after(
+        &drop_line(ok, "di = capture_di(guard"),
+        "log(f\"teardown clear raised",
+        "        di = capture_di(guard, di_dir, case_path) if want_di else None",
+    );
+    let err = check_run_tail_order(&after_teardown, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the DI read followed the teardown");
+    assert!(err.contains("D32(2)(a) teardown"), "{err}");
+
+    // (3) read after the guard scope closed — the tree is already swept.
+    let escaped = move_line_after(
+        ok,
+        "di = capture_di(guard",
+        "sweep_failed = guard.sweep_failed",
+    );
+    let err = check_run_tail_order(&escaped, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the DI read left the guard scope");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    // (4) read twice: one tree reported, another in the sidecar.
+    let twice = insert_after(
+        ok,
+        "di = capture_di(guard",
+        "        di = capture_di(guard, di_dir, case_path) if want_di else None",
+    );
+    let err = check_run_tail_order(&twice, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the DI tree was copied out twice");
+    assert!(err.contains("appears 2 times"), "{err}");
+
+    // the anchor itself: a rename must fail loudly, never vacuously pass.
+    let renamed = ok.replace("di = capture_di(guard", "di = capture_di_tree(guard");
+    let err = check_run_tail_order(&renamed, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("the DI anchor is gone");
+    assert!(err.contains("could not find"), "{err}");
+}
+
+/// The r4133 half of the same four drives. This transport has no teardown
+/// (r4133 closes its own trace file,
+/// `Version8/Source/PCElements/Storage.pas:1085`), so its fourth slot violation
+/// is the read nested in the retry loop, which recompiles in-process and would
+/// copy out the tree of an attempt that was thrown away.
+#[test]
+fn the_r4133_run_tail_gate_rejects_a_misplaced_di_read() {
+    let rel = "synthetic";
+    let ok = SYNTH_R4133_RUN;
+    check_run_tail_order(ok, &R4133_CALLS, &R4133_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
+
+    // (1) read after the created-file classification.
+    let after_created =
+        move_line_after(ok, "let di = if req.di", "let run_files = if req.run_files");
+    let err = check_run_tail_order(&after_created, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("the DI read followed the classification");
+    assert!(
+        err.contains("runs AFTER the run-file classification"),
+        "{err}"
+    );
+
+    // (2) read after the sweep — on this transport the sweep IS the end of the
+    // guard's life, so the tree is gone.
+    let after_sweep = move_line_after(
+        ok,
+        "let di = if req.di",
+        "let sweep_failed = guard.finish();",
+    );
+    let err = check_run_tail_order(&after_sweep, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("the DI read followed the sweep");
+    assert!(err.contains("OUTSIDE the guard scope"), "{err}");
+
+    // (3) read from inside the retry loop's body.
+    let nested = ok.replace("    let di = if req.di", "        let di = if req.di");
+    let err = check_run_tail_order(&nested, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("the DI read is nested in the retry loop");
+    assert!(err.contains("nested"), "{err}");
+
+    // (4) read twice.
+    let twice = insert_after(
+        ok,
+        "let di = if req.di",
+        "    let di = if req.di { capture_di(&guard, req)? } else { None };",
+    );
+    let err = check_run_tail_order(&twice, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("the DI tree was copied out twice");
+    assert!(err.contains("appears 2 times"), "{err}");
 }
 
 /// The r4133 half: the same rule against the Rust spelling of the scope, where
-/// the guard is consumed by an explicit `finish()` and the tail must be EMPTY
-/// (that transport has no teardown — r4133 closes its own trace file,
+/// the guard is consumed by an explicit `finish()` and the tail carries the
+/// G1.10b contents copy and nothing else (that transport has no teardown —
+/// r4133 closes its own trace file,
 /// `Version8/Source/PCElements/Storage.pas:1085`).
 #[test]
 fn the_run_file_gate_rejects_a_classification_after_the_sweep() {
     let rel = "synthetic";
-    let ok = "\
-pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineError> {
-    let mut guard = CorpusGuard::new(&req.case_path);
-    for attempt in 1..=RUN_ATTEMPTS {
-        capture_aggregates(engine)?;
-        capture_all_elements(engine)?;
-        capture_discrete(engine)?;
-        capture_reliability(engine)?;
-        capture_all_properties(engine)?;
-        capture_topology(engine)?;
-        capture_inc_matrix(engine)?;
-    }
-    let autoadd_log = read_autoadd_log(engine, &req.case_path);
-    let run_files = if req.run_files { guard.created() } else { None };
-    let run_file_contents = copy_selected_contents(
-        guard.dir(),
-        run_files.as_deref(),
-        &req.run_file_contents,
-        req.run_file_contents_dir.as_deref(),
-    );
-    let sweep_failed = guard.finish();
-    Ok(CaseResult { run_files, sweep_failed })
-}
-";
-    check_run_files_last(ok, &R4133_CALLS, &R4133_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
+    let ok = SYNTH_R4133_RUN;
+    check_run_tail_order(ok, &R4133_CALLS, &R4133_RUN_FILES, rel).unwrap_or_else(|e| panic!("{e}"));
 
     let swept_first = move_line_after(ok, "guard.created()", "guard.finish()");
-    let err = check_run_files_last(&swept_first, &R4133_CALLS, &R4133_RUN_FILES, rel)
+    let err = check_run_tail_order(&swept_first, &R4133_CALLS, &R4133_RUN_FILES, rel)
         .expect_err("classified after the sweep");
     assert!(err.contains("OUTSIDE the guard scope"), "{err}");
 
     let teardown = insert_after(ok, "guard.created()", "    engine.exec_wait(\"clear\")?;");
-    let err = check_run_files_last(&teardown, &R4133_CALLS, &R4133_RUN_FILES, rel)
+    let err = check_run_tail_order(&teardown, &R4133_CALLS, &R4133_RUN_FILES, rel)
         .expect_err("this transport has no teardown");
     assert!(err.contains("clear"), "{err}");
 }

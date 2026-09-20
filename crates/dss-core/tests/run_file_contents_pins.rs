@@ -120,7 +120,7 @@ fn port_contents(rel: &str) -> BTreeMap<String, String> {
     let _ = dss.snapshot_elements();
     // Drop the engine BEFORE the probe reads, exactly as the runner does.
     drop(dss);
-    let report = probe.finish_and_clean(&format!("run_file_contents_pins:{rel}"));
+    let report = probe.finish_and_clean(&format!("run_file_contents_pins:{rel}"), true);
     runs.insert(rel.to_string(), report.contents.clone());
     report.contents
 }

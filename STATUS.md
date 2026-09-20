@@ -181,15 +181,20 @@ no flag and no lock cell; **D34**'s unported executive commands sit at `ORPHANED
 their goldens use (lifted into `harness::export_policies`), on **D40**'s *case floor + print ulp* rule, a derivation with **no new constant**: 7 cases / 32 file comparisons /
 **3 035 190** cells per drive, sidecar-transported, three fail-on-stale censuses per channel; classes C1–C5 all inside the rule (**0** new, 0 golden bytes, lock identical), the
 Storage trace's **36** `%-.g` columns declined on BOTH channels (the oracles disagree → **G4.1**) and its row count the reader's own footprint (**D43(1)**, 102 vs 98); two port
-gaps landed ahead of it — the `InShowResults` bracket round Show/Export/Save (`DoSaveCmd`'s latch NOT reproduced, `to_opendss/72`) and nine PC `node_ref` guards (`to_opendss/74`). The lanes' micro decks met here: corpus **526** cases /
+gaps landed ahead of it — the `InShowResults` bracket round Show/Export/Save (`DoSaveCmd`'s latch NOT reproduced, `to_opendss/72`) and nine PC `node_ref` guards (`to_opendss/74`). And **G1.10c** (2026-09-12, `lane-e`, `f9b995b7` + `7818868c` + `e2d2a83d` + docs), the **demand-interval tree's contents** — five
+decks, 36 files per channel, **9 793 064** cells compared at each column's own calibrated tier (**D42(1)** S-CLASS: the brief's `di_policy()` fixture floor is refuted — the two ORACLES fail it against each other on
+46 130 ckt7 + 2 884 123Bus cells — so **no** `Tolerances` value, constant or golden byte moved), forced on **every** live case, captured into a per-channel sidecar before the capi teardown `clear` (**D43(2)** orders the merged tail
+against G1.10b); **+4** entries / 2 causes on the new exclusion-only **`di`** field, both ckt7 columns (`kvarh`, a cross-engine indeterminate whose pin asserts the measured decomposition after **D44** withdrew
+D42(2)'s two universals; `min lv bus`, an argmin over a bit-identical tie), `DI_TREE_CENSUS` **(5, 883, 72, 9 793 064)**, `lane_diff` not owed (dss-epri + tests only); its audit settlement (8 reports, **34** findings — 27 fixed / 7 recorded / 0 refuted) pinned the masked `kvarh` column whole (row-scoping REFUSED as measured), keyed the census by (case, **channel**), dropped the scanner's non-`InterpretYesNo` `=1` reading and corrected six citation/count sites; a round-2 settlement of that settlement's own audit (6 findings — 4 fixed / 2 recorded) recorded all three tied buses' oracle magnitudes and restated the whole-column pin's sensitivity at its measured scope, leaving SA-6 (those 8 736 `kvarh` rows are watched port-side only — neither narrowing exists in the tree) for the coordinator. The lanes' micro decks met here: corpus **526** cases /
 522 live; `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44), `FORCED_DERIVED_POPULATION`
-= (445, 314, 87, 44); no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **57** / 33 causes; G1.10c, the **G1.11′**
+= (445, 314, 87, 44), `FORCED_DI_POPULATION` = (522, 366, 101, 55) — the one forced surface outside that equality; no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **61** / 35 causes; the **G1.11′**
 close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP-G3–G5 remain.
 
-**Next.** (**D41**, 2026-09-11) **F0′** and **G1.10b** are landed in `update` (2026-09-12, the two merges above); **G1.10c** (`lane-e`, **D42** S-CLASS,
-**D44**) is the last WP-G1 surface in flight and lands next — first-finished-first-landed (**D27**), one at a time. Then the **G1.11′** docs close-out in
-the main tree once G1.10c has landed (**D37(1)**, `lane-e tmp/g111/brief.md`), then WP-G3 with G3.1 alone first (**D37(9)**, `lane-e tmp/g30/`); both wait
-on the user's go (**HOLD** on new plan steps, 2026-09-12). Queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
+**Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
+pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
+idle since G1.4d. Next comes the **G1.11′** docs close-out in the main tree (**D37(1)**, `lane-e tmp/g111/brief.md` — G1.11a–c were absorbed
+sub-step by sub-step, **D2**/**D36**), then WP-G3 with **G3.1** alone first (**D37(9)**, `lane-e tmp/g30/`); both wait on the user’s go (**HOLD** on
+new plan steps, 2026-09-12). Queued: `WASM_USERMODELS`, RESONANCE, MULTITHREADING, UPGRADE.
 
 **Sequenced after / parked.** DIAKOPTICS Part II WP-AD.6 (threaded children, needs
 MULTITHREADING M2); the IEEE118Bus NCIM switching-cadence rung; the `UpgradeRung` escape
@@ -344,22 +349,21 @@ each row's measured cost.
   re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
-- **`CorpusGuard` leaks deck-written artifacts under concurrency — root cause FOUND and FIXED at GOLDEN_REBASE G1.10a (2026-09-06); the item stays OPEN**
-  (first seen G1.2 2026-08-29; drop-order mechanism measured at G1.6b). Unfiltered `cargo test --workspace` runs intermittently leave untracked deck-written
-  exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/` (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the decks' own
-  `export … file=` lines). **Forty-two sightings** 2026-08-29 … 2026-09-06 (G1.10a ×8, the RP rounds ×10, four merges ×7, G1.7 ×4, G1.8 and G1.6(i) ×3 each,
-  the rest across G1.0–G1.6(ii); the `lane-b` chain retired its tally — nearly every unfiltered run left a set), 1 … 36 files per run; every set was removed
-  before its commit and no tracked corpus or golden byte ever moved — hygiene only. **Two mechanisms fixed.** The drop-order race (**D33(2)**):
-  `runner::CorpusGuard` now holds an exclusive claim on the *canonicalized* case dir from before the pre-run photograph until after the sweep **and** the
-  restore, and the contention it owed measured negative. The parent-guard **resurrect** (`728332b6`): `Test/` holds 36 manifest cases and `Test/AutoTrans/`
-  five — two claim keys, concurrent by design — so the parent photographed the child's live output and its `restore` wrote back a file the child's own guard
-  had swept; both Rust guards now leave a GONE entry gone (an overwritten one is still restored; `corpus_guard.py` always did), pinned by
-  `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`, 9 leaked before / 0 after. **Residual:** `kind=large*` decks are skipped by
-  `force_run_files`, so no `RunFileProbe` brackets them and a survivor reads as *pre-existing* next run, silently shrinking a created-file set (a bracketed
-  producer's leak now fails the case loudly through `sweep_failed`). The same shape hides in **gitignored** droppings: two stale `*_SavedVoltages.dbl` in the
-  main tree (one dating from 2026-09-04) read as pre-existing and shrank `SCRATCH_FILE_DECLINES` to (8, 8) until this merge deleted them by name. The
-  single-case `espvlcontrol` "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced
-  a circuit and prints the deck's size on disk.
+- **`CorpusGuard` leaks deck-written artifacts under concurrency — root cause FOUND and FIXED at GOLDEN_REBASE G1.10a (2026-09-06); the item stays OPEN** (first seen G1.2 2026-08-29; drop-order mechanism
+  measured at G1.6b). Unfiltered `cargo test --workspace` runs intermittently leave untracked deck-written exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/`
+  (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the decks' own `export … file=` lines). **Forty-two sightings** 2026-08-29 … 2026-09-06 (G1.10a ×8, the RP rounds ×10, four merges ×7, G1.7 ×4, G1.8 and G1.6(i)
+  ×3 each, the rest across G1.0–G1.6(ii); the `lane-b` chain retired its tally — nearly every unfiltered run left a set), 1 … 36 files per run; every set was removed before its commit and no tracked corpus
+  or golden byte ever moved — hygiene only. **Two mechanisms fixed.** The drop-order race (**D33(2)**): `runner::CorpusGuard` now holds an exclusive claim on the *canonicalized* case dir from before the
+  pre-run photograph until after the sweep **and** the restore, and the contention it owed measured negative. The parent-guard **resurrect** (`728332b6`): `Test/` holds 36 manifest cases and
+  `Test/AutoTrans/` five — two claim keys, concurrent by design — so the parent photographed the child's live output and its `restore` wrote back a file the child's own guard had swept; both Rust guards
+  now leave a GONE entry gone (an overwritten one is still restored; `corpus_guard.py` always did), pinned by `a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`, 9 leaked before / 0 after.
+  **Residual, narrowed at G1.10c (2026-09-12):** `kind=large*` decks are still outside `force_run_files`, but `force_di` arms every live case and the port's `RunFileProbe` bracket is built on
+  `compare_run_files || compare_di`, so the ~79 live `large*` decks now get a snapshot, classification and sweep too and a leak there fails the case loudly through `sweep_failed`; what stays open is the
+  non-live population and G1.10a's file-set COMPARISON on `large` decks (ckt5's capi `EarlyAbort` costs that channel one member, **D42(8)**). G1.10c's settlement recorded one more shape for that surface's
+  owner: the presence re-check after the sweep has no bounded re-list, so a delete-pending entry (a scanner still holding a just-written export) is reported as a leak — four parity reds in
+  `Test/AutoTrans/` under concurrent load, every file gone from disk afterwards, the cases green scoped and on the quiet machine (**D23**). The same shape hides in **gitignored** droppings: two stale
+  `*_SavedVoltages.dbl` in the main tree (one dating from 2026-09-04) read as pre-existing and shrank `SCRATCH_FILE_DECLINES` to (8, 8) until this merge deleted them by name. The single-case `espvlcontrol`
+  "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced a circuit and prints the deck's size on disk.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
   (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `BusTotalMiles` and its siblings are
   zeroed per meter on its `SequenceList`'s FROM bus and read on the TO bus, so a zone-boundary bus
