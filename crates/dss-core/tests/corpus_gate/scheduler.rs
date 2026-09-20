@@ -1752,6 +1752,282 @@ fn the_run_files_surface_is_declared_on_every_gating_channel() {
     }
 }
 
+/// **G1.10c - the CONTENTS of the run-created demand-interval tree.** Force
+/// `compare_di` on **every live case**, with no `kind` test.
+///
+/// The surface is every file of the `DI_yr_<year>` tree an EnergyMeter writes
+/// when a deck enables `Set DemandInterval=` (r4133
+/// `Version8/Source/Meters/EnergyMeter.pas:3804` `OpenAllDIFiles`, closed and
+/// flushed at `:2921-2932` / `:3024-3029`), compared cell by cell at the
+/// calibrated tier each column's physical quantity already has
+/// (`harness::di::compare_di`, coordinator decision D42(1)).
+///
+/// Unlike [`force_run_files`] the rule carries **no `large` test**, so this is
+/// the one forced surface whose population is not the shared
+/// `live non-`large`` set: THREE of the five decks that produce a DI tree are
+/// `kind=large` (`EPRITestCircuits/ckt5`, `ckt7`,
+/// `Examples/StoCtrl_Current_PeakShave`; the other two,
+/// `Examples/StoCtrl_SeasonTarget` and `IEEETestCases/123Bus`, are `feeder` and
+/// so already inside [`force_run_files`]' set), so the `large` test would leave
+/// TWO producers gated and silently drop 3 of the 5. (The count read "four of
+/// five" until the G1.10c audit settlement, findings AC3-1 / AT2-2: it counted
+/// the DI-FREE `Storage-Quasi-Static-Example/Run_Demo1.dss`, which is `large`
+/// and writes no tree - four of the SIX `CloseDI` decks are `large`.) The rule
+/// costs, on the two oracle transports, one `/di_yr_` test per created name
+/// (`dss_epri::guard::is_di_member`) over a walk their guards already do - a
+/// case with no DI tree pays a string test and answers the empty set. On the
+/// PORT side it is not free: [`super::runner`] builds its `RunFileProbe`
+/// whenever `compare_run_files || compare_di`, so the ~79 live `large*` decks
+/// outside [`FORCED_RUN_FILES_POPULATION`] get a directory snapshot before the
+/// run and a classification + sweep after it for the first time - the cost
+/// [`force_run_files`] names as its own reason for excluding them. Measured at
+/// +5...9 s per lane per full gate (D42(9)'s threshold is ~60 s), and it makes
+/// the port sweep its own droppings on those decks, so a port-side leak there
+/// now fails the case loudly instead of being swept by the outer guard alone.
+/// That is also why
+/// [`FORCED_DI_POPULATION`] is deliberately NOT folded into the four-way
+/// equality below (coordinator decision D42(4)): it is a DIFFERENT population,
+/// and saying so out loud is the point.
+///
+/// Upstream never gated the contents either: `origin/fastdss`
+/// `tests/save_outputs.py:64,597` archives the tree, and
+/// `tests/compare_outputs.py:416-421` SKIPS a name the other side does not have
+/// while `:517-527` prints a cell mismatch with its `raise` commented out. New
+/// coverage, not catch-up.
+///
+/// A manifest may also declare the flag itself, which only ever ADDS and is the
+/// only way the surface reaches `population.lock.json`
+/// ([`DI_DECLARED_IN_MANIFEST`]).
+fn force_di(c: &mut SolvableCase) {
+    c.compare_di = true;
+}
+
+/// **The forced demand-interval population, pinned** - `(cases forced, of them
+/// `engines: "both"`, `engines: "r4133"`, `engines: "capi_v0145"`)`.
+///
+/// Re-derived from the four manifests by
+/// [`the_di_forcing_rule_is_every_live_case`] on every run: 526 cases -> **522**
+/// live, of which 366 are `both`, 101 r4133-only and 55 capi-only (measured
+/// 2026-09-11 on lane `lane-e` at `update` `6987133a`). Bigger than
+/// [`FORCED_RUN_FILES_POPULATION`] by exactly the live `kind=large*` decks,
+/// which is the whole point of the rule (see [`force_di`]).
+///
+/// The lock it backs up is `population.lock.json`, which records the
+/// **manifest** flag (`population_lock.rs::rigor`'s `di=` token) and cannot see
+/// the scheduler-side forcing at all - the same blind spot the other rules
+/// carry, and the reason this one has a re-derivation test too.
+const FORCED_DI_POPULATION: (usize, usize, usize, usize) = (522, 366, 101, 55);
+
+/// **The manifest rows that declare `compare_di` themselves** - the five decks
+/// that enable demand-interval metering - with the gating channel each carries.
+///
+/// The forcing rule above is invisible to `population.lock.json`, so without
+/// declared rows the surface would arm the whole gate while leaving the
+/// anti-shrink lock byte-identical. These five rows are the §1.1(f) acceptance
+/// witnesses, and they are exactly the corpus's DI producers - derived from the
+/// decks, not chosen, by
+/// [`every_deck_that_enables_demand_interval_declares_compare_di`]:
+///
+/// * `EPRITestCircuits/ckt5/Run_ckt5.dss` - 7 files, 6.95 MB (`set demand=true`,
+///   `:53`), a 8 760-step yearly run on a 2 998-bus feeder.
+/// * `EPRITestCircuits/ckt7/RunDSS_ckt7.dss` - 7 files, 15.58 MB; the one case
+///   carrying ledger rows on this surface (the `kvarh` cancellation and the
+///   `Min LV Bus` argmin tie, `tests/corpus/ledger.json`).
+/// * `Examples/StoCtrl_Current_PeakShave/master.dss` - 8 files, 11.52 MB, and
+///   one of the three cases whose run leaves the DI streams re-opened, which is
+///   what makes the capture slot contractual (`capture_order::check_run_tail_order`).
+/// * `Examples/StoCtrl_SeasonTarget/Run_example.dss` - 6 files, 2.97 MB; also
+///   G1.10a's declared witness for the created-DIRECTORY convention.
+/// * `IEEETestCases/123Bus/Run_YearlySim.dss` - 8 files, 1.32 MB, the smallest
+///   producer and the only one whose tree hangs under `di_yr_1`.
+///
+/// All five gate on `both`, so both gating channels carry a declared row; there
+/// is no single-channel DI deck to declare (the census below re-derives that
+/// from the corpus on every run rather than trusting this list).
+const DI_DECLARED_IN_MANIFEST: &[(&str, &str)] = &[
+    (
+        "solvable_now:Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
+        "both",
+    ),
+    (
+        "solvable_now:Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+        "both",
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
+        "both",
+    ),
+    (
+        "solvable_now:Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
+        "both",
+    ),
+    (
+        "solvable_now:Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
+        "both",
+    ),
+];
+
+/// **The demand-interval forcing rule is a rule, not a habit** - the G1.10c twin
+/// of [`the_run_files_forcing_rule_is_every_live_non_large_case`], and for the
+/// same reason: nothing else can see [`force_di`]. `population.lock.json`
+/// fingerprints manifest flags only, and a comparison that never runs leaves no
+/// trace - a rule narrowed to "the five declared cases" would stay green
+/// everywhere else while the other 517 cases stopped answering the request at
+/// all (and with them the proof that they write no DI tree).
+#[test]
+fn the_di_forcing_rule_is_every_live_case() {
+    let cases = build_unified_cases();
+    let mut forced = (0usize, 0usize, 0usize, 0usize);
+    let mut wrong: Vec<String> = Vec::new();
+    for uc in &cases {
+        let expected = uc.class == CaseClass::Live;
+        if uc.case.compare_di != expected {
+            wrong.push(format!(
+                "{}: kind={} engines={} class={} -> compare_di={} (expected {expected})",
+                uc.label,
+                uc.case.kind,
+                uc.case.engines,
+                if expected { "live" } else { "not-live" },
+                uc.case.compare_di,
+            ));
+        }
+        if uc.case.compare_di {
+            forced.0 += 1;
+            match uc.case.engines.as_str() {
+                "both" => forced.1 += 1,
+                "r4133" => forced.2 += 1,
+                _ => forced.3 += 1,
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the demand-interval forcing rule is `every live case` (GOLDEN_REBASE G1.10c, \
+         coordinator decision D42(4), 2026-09-11) - these cases disagree with it:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(
+        forced, FORCED_DI_POPULATION,
+        "(forced, both, r4133-only, capi-only) moved. A DROP in either half re-masks the \
+         demand-interval request on that channel - invisible to every other gate, because a \
+         comparison that does not run reports nothing. A legitimate corpus change moves this \
+         lock together with `population.lock.json`."
+    );
+    assert!(
+        FORCED_DI_POPULATION.0 > FORCED_RUN_FILES_POPULATION.0,
+        "the DI rule has no `large` test, so its population must exceed the shared \
+         `live non-`large`` set; if the two are equal the `large` decks - three of the five DI \
+         producers - have silently dropped out"
+    );
+    // …and how many producers a `large` test WOULD gate, derived from the
+    // manifest instead of written into the doc above (G1.10c audit settlement,
+    // findings AC3-1 / AT2-2: the doc's count was wrong, so it is re-derived
+    // here and fails on stale in both directions).
+    let producer_kinds: Vec<&str> = cases
+        .iter()
+        .filter(|uc| DI_TREE_CASES.contains(&uc.label.as_str()))
+        .map(|uc| uc.case.kind.as_str())
+        .collect();
+    let large = producer_kinds
+        .iter()
+        .filter(|k| k.starts_with("large"))
+        .count();
+    assert_eq!(
+        (producer_kinds.len(), large),
+        (DI_TREE_CASES.len(), 3),
+        "the five DI producers' kinds are {producer_kinds:?}: a `large` test on the \
+         forcing rule would leave {large} of them gated and drop the rest - the number \
+         the [`force_di`] doc states"
+    );
+}
+
+/// **The surface reaches the anti-shrink lock** - the static half of the G1.10c
+/// acceptance (`GOLDEN_REBASE_PLAN.md` §1.1(f): the flag is set on at least one
+/// case per gating channel).
+///
+/// [`force_di`] arms the gate but is scheduler code; only a *declared* manifest
+/// row reaches `population_lock.rs::rigor`'s `di=` token, so this test pins
+/// exactly which rows carry the declaration and on which channel. Deleting one -
+/// the cheapest way to shrink the surface's recorded footprint - fails here and
+/// in `population.lock.json`, never silently.
+#[test]
+fn the_di_surface_is_declared_on_every_gating_channel() {
+    let mut declared: Vec<(String, String)> = Vec::new();
+    for c in load_solvable() {
+        if c.compare_di {
+            declared.push((format!("solvable_now:{}", c.path), c.engines.clone()));
+        }
+    }
+    for fam in FAMILIES {
+        for c in load_family(fam.name) {
+            if c.compare_di {
+                declared.push((format!("{}:{}", fam.name, c.path), c.engines.clone()));
+            }
+        }
+    }
+    declared.sort();
+    let mut want: Vec<(String, String)> = DI_DECLARED_IN_MANIFEST
+        .iter()
+        .map(|(l, e)| ((*l).to_string(), (*e).to_string()))
+        .collect();
+    want.sort();
+    assert_eq!(
+        declared, want,
+        "the manifest declarations of `compare_di` moved. They are what puts the surface into \
+         `population.lock.json` (the `di=` rigor token) - the scheduler-side `force_di` is \
+         invisible to it - so this set is pinned, and a change to it belongs in the same commit \
+         as a regenerated lock."
+    );
+    for ch in ["capi_v0145", "r4133"] {
+        assert!(
+            declared.iter().any(|(_, e)| e == ch || e == "both"),
+            "no manifest case declares `compare_di` on the {ch:?} channel; \
+             GOLDEN_REBASE_PLAN.md §1.1(f) wants the flag set on at least one case per gating \
+             channel, so that each channel's capture path is exercised by a declared row and not \
+             only by the scheduler's forcing rule"
+        );
+    }
+}
+
+/// **The declarations are DERIVED from the corpus, not chosen** - every live
+/// case whose deck (or anything it `Redirect`s / `Compile`s) enables
+/// `Set DemandInterval=` declares `compare_di`, and nothing else does.
+///
+/// Without this, [`DI_DECLARED_IN_MANIFEST`] is a list somebody typed: a new DI
+/// deck could be vendored into the corpus, produce a tree on every producer, and
+/// never reach `population.lock.json` - the surface would still COMPARE it
+/// (`force_di` is unconditional), but the anti-shrink lock would not record it
+/// and a later re-mask would leave no diff. The scanner and its own non-vacuity
+/// drive live in `manifest.rs`
+/// (`manifest::deck_enables_demand_interval`, its
+/// `the_demand_interval_scanner_reads_the_option_and_its_abbreviation`).
+#[test]
+fn every_deck_that_enables_demand_interval_declares_compare_di() {
+    let mut enabling: Vec<String> = Vec::new();
+    for uc in build_unified_cases() {
+        if uc.class != CaseClass::Live {
+            continue;
+        }
+        if crate::manifest::case_enables_demand_interval(&uc.abs) {
+            enabling.push(uc.label.clone());
+        }
+    }
+    enabling.sort();
+    let mut declared: Vec<String> = DI_DECLARED_IN_MANIFEST
+        .iter()
+        .map(|(l, _)| (*l).to_string())
+        .collect();
+    declared.sort();
+    assert_eq!(
+        enabling, declared,
+        "the live cases whose deck enables demand-interval metering are no longer exactly the \
+         cases that declare `compare_di`. A deck that enables it writes a DI tree the gate \
+         compares, so its case must carry the declaration (that is what reaches \
+         `population.lock.json`); a declaration on a deck that does not enable it would pin an \
+         empty surface."
+    );
+}
+
 /// **D25/Q2 — the population where an ORACLE writes an engine-internal scratch
 /// file the port, by design, never writes**, as `(cases, names)`.
 ///
@@ -2255,6 +2531,246 @@ pub(crate) fn assert_run_file_contents_census_is_the_pinned_population() {
     }
 }
 
+/// **G1.10c — the demand-interval census**, as
+/// `(cases with a non-empty DI tree, (case, channel) comparisons, files
+/// compared, cells compared)`.
+///
+/// The non-vacuity half of the surface (`GOLDEN_REBASE_PLAN.md` §1.1(f),
+/// coordinator decision D42): a comparator that compared nothing reports
+/// nothing, so the four numbers are re-derived from THIS run and pinned in
+/// BOTH directions. A smaller `comparisons` is a re-masked request (the
+/// forcing rule narrowed, a channel dropped); a smaller `files`/`cells` is a
+/// selection or a class table that reaches less than it claims; a bigger one is
+/// a producer nobody triaged.
+///
+/// **Measured `(5, 883, 72, 9_793_064)` on 2026-09-11** (lane `lane-e`, base
+/// `6987133a`), read off COMPLETED full 526-case drives in both lanes — never
+/// guessed, because the epilogue that calls the assertion below
+/// (`corpus_gate.rs`) runs only after the per-case failure report, so a drive
+/// with ANY red case never reaches it and a partial run cannot found a
+/// fail-on-stale population.
+///
+/// Each number is derivable, which is what makes a move readable rather than a
+/// mystery:
+///
+/// * **883 comparisons** = the 888 live (case, channel) pairs
+///   ([`FORCED_DI_POPULATION`]: 366 `both` × 2 + 101 + 55) minus the **5**
+///   channel-level `skip` entries in `tests/corpus/ledger.json`, whose channel
+///   never runs the case at all (four `epri-303-crash` decks and
+///   `espvlcontrol`, all on `r4133`). Every live case answers the request,
+///   which is the point: the 517 that write no DI tree answer the EMPTY tree,
+///   and that answer is compared.
+/// * **72 files** = 36 per channel over the five producers (ckt5 7, ckt7 7,
+///   peak-shave 8, season-target 6, 123Bus 8), both of whose channels gate
+///   (`engines: "both"` on all five).
+/// * **9 793 064 cells**, the four register files of ckt5/ckt7/peak-shave at
+///   8 760 × 67 each dominating; it is the 9 845 624 the R part measured cell
+///   by cell (`tmp/g110c/f2_class_check.py`) minus the 52 560 cells of the
+///   three ledger-excluded ckt7 columns (2 × 8 760 `kvarh` + 8 760
+///   `min lv bus`, per channel), which are not counted because they are not
+///   compared.
+///
+/// `cases with a tree` is **5** and the labels are pinned by
+/// [`DI_TREE_CASES`]: that is where the corpus's sixth `closedi` deck,
+/// `Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss`, is pinned
+/// DI-FREE (coordinator decision D42(3)) — it issues `closedi` without ever
+/// enabling `Set DemandInterval=`, so `SaveDemandInterval` is false and all
+/// three producers write nothing. It is still COMPARED (its empty tree is two
+/// of the comparisons below), which is what makes the pin a measurement rather
+/// than an exemption.
+const DI_TREE_CENSUS: (usize, usize, usize, usize) = (5, 883, 72, 9_793_064);
+
+/// The case labels that produced a demand-interval tree — the identity half of
+/// [`DI_TREE_CENSUS`] (a count alone would let one producer replace another).
+/// Since the G1.10c audit settlement (finding AT3-3) the accounting behind it is
+/// keyed by (label, CHANNEL) and each producer's channel set is asserted against
+/// its manifest `engines`, so a channel compared twice — which leaves every
+/// total in [`DI_TREE_CENSUS`] unchanged — fails too.
+const DI_TREE_CASES: [&str; 5] = [
+    "solvable_now:Version8/Distrib/EPRITestCircuits/ckt5/Run_ckt5.dss",
+    "solvable_now:Version8/Distrib/EPRITestCircuits/ckt7/RunDSS_ckt7.dss",
+    "solvable_now:Version8/Distrib/Examples/StoCtrl_Current_PeakShave/master.dss",
+    "solvable_now:Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
+    "solvable_now:Version8/Distrib/IEEETestCases/123Bus/Run_YearlySim.dss",
+];
+
+/// The case that issues `closedi` and writes no DI tree — pinned by name so
+/// [`DI_TREE_CENSUS`]'s "five" is a statement about THIS deck too (D42(3)).
+const DI_FREE_CLOSEDI_CASE: &str =
+    "solvable_now:Version8/Distrib/Examples/Scripts/Storage-Quasi-Static-Example/Run_Demo1.dss";
+
+/// The G1.10c census, re-derived from this run and pinned in both directions —
+/// the [`assert_scratch_declines_are_the_pinned_population`] shape for the
+/// surface's non-vacuity rail.
+///
+/// Silent in the two documented situations that shape has: `DSS_GATE_ONLY` is
+/// set (a filtered run holds a filtered population), and no live manifest case
+/// requests `compare_di` at all (a fact re-read from the manifests here, not
+/// assumed, so the assertion arms itself the moment the surface is forced or
+/// declared).
+pub(crate) fn assert_di_census_is_the_pinned_population() {
+    if std::env::var("DSS_GATE_ONLY").is_ok() {
+        return;
+    }
+    let cases = build_unified_cases();
+    let requested = cases
+        .iter()
+        .filter(|uc| uc.class == CaseClass::Live)
+        .any(|uc| uc.case.compare_di);
+    #[cfg(not(windows))]
+    {
+        assert!(
+            !requested,
+            "`compare_di` is Windows-only (its `r4133` transport and the created-file \
+             classification live in the `#[cfg(windows)]` comparator `harness::di`), yet a \
+             live case requests it"
+        );
+    }
+    #[cfg(windows)]
+    {
+        let gate_labels: std::collections::BTreeSet<&str> =
+            cases.iter().map(|uc| uc.label.as_str()).collect();
+        // Rows this binary's own `harness::di` unit fixtures wrote. They share
+        // the process-wide accounting with the gate, so they are separated by
+        // label and REFUSED when they are neither a manifest case nor one of
+        // those fixtures — a typo'd or foreign label must never be absorbed
+        // into the pinned population (the D25/Q2 scratch census's rule, one
+        // surface over).
+        let account = harness::di::di_account();
+        let (gate_rows, fixture_rows): (Vec<_>, Vec<_>) = account
+            .iter()
+            .partition(|((label, _), _)| gate_labels.contains(label.as_str()));
+        let foreign: Vec<&String> = fixture_rows
+            .iter()
+            .map(|((label, _), _)| label)
+            .filter(|label| !label.starts_with("unit:"))
+            .collect();
+        assert!(
+            foreign.is_empty(),
+            "the G1.10c demand-interval census carries the label(s) {foreign:?}, which are \
+             neither a manifest case nor one of this binary's `unit:` fixtures. The pinned \
+             population is a fact about the corpus, so an unrecognized producer fails instead \
+             of being counted or dropped."
+        );
+        // One row per (case, CHANNEL) since the audit settlement (AT3-3), so the
+        // producer list is the DISTINCT labels — the rows are sorted by label
+        // first, so consecutive dedup is exact.
+        let mut with_tree: Vec<&str> = gate_rows
+            .iter()
+            .filter(|(_, (_, files, _))| *files > 0)
+            .map(|((label, _), _)| label.as_str())
+            .collect();
+        with_tree.dedup();
+        // …and each producer must carry exactly its own gating channels: a
+        // channel SWAP (the same case compared twice on one channel) leaves
+        // every total below unchanged and is invisible without this.
+        let mut channels: std::collections::BTreeMap<&str, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for ((label, channel), (_, files, _)) in &gate_rows {
+            if *files > 0 {
+                channels
+                    .entry(label.as_str())
+                    .or_default()
+                    .push(channel.as_str());
+            }
+        }
+        let wrong_channels: Vec<String> = channels
+            .iter()
+            .filter_map(|(label, got)| {
+                let engines = cases
+                    .iter()
+                    .find(|uc| uc.label == *label)
+                    .map(|uc| uc.case.engines.as_str())
+                    .unwrap_or("");
+                let want: Vec<&str> = match engines {
+                    "both" => vec!["capi_v0145", "r4133"],
+                    "r4133" => vec!["r4133"],
+                    _ => vec!["capi_v0145"],
+                };
+                (*got != want).then(|| format!("{label}: {got:?}, expected {want:?}"))
+            })
+            .collect();
+        assert!(
+            wrong_channels.is_empty(),
+            "the demand-interval tree of these producers was not compared on \
+             exactly their gating channels — a channel compared twice or not at \
+             all leaves the census totals below untouched, so it is asserted \
+             here:\n  {}",
+            wrong_channels.join("\n  ")
+        );
+        let measured = (
+            with_tree.len(),
+            gate_rows.iter().map(|(_, (c, _, _))| *c).sum::<usize>(),
+            gate_rows.iter().map(|(_, (_, f, _))| *f).sum::<usize>(),
+            gate_rows.iter().map(|(_, (_, _, n))| *n).sum::<usize>(),
+        );
+        let excluded = harness::di::di_excluded_columns();
+        let report: Vec<String> = gate_rows
+            .iter()
+            .filter(|(_, (_, files, _))| *files > 0)
+            .map(|((label, channel), (c, f, n))| {
+                format!("{label} [{channel}] -> {c} comparison(s), {f} file(s), {n} cell(s)")
+            })
+            .collect();
+        if !requested {
+            assert_eq!(
+                measured,
+                (0, 0, 0, 0),
+                "no manifest case requests `compare_di`, yet the demand-interval comparator \
+                 ran on real gate cases:\n  {}",
+                report.join("\n  ")
+            );
+            eprintln!(
+                "corpus_gate demand interval: the surface is not requested by any live case \
+                 - nothing to re-derive"
+            );
+            return;
+        }
+        eprintln!(
+            "corpus_gate demand interval: census {measured:?} (+{} unit fixture row(s)); \
+             ledger-excluded column(s): {excluded:?}\n  {}",
+            fixture_rows.len(),
+            report.join("\n  ")
+        );
+        assert_eq!(
+            with_tree, DI_TREE_CASES,
+            "the cases that produce a demand-interval tree moved. The tree exists exactly \
+             where a deck enables `Set DemandInterval=` \
+             (`every_deck_that_enables_demand_interval_declares_compare_di`), so a case \
+             appearing here is a new producer nobody triaged and a case disappearing is a \
+             producer that went silent - both are corpus facts that move WITH the record."
+        );
+        assert!(
+            !with_tree.contains(&DI_FREE_CLOSEDI_CASE),
+            "{DI_FREE_CLOSEDI_CASE} issues `closedi` without ever enabling \
+             `Set DemandInterval=`, so `SaveDemandInterval` is false and no DI file is \
+             written (coordinator decision D42(3)) - a tree appearing there means the port or \
+             an oracle started writing demand-interval files without the option"
+        );
+        assert_eq!(
+            measured,
+            DI_TREE_CENSUS,
+            "the G1.10c demand-interval census moved (measured {:?}, pinned {:?}). It is \
+             re-derived on every run and fails in BOTH directions: fewer comparisons means the \
+             request was re-masked somewhere between the manifest and the transports, fewer \
+             files or cells means the selection or the class table reaches less than it claims, \
+             and more of either means a producer or a column nobody triaged. Re-measure on a \
+             COMPLETED full drive, move the constant WITH the record, and re-read the pins \
+             `di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate` and \
+             `di_pins::the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`.\n  {}",
+            measured,
+            DI_TREE_CENSUS,
+            report.join("\n  ")
+        );
+        assert!(
+            measured.3 > 0,
+            "the G1.10c census compared ZERO cells on a run where live cases request \
+             `compare_di`. The pinned population would then be a statement about nothing - \
+             the surface is masked off somewhere between the manifest and the comparator."
+        );
+    }
+}
+
 /// Build one unified case, applying the exact per-source property-forcing +
 /// classification of the pre-Phase-B gates.
 fn make_case(
@@ -2295,6 +2811,7 @@ fn make_case(
         force_topology(&mut c);
         force_inc_matrix(&mut c);
         force_run_files(&mut c);
+        force_di(&mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
     let dir_key = dir_key_of(&abs);

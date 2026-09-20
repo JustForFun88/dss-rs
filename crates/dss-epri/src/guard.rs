@@ -115,6 +115,111 @@ pub fn is_engine_scratch_file(name: &str) -> bool {
         .any(|sfx| folded.ends_with(sfx))
 }
 
+/// The path segment every demand-interval tree hangs under, ASCII-case-folded
+/// like a [`normalize_created_name`] key: r4133 builds it as
+/// `CasePath + '\DI_yr_' + Trim(IntToStr(Solution.Year))`
+/// (`Version8/Source/Meters/EnergyMeter.pas:824`), dss_capi 0.14.5 as
+/// `CasePath + PathDelim + 'DI_yr_' + Trim(IntToStr(Solution.Year))`
+/// (`src/Meters/EnergyMeter.pas:873`), and the port in
+/// `crates/dss-core/src/solution/meters/demand_interval.rs:964`
+/// (`DI_yr_{year}` under `<OutputDirectory><CaseName>`).
+const DI_DIR_PREFIX: &str = "di_yr_";
+
+/// True for a normalized created-name that is a **file** member of a
+/// demand-interval tree (GOLDEN_REBASE G1.10c): some directory segment of its
+/// path starts with [`DI_DIR_PREFIX`].
+///
+/// The test is on the PREFIX, not on `di_yr_<digits>`: r4133 appends
+/// `Trim(IntToStr(Year))` with no width or sign contract
+/// (`EnergyMeter.pas:824`), and a year spelling this rule did not anticipate
+/// must widen the surface, never silently drop a file out of it. Nothing else
+/// any of the three producers writes creates a `DI_yr_*` directory.
+///
+/// A DIRECTORY member (trailing `/`) is never a DI *file*: it carries no
+/// contents, and its existence is already compared by G1.10a's created-file set.
+///
+/// Twin: `tools/oracle/corpus_guard.py::is_di_member`.
+pub fn is_di_member(name: &str) -> bool {
+    if name.ends_with('/') {
+        return false;
+    }
+    // Every segment but the last — the last one is the file's own name, and a
+    // FILE called `di_yr_0` is not a demand-interval tree.
+    let mut segs: Vec<&str> = name.split('/').collect();
+    segs.pop();
+    segs.iter().any(|seg| seg.starts_with(DI_DIR_PREFIX))
+}
+
+/// Copy the demand-interval members `members` into the gate's sidecar directory
+/// `di_dir`, and return `normalized name -> path relative to di_dir`
+/// (GOLDEN_REBASE G1.10c, coordinator decision D42(5)).
+///
+/// Why a sidecar at all: the DI tree is run-created, so the guard sweeps it away
+/// at the end of the run — and the comparison happens later, in the gate
+/// process, after the port has re-run the same case in the same directory. The
+/// files are therefore COPIED (never moved: the guard must still find and sweep
+/// the original, and G1.10a must still see its name) into a directory the gate
+/// owns, outside `tests/corpus/`.
+///
+/// Every failure is returned, never swallowed: a copy that cannot be made, or
+/// whose DESTINATION does not match the source in size ([`verify_sidecar_size`]),
+/// fails the case loudly rather than shipping a short file the comparator would
+/// read as a row-count divergence.
+///
+/// Twin: `tools/oracle/corpus_guard.py::copy_di_tree`.
+pub fn copy_di_tree(
+    members: &[(PathBuf, String)],
+    di_dir: &Path,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut out = BTreeMap::new();
+    for (src, name) in members {
+        // The normalized name is `/`-joined; rebuild the destination segment by
+        // segment so the layout is identical on every platform.
+        let dest = name
+            .split('/')
+            .fold(di_dir.to_path_buf(), |acc, seg| acc.join(seg));
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("cannot create the DI sidecar directory {parent:?}: {e}"))?;
+        }
+        let copied = std::fs::copy(src, &dest)
+            .map_err(|e| format!("cannot copy the DI file {src:?} to {dest:?}: {e}"))?;
+        verify_sidecar_size(src, &dest, copied)?;
+        out.insert(name.clone(), name.clone());
+    }
+    Ok(out)
+}
+
+/// The size check behind [`copy_di_tree`] and [`copy_selected_contents`] — ONE
+/// rail for both sidecars since the G1.10c landing (coordinator decision
+/// D42(5)): the DESTINATION is stat-ed, exactly as the Python twin does
+/// (`tools/oracle/corpus_guard.py::verify_sidecar_size`).
+///
+/// `copied` — what `std::fs::copy` reported — is checked too, but it can never
+/// be the whole check: on Windows `std::fs::copy` is `CopyFileExW` and its
+/// return value is the length it read from the SOURCE, so comparing it against
+/// the source's own metadata is a validation that cannot fail. A short or
+/// later-truncated sidecar copy would otherwise reach the comparator as a
+/// row-count divergence — the very misdiagnosis this check exists to prevent
+/// (GOLDEN_REBASE G1.10c audit finding AC-1).
+fn verify_sidecar_size(src: &Path, dest: &Path, copied: u64) -> Result<(), String> {
+    let want = std::fs::metadata(src)
+        .map_err(|e| format!("cannot stat the sidecar source {src:?}: {e}"))?
+        .len();
+    let got = std::fs::metadata(dest)
+        .map_err(|e| format!("cannot stat the sidecar copy {dest:?}: {e}"))?
+        .len();
+    if got != want || copied != want {
+        return Err(format!(
+            "the sidecar source {src:?} is {want} bytes but its copy {dest:?} is \
+             {got} ({copied} reported copied) — the sidecar must be a \
+             byte-for-byte copy, or the comparator reads a truncated file as a \
+             divergence"
+        ));
+    }
+    Ok(())
+}
+
 /// Partition a created-file set into `(compared, engine-internal scratch)`.
 ///
 /// The structural normalization of decision D25/Q2, applied SYMMETRICALLY to
@@ -251,6 +356,80 @@ pub fn selects_contents<S: AsRef<str>>(patterns: &[S], name: &str) -> bool {
             .any(|p| contents_pattern_matches(p.as_ref(), name))
 }
 
+/// Case-insensitive path-prefix test on SEGMENT boundaries (both paths come
+/// from the gate, so no symlink resolution is owed): is `path` `dir` itself or
+/// below it? A sibling whose name merely starts the same way is NOT inside.
+///
+/// Twin: `tools/oracle/corpus_guard.py::path_is_inside`.
+pub fn path_is_inside(path: &Path, dir: &Path) -> bool {
+    let fold = |p: &Path| p.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+    let (p, d) = (fold(path), fold(dir));
+    let d = d.trim_end_matches('/').to_string();
+    p == d || p.starts_with(&format!("{d}/"))
+}
+
+/// Refuse a sidecar directory that is, contains, or sits under the case
+/// directory — the one destructive path of this surface (`remove_dir_all`).
+///
+/// ONE rail for both sidecars since the G1.10c landing deduped G1.10b's
+/// contents sidecar and G1.10c's demand-interval sidecar (coordinator decision
+/// D42(5)). It is the union of what the two sub-steps each measured: the paths
+/// are canonicalized first (G1.10b — a relative or `..`-bearing spelling must
+/// not slip past a textual test) and then compared with [`path_is_inside`] in
+/// BOTH directions (G1.10c's ASCII case fold, which a canonicalize that fails —
+/// the sidecar need not exist yet — would otherwise leave to a case-sensitive
+/// `Path::starts_with`).
+///
+/// A sidecar that does not exist yet is resolved against its nearest EXISTING
+/// ancestor, not only against its immediate parent: several levels of it may be
+/// missing (`create_dir_all` makes them), and a raw spelling left unresolved
+/// could never share a prefix with the canonicalized `\\?\`-form of the case
+/// directory, so the refusal would silently stop firing exactly where the
+/// directory is newest — the shape CLAUDE.md records two `.inputs` wipes from.
+/// That is what the Python twin's `os.path.abspath` does (merge settlement of
+/// the lane-e G1.10c landing, finding MT-1).
+///
+/// The message names the relation it actually found — the rail is shared, so
+/// both directions can fire — and its caller adds the surface it speaks for.
+///
+/// Twin: `tools/oracle/corpus_guard.py::_refuse_sidecar_under_case_dir`.
+pub(crate) fn refuse_sidecar_under_case_dir(case_dir: &Path, sidecar: &Path) -> Result<(), String> {
+    let abs = |p: &Path| -> PathBuf {
+        if let Ok(c) = std::fs::canonicalize(p) {
+            return c;
+        }
+        let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
+        let mut cur = p;
+        while let (Some(parent), Some(name)) = (cur.parent(), cur.file_name()) {
+            tail.push(name);
+            if let Ok(mut resolved) = std::fs::canonicalize(parent) {
+                resolved.extend(tail.iter().rev().copied());
+                return resolved;
+            }
+            cur = parent;
+        }
+        p.to_path_buf()
+    };
+    let (c, s) = (abs(case_dir), abs(sidecar));
+    let (inside, contains) = (path_is_inside(&s, &c), path_is_inside(&c, &s));
+    if inside || contains {
+        let relation = match (inside, contains) {
+            (true, true) => "IS",
+            (true, false) => "lies inside",
+            _ => "contains",
+        };
+        return Err(format!(
+            "the sidecar {} {relation} the case directory {}. The bytes travel \
+             through a directory the GATE owns under `target/` and this transport \
+             clears it with a recursive delete (coordinator decision D40(6)); \
+             pointing it at a corpus deck would delete vendored sources.",
+            s.display(),
+            c.display()
+        ));
+    }
+    Ok(())
+}
+
 /// Resolve the selected members of `created` to the real paths they were written
 /// under, listing `case_dir` ONCE.
 ///
@@ -264,37 +443,6 @@ pub fn selects_contents<S: AsRef<str>>(patterns: &[S], name: &str) -> bool {
 /// case directory, or that the directory no longer lists as a file, is an error
 /// rather than a quietly missing file — the whole point of the surface is that
 /// every file the run wrote reaches the gate.
-/// Refuse a sidecar directory that is, contains, or sits under the case
-/// directory — the one destructive path of this surface (`remove_dir_all`).
-///
-/// Twin: `tools/oracle/corpus_guard.py::_refuse_sidecar_under_case_dir`.
-fn refuse_sidecar_under_case_dir(case_dir: &Path, sidecar: &Path) -> Result<(), String> {
-    let abs = |p: &Path| -> PathBuf {
-        std::fs::canonicalize(p).unwrap_or_else(|_| {
-            match (p.parent(), p.file_name()) {
-                // The sidecar itself need not exist yet; resolve its parent.
-                (Some(parent), Some(name)) => std::fs::canonicalize(parent)
-                    .map(|c| c.join(name))
-                    .unwrap_or_else(|_| p.to_path_buf()),
-                _ => p.to_path_buf(),
-            }
-        })
-    };
-    let (c, s) = (abs(case_dir), abs(sidecar));
-    if s == c || s.starts_with(&c) || c.starts_with(&s) {
-        return Err(format!(
-            "run-file contents: the sidecar {} is the case directory {} or shares \
-             a path with it. The bytes travel through a directory the GATE owns \
-             under `target/` and this transport clears it with a recursive delete \
-             (coordinator decision D40(6)); pointing it at a corpus deck would \
-             delete vendored sources.",
-            s.display(),
-            c.display()
-        ));
-    }
-    Ok(())
-}
-
 fn resolve_selected<S: AsRef<str>>(
     case_dir: &Path,
     created: &[String],
@@ -428,7 +576,8 @@ pub fn copy_selected_contents<S: AsRef<str>>(
     // `tests/corpus/` or the case directory") is enforced here, not only at the
     // single construction site: CLAUDE.md records two wipes of vendored sources
     // from exactly this shape. (G1.10b audit settlement, finding AC3-4.)
-    refuse_sidecar_under_case_dir(case_dir, dir)?;
+    refuse_sidecar_under_case_dir(case_dir, dir)
+        .map_err(|why| format!("run-file contents: {why}"))?;
     std::fs::remove_dir_all(dir).or_else(|e| match e.kind() {
         std::io::ErrorKind::NotFound => Ok(()),
         _ => Err(format!(
@@ -439,12 +588,17 @@ pub fn copy_selected_contents<S: AsRef<str>>(
         .map_err(|e| format!("run-file contents: cannot create the sidecar {sidecar}: {e}"))?;
     let mut names = Vec::with_capacity(selected.len());
     for (name, path) in selected {
-        std::fs::copy(&path, dir.join(&name)).map_err(|e| {
+        let dest = dir.join(&name);
+        let copied = std::fs::copy(&path, &dest).map_err(|e| {
             format!(
                 "run-file contents: cannot copy {} into the sidecar {sidecar}: {e}",
                 path.display()
             )
         })?;
+        // ONE size rail for both sidecars (coordinator decision D42(5), deduped
+        // at the G1.10c landing): a short or later-truncated copy fails the case
+        // here instead of reaching the comparator as a row-count divergence.
+        verify_sidecar_size(&path, &dest, copied)?;
         names.push(name);
     }
     names.sort();
@@ -494,6 +648,13 @@ pub struct Created {
     /// The normalized name of every created entry, a created directory's whole
     /// contents included ([`normalize_created_name`]).
     pub names: BTreeSet<String>,
+    /// Every created **file** member as `(path on disk, normalized name)`,
+    /// filled by the same single walk that fills [`Self::names`] (GOLDEN_REBASE
+    /// G1.10c). The normalized name is ASCII-case-FOLDED, so it is a key, not a
+    /// path: a consumer that has to open the file (the demand-interval tree's
+    /// contents) needs the real spelling, and re-deriving it by a second walk
+    /// would be a second classification.
+    pub files: Vec<(PathBuf, String)>,
     /// False when any directory listing failed. An incomplete classification may
     /// still be SWEPT (the sweep removes only what it did classify, never more)
     /// but must never be REPORTED as the created set.
@@ -507,9 +668,17 @@ pub fn classify_created(dir: &Path, pre_existing: &BTreeSet<String>) -> Created 
     let mut c = Created {
         roots: Vec::new(),
         names: BTreeSet::new(),
+        files: Vec::new(),
         complete: true,
     };
-    c.complete = classify_into(dir, "", pre_existing, &mut c.roots, &mut c.names);
+    c.complete = classify_into(
+        dir,
+        "",
+        pre_existing,
+        &mut c.roots,
+        &mut c.names,
+        &mut c.files,
+    );
     c
 }
 
@@ -519,6 +688,7 @@ fn classify_into(
     pre_existing: &BTreeSet<String>,
     roots: &mut Vec<(PathBuf, bool)>,
     out: &mut BTreeSet<String>,
+    files: &mut Vec<(PathBuf, String)>,
 ) -> bool {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return false;
@@ -539,13 +709,16 @@ fn classify_into(
             // (see the rule on `CorpusGuard::classify`).
             continue;
         }
-        out.insert(normalize_created_name(&rel, is_dir));
+        let norm = normalize_created_name(&rel, is_dir);
+        out.insert(norm.clone());
         roots.push((entry.path(), is_dir));
         if is_dir {
             // Run-created directory (the DI `<CircuitName>/` tree): every entry
             // below it is run-created too, and the whole tree is one removal
             // root.
-            ok &= collect_tree(&entry.path(), &rel, out);
+            ok &= collect_tree(&entry.path(), &rel, out, files);
+        } else {
+            files.push((entry.path(), norm));
         }
     }
     ok
@@ -554,7 +727,12 @@ fn classify_into(
 /// List a run-created directory: every entry under it is run-created.
 ///
 /// Twin: `tools/oracle/corpus_guard.py::CorpusGuard._collect_tree`.
-fn collect_tree(dir: &Path, prefix: &str, out: &mut BTreeSet<String>) -> bool {
+fn collect_tree(
+    dir: &Path,
+    prefix: &str,
+    out: &mut BTreeSet<String>,
+    files: &mut Vec<(PathBuf, String)>,
+) -> bool {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return false;
     };
@@ -563,9 +741,12 @@ fn collect_tree(dir: &Path, prefix: &str, out: &mut BTreeSet<String>) -> bool {
         let name = entry.file_name().to_string_lossy().into_owned();
         let rel = format!("{prefix}/{name}");
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        out.insert(normalize_created_name(&rel, is_dir));
+        let norm = normalize_created_name(&rel, is_dir);
+        out.insert(norm.clone());
         if is_dir {
-            ok &= collect_tree(&entry.path(), &rel, out);
+            ok &= collect_tree(&entry.path(), &rel, out, files);
+        } else {
+            files.push((entry.path(), norm));
         }
     }
     ok
@@ -712,6 +893,44 @@ impl CorpusGuard {
             return None;
         }
         Some(c.names.into_iter().collect())
+    }
+
+    /// The run-created demand-interval tree's FILE members as
+    /// `(path on disk, normalized name)` — the gate's `compare_di` surface
+    /// (GOLDEN_REBASE G1.10c).
+    ///
+    /// It is the SAME classification [`CorpusGuard::created`] reports and
+    /// [`CorpusGuard::sweep_created`] sweeps, narrowed by [`is_di_member`]: a DI
+    /// file is selected *because it is run-created*, so a tree that was already
+    /// on disk before the run (a leaked sweep, never a committed one — no
+    /// `DI_yr_*` path is in `tests/corpus`) cannot enter the compared surface
+    /// through this door. It is read BEFORE `created()` — the per-run
+    /// capture-order rule keeps the classification the last READ of the run and
+    /// the D32(2)(a) teardown the only statement after it
+    /// (`crates/dss-core/tests/capture_order.rs`) — which is why this is a
+    /// second call and not a filter over the reported set.
+    ///
+    /// `None` carries the same meaning as in [`CorpusGuard::created`]: the
+    /// classification cannot be reported honestly (an incomplete pre-run
+    /// snapshot, or a listing that failed now), and the gate's presence rail
+    /// turns that into a failed case rather than "this deck wrote no DI tree".
+    ///
+    /// Twin: `tools/oracle/corpus_guard.py::CorpusGuard.created_di_files`.
+    pub fn created_di_files(&self) -> Option<Vec<(PathBuf, String)>> {
+        if !self.snapshot_ok {
+            return None;
+        }
+        let c = self.classify();
+        if !c.complete {
+            return None;
+        }
+        let mut out: Vec<(PathBuf, String)> = c
+            .files
+            .into_iter()
+            .filter(|(_, name)| is_di_member(name))
+            .collect();
+        out.sort_by(|a, b| a.1.cmp(&b.1));
+        Some(out)
     }
 
     /// Delete what [`CorpusGuard::classify`] classified — the same
@@ -879,6 +1098,12 @@ mod tests {
         "nev_savedvoltages.dbl",
     ];
     const SCRATCH: [&str; 1] = ["nev_savedvoltages.dbl"];
+    /// The DI FILE members of the same fixture (GOLDEN_REBASE G1.10c): the two
+    /// files under the run-created `DI_yr_0/` tree, the nested one included and
+    /// the two directory members (`di_yr_0/`, `di_yr_0/sub/`) excluded — a
+    /// directory carries no contents. `exp_y.csv` and `nev_savedvoltages.dbl`
+    /// are created but not DI; `pre/New_Report.Txt` is not created at all.
+    const DI_FILES: [&str; 2] = ["di_yr_0/sub/deep.dbl", "di_yr_0/totals_1.csv"];
     /// What the fixture's case dir holds after the guard's sweep: the
     /// pre-existing files, plus the one write under the pre-existing
     /// subdirectory the guard must neither report nor delete.
@@ -1191,6 +1416,7 @@ mod tests {
             ("SELF_TEST_RUN_WRITES", RUN_WRITES.to_vec()),
             ("SELF_TEST_CREATED", CREATED.to_vec()),
             ("SELF_TEST_SCRATCH", SCRATCH.to_vec()),
+            ("SELF_TEST_DI_FILES", DI_FILES.to_vec()),
         ] {
             assert_eq!(
                 py_list(&src, py),
@@ -1277,6 +1503,121 @@ mod tests {
         );
     }
 
+    /// GOLDEN_REBASE G1.10c: the DI surface is the created-file classification
+    /// narrowed by [`is_di_member`], and the sidecar is a byte-for-byte copy.
+    ///
+    /// Same synthetic fixture as [`classifies_the_shared_synthetic_fixture`], so
+    /// the Python twin's `--self-test` asserts the identical list
+    /// (`SELF_TEST_DI_FILES`) over the identical tree.
+    #[test]
+    fn the_di_members_of_the_shared_fixture_are_selected_and_copied() {
+        let root = scratch_dir("di-fixture");
+        for rel in PRE_EXISTING {
+            write(
+                &root,
+                rel,
+                "pre-existing
+",
+            );
+        }
+        let sidecar = scratch_dir("di-sidecar");
+
+        let case = root.join("case.dss");
+        let (di, map) = {
+            let guard = CorpusGuard::new(&case.to_string_lossy());
+            for rel in RUN_WRITES {
+                write(
+                    &root,
+                    rel,
+                    "run-written
+",
+                );
+            }
+            let di = guard
+                .created_di_files()
+                .expect("a complete snapshot reports the DI members");
+            let map = copy_di_tree(&di, &sidecar).expect("the sidecar copy succeeds");
+            (di, map)
+        }; // the guard sweeps the DI tree away here — the sidecar is what survives
+
+        let names: Vec<String> = di.iter().map(|(_, n)| n.clone()).collect();
+        assert_eq!(
+            names,
+            DI_FILES.map(String::from).to_vec(),
+            "the DI selection is the created-file classification narrowed to the \
+             file members of a `DI_yr_*` tree"
+        );
+        assert_eq!(
+            map.keys().cloned().collect::<Vec<_>>(),
+            DI_FILES.map(String::from).to_vec(),
+        );
+        assert!(
+            !root.join("DI_yr_0").exists(),
+            "the guard sweeps the run-created DI tree, which is exactly why the \
+             contents have to be copied out before it does"
+        );
+        for name in DI_FILES {
+            let rel = map.get(name).expect("every member is mapped");
+            let copied = name
+                .split('/')
+                .fold(sidecar.clone(), |acc, seg| acc.join(seg));
+            assert_eq!(
+                std::fs::read_to_string(&copied).expect("the sidecar copy is readable"),
+                "run-written
+",
+                "the sidecar copy of {name} (at {rel}) is byte-for-byte the run's own file"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&sidecar);
+    }
+
+    /// The size check of [`copy_di_tree`] fires on a destination that does not
+    /// match the source — the drive the check needs, since its own `copied`
+    /// argument comes from the SOURCE on Windows and can never disagree with it
+    /// (GOLDEN_REBASE G1.10c audit finding AC-1).
+    #[test]
+    fn a_truncated_di_sidecar_copy_is_reported() {
+        let root = scratch_dir("di-size");
+        write(&root, "di_yr_0/di_totals_1.csv", "0123456789");
+        let src = root.join("di_yr_0").join("di_totals_1.csv");
+        let dest = root.join("sidecar.csv");
+        let copied = std::fs::copy(&src, &dest).expect("the copy succeeds");
+        assert_eq!(copied, 10, "the fixture is ten bytes");
+        verify_sidecar_size(&src, &dest, copied).expect("a faithful copy passes");
+
+        // Truncate the DESTINATION after the copy: `std::fs::copy` already
+        // returned `Ok(10)`, so only a stat of the destination can see this.
+        std::fs::write(&dest, "01234").expect("the truncation succeeds");
+        let err = verify_sidecar_size(&src, &dest, copied)
+            .expect_err("a short sidecar copy must be reported, never shipped");
+        assert!(
+            err.contains("is 10 bytes") && err.contains("is 5"),
+            "the refusal names both sizes: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The selection rule itself: a `DI_yr_*` DIRECTORY segment anywhere above
+    /// the file name, and nothing else.
+    #[test]
+    fn is_di_member_selects_only_files_under_a_di_year_directory() {
+        assert!(is_di_member("di_yr_0/di_totals_1.csv"));
+        assert!(is_di_member("example_ckt7/di_yr_0/25607_1.csv"));
+        assert!(is_di_member("di_yr_0/sub/deep.dbl"));
+        // a year spelling this rule did not anticipate still widens the surface
+        // (r4133 `EnergyMeter.pas:824` appends a bare `IntToStr(Year)`)
+        assert!(is_di_member("di_yr_12/di_systemmeter_1.csv"));
+        // the directory member itself carries no contents
+        assert!(!is_di_member("di_yr_0/"));
+        assert!(!is_di_member("di_yr_0/sub/"));
+        // ordinary run output
+        assert!(!is_di_member("exp_y.csv"));
+        assert!(!is_di_member("example_ckt7/exp_voltages.csv"));
+        // a FILE whose own name starts with the prefix is not a tree
+        assert!(!is_di_member("di_yr_0"));
+    }
+
     #[test]
     fn is_engine_scratch_file_matches_only_the_dbl_scratch() {
         assert!(is_engine_scratch_file("NEV_SavedVoltages.dbl"));
@@ -1344,6 +1685,13 @@ mod tests {
             case.join("sidecar"),
             case.join("keep"),
             root.clone(),
+            // Several levels deep and NOT created yet — `create_dir_all` would
+            // make them inside the vendored deck. The rail must resolve such a
+            // spelling against its nearest existing ancestor, not only against
+            // its immediate parent (merge settlement of the lane-e G1.10c
+            // landing, finding MT-1: the dedup'd rail had stopped refusing it,
+            // while the Python twin's `abspath` still did).
+            case.join("newdir").join("sub"),
         ] {
             let e = copy_selected_contents(
                 &case,

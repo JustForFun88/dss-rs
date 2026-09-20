@@ -551,8 +551,8 @@ impl LedgerRuntime {
 /// it (or a typo'd field) would silently never apply, so loading rejects
 /// anything outside this list loudly (pre-E/F audit UGA-T4).
 ///
-/// The last eight — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
-/// `reliability`, `distance`, `run_files` — are
+/// The last nine — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
+/// `reliability`, `distance`, `run_files`, `di` — are
 /// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]). The first four name a whole
 /// compared artifact rather than a value with a natural envelope, so the only
 /// thing the ledger can say about them is "this (case, channel) does not
@@ -615,7 +615,17 @@ impl LedgerRuntime {
 /// set (the presence rail, the ASCII refusal, the D25/Q2 symmetric
 /// engine-scratch split and its census) stays unconditional whatever the ledger
 /// says.
-const LEDGER_FIELDS: [&str; 17] = [
+///
+/// `di` (`GOLDEN_REBASE_PLAN.md` G1.10c) is the fifth per-VALUE field and the
+/// narrowest: the key is `<created-file member name>:<column name>`, both ASCII
+/// lower case (`example_ckt7/di_yr_0/di_totals_1.csv:kvarh`), so a scope masks
+/// ONE column of ONE demand-interval file — never a file, never a case
+/// (`harness::di::compare_di`). Each column is compared at the calibrated tier
+/// its physical quantity already has (`harness::tol_for`), so a `divergence`
+/// would promise an envelope nothing re-asserts; and everything structural
+/// around the cells — the file SET, the header line, the row count and the
+/// per-row field count — stays compared whatever the ledger says.
+const LEDGER_FIELDS: [&str; 18] = [
     "iterations",
     "voltages",
     "injection",
@@ -633,12 +643,13 @@ const LEDGER_FIELDS: [&str; 17] = [
     "reliability",
     "distance",
     "run_files",
+    "di",
 ];
 
 /// Fields an entry may name only with `kind: "exclusion"` — see
 /// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
 /// nothing re-asserts.
-const EXCLUSION_ONLY_FIELDS: [&str; 8] = [
+const EXCLUSION_ONLY_FIELDS: [&str; 9] = [
     "y",
     "y_fingerprint",
     "yprim",
@@ -647,6 +658,7 @@ const EXCLUSION_ONLY_FIELDS: [&str; 8] = [
     "reliability",
     "distance",
     "run_files",
+    "di",
 ];
 
 /// Fields an `exclusion` entry may name — the mirror obligation of
@@ -680,7 +692,18 @@ const EXCLUSION_ONLY_FIELDS: [&str; 8] = [
 /// the D25/Q2 scratch split unconditional whatever the ledger says, and an
 /// excluded name leaves BOTH sides, so a mask can never absorb a second
 /// divergence on the same case.
-const EXCLUSION_FIELDS: [&str; 13] = [
+///
+/// `di` (`GOLDEN_REBASE_PLAN.md` G1.10c) is served by [`LedgerView::excluded`]
+/// the same way, keyed on the `<file>:<column>` pair the comparator builds
+/// (`harness::di`, e.g.
+/// `example_ckt7/di_yr_0/di_voltexceptions_1.csv:min lv bus`), so
+/// `every_exclusion_field_is_honoured_by_the_runtime` covers it with no new
+/// drive. The key is consulted only for a file that has at least one data row,
+/// so a scope on an empty report cannot look alive; and the comparator keeps
+/// the presence rail, the file-SET equality, the verbatim header and the two
+/// count assertions unconditional — an exclusion can only ever drop one
+/// column's cells.
+const EXCLUSION_FIELDS: [&str; 14] = [
     "voltages",
     "element",
     "injection",
@@ -694,6 +717,7 @@ const EXCLUSION_FIELDS: [&str; 13] = [
     "reliability",
     "distance",
     "run_files",
+    "di",
 ];
 
 /// Fields whose [`Scope::channels`] selects **sub-channels** of a multi-part
@@ -2756,8 +2780,10 @@ const EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER: [&str; 2] = ["voltages", "elem
 /// so a dead selector on an entry that also excludes something coarse would
 /// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i), by
 /// G1.4b's `distance`, whose selector is a BUS name, and by G1.10a's
-/// `run_files`, whose scopes select one created-file NAME).
-const PER_VALUE_EXCLUSION_FIELDS: [&str; 4] = ["variables", "reliability", "distance", "run_files"];
+/// `run_files`, whose scopes select one created-file NAME, and by G1.10c's
+/// `di`, whose scopes select one `<file>:<column>` cell column).
+const PER_VALUE_EXCLUSION_FIELDS: [&str; 5] =
+    ["variables", "reliability", "distance", "run_files", "di"];
 
 /// Every field [`EXCLUSION_FIELDS`] lets an `exclusion` name must actually be
 /// honoured at runtime — the same guarantee [`LEDGER_FIELDS`] gives one level

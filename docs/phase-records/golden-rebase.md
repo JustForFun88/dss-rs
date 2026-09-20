@@ -3831,3 +3831,33 @@ row against the pre-fix lock.
   was asserted only half-way). No band, population, golden byte, ledger row or lock cell moved.
 
   merge: lane lane-s -> update, see git log
+
+- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c` + `e2d2a83d` + docs) — the
+  demand-interval tree's CONTENTS compare live on both channels behind `compare_di`: each transport copies the
+  run-created tree into a per-(case, channel) sidecar read before `created()` and before the capi teardown `clear`
+  (slot asserted from both sources by `check_run_tail_order`, **D43(2)**); each column is banded at the gate's
+  existing calibrated tier for its quantity (**D42(1)** S-CLASS — the brief's `di_policy()` fixture floor measured
+  false against the two oracles themselves: no `Tolerances` value, no new constant, no golden byte). **5** decks
+  (**D42(3)**), forced on every live case, census (5, 883, 72, **9 793 064**); ledger 57 → **61** entries / 33 →
+  **35** causes — two ckt7 columns, one entry per channel, each with a both-numbers pin (**D44(1)**). Details:
+  `TESTING.md` §"G1.10c", `tests/TOLERANCE_NOTES.md` §G1.10c. Gate (`tmp/g110c/gate.md`): five commands exit 0,
+  **11 966 / 0 / 5** per lane, corpus 526/526; no PRODUCT crate's `src` moved → `lane_diff` not owed (**D41**).
+  **Audit settlement** (`7818868c`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**, none
+  major; per-finding table `tmp/g110c/settle.md`, effects in the two documents above and in `G1_10_PINS`): six new
+  drives — `the_masked_kvarh_column_is_pinned_whole` (AT-1, the masked column pinned whole; row-scoping refused as
+  measured), `a_truncated_di_sidecar_copy_is_reported`, `a_di_member_name_that_escapes_its_sidecar_is_refused`,
+  `a_register_file_of_an_unknown_width_fails`, `the_channel_tags_are_the_gates_one_vocabulary`,
+  `the_di_pin_cases_are_the_manifest_rows`. Gate: **11 997 / 0 / 5** per lane, 526/526 (one **D23** foreign-`.tmp`
+  red, green on the unmodified re-run; `tmp/g110c/settle2_gate_*.log`).
+  **Round 2** (`e2d2a83d`; the settlement's own audit, 6 findings — **4 fixed / 2 recorded**, table
+  `tmp/g110c/settle2.md`): `TIE_MAGNITUDES_HEX` records all three tied buses and asserts their bit-identity (SA-5),
+  three wrapped assertion messages regain their continuations (SA-1), the whole-column pin's sensitivity is restated
+  at its real scope (SA-3); SA-6 (those 8 736 rows are watched port-side only, neither narrowing existing in the
+  tree) and SA-4 stand for the coordinator. Gate: five commands exit 0, **11 997 / 0 / 5** per lane, corpus 526/526
+  (`tmp/g110c/settle3_gate_*.log`) — the parity suite red four times in `Test/AutoTrans/` (and once on 13Bus's
+  foreign `.tmp`) while another lane's corpus gate ran: sweeps reported delete-pending files that were gone
+  afterwards, the cases pass scoped, and the suite is green on the quiet machine (**D23**).
+
+  merge: lane lane-e -> update, see git log
+  merge audit: 9 findings - 7 fixed / 1 recorded / 1 split (MC-3: pin fixed, fallback recorded) / 0 refuted
+  (`tmp/merge/lane-e-G110c/settle.md`); merged gate green in both lanes, lane_diff max |Δ| = 0.

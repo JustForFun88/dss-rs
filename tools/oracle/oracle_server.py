@@ -1437,6 +1437,8 @@ def capture_inc_matrix(d, ckt) -> dict:
 # identical, empirically-hardened implementation.
 from corpus_guard import CorpusGuard as _CorpusGuard  # noqa: E402
 from corpus_guard import copy_selected_contents as _copy_selected_contents  # noqa: E402
+from corpus_guard import _refuse_sidecar_under_case_dir  # noqa: E402
+from corpus_guard import copy_di_tree as _copy_di_tree  # noqa: E402
 
 
 # The pinned engine (dss_capi 0.14.5) has a per-process nondeterminism: on a
@@ -1499,6 +1501,58 @@ _USER_MODEL_ERRNOS = {567, 570, 1570}
 #           of `capture_reliability`).
 # Any other errno out of `RelCalc` re-raises — a real failure is never swallowed.
 _RELCALC_TOLERATED_ERRNOS = {52902}
+
+
+def capture_di(guard, di_dir: str, case_path: str) -> dict | None:
+    """GOLDEN_REBASE G1.10c — copy the run-created demand-interval tree into the
+    gate's sidecar directory and report `normalized member name -> path relative
+    to di_dir`.
+
+    The selection is `corpus_guard.CorpusGuard.created_di_files`: the ONE
+    created-entry classification, narrowed to the FILE members of a `DI_yr_*`
+    tree (`<OutputDirectory><CaseName>/DI_yr_<year>`, dss_capi 0.14.5
+    `src/Meters/EnergyMeter.pas:873`), so a tree that was already on disk before
+    the run can never enter the compared surface. `None` is the guard's "cannot
+    report honestly" answer (an incomplete pre-run snapshot, or a listing that
+    failed), which the gate's presence rail turns into a failed case — it is
+    deliberately NOT an empty dict, which means "asked, and this deck wrote no
+    DI tree".
+
+    Twin: `crates/dss-epri/src/capture.rs::capture_di`."""
+    if not di_dir:
+        raise ValueError(
+            f"{case_path}: the request asked for the demand-interval tree (`di`) "
+            "without a sidecar directory (`di_dir`). The DI files are swept away "
+            "with the rest of the run's output, so they must be copied out while "
+            "the guard is alive; a missing directory fails the case instead of "
+            "reporting an empty tree."
+        )
+    # The sidecar must lie OUTSIDE the case directory: a copy written inside it
+    # would be classified as this run's own output by the very guard whose
+    # classification selected the originals — it would enter G1.10a's created
+    # file SET and be swept before the gate could read it.
+    case_dir = os.path.dirname(os.path.abspath(case_path))
+    # ONE rail for both sidecars (coordinator decision D42(5), deduped at the
+    # G1.10c landing): `corpus_guard.path_is_inside` is the shared fold test and
+    # `_refuse_sidecar_under_case_dir` applies it in BOTH directions. Its message
+    # states which relation fired and prints the resolved paths, so this caller
+    # names the DI surface and hands the rail's own text through rather than
+    # asserting one direction (merge settlement of the lane-e G1.10c landing,
+    # finding MC-1). Twin: `crates/dss-epri/src/capture.rs::capture_di`.
+    try:
+        _refuse_sidecar_under_case_dir(case_dir, os.path.abspath(di_dir))
+    except RuntimeError as why:
+        raise ValueError(
+            f"{case_path}: the demand-interval sidecar {di_dir} and the case "
+            f"directory {case_dir} share a path - {why} The copies would be "
+            "classified as run-created output and swept away with the originals; "
+            "the sidecar belongs to the gate's own scratch "
+            "(`corpus_gate::engines::di_sidecar_dir`)."
+        ) from why
+    members = guard.created_di_files()
+    if members is None:
+        return None
+    return _copy_di_tree(members, di_dir)
 
 
 def _set_early_abort(d, val) -> bool:
@@ -1624,6 +1678,21 @@ def run_case(d, req: dict) -> dict:
     # of the selected reports").
     contents_patterns = list(req.get("run_file_contents", []) or [])
     contents_dir = req.get("run_file_contents_dir") or ""
+    # G1.10c: the CONTENTS of the run-created demand-interval tree
+    # (`<OutputDirectory><CaseName>/DI_yr_<year>/*`, `src/Meters/EnergyMeter.pas:873`).
+    # Same contract as `run_files`: not a model read but the run's filesystem
+    # effect, selected by the SAME `_CorpusGuard` classification, read inside the
+    # guard scope — after `autoadd_log` and strictly BEFORE `created()`, which
+    # stays the last read of the run (D33(3)) and, on this channel, before the
+    # teardown `clear` below, which FLUSHES the in-flight demand-interval cycle
+    # over the file on every deck whose run leaves the DI streams open (measured
+    # on 3 of the 5 DI cases). Off -> the response carries `None`, not `{}`, so
+    # `harness::capture_guard::require_capture_opt` can tell "not requested"
+    # apart from "requested, and this deck writes no DI tree" (most decks).
+    # `di_dir` is the gate's own sidecar directory for this (case, channel):
+    # the guard sweeps the originals away, so the files are COPIED there.
+    want_di = bool(req.get("di", False))
+    di_dir = req.get("di_dir")
     # CF-C Port 2 user-model decks: tolerate the `_USER_MODEL_ERRNOS` at compile
     # AND at every solve (EarlyAbort is turned off around this call in main()).
     warn_and_continue = bool(req.get("warn_and_continue", False))
@@ -1892,6 +1961,12 @@ def run_case(d, req: dict) -> dict:
                 with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
                     autoadd_log = fh.read()
 
+        # G1.10c: the demand-interval tree's CONTENTS, read after the
+        # `autoadd_log` file read and strictly BEFORE the classification below —
+        # which stays the LAST read of the run (D33(3)) — and before the
+        # teardown `clear`, which flushes the in-flight DI cycle over the file.
+        di = capture_di(guard, di_dir, case_path) if want_di else None
+
         # G1.10a: STRICTLY LAST inside the guard scope — every file the run
         # wrote (including the AutoAddLog just read) is still on disk, and the
         # `__exit__` below removes exactly what this call classifies.
@@ -1976,6 +2051,7 @@ def run_case(d, req: dict) -> dict:
         "n_steps": n_steps,
         "checkpoints": checkpoints,
         "autoadd_log": autoadd_log,
+        "di": di,
         "run_files": run_files,
         "run_file_contents": run_file_contents,
         "sweep_failed": sweep_failed,

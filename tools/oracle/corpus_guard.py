@@ -229,22 +229,61 @@ def _resolve_selected(case_dir: str, created, patterns) -> list:
     return out
 
 
+def path_is_inside(path: str, dir_: str) -> bool:
+    """Case-insensitive path-prefix test on SEGMENT boundaries: is `path`
+    `dir_` itself or below it? A sibling whose name merely starts the same way
+    is NOT inside.
+
+    ONE rail for both sidecars since the G1.10c landing deduped G1.10b’s
+    contents sidecar and G1.10c’s demand-interval sidecar (coordinator
+    decision D42(5)); the fold is what a plain `startswith` on Windows spellings
+    misses.
+
+    Twin: `crates/dss-epri/src/guard.rs::path_is_inside`."""
+    p = ascii_lower(path.replace("\\", "/"))
+    d = ascii_lower(dir_.replace("\\", "/")).rstrip("/")
+    return p == d or p.startswith(d + "/")
+
+
+def verify_sidecar_size(src: str, dest: str) -> None:
+    """Refuse a sidecar copy whose size does not match its source — ONE rail
+    for both sidecars since the G1.10c landing (coordinator decision D42(5)):
+    a short or later-truncated copy fails the case here instead of reaching the
+    comparator as a row-count divergence.
+
+    Twin: `crates/dss-epri/src/guard.rs::verify_sidecar_size`."""
+    want = os.path.getsize(src)
+    got = os.path.getsize(dest)
+    if want != got:
+        raise RuntimeError(
+            f"the sidecar source {src} is {want} bytes but its copy {dest} "
+            f"is {got} — the sidecar must be a byte-for-byte copy, or the "
+            f"comparator reads a truncated file as a divergence"
+        )
+
+
 def _refuse_sidecar_under_case_dir(case_dir: str, sidecar: str) -> None:
     """Refuse a sidecar that is, contains, or sits under the case directory.
 
     The sidecar is cleared with a recursive delete, so the one destructive path
     of this surface states D40(6) itself rather than trusting its caller.
 
+    The message names the relation it actually found - the rail is shared by
+    both sidecars, so either direction can fire - and its caller adds the
+    surface it speaks for.
+
     Twin: `crates/dss-epri/src/guard.rs::refuse_sidecar_under_case_dir`."""
     c = os.path.abspath(case_dir)
     d = os.path.abspath(sidecar)
-    if c == d or d.startswith(c + os.sep) or c.startswith(d + os.sep):
+    inside, contains = path_is_inside(d, c), path_is_inside(c, d)
+    if inside or contains:
+        relation = "IS" if inside and contains else ("lies inside" if inside else "contains")
         raise RuntimeError(
-            "run-file contents: the sidecar {} is the case directory {} or "
-            "shares a path with it. The bytes travel through a directory the "
-            "GATE owns under `target/` and this transport clears it with a "
-            "recursive delete (coordinator decision D40(6)); pointing it at a "
-            "corpus deck would delete vendored sources.".format(d, c)
+            "the sidecar {} {} the case directory {}. The bytes travel through "
+            "a directory the GATE owns under `target/` and this transport "
+            "clears it with a recursive delete (coordinator decision D40(6)); "
+            "pointing it at a corpus deck would delete vendored "
+            "sources.".format(d, relation, c)
         )
 
 
@@ -288,14 +327,72 @@ def copy_selected_contents(case_dir: str, created, patterns, sidecar):
     # coordinator decision D40(6) ("the gate's OWN scratch - never inside
     # `tests/corpus/` or the case directory") is enforced here, not only at the
     # single construction site. Twin: `guard.rs::refuse_sidecar_under_case_dir`.
-    _refuse_sidecar_under_case_dir(case_dir, sidecar)
+    try:
+        _refuse_sidecar_under_case_dir(case_dir, sidecar)
+    except RuntimeError as why:
+        raise RuntimeError("run-file contents: {}".format(why)) from why
     shutil.rmtree(sidecar, ignore_errors=True)
     os.makedirs(sidecar, exist_ok=True)
     names = []
     for name, path in selected:
-        shutil.copyfile(path, os.path.join(sidecar, name))
+        dest = os.path.join(sidecar, name)
+        shutil.copyfile(path, dest)
+        verify_sidecar_size(path, dest)
         names.append(name)
     return sorted(names)
+
+
+# --- GOLDEN_REBASE G1.10c: the demand-interval tree -------------------------
+#
+# The path segment every DI tree hangs under, ASCII-case-folded like a
+# `normalize_created_name` key: dss_capi 0.14.5 builds it as
+# `CasePath + PathDelim + 'DI_yr_' + Trim(IntToStr(Solution.Year))`
+# (`src/Meters/EnergyMeter.pas:873`), r4133 identically
+# (`Version8/Source/Meters/EnergyMeter.pas:824`), the port in
+# `crates/dss-core/src/solution/meters/demand_interval.rs:964`.
+DI_DIR_PREFIX = "di_yr_"
+
+
+def is_di_member(name: str) -> bool:
+    """True for a normalized created-name that is a FILE member of a
+    demand-interval tree: some DIRECTORY segment above the file name starts with
+    `DI_DIR_PREFIX`.
+
+    The test is on the PREFIX, not on `di_yr_<digits>`: the engines append a
+    bare `IntToStr(Year)` with no width or sign contract, and a year spelling
+    this rule did not anticipate must widen the surface, never silently drop a
+    file out of it. A DIRECTORY member (trailing `/`) is never a DI file — it
+    carries no contents, and its existence is already compared by G1.10a.
+
+    Twin: `crates/dss-epri/src/guard.rs::is_di_member`."""
+    if name.endswith("/"):
+        return False
+    return any(seg.startswith(DI_DIR_PREFIX) for seg in name.split("/")[:-1])
+
+
+def copy_di_tree(members, di_dir: str) -> dict:
+    """Copy the DI `members` (`(abs path, normalized name)`) into the gate's
+    sidecar directory `di_dir`; return `normalized name -> path relative to
+    di_dir` (decision D42(5)).
+
+    The DI tree is run-created, so this guard sweeps it away at the end of the
+    run while the comparison happens later, in the gate process, after the port
+    has re-run the same case in the same directory. The files are therefore
+    COPIED (never moved: the guard must still find and sweep the original, and
+    G1.10a must still see its name) into a directory the gate owns, outside
+    `tests/corpus/`. A copy that cannot be made, or whose size does not match
+    the source, RAISES — the case fails loudly instead of shipping a short file
+    the comparator would read as a row-count divergence.
+
+    Twin: `crates/dss-epri/src/guard.rs::copy_di_tree`."""
+    out = {}
+    for path, name in members:
+        dest = os.path.join(di_dir, *name.split("/"))
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copyfile(path, dest)
+        verify_sidecar_size(path, dest)
+        out[name] = name
+    return out
 
 
 class CorpusGuard:
@@ -359,7 +456,9 @@ class CorpusGuard:
         self._snapshot_ok = self._snapshot(self.dir, "")
         return self
 
-    def _classify(self, d: str, prefix: str, roots: list, out: list) -> bool:
+    def _classify(
+        self, d: str, prefix: str, roots: list, out: list, files: list
+    ) -> bool:
         """The ONE created-entry classification (G1.10a): an entry of the case
         directory ITSELF is run-created iff its `/`-joined relative path is
         absent from the pre-run snapshot. The surface is the case dir's own
@@ -370,9 +469,12 @@ class CorpusGuard:
         `crates/dss-epri/src/guard.rs::CorpusGuard::classify`).
 
         Fills `roots` with the `(abs path, is_dir)` of every created entry —
-        exactly what the sweep removes — and `out` with the normalized name of
-        every created entry, recursing into a created directory so its contents
-        are members of the set too.
+        exactly what the sweep removes — `out` with the normalized name of every
+        created entry, recursing into a created directory so its contents are
+        members of the set too, and `files` with the `(abs path, normalized
+        name)` of every created FILE member (G1.10c: the normalized name is
+        case-folded, so a consumer that has to OPEN the file needs the real
+        spelling from this same walk).
 
         Returns False if any directory listing failed: an incomplete
         classification may still be SWEPT (the sweep removes only what it did
@@ -392,16 +494,19 @@ class CorpusGuard:
                 # what does land there belongs to a concurrently running
                 # sibling case (see this method's docstring).
                 continue
-            out.append(normalize_created_name(rel, is_dir))
+            norm = normalize_created_name(rel, is_dir)
+            out.append(norm)
             roots.append((p, is_dir))
             if is_dir:
                 # Run-created directory (the DI `<CircuitName>/` tree): every
                 # entry below it is run-created too, and the whole tree is one
                 # removal root.
-                ok = self._collect_tree(p, rel, out) and ok
+                ok = self._collect_tree(p, rel, out, files) and ok
+            else:
+                files.append((p, norm))
         return ok
 
-    def _collect_tree(self, d: str, prefix: str, out: list) -> bool:
+    def _collect_tree(self, d: str, prefix: str, out: list, files: list) -> bool:
         """List a run-created directory: every entry under it is run-created."""
         try:
             current = os.listdir(d)
@@ -412,9 +517,12 @@ class CorpusGuard:
             p = os.path.join(d, name)
             rel = f"{prefix}/{name}"
             is_dir = os.path.isdir(p) and not os.path.islink(p)
-            out.append(normalize_created_name(rel, is_dir))
+            norm = normalize_created_name(rel, is_dir)
+            out.append(norm)
             if is_dir:
-                ok = self._collect_tree(p, rel, out) and ok
+                ok = self._collect_tree(p, rel, out, files) and ok
+            else:
+                files.append((p, norm))
         return ok
 
     def created(self) -> list[str] | None:
@@ -439,9 +547,47 @@ class CorpusGuard:
             return None
         roots: list = []
         out: list = []
-        if not self._classify(self.dir, "", roots, out):
+        files: list = []
+        if not self._classify(self.dir, "", roots, out, files):
             return None
         return sorted(set(out))
+
+    def created_di_files(self) -> list | None:
+        """The run-created demand-interval tree's FILE members as
+        `(abs path, normalized name)` — the gate's `compare_di` surface
+        (GOLDEN_REBASE G1.10c).
+
+        The SAME classification `created()` reports and `_sweep_created()`
+        sweeps, narrowed by `is_di_member`: a DI file is selected *because it is
+        run-created*, so a tree already on disk before the run (a leaked sweep —
+        no `DI_yr_*` path is committed in `tests/corpus`) cannot enter the
+        compared surface through this door. Read BEFORE `created()`, which the
+        per-run capture-order rule keeps the last READ of the run
+        (`crates/dss-core/tests/capture_order.rs`) — hence a second call rather
+        than a filter over the reported set.
+
+        `None` means the same as in `created()`: the classification cannot be
+        reported honestly, and the gate's presence rail fails the case.
+
+        Twin: `crates/dss-epri/src/guard.rs::CorpusGuard::created_di_files`."""
+        if self._exited:
+            raise RuntimeError(
+                "CorpusGuard.created_di_files() called after the guard scope "
+                "closed; the demand-interval tree must be read inside "
+                "`with CorpusGuard(...)`, before the sweep removes it"
+            )
+        if not self._snapshot_ok:
+            return None
+        roots: list = []
+        out: list = []
+        files: list = []
+        if not self._classify(self.dir, "", roots, out, files):
+            return None
+        # Sorted by the NORMALIZED name, like the Rust twin: the two
+        # transports then copy and report in one order.
+        return sorted(
+            ((p, n) for p, n in files if is_di_member(n)), key=lambda pair: pair[1]
+        )
 
     def _sweep_created(self) -> list[str]:
         """Delete what `_classify` classified — the same classification the
@@ -470,7 +616,8 @@ class CorpusGuard:
         # still removes every dropping it *did* classify (all of them absent
         # from the pre-run snapshot), which is strictly better hygiene than
         # skipping the sweep.
-        self._classify(self.dir, "", roots, out)
+        files: list = []
+        self._classify(self.dir, "", roots, out, files)
         for p, is_dir in roots:
             try:
                 if is_dir:
@@ -544,6 +691,14 @@ SELF_TEST_CREATED = [
     "nev_savedvoltages.dbl",
 ]
 SELF_TEST_SCRATCH = ["nev_savedvoltages.dbl"]
+# The DI FILE members of the same fixture (GOLDEN_REBASE G1.10c): the two files
+# under the run-created `DI_yr_0/` tree, the nested one included and the two
+# directory members (`di_yr_0/`, `di_yr_0/sub/`) excluded — a directory carries
+# no contents. The Rust twin asserts this very list (`guard.rs::DI_FILES`).
+SELF_TEST_DI_FILES = [
+    "di_yr_0/sub/deep.dbl",
+    "di_yr_0/totals_1.csv",
+]
 # What the case dir holds after the sweep: the pre-existing files, plus the one
 # write under the pre-existing subdirectory the guard must neither report nor
 # delete.
@@ -599,17 +754,27 @@ def _self_test() -> int:
     import json
     import tempfile
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as tmp_sidecar:
         for rel in SELF_TEST_PRE_EXISTING:
             _write(os.path.join(tmp, rel.replace("/", os.sep)), "pre-existing\n")
 
+        sidecar = os.path.join(tmp_sidecar, "capi_v0145")
         with CorpusGuard(os.path.join(tmp, "case.dss")) as g:
             for rel in SELF_TEST_RUN_WRITES:
                 _write(os.path.join(tmp, rel.replace("/", os.sep)), "run-written\n")
             # the run also OVERWRITES a pre-existing file
             _write(os.path.join(tmp, "root.txt"), "clobbered\n")
+            # G1.10c: the DI tree is read (and copied out) BEFORE `created()`,
+            # which the per-run capture-order rule keeps the last read.
+            di_members = g.created_di_files()
+            di_map = copy_di_tree(di_members, sidecar)
             created = g.created()
             kept, scratch = split_engine_scratch(created or [])
+        di_names = [n for _p, n in di_members]
+        di_copied = sorted(
+            open(os.path.join(sidecar, *rel.split("/")), encoding="ascii").read()
+            for rel in di_map.values()
+        )
 
         after = []
         for d, _dirs, files in os.walk(tmp):
@@ -680,11 +845,29 @@ def _self_test() -> int:
             contents_bad_pattern = "NO RAISE"
         except ValueError:
             contents_bad_pattern = "raises"
+        # The containment rail on a sidecar several NON-EXISTENT levels inside
+        # the case directory - `makedirs` would create them inside the deck.
+        # The Rust twin's battery drives the same input
+        # (`guard.rs::a_sidecar_inside_the_case_directory_is_refused_before_
+        # anything_is_deleted`); this row keeps the two comparable on it (merge
+        # settlement of the lane-e G1.10c landing, finding MT-1).
+        try:
+            copy_selected_contents(
+                tmp3,
+                SELF_TEST_CONTENTS_CREATED,
+                SELF_TEST_CONTENTS_PATTERNS,
+                os.path.join(tmp3, "newdir", "sub"),
+            )
+            contents_deep_inside = "NO RAISE"
+        except RuntimeError:
+            contents_deep_inside = "raises"
 
     print(
         json.dumps(
             {
                 "created": created,
+                "di_files": di_names,
+                "di_sidecar": sorted(di_map.values()),
                 "kept": kept,
                 "scratch": scratch,
                 "after_sweep": after,
@@ -701,6 +884,10 @@ def _self_test() -> int:
         )
     )
     assert created == SELF_TEST_CREATED, created
+    assert di_names == SELF_TEST_DI_FILES, di_names
+    assert sorted(di_map.values()) == SELF_TEST_DI_FILES, di_map
+    # the sidecar copy is what survives the sweep, byte for byte
+    assert di_copied == ["run-written\n"] * len(SELF_TEST_DI_FILES), di_copied
     assert scratch == SELF_TEST_SCRATCH, scratch
     assert kept == [n for n in SELF_TEST_CREATED if n not in SELF_TEST_SCRATCH], kept
     assert after == SELF_TEST_AFTER_SWEEP, after
@@ -715,6 +902,7 @@ def _self_test() -> int:
     assert contents_no_dir == "raises", contents_no_dir
     assert contents_gone == "raises", contents_gone
     assert contents_bad_pattern == "raises", contents_bad_pattern
+    assert contents_deep_inside == "raises", contents_deep_inside
     assert restored == "pre-existing\n", restored
     assert after_scope == "raises", after_scope
     assert normalize_created_name("./A\\B//C.CSV", False) == "a/b/c.csv"

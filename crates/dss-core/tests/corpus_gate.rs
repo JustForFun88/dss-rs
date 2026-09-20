@@ -251,6 +251,15 @@ fn corpus_gate_all_cases_match_engines() {
     // compares nothing is otherwise indistinguishable from one that compares
     // everything (D40(9)).
     scheduler::assert_run_file_contents_census_is_the_pinned_population();
+    // And for G1.10c's demand-interval surface, whose two `ckt7` ledger rows
+    // say nothing about whether the OTHER 521 live cases were compared at all:
+    // the census `(cases with a tree, comparisons, files, cells)` is re-derived
+    // from this run and pinned in both directions, with the producing cases
+    // pinned BY NAME — which is where the corpus's sixth `closedi` deck
+    // (`Storage-Quasi-Static-Example/Run_Demo1.dss`, `closedi` without
+    // `Set DemandInterval=`) is pinned DI-free. Same placement reason as the
+    // rails above: a failing case may not have reached its DI compare.
+    scheduler::assert_di_census_is_the_pinned_population();
     // And the GLOBAL half of the r4133 property accounting (plan §RP4.1): the
     // two per-row asserts BELOW say nothing when NO row was visited, which is
     // exactly what a re-mask of the r4133 property request would produce — a
