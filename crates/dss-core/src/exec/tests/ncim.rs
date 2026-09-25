@@ -1542,3 +1542,275 @@ fn ncim_swing_sum_subtracts_pc_terminals_and_closes_kcl() {
         "Export Currents Vsource.SOURCE row: {row} (r4133 prints 54.1862, 103.78)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// RF-D00-05 — a generator that joins the NCIM solve late.
+// ---------------------------------------------------------------------------
+
+/// `pv_circuit`'s network without its generator: `sourcebus → genbus` and the
+/// 2 MW / 0.8 Mvar load at `genbus`. The generator (if any) is supplied by the
+/// caller, *before* the voltage bases as `pv_circuit` places it.
+fn late_gen_network(generator: Option<String>) -> Vec<String> {
+    let mut deck: Vec<String> = vec![
+        "Clear".into(),
+        "New circuit.ncimlate basekv=12.47 phases=3 bus1=sourcebus".into(),
+        "New Line.l1 bus1=sourcebus bus2=genbus phases=3 r1=0.12 x1=0.35 length=3".into(),
+        "New Load.ld1 bus1=genbus phases=3 kv=12.47 kw=2000 kvar=800 model=1".into(),
+    ];
+    deck.extend(generator);
+    deck.push("Set voltagebases=[12.47]".into());
+    deck.push("Calcvoltagebases".into());
+    deck
+}
+
+/// `pv_circuit("1.0")`'s machine with the model under test (±1500 kvar limits).
+fn late_gen_line(model: i32, extra: &str) -> String {
+    format!(
+        "New Generator.g1 bus1=genbus phases=3 kv=12.47 kw=800 model={model} \
+         maxkvar=1500 minkvar=-1500 vpu=1.0 {extra}"
+    )
+}
+
+/// Solve `first` under NCIM (it must converge), run `between`, `Solve` again.
+fn ncim_resolve_after(first: &[String], between: &[String]) -> Dss {
+    let mut dss = solve_ncim(first);
+    assert!(
+        dss.circuit().expect("circuit").is_solved,
+        "the first NCIM solve must converge"
+    );
+    for line in between.iter().map(String::as_str).chain(["Solve"]) {
+        dss.command(line);
+        assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+    }
+    dss
+}
+
+/// Assert a solved circuit against live-r4133 node voltages and the
+/// `Generator.g1` terminal power (kW/kvar), with its iteration count.
+fn assert_twin_matches_r4133(
+    twin: &mut Dss,
+    iterations: i32,
+    nodes: &[(f64, f64); 6],
+    gen_kw_kvar: (f64, f64),
+) {
+    let ckt = twin.circuit().expect("twin");
+    assert!(ckt.is_solved, "r4133 converges the twin");
+    assert_eq!(ckt.solution.iteration, iterations, "r4133 iteration count");
+    let expected: Vec<Complex64> = nodes.iter().map(|&(re, im)| cx(re, im)).collect();
+    assert_nodes(twin, &expected, V_TOL);
+    let s = term_power_kw(twin, "Generator.g1", 1);
+    assert!(
+        (s.re - gen_kw_kvar.0).abs() < 1e-6 && (s.im - gen_kw_kvar.1).abs() < 1e-6,
+        "twin Generator.g1 = {s:?} kW/kvar vs live r4133 {gen_kw_kvar:?}"
+    );
+}
+
+/// The shared verdict of the late-generator pins: the re-solve that brought
+/// `Generator.g1` in converges, in `iterations` Newton passes, onto the
+/// fixpoint of its *twin* — the same deck with the machine declared before the
+/// first solve, re-solved the same way — at the `V_TOL` node floor and the
+/// 1e-6 kW/kvar terminal-power floor; Kirchhoff closes at `genbus`; the
+/// machine keeps `model` and its NCIM registry is per-phase.
+///
+/// r4133 cannot answer a late deck itself: live `epri-worker` probe
+/// 2026-09-25 (OpenDSSDirect.dll r4133 "Version 11.0.0.1 (64-bit build)",
+/// `tmp/retro_fix/state/RF-D00-05/probe_r4133_late_gen.py`) — the second
+/// `Solve` raises `DSS error #482 Error Encountered in Solve: Access violation
+/// … Read of address 0000000000000000` at iteration 1 on all four decks
+/// (created / enabled × model 3 / 4): the nil read of the late machine's empty
+/// `deltaQNom` — `GetNCIMPowers`' model-3 arm (`Common/Solution.pas` l.1308,
+/// before any voltage update) or `UpdateGenQ`'s ELSE-arm PQ→PV test (l.2209).
+/// So each pin is Kirchhoff + port self-consistency against a twin that r4133
+/// *does* answer, and pins that twin to r4133's own numbers.
+fn assert_late_generator_lands_on_the_twin(
+    late: &mut Dss,
+    twin: &mut Dss,
+    model: i32,
+    iterations: i32,
+) {
+    let ckt = late.circuit().expect("circuit");
+    assert!(
+        ckt.is_solved,
+        "the re-solve with the late generator must converge"
+    );
+    assert_eq!(
+        ckt.solution.iteration, iterations,
+        "Newton passes of the late re-solve (port-only number: r4133 raises #482)"
+    );
+    let twin_v = twin.circuit().expect("twin").solution.node_v.clone();
+    assert_eq!(ckt.solution.node_v.len(), twin_v.len(), "same node space");
+    for (k, &t) in twin_v.iter().enumerate().skip(1) {
+        let v = ckt.solution.node_v[k];
+        assert!(
+            (v - t).norm() < V_TOL,
+            "node {k} ({}): late {v:?} vs twin {t:?}",
+            ckt.node_name(k)
+        );
+    }
+    let s = term_power_kw(late, "Generator.g1", 1);
+    let s_twin = term_power_kw(twin, "Generator.g1", 1);
+    assert!(
+        (s - s_twin).norm() < 1e-6,
+        "Generator.g1 = {s:?} kW/kvar vs twin {s_twin:?}"
+    );
+    let kcl = s + term_power_kw(late, "Load.ld1", 1) + term_power_kw(late, "Line.l1", 2);
+    assert!(kcl.norm() < 1e-6, "KCL at genbus = {kcl:?} kW/kvar");
+    let (m, _, _, _, dq, _) = gen_ncim_state(late, "g1");
+    assert_eq!(m, model, "the machine keeps its model");
+    assert_eq!(dq.len(), 3, "deltaQNom is sized per phase: {dq:?}");
+}
+
+/// **P10** (RF-D00-05) — a `model=3` (PV) generator *created* after the first
+/// NCIM solve must solve, not panic. `ncim_init_gen_q` (r4133 `InitGenQ`) is a
+/// one-shot flag — set only in `TSolutionObj.Create` (`Common/Solution.pas`
+/// l.648), cleared after the first Newton pass (l.1157) — and both registry
+/// initialisers were gated on it (`InitPQGen` l.1115-1118, `GetNumGenerators`'
+/// `InitQ` l.1926-1931), so the late machine reached `UpdateGenQ` with an
+/// empty `deltaQNom` and the port aborted: "index out of bounds: the len is 0
+/// but the index is 0" (its PV-arm read of `deltaQNom[j]`, r4133 l.2087).
+///
+/// The twin is re-solved after `Init`, not straight: `model=3` in the `New`
+/// clears `SolutionInitialized` (r4133 `PCElements/generator.pas` l.702), so
+/// the late re-solve re-initialises first (`DoPFLOWsolution` l.2444-2461:
+/// `SolveYDirect`, then `SetGeneratordQdV`'s `SolveZeroLoadSnapShot`, l.1012)
+/// and that leaves the swing bus 4.649e-5 V off the ideal EMF — which NCIM
+/// then holds (identity swing rows, zero swing mismatch). `Init`
+/// (`Executive/ExecCommands.pas` l.797) is the same reset, so the twin shares
+/// it; against the straight twin `pv_circuit("1.0")` the late fixpoint sits
+/// that 4.649e-5 V away. r4133 answers the `Init` twin (same probe):
+/// converged, 3 iterations, the numbers below — and its aborted late deck
+/// leaves this very swing value (7199.55790241085 − 8.971243507103153e-6j).
+#[test]
+fn ncim_generator_added_after_first_solve_does_not_panic_model3() {
+    let mut late = ncim_resolve_after(&late_gen_network(None), &[late_gen_line(3, "")]);
+    let mut twin = ncim_resolve_after(
+        &late_gen_network(Some(late_gen_line(3, ""))),
+        &["Init".to_string()],
+    );
+    const R4133_INIT_TWIN: [(f64, f64); 6] = [
+        (7199.55790241085, -8.971243507103153e-6),
+        (-3599.7789596772545, -6235.000034613589),
+        (-3599.7789420310905, 6235.000044801607),
+        (7199.261751488612, -65.29599441361756),
+        (-3656.1788663694515, -6202.09556766475),
+        (-3543.0828844045404, 6267.391563287948),
+    ];
+    // r4133 `Generator.g1` powers per phase: -266.6666… kW and -405.7398640018828,
+    // -405.73986400298423, -405.73986401115616 kvar.
+    assert_twin_matches_r4133(
+        &mut twin,
+        3,
+        &R4133_INIT_TWIN,
+        (-800.0, -1217.2195920160232),
+    );
+    assert_late_generator_lands_on_the_twin(&mut late, &mut twin, 3, 3);
+    // The PV equation holds at the late machine's bus: |V| = VTarget.
+    let vtarget = 12.47e3 / 3f64.sqrt();
+    let ckt = late.circuit().expect("circuit");
+    for k in 4..=6 {
+        let vmag = ckt.solution.node_v[k].norm();
+        assert!(
+            (vmag - vtarget).abs() < V_TOL,
+            "|genbus node {k}| = {vmag} V vs VTarget {vtarget} V"
+        );
+    }
+}
+
+/// **P11** (RF-D00-05) — the `model=4` (PQ) arm of **P10**: the late machine's
+/// empty `deltaQNom` panicked in `UpdateGenQ`'s ELSE arm instead (the PQ→PV
+/// test's `deltaQNom[0]` read, r4133 l.2209). `model=4` does not clear
+/// `SolutionInitialized`, so the twin is the straight up-front deck, which
+/// r4133 answers (same probe): converged, 3 iterations, the numbers below; the
+/// machine stays PQ at its nominal `Qnominalperphase` (800 kW at the default
+/// `PF=0.88`) — the value the port seeds the late registry with, and the one
+/// r4133's own empty-registry read falls back to (l.1323-1324).
+#[test]
+fn ncim_generator_added_after_first_solve_does_not_panic_model4() {
+    let mut late = ncim_resolve_after(&late_gen_network(None), &[late_gen_line(4, "")]);
+    let mut twin = solve_ncim(&late_gen_network(Some(late_gen_line(4, ""))));
+    const R4133_TWIN: [(f64, f64); 6] = [
+        (7199.557856794634, 0.0),
+        (-3599.77892839732, -6234.999999999999),
+        (-3599.778928397315, 6235.000000000001),
+        (7161.086907692252, -52.20470684983792),
+        (-3625.7540561752085, -6175.580827344718),
+        (-3535.3328515170447, 6227.785534194561),
+    ];
+    // r4133 `Generator.g1` powers: -266.6666… kW, -143.93141923682322 kvar per phase.
+    assert_twin_matches_r4133(
+        &mut twin,
+        3,
+        &R4133_TWIN,
+        (-800.0, -3.0 * 143.93141923682322),
+    );
+    assert_late_generator_lands_on_the_twin(&mut late, &mut twin, 4, 3);
+}
+
+/// **P12** (RF-D00-05) — the same defect reached without creating anything: a
+/// `model=3` machine declared `enabled=no`, enabled between two NCIM solves.
+/// `InitPQGen` and `GetNumGenerators` both skip disabled machines (r4133
+/// l.1676, l.1919), so it too entered `UpdateGenQ` with an empty `deltaQNom`
+/// and panicked at the PV arm's read (r4133 l.2087). Enabling does not clear
+/// `SolutionInitialized`, so the twin is the straight `pv_circuit("1.0")`
+/// deck, r4133/capi015-pinned by [`ncim_pv_regulating_matches_oracle`].
+#[test]
+fn ncim_generator_enabled_between_solves_does_not_panic() {
+    let mut late = ncim_resolve_after(
+        &late_gen_network(Some(late_gen_line(3, "enabled=no"))),
+        &["Generator.g1.enabled=yes".to_string()],
+    );
+    let mut twin = solve_ncim(&late_gen_network(Some(late_gen_line(3, ""))));
+    assert_late_generator_lands_on_the_twin(&mut late, &mut twin, 3, 3);
+}
+
+/// **P13** (RF-D00-05) — a late `model=3` machine on a bus that did not exist
+/// at the first NCIM solve (a new line's far end). Beside the empty registry,
+/// the per-node NCIM vectors were one bus short: r4133 rebuilds them only on
+/// `SystemYChanged or not NCIMRdy` (`Common/Solution.pas` l.1123), and
+/// `SolveCircuit`'s `WHOLEMATRIX` rebuild (l.2805-2808) has already cleared
+/// `SystemYChanged` (`Common/Ymatrix.pas` l.271). The port panicked ("index
+/// out of bounds: the len is 7 but the index is 7", `ncim_get_num_generators`'
+/// per-node Q-limit tally); r4133 on the `model=4` variant (same probe) raises
+/// #482 with the new bus's `NodeV` uninitialised (`5e-322`). The port now
+/// re-initialises the NCIM node space when it no longer spans the circuit:
+/// the re-solve converges, the PV equation holds at the new bus and Kirchhoff
+/// closes at both buses (port-only numbers: r4133 cannot answer).
+#[test]
+fn ncim_generator_on_a_new_bus_after_first_solve_does_not_panic() {
+    let mut late = ncim_resolve_after(
+        &late_gen_network(None),
+        &[
+            "New Line.l2 bus1=genbus bus2=farbus phases=3 r1=0.12 x1=0.35 length=1".to_string(),
+            late_gen_line(3, "").replace("bus1=genbus", "bus1=farbus"),
+        ],
+    );
+    let ckt = late.circuit().expect("circuit");
+    assert!(ckt.is_solved, "the re-solve with the new bus must converge");
+    assert_eq!(
+        ckt.solution.iteration, 3,
+        "Newton passes (port-only number)"
+    );
+    let vtarget = 12.47e3 / 3f64.sqrt();
+    let far: Vec<usize> = (1..=ckt.num_nodes)
+        .filter(|&k| ckt.node_name(k).to_ascii_lowercase().starts_with("farbus."))
+        .collect();
+    assert_eq!(far.len(), 3, "farbus carries three nodes");
+    for k in far {
+        let vmag = ckt.solution.node_v[k].norm();
+        assert!(
+            (vmag - vtarget).abs() < V_TOL,
+            "|{}| = {vmag} V vs VTarget {vtarget} V",
+            ckt.node_name(k)
+        );
+    }
+    let kcl_far =
+        term_power_kw(&mut late, "Generator.g1", 1) + term_power_kw(&mut late, "Line.l2", 2);
+    assert!(kcl_far.norm() < 1e-6, "KCL at farbus = {kcl_far:?} kW/kvar");
+    let kcl_gen = term_power_kw(&mut late, "Load.ld1", 1)
+        + term_power_kw(&mut late, "Line.l1", 2)
+        + term_power_kw(&mut late, "Line.l2", 1);
+    assert!(kcl_gen.norm() < 1e-6, "KCL at genbus = {kcl_gen:?} kW/kvar");
+    let (m, _, _, _, dq, _) = gen_ncim_state(&late, "g1");
+    assert_eq!(m, 3, "the machine keeps regulating");
+    assert_eq!(dq.len(), 3, "deltaQNom is sized per phase: {dq:?}");
+}
