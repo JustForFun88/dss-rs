@@ -860,7 +860,9 @@ fn ask(dss: &mut Dss, q: &str) -> String {
 /// array for `Normal` too — `Create` initializes it (`:299-307`) — which is
 /// where the pre-RP3.7 port's `''` (scalar `None`) was wrong against BOTH
 /// oracles (probe §11.5). Reverting the array render, the trailing `', '`, or
-/// the `Create` initialization each breaks a literal here.
+/// the `Create` initialization each breaks a literal here. One token per phase
+/// holds up to six phases; past six the port clips
+/// (`a_seven_phase_controlled_element_renders_six_tokens`).
 #[test]
 fn render_is_one_token_per_controlled_element_phase() {
     let mut dss = micro_dss(3);
@@ -902,6 +904,71 @@ fn render_is_one_token_per_controlled_element_phase() {
         ask(&mut dss4, "? swtcontrol.sw1.normal"),
         "[open, closed, closed, closed, ]",
         "the first state write latches Normal per phase"
+    );
+}
+
+/// RP3.7 retro audit AT2-1 — past six phases the render stops at six tokens
+/// where r4133 does not. `GetPropertyValue` 6/7 loop
+/// `ControlledElement.NPhases` uncapped (`SwtControl.pas:591`/`:602`), so the
+/// 7th token reads `FPresentState^[7]` past `StateArray =
+/// Array[1..SWTCONTROLMAXDIM]` (`:14`/`:19`, six slots) and past `Create`'s
+/// 3-entry allocation (`:299-300`): an out-of-bounds read, never reproduced
+/// (2026-08-02 policy), so [`SwtControl::state_size`] clips at six.
+///
+/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 probe (b), deck
+/// `b_swtcontrol7.dss`, whose circuit/line/control lines this test replays;
+/// identical with and without a `solve`): State and Normal render SEVEN
+/// tokens fresh, all `closed`; after the ganged `state=open` (slots
+/// `1..SWTCONTROLMAXDIM` only, `:435`) State reads
+/// `[open, open, open, open, open, open, closed, ]`, the 7th token being the
+/// never-written slot; `state=closed` then gives seven `closed` and Normal
+/// keeps the first write's six `open` plus a 7th `closed`. Each of those edits
+/// also raised warning #384 "Number of phases > Max SwtControl dimension"
+/// (`:334`); the port's missing warning is `ORPHANED_GAPS.md` §1.15 and is
+/// deliberately not asserted here either way. The port answers six tokens at
+/// every step, each assert naming the r4133 bytes.
+#[test]
+fn a_seven_phase_controlled_element_renders_six_tokens() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l7 bus1=src.1.2.3.1.2.3.1 bus2=b1.1.2.3.1.2.3.1 phases=7 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new swtcontrol.s7 switchedobj=line.l7 switchedterm=1",
+    ] {
+        dss.command(c);
+    }
+    let closed6 = "[closed, closed, closed, closed, closed, closed, ]";
+    let open6 = "[open, open, open, open, open, open, ]";
+    let r4133_closed7 = "r4133: [closed, closed, closed, closed, closed, closed, closed, ]";
+    let r4133_open6_closed = "r4133: [open, open, open, open, open, open, closed, ]";
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.state"),
+        closed6,
+        "{r4133_closed7}"
+    );
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.normal"),
+        closed6,
+        "{r4133_closed7}"
+    );
+
+    dss.command("edit swtcontrol.s7 state=open");
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.state"),
+        open6,
+        "{r4133_open6_closed}"
+    );
+    dss.command("edit swtcontrol.s7 state=closed");
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.state"),
+        closed6,
+        "{r4133_closed7}"
+    );
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.normal"),
+        open6,
+        "{r4133_open6_closed}"
     );
 }
 
@@ -990,7 +1057,10 @@ fn per_phase_write_renders_the_r4133_bytes_through_both_seams() {
 
 /// The per-phase parse honors at most FIVE tokens (`:461`
 /// `While (Length(DataStr2)>0) and (i<SWTCONTROLMAXDIM)`) while the render
-/// loops up to `Min(6, NPhases)` — the two bounds are deliberately different.
+/// prints one token per controlled-element phase: r4133's getters loop
+/// `NPhases` uncapped (`:591`/`:602`); the six-token ceiling is the port's own
+/// clip ([`SwtControl::state_size`], pinned by
+/// `a_seven_phase_controlled_element_renders_six_tokens`).
 /// Driven through the property seam (`was_quoted = true`), so a regression that
 /// re-routed the write to the generic `array_size`-bounded tokenizer would let
 /// the sixth token through.
