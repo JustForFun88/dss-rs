@@ -1787,6 +1787,747 @@ fn save_puts_the_sizing_property_first_for_every_curve_class() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// RF-D01-04 — one Save → recompile → re-save round trip of a live session:
+/// `save circuit` into `<root>/s1`, recompile that `Master.dss` in a fresh
+/// engine ([`Self::back`]), `save circuit` the reloaded engine into `<root>/s2`.
+/// The directory is removed on drop.
+struct SaveRoundTrip {
+    root: PathBuf,
+    back: Dss,
+    /// The reloaded engine's diagnostics right after the recompile.
+    reload_errors: Vec<String>,
+}
+
+impl SaveRoundTrip {
+    fn run(dss: &mut Dss, tag: &str) -> Self {
+        let root = std::env::temp_dir().join(format!("dss_rfd0104_{tag}_{}", std::process::id()));
+        std::fs::remove_dir_all(&root).ok();
+        let fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+        let before = dss.errors().len();
+        dss.command(&format!("save circuit dir=\"{}\"", fwd(&root.join("s1"))));
+        assert_eq!(
+            dss.errors().len(),
+            before,
+            "{tag}: save errors: {:?}",
+            dss.error_texts()
+        );
+        let mut back = Dss::new();
+        back.command(&format!(
+            "compile \"{}\"",
+            fwd(&root.join("s1").join("Master.dss"))
+        ));
+        let reload_errors = back.error_texts();
+        back.command(&format!("save circuit dir=\"{}\"", fwd(&root.join("s2"))));
+        assert_eq!(
+            back.errors().len(),
+            reload_errors.len(),
+            "{tag}: re-save errors: {:?}",
+            back.error_texts()
+        );
+        Self {
+            root,
+            back,
+            reload_errors,
+        }
+    }
+
+    /// The `New "<class>.<name>"` line of save `n` (1 = the live session,
+    /// 2 = the reloaded one), from that save's `<class>.dss`.
+    fn line(&self, n: u8, class: &str, name: &str) -> String {
+        let file = self.root.join(format!("s{n}")).join(format!("{class}.dss"));
+        let text =
+            std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+        let needle = format!("\"{class}.{name}\"").to_ascii_lowercase();
+        text.lines()
+            .find(|l| l.to_ascii_lowercase().contains(&needle))
+            .unwrap_or_else(|| panic!("no {class}.{name} line in save {n}: {text:?}"))
+            .to_string()
+    }
+}
+
+impl Drop for SaveRoundTrip {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(&self.root).ok();
+    }
+}
+
+/// The names of `class.name`'s set properties in set order — the chain
+/// `SaveWrite` walks (Pascal `GetNextPropertySet`).
+fn set_order(dss: &Dss, class: &str, name: &str) -> Vec<&'static str> {
+    let cls = &dss.classes[dss.class_by_name[&class.to_ascii_lowercase()]];
+    let data = cls
+        .arena
+        .obj(cls.name_to_idx[&name.to_ascii_lowercase()])
+        .data();
+    std::iter::successors(data.next_property_set(None), |&p| {
+        data.next_property_set(Some(p))
+    })
+    .map(|p| cls.props.property_name(p))
+    .collect()
+}
+
+/// `? <query>` on `dss`.
+fn query(dss: &mut Dss, q: &str) -> String {
+    dss.command(&format!("? {q}"));
+    dss.result().to_string()
+}
+
+/// RF-D01-04 (RP3.11 AC-1) — `NumSteps` is written ahead of the step arrays it
+/// sizes, so a multi-step capacitor bank reloads whole.
+///
+/// The step arrays (`kvar`, `Cuf`, `R`, `XL`, `Harm`, `States`) are parsed
+/// against the live `NumSteps` (r4133 `PDElements/Capacitor.pas:374`, `4:
+/// FNumSteps := InterpretDblArray (Param, FNumSteps, FkvarRating)`), so a line
+/// that writes `kvar=` before `NumSteps=` re-reads it against the default single
+/// step. The corpus spelling `kvar=600 … numsteps=4` sets the sizer after the
+/// array; measured on the live `OpenDSSDirect.dll` 11.0.0.1 rev r4133
+/// (epri-worker, RF-D01-04 part 1):
+///
+/// ```text
+/// r4133 save:   New "Capacitor.cstep" phases=3 bus1=b2 kvar=[ 150 150 150 150] kv=12.47 Numsteps=4 states=[ 1 0 1 0]
+/// r4133 reload: kvar=[ 37.5 37.5 37.5 37.5]    — the 600 kvar bank comes back as 150 kvar
+/// r4133 reload of `numsteps=3 kvar=[100 200 300]` + `edit numsteps=3`: kvar=[ 33.3333 33.3333 33.3333]
+/// ```
+///
+/// Neither upstream guards the class (`TDSSObject.SaveWrite` is the set-order
+/// walk, `General/DSSObject.pas:131-173`); the defect is not reproduced. The
+/// port writes `NumSteps` behind `Phases` (a sizer never passes another) and
+/// ahead of `kvar`, and the bank reloads as `[ 150 150 150 150]` (600 kvar)
+/// and `[ 100 200 300]`.
+#[test]
+fn save_hoists_numsteps_so_a_capacitor_bank_reloads_whole() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rfd0104cap basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new capacitor.cstep phases=3 bus1=b2 kvar=600 kv=12.47 numsteps=4 states=[1 0 1 0]",
+        "new capacitor.c3 bus1=b2 numsteps=3 kvar=[100 200 300] kv=12.47",
+        "edit capacitor.c3 numsteps=3",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+    let mut rt = SaveRoundTrip::run(&mut dss, "cap");
+    assert!(rt.reload_errors.is_empty(), "{:?}", rt.reload_errors);
+
+    // (1) the port's bytes: the sizer leads its arrays.
+    for (name, want) in [
+        (
+            "cstep",
+            "New \"Capacitor.cstep\" Phases=3 NumSteps=4 Bus1=b2 kvar=[ 150 150 150 150] \
+             kV=12.47 States=[ 1 0 1 0]",
+        ),
+        (
+            "c3",
+            "New \"Capacitor.c3\" NumSteps=3 Bus1=b2 kvar=[ 100 200 300] kV=12.47",
+        ),
+    ] {
+        assert_eq!(
+            rt.line(1, "Capacitor", name),
+            want,
+            "Capacitor.{name}: NumSteps must precede kvar; r4133 writes it after \
+             (`… kvar=[ 150 150 150 150] kv=12.47 Numsteps=4 …`, measured)"
+        );
+        assert_eq!(
+            rt.line(2, "Capacitor", name),
+            want,
+            "Capacitor.{name}: the reloaded bank re-saves to the same line"
+        );
+    }
+
+    // (2) the reloaded banks: r4133 reloads [ 37.5 37.5 37.5 37.5] and
+    // [ 33.3333 33.3333 33.3333].
+    for (q, want) in [
+        ("capacitor.cstep.kvar", "[ 150 150 150 150]"),
+        ("capacitor.cstep.states", "[ 1 0 1 0]"),
+        ("capacitor.cstep.numsteps", "4"),
+        ("capacitor.c3.kvar", "[ 100 200 300]"),
+    ] {
+        assert_eq!(query(&mut rt.back, q), want, "{q} after the round trip");
+    }
+    let total: f64 = query(&mut rt.back, "capacitor.cstep.kvar")
+        .trim_matches(|c| c == '[' || c == ']')
+        .split_whitespace()
+        .map(|v| v.parse::<f64>().expect("kvar step"))
+        .sum();
+    assert_eq!(
+        total, 600.0,
+        "the reloaded bank's total kvar; r4133 reloads 150 (4 × 37.5)"
+    );
+}
+
+/// RF-D01-04 — the hoist is transient: it re-stamps the set-order chain only
+/// for the duration of the write and restores it exactly, so the chain the deck
+/// built is what every later reader walks (a second `Save`, the JSON export,
+/// an `EndEdit` boundary test), and a second `Save` writes the same line.
+#[test]
+fn save_hoist_leaves_the_set_order_chain_as_the_deck_built_it() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rfd0104seq basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new capacitor.c3 bus1=b2 numsteps=3 kvar=[100 200 300] kv=12.47",
+        "edit capacitor.c3 numsteps=3",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+    let chain = ["Bus1", "kvar", "kV", "NumSteps"];
+    assert_eq!(
+        set_order(&dss, "Capacitor", "c3"),
+        chain,
+        "the deck's chain"
+    );
+
+    let first = SaveRoundTrip::run(&mut dss, "seq1");
+    assert_eq!(
+        set_order(&dss, "Capacitor", "c3"),
+        chain,
+        "a hoisting Save must leave the set-order chain as the deck built it"
+    );
+    let second = SaveRoundTrip::run(&mut dss, "seq2");
+    assert_eq!(
+        second.line(1, "Capacitor", "c3"),
+        first.line(1, "Capacitor", "c3"),
+        "a second Save writes the same line"
+    );
+    assert_eq!(
+        first.line(1, "Capacitor", "c3"),
+        "New \"Capacitor.c3\" NumSteps=3 Bus1=b2 kvar=[ 100 200 300] kV=12.47"
+    );
+    // A later edit still lands at the end of the chain (the counter was
+    // restored with the stamps).
+    dss.command("edit capacitor.c3 bus1=b3");
+    assert_eq!(
+        set_order(&dss, "Capacitor", "c3"),
+        ["kvar", "kV", "NumSteps", "Bus1"]
+    );
+}
+
+/// RF-D01-04 (RP3.11 AC-1) — `NConds` is written ahead of the conductor
+/// coordinates it sizes, so a four-wire LineSpacing reloads every conductor.
+///
+/// `X`/`H` are parsed against the live `NConds` (r4133
+/// `General/LineSpacing.pas:170`, `for i := 1 to NWires do`, in the
+/// `InterpretArray` the `x`/`h` arms `:210-211` call; the port's `DoubleVArray`
+/// with a `size_prop`). With `NConds` re-set after them, measured on the live
+/// `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (epri-worker, RF-D01-04):
+///
+/// ```text
+/// r4133 save:   New "LineSpacing.sp4" nphases=3 x=[-1,0,1,0.5] h=[10,11,12,9] units=ft nconds=4
+/// r4133 reload: x=[-1,0,1,0]  h=[10,11,12,NAN]    — the fourth conductor is lost
+/// ```
+///
+/// The port reloads `X=[ -1 0 1 0.5]`, `H=[ 10 11 12 9]`. (Before RF-D01-04 it
+/// reloaded `[ -1 0 1 0]` / `[ 10 11 12 0]`; a deck with at most the default
+/// three conductors survives by accident, which is why this one uses four.)
+#[test]
+fn save_hoists_nconds_so_linespacing_reloads_every_conductor() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rfd0104sp basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new linespacing.sp4 nconds=4 nphases=3 x=[-1 0 1 0.5] h=[10 11 12 9] units=ft",
+        "edit linespacing.sp4 nconds=4",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+    let mut rt = SaveRoundTrip::run(&mut dss, "sp");
+    assert!(rt.reload_errors.is_empty(), "{:?}", rt.reload_errors);
+    let want = "New \"LineSpacing.sp4\" NConds=4 NPhases=3 X=[ -1 0 1 0.5] H=[ 10 11 12 9] \
+                Units=ft";
+    assert_eq!(
+        rt.line(1, "LineSpacing", "sp4"),
+        want,
+        "NConds must precede X/H; r4133 writes it last (measured)"
+    );
+    assert_eq!(rt.line(2, "LineSpacing", "sp4"), want, "the fixed point");
+    for (q, want) in [
+        ("linespacing.sp4.x", "[ -1 0 1 0.5]"),
+        ("linespacing.sp4.h", "[ 10 11 12 9]"),
+    ] {
+        assert_eq!(
+            query(&mut rt.back, q),
+            want,
+            "{q} after the round trip; r4133 reloads x=[-1,0,1,0] h=[10,11,12,NAN]"
+        );
+    }
+}
+
+/// RF-D01-04 (RP3.11 AC-1) — `Seasons` is written ahead of the `Ratings` it
+/// sizes, so a seasonal LineCode reloads every rating.
+///
+/// `Ratings` is parsed against the live `Seasons` (r4133
+/// `General/LineCode.pas:442`, `NumAmpRatings := InterpretDblArray(Param,
+/// NumAmpRatings, Pointer(AmpRatings))`; `Seasons` itself is `:436`). With
+/// `Seasons` re-set after it, measured on the
+/// live `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (epri-worker, RF-D01-04 part 1):
+///
+/// ```text
+/// r4133 save:   New "LineCode.lcs" nphases=3 Ratings=[400,500,] Seasons=2
+/// r4133 reload: Ratings=[400,0,]    — the second season's rating is lost
+/// ```
+///
+/// The port reloads `[ 400 500]`. The same shared defect covers WireData /
+/// CNData / TSData / Line / LineGeometry / XfmrCode / Transformer `Seasons` and
+/// StorageController `SeasonTargets`; the table-driven
+/// `save_writes_every_sizing_property_ahead_of_its_arrays` covers them all.
+#[test]
+fn save_hoists_seasons_so_linecode_ratings_reload_whole() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.rfd0104lc basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "new linecode.lcs nphases=3 seasons=2 ratings=[400 500]",
+        "edit linecode.lcs seasons=2",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+    let mut rt = SaveRoundTrip::run(&mut dss, "lc");
+    assert!(rt.reload_errors.is_empty(), "{:?}", rt.reload_errors);
+    // `R1…C0` are 0.14.5's property-tracking seeds of `NPhases=` (the sequence
+    // divergence `save_membership_follows_property_tracking_not_prpsequence`
+    // pins); `Seasons` stops behind `NPhases`, a sizer it never passes.
+    let want = "New \"LineCode.lcs\" R1=0.058 X1=0.1206 R0=0.1784 X0=0.4047 C1=3.4 C0=1.6 \
+                NPhases=3 Seasons=2 Ratings=[ 400 500]";
+    assert_eq!(
+        rt.line(1, "LineCode", "lcs"),
+        want,
+        "Seasons must precede Ratings; r4133 writes it last (measured)"
+    );
+    assert_eq!(rt.line(2, "LineCode", "lcs"), want, "the fixed point");
+    assert_eq!(
+        query(&mut rt.back, "linecode.lcs.ratings"),
+        "[ 400 500]",
+        "Ratings after the round trip; r4133 reloads [400,0,]"
+    );
+}
+
+/// RF-D01-04 — the per-winding cursor classes: `Windings` is written ahead of
+/// the winding block, and the cursor tokens keep their relative order.
+///
+/// The Transformer / AutoTrans `SaveWrite` overrides turn every winding cursor
+/// token (`Wdg`, `Bus`, `kV`, …) into the array block + `Wdg=i` tail at the
+/// first such token, so a `Windings=3` written after it reloads the block
+/// against the default two windings. Measured on the live `OpenDSSDirect.dll`
+/// 11.0.0.1 rev r4133 (epri-worker, RF-D01-04) for these two decks, r4133 writes
+/// `windings=3` last and reloads `buses=[ba, bb, tc_3, ]` /
+/// `buses=[a1, a2, at_3, ]` — the third winding's bus is replaced by the
+/// default name. The port reloads every bus.
+#[test]
+fn save_hoists_windings_ahead_of_the_winding_cursor_tokens() {
+    for (class, name, deck, want_buses) in [
+        (
+            "Transformer",
+            "tc",
+            "new transformer.tc phases=3 windings=3 wdg=1 bus=ba kv=115 kva=1000 \
+             wdg=2 bus=bb kv=12.47 kva=1000 wdg=3 bus=bc kv=4.16 kva=500",
+            "[ba, bb, bc, ]",
+        ),
+        (
+            "AutoTrans",
+            "at",
+            "new autotrans.at phases=3 windings=3 wdg=1 bus=a1 kv=115 kva=1000 \
+             wdg=2 bus=a2 kv=66 kva=1000 wdg=3 bus=a3 kv=13.8 kva=500",
+            "[a1, a2, a3, ]",
+        ),
+    ] {
+        let lc = class.to_ascii_lowercase();
+        let mut dss = Dss::new();
+        for c in [
+            "clear",
+            "new circuit.rfd0104wdg basekv=12.47 pu=1.0 phases=3 bus1=src",
+            deck,
+            &format!("edit {lc}.{name} windings=3"),
+        ] {
+            dss.command(c);
+        }
+        assert!(dss.errors().is_empty(), "{class}: {:?}", dss.error_texts());
+        let props = ["windings", "buses", "kvs", "kvas", "conns", "taps", "%rs"];
+        let before: Vec<String> = props
+            .iter()
+            .map(|p| query(&mut dss, &format!("{lc}.{name}.{p}")))
+            .collect();
+        assert_eq!(before[1], want_buses, "{class}: the deck's buses");
+        let mut rt = SaveRoundTrip::run(&mut dss, &lc);
+        assert!(
+            rt.reload_errors.is_empty(),
+            "{class}: {:?}",
+            rt.reload_errors
+        );
+        let save1 = rt.line(1, class, name);
+        let (w, b) = (
+            save1.find(" Windings=").expect("Windings token"),
+            save1.find(" Buses=").expect("Buses token"),
+        );
+        assert!(
+            w < b,
+            "{class}: Windings must precede the winding block: {save1}"
+        );
+        assert_eq!(rt.line(2, class, name), save1, "{class}: the fixed point");
+        let after: Vec<String> = props
+            .iter()
+            .map(|p| query(&mut rt.back, &format!("{lc}.{name}.{p}")))
+            .collect();
+        assert_eq!(
+            after, before,
+            "{class}: {props:?} after the round trip; r4133 reloads the third bus \
+             as the default name"
+        );
+    }
+}
+
+/// The (class, sizer, sized properties) census the RF-D01-04 hoist covers — the
+/// part-1 census of the `PropDef` constructors that carry a sizing ordinal
+/// (`tmp/retro_fix/state/RF-D01-04/census_sized.tsv`) plus the per-winding
+/// cursor properties the struct count bounds. Locked exactly by
+/// `save_writes_every_sizing_property_ahead_of_its_arrays`: a class that gains
+/// a sized array reds there until it is listed here, and so cannot join the
+/// Save path unpinned.
+const SIZED_ARRAYS: &[(&str, &str, &[&str])] = &[
+    ("AutoTrans", "BHPoints", &["BHCurrent", "BHFlux"]),
+    (
+        "AutoTrans",
+        "Windings",
+        &[
+            "Wdg", "Bus", "Conn", "kV", "kVA", "Tap", "%R", "RDCOhms", "Buses", "Conns", "kVs",
+            "kVAs", "Taps", "MaxTap", "MinTap", "NumTaps", "%Rs",
+        ],
+    ),
+    ("CNData", "Seasons", &["Ratings"]),
+    (
+        "Capacitor",
+        "NumSteps",
+        &["kvar", "Cuf", "R", "XL", "Harm", "States"],
+    ),
+    ("Capacitor", "Phases", &["CMatrix"]),
+    ("ESPVLControl", "LocalControlList", &["LocalControlWeights"]),
+    ("ESPVLControl", "PVSystemList", &["PVSystemWeights"]),
+    ("ESPVLControl", "StorageList", &["StorageWeights"]),
+    ("Fault", "Phases", &["GMatrix"]),
+    ("GenDispatcher", "GenList", &["Weights"]),
+    (
+        "GrowthShape",
+        "NPts",
+        &["Year", "Mult", "CSVFile", "SngFile", "DblFile"],
+    ),
+    ("Line", "Phases", &["RMatrix", "XMatrix", "CMatrix"]),
+    ("Line", "Seasons", &["Ratings"]),
+    ("LineCode", "NPhases", &["RMatrix", "XMatrix", "CMatrix"]),
+    ("LineCode", "Seasons", &["Ratings"]),
+    ("LineGeometry", "Seasons", &["Ratings"]),
+    ("LineSpacing", "NConds", &["X", "H"]),
+    (
+        "LoadShape",
+        "NPts",
+        &[
+            "Mult",
+            "Hour",
+            "CSVFile",
+            "SngFile",
+            "DblFile",
+            "QMult",
+            "PMult",
+            "PQCSVFile",
+        ],
+    ),
+    (
+        "PriceShape",
+        "NPts",
+        &["Price", "Hour", "CSVFile", "SngFile", "DblFile"],
+    ),
+    ("Reactor", "Phases", &["RMatrix", "XMatrix"]),
+    (
+        "Spectrum",
+        "NumHarm",
+        &["Harmonic", "%Mag", "Angle", "CSVFile"],
+    ),
+    ("StorageController", "ElementList", &["Weights"]),
+    (
+        "StorageController",
+        "Seasons",
+        &["SeasonTargets", "SeasonTargetsLow"],
+    ),
+    ("TCC_Curve", "NPts", &["C_Array", "T_Array"]),
+    ("TSData", "Seasons", &["Ratings"]),
+    (
+        "TShape",
+        "NPts",
+        &["Temp", "Hour", "CSVFile", "SngFile", "DblFile"],
+    ),
+    ("Transformer", "BHPoints", &["BHCurrent", "BHFlux"]),
+    ("Transformer", "Seasons", &["Ratings"]),
+    (
+        "Transformer",
+        "Windings",
+        &[
+            "Wdg", "Bus", "Conn", "kV", "kVA", "Tap", "%R", "RNeut", "XNeut", "Buses", "Conns",
+            "kVs", "kVAs", "Taps", "MaxTap", "MinTap", "NumTaps", "%Rs", "RDCOhms",
+        ],
+    ),
+    ("WireData", "Seasons", &["Ratings"]),
+    (
+        "XYcurve",
+        "NPts",
+        &["YArray", "XArray", "CSVFile", "SngFile", "DblFile"],
+    ),
+    ("XfmrCode", "Seasons", &["Ratings"]),
+    (
+        "XfmrCode",
+        "Windings",
+        &[
+            "Wdg", "Conn", "kV", "kVA", "Tap", "%R", "RNeut", "XNeut", "Conns", "kVs", "kVAs",
+            "Taps", "MaxTap", "MinTap", "NumTaps", "%Rs", "RDCOhms",
+        ],
+    ),
+];
+
+/// (class, sizer, reason) pairs whose re-set deck misses the Save fixed point
+/// for a reason that is not ordering. Their deck sets the sizer once, ahead of
+/// its arrays, and every assertion still holds; the pin also re-runs the re-set
+/// deck and reds when it stops failing on the fixed point alone (stale entry).
+const NATURAL_ORDER_ONLY: &[(&str, &str, &str)] = &[(
+    "LineCode",
+    "NPhases",
+    "a `NPhases=` re-set clears the matrices' set-order stamps (so no matrix can ever \
+     precede `NPhases` and the hoist never fires on this pair), and the reloaded \
+     `NPhases=` re-seeds `R1…C0` into the chain: a property-tracking seed asymmetry, \
+     not an ordering defect (RF-D01-04 state, coordinator question Q3)",
+)];
+
+/// RF-D01-04 (RP3.11 AT-1 + AC-1) — every sizing property of every class is
+/// written ahead of the arrays it sizes, and every such line is a Save fixed
+/// point.
+///
+/// The population is read off the class property tables
+/// ([`crate::report::save::save::parse_sizer`] over every property of every
+/// registered class) and locked against [`SIZED_ARRAYS`]. For each (class,
+/// sizer) pair one deck is built from the property table, not by hand:
+/// `new <class>.rfx`, then `edit rfx <sizer>=N` with every sized array at `N`
+/// entries (`N` = the sizer's default + 1, at least 2 — an array parsed against
+/// the default count loses entries; a `StringList` sizer gets `N` names), then
+/// `edit rfx <sizer>=N` again — the re-set moves the sizer behind its arrays in
+/// the set-order chain, the shape both upstreams save sizer-last (the pairs of
+/// [`NATURAL_ORDER_ONLY`] skip the re-set). Asserted per pair: (1) the saved
+/// line writes the sizer ahead of every sized token; (2) each array's `?` value
+/// survives Save → recompile; (3) the re-saved line is byte-identical; (4) the
+/// recompile reports no diagnostic that the live session's own
+/// `calcvoltagebases` did not (the decks carry no context: a controller's
+/// element list names nothing, `Phases=2` leaves a node floating). The
+/// per-winding cursor tokens are not typed by these decks
+/// (`save_hoists_windings_ahead_of_the_winding_cursor_tokens` covers them).
+#[test]
+fn save_writes_every_sizing_property_ahead_of_its_arrays() {
+    use crate::obj::props::PropType as T;
+    use crate::report::save::save::parse_sizer;
+
+    // The census, from the property tables.
+    let dss = Dss::new();
+    let mut census: Vec<(String, String, Vec<String>)> = Vec::new();
+    for cls in &dss.classes {
+        let cp = &cls.props;
+        let mut pairs: std::collections::BTreeMap<usize, Vec<String>> = Default::default();
+        for p in 1..=cp.num_properties() {
+            if let Some(s) = parse_sizer(cp, p) {
+                pairs
+                    .entry(s)
+                    .or_default()
+                    .push(cp.property_name(p).to_string());
+            }
+        }
+        for (s, sized) in pairs {
+            census.push((
+                cp.class_name().to_string(),
+                cp.property_name(s).to_string(),
+                sized,
+            ));
+        }
+    }
+    let mut locked: Vec<(String, String, Vec<String>)> = SIZED_ARRAYS
+        .iter()
+        .map(|(c, s, v)| {
+            (
+                c.to_string(),
+                s.to_string(),
+                v.iter().map(|x| x.to_string()).collect(),
+            )
+        })
+        .collect();
+    let mut derived = census.clone();
+    derived.sort();
+    locked.sort();
+    assert_eq!(
+        derived,
+        locked,
+        "the sized-array census moved; derived table:\n{}",
+        derived
+            .iter()
+            .map(|(c, s, v)| format!("    ({c:?}, {s:?}, &{v:?}),"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    // One deck per (class, sizer).
+    let array_value = |ptype: T, n: usize| -> Option<String> {
+        let list = |f: &dyn Fn(usize) -> String| (0..n).map(f).collect::<Vec<_>>().join(" ");
+        Some(match ptype {
+            T::DoubleArray | T::DoubleVArray | T::DoubleArrayOnStruct => {
+                format!("[{}]", list(&|i| format!("{}", 1.25 * (i + 1) as f64)))
+            }
+            T::IntegerArray => format!("[{}]", list(&|i| ((i + 1) % 2).to_string())),
+            T::DoubleSymMatrix | T::SymMatrixReal | T::SymMatrixImag => {
+                let rows: Vec<String> = (0..n)
+                    .map(|r| {
+                        let mut row = vec!["0.5".to_string(); r];
+                        row.push(format!("{}", 2 + r));
+                        row.join(" ")
+                    })
+                    .collect();
+                format!("[{}]", rows.join(" | "))
+            }
+            T::EnumArrayOnStruct => {
+                format!("[{}]", list(&|i| ["wye", "delta"][i % 2].to_string()))
+            }
+            T::BusesOnStruct => format!("[{}]", list(&|i| format!("rfxb{}", i + 1))),
+            _ => return None,
+        })
+    };
+    // One (class, sizer) deck; the reasons it fails, empty when it passes.
+    let run_pair = |class: &str, sizer: &str, sized: &[String], reset: bool| -> Vec<String> {
+        let lc = class.to_ascii_lowercase();
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command("new circuit.rfd0104all basekv=12.47 pu=1.0 phases=3 bus1=src");
+        dss.command(&format!("new {lc}.rfx"));
+        let ci = dss.class_by_name[&lc];
+        let (s, sizer_is_list, default) = {
+            let cls = &dss.classes[ci];
+            let s = cls.props.property_index(sizer).expect("sizer ordinal");
+            let obj = cls.arena.obj(cls.name_to_idx["rfx"]);
+            (
+                s,
+                cls.props.prop(s).ptype == T::StringList,
+                obj.get_i32(s).max(0) as usize,
+            )
+        };
+        let n = (default + 1).max(2);
+        let sizer_value = if sizer_is_list {
+            let names: Vec<String> = (1..=n).map(|i| format!("rfxl{i}")).collect();
+            format!("[{}]", names.join(" "))
+        } else {
+            n.to_string()
+        };
+        let mut arrays: Vec<(String, String)> = Vec::new();
+        for p in sized {
+            let pd = dss.classes[ci].props.prop(
+                dss.classes[ci]
+                    .props
+                    .property_index(p)
+                    .expect("sized ordinal"),
+            );
+            if pd
+                .flags
+                .contains(crate::obj::props::PropFlags::GLOBAL_COUNT)
+            {
+                continue; // a shape *file* property — needs a file, not a value
+            }
+            if let Some(v) = array_value(pd.ptype, n) {
+                arrays.push((p.clone(), v));
+            }
+        }
+        if arrays.is_empty() {
+            return vec![format!("{class}.{sizer}: no deck-able sized array")];
+        }
+        let set: Vec<String> = arrays.iter().map(|(p, v)| format!("{p}={v}")).collect();
+        let deck = format!("edit {lc}.rfx {sizer}={sizer_value} {}", set.join(" "));
+        dss.command(&deck);
+        if reset {
+            dss.command(&format!("edit {lc}.rfx {sizer}={sizer_value}"));
+        }
+        // The saved Master re-runs `CalcVoltageBases`; run it here too, so the
+        // deck's own context diagnostics (an unresolved controller list, a
+        // node left floating by `Phases=2`) are on record before the round
+        // trip, which must add none of its own.
+        dss.command("calcvoltagebases");
+        let setup_errors = dss.error_texts();
+        let before: Vec<String> = arrays
+            .iter()
+            .map(|(p, _)| query(&mut dss, &format!("{lc}.rfx.{p}")))
+            .collect();
+        let mut rt = SaveRoundTrip::run(&mut dss, &format!("all_{lc}_{s}_{reset}"));
+        let save1 = rt.line(1, class, "rfx");
+        let save2 = rt.line(2, class, "rfx");
+        let after: Vec<String> = arrays
+            .iter()
+            .map(|(p, _)| query(&mut rt.back, &format!("{lc}.rfx.{p}")))
+            .collect();
+        let lower = save1.to_ascii_lowercase();
+        let at = |tok: &str| lower.find(&format!(" {}=", tok.to_ascii_lowercase()));
+        let mut why: Vec<String> = Vec::new();
+        match at(sizer) {
+            None => why.push(format!("no {sizer} token")),
+            Some(sa) => {
+                for (p, _) in &arrays {
+                    if at(p).is_some_and(|pa| pa < sa) {
+                        why.push(format!("{p} precedes {sizer}"));
+                    }
+                }
+            }
+        }
+        if before != after {
+            why.push(format!("values moved: {before:?} -> {after:?}"));
+        }
+        if save1 != save2 {
+            why.push(format!("not a fixed point: {save2}"));
+        }
+        let reload_only: Vec<&String> = rt
+            .reload_errors
+            .iter()
+            .filter(|e| !setup_errors.contains(e))
+            .collect();
+        if !reload_only.is_empty() {
+            why.push(format!("the round trip added diagnostics: {reload_only:?}"));
+        }
+        if why.is_empty() {
+            return why;
+        }
+        vec![format!(
+            "{class}.{sizer} [{deck}] {save1}: {}",
+            why.join("; ")
+        )]
+    };
+    let mut failures: Vec<String> = Vec::new();
+    for (class, sizer, sized) in &census {
+        let natural = NATURAL_ORDER_ONLY
+            .iter()
+            .any(|(c, s, _)| c == class && s == sizer);
+        failures.extend(run_pair(class, sizer, sized, !natural));
+        if natural {
+            // Fail on stale: the exception holds only while the re-set deck
+            // still misses the fixed point, and for nothing else.
+            let reset = run_pair(class, sizer, sized, true);
+            let only_the_fixed_point = reset.len() == 1
+                && reset[0].contains("not a fixed point")
+                && !reset[0].contains("values moved")
+                && !reset[0].contains("precedes");
+            if !only_the_fixed_point {
+                failures.push(format!(
+                    "{class}.{sizer}: stale NATURAL_ORDER_ONLY entry, the re-set deck gives {reset:?}"
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} (class, sizer) pairs failed:\n{}",
+        failures.len(),
+        census.len(),
+        failures.join("\n")
+    );
+}
+
 /// RP3.11 settlement P6 — `TDynEqPCE.SaveWrite` (dss_capi 0.14.5
 /// `PCElements/DynEqPCE.pas:252-273`), the ninth member of the union: the
 /// `UserDynInit` tail. The `DynamicEq` state-variable initializers are not class
