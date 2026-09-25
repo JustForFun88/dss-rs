@@ -14,10 +14,10 @@ use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
 use crate::support::complexutil::cdang;
 
-/// Build the `Export Currents` body (Pascal `ExportCurrents`). Walks the four
-/// element lists in Pascal order (Sources → PD → Faults → PC) calling the
-/// mutating `GetCurrents` (`compute_iterminal`) and formatting each conductor's
-/// magnitude (`%10.6g`) / angle (`%8.2f`), with a per-terminal residual.
+/// Build the `Export Currents` body (Pascal `ExportCurrents`): Sources → PD →
+/// Faults → PC in Pascal order, each element read through the cache-aware
+/// `compute_iterminal` (not upstream's scratch `GetCurrents`: see the call),
+/// each conductor as magnitude (`%10.6g`) / angle (`%8.2f`), plus a residual.
 pub(crate) fn export_currents(
     classes: &mut [DssClass],
     ckt: &Circuit,
@@ -56,6 +56,17 @@ pub(crate) fn export_currents(
 
     let mut calc = |name: &str, elem: &mut dyn CktElement| {
         elem.compute_iterminal(sys, node_v);
+        // r4133 reads every element here through an unconditional scratch-buffer
+        // `GetCurrents` (`Common/ExportResults.pas:563`/`:574`/`:584`/`:594`;
+        // capi 0.14.5 `src/Common/ExportResults.pas:660`), never the
+        // `ComputeIterminal` cache. The cache-aware read above returns the same
+        // current after a solve: the stamps a solve leaves valid are PC model
+        // state, which `GetCurrents` returns as it stands (r4133
+        // `PCElements/PCElement.pas:255-258`), or currents taken at the solved
+        // voltages; the Newton loop's pre-update stamps are dropped by the solver
+        // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`,
+        // RF-D00-01). Pinned under Newton by
+        // `exec::tests::newton::newton_export_currents_match_the_normal_algorithm`.
         let cd = elem.cd();
         let (nterms, nconds) = (cd.nterms, cd.nconds);
         s.push_str(&format::upper_elem_name(name));
