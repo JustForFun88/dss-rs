@@ -1973,6 +1973,7 @@
       "path": "tests/golden/reports/dump3_bare.txt",
       "sha256": "6de7ee60b397b8c2caf39da43843083950e954a3aeb1183d01c7c38bc7d3a967",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C5/C6) hand-edited two kinds of lines in to match the port's render: the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in the RegControl object block `~ RevThreshold=-100` (the signed-threshold default, docs/upgrade/DIVERGENCES.md WP-U1.6 C5) where the pinned 0.14.5 engine renders 100 (.inputs/dss_capi/src/Controls/RegControl.pas:525-526), plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle reverts them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2010,6 +2011,7 @@
       "path": "tests/golden/reports/dump3_debug.txt",
       "sha256": "640fb0b48b03105475aca5007affb426cd313d7d2883595390f12e5e8d6d0867",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C5/C6) hand-edited two kinds of lines in to match the port's render: the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in the RegControl object block `~ RevThreshold=-100` (the signed-threshold default, docs/upgrade/DIVERGENCES.md WP-U1.6 C5) where the pinned 0.14.5 engine renders 100 (.inputs/dss_capi/src/Controls/RegControl.pas:525-526), plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle reverts them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2046,6 +2048,7 @@
       "path": "tests/golden/reports/dump_autotrans.txt",
       "sha256": "159ee8f6b2cbea34f40a0acdf09962bd522b7db6a888f412597fefff91e4e167",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C6) hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match the port's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2058,6 +2061,7 @@
       "path": "tests/golden/reports/dump_autotrans3.txt",
       "sha256": "bcde48944261c3f8f2ca5aa96c99c04705f44516b98bd81c040703495b98c83c",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C6) hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match the port's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2394,6 +2398,7 @@
       "path": "tests/golden/reports/dump_regcontrol.txt",
       "sha256": "3978444a76269df7b1b57d1157fbc0abb2cac030a21288f456bd0deac92dc7bf",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C5) hand-edited the RegControl object block to match the port's render: `~ RevThreshold=-100` (the signed-threshold default, docs/upgrade/DIVERGENCES.md WP-U1.6 C5) where the pinned 0.14.5 engine renders 100 (.inputs/dss_capi/src/Controls/RegControl.pas:525-526), plus the 0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`, props the pinned engine does not have. golden_reports.rs pins them SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle reverts them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2418,6 +2423,7 @@
       "path": "tests/golden/reports/dump_transformer.txt",
       "sha256": "4346c56bcdc0c2471766c7f3436abbc0da89b4f222447b4a8baf41ed62f8f684",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C6) hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match the port's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2430,6 +2436,7 @@
       "path": "tests/golden/reports/dump_transformer3.txt",
       "sha256": "df8600c6c21f6207ec378e454fb198c4e3d94a418590159a83c2684357b63e90",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C6) hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match the port's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle drops them and must re-land them.",
       "produced_by": null
     },
     {
@@ -2442,6 +2449,7 @@
       "path": "tests/golden/reports/dump_transformer_disabled.txt",
       "sha256": "dd79e5ad4241957a8c85096cb579faf5bd12e370576df851b07557eeb50baf65",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C6) hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into every Transformer/AutoTrans object block to match the port's render. The pinned 0.14.5 engine has no BH property, so golden_reports.rs pins those three lines SELF-REFERENTIALLY against our own render, while every other line is still the tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle drops them and must re-land them.",
       "produced_by": null
     },
     {

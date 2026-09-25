@@ -68,11 +68,13 @@
 //!    and never a side effect of a regen run. Additionally `anchor == self` holds
 //!    if and only if `produced_by` is set. Two reason-only registers,
 //!    [`NON_ENGINE_RESIDUE`] and [`CAPI_V0145_OVERLAYS`], write a truthful
-//!    reason into a residue row without moving its anchor, and the
-//!    capi015 sidecar↔payload rail ([`capi015_sidecar_violations`]) keeps every
-//!    payload a capi015 generator call wrote next to its `.meta.json` in
-//!    [`CAPI015_ARTIFACTS`] — the residue can no longer swallow a capi015
-//!    capture that carries no provenance block of its own.
+//!    reason into a residue row without moving its anchor. Two corpus-side
+//!    rails decide [`CAPI015_ARTIFACTS`] from the artifacts' own evidence: the
+//!    stamp rail ([`capi015_stamp_violations`]) keeps it equal, both
+//!    directions, to the artifacts whose provenance block declares capi015, and
+//!    the sidecar↔payload rail ([`capi015_sidecar_violations`]) keeps every
+//!    payload a capi015 generator call wrote next to its `.meta.json` in it —
+//!    the residue can no longer swallow a capi015 capture, stamped or not.
 //!
 //! # Regenerate deliberately
 //!
@@ -86,7 +88,9 @@
 //! cannot invent, preserve or launder an anchor: a hand-edited one is reset
 //! (loudly, `RE-ANCHORED …` on stderr), a hand-edited unregistered `self` is
 //! refused outright, and a path no register recognizes is announced (`SEEDED …`)
-//! instead of silently acquiring the `capi_v0145` residue. Only the *measured*
+//! instead of silently acquiring the `capi_v0145` residue. Every rewritten digest
+//! is announced too (`DIGEST MOVED …`, the check arm's label), so "the regen
+//! moved no digest" is read off the regen's own output. Only the *measured*
 //! `produced_by` of a `self` row survives a regen. Run it after reviewing *why*
 //! the bytes moved, and commit the lock diff together with the change that
 //! caused it.
@@ -243,7 +247,10 @@ const DEANCHORED: &[(&str, &str)] = &[
 /// G0.1 sweep read declared engine strings and so missed them; RF-D08-06
 /// registered them and added the sidecar↔payload rail
 /// ([`capi015_sidecar_violations`]) that keeps a payload from falling back to
-/// the `capi_v0145` residue again. Their generator environment — a dss_capi
+/// the `capi_v0145` residue again, and its settlement added the stamp rail
+/// ([`capi015_stamp_violations`]), which reads both spellings from disk so a
+/// stamped capture dropped from this list reds too — the count below is a
+/// cross-check, not the only guard. Their generator environment — a dss_capi
 /// 0.15.0b4 / DSS-Python 0.16.0b2 beta stack — no longer exists, so they can
 /// never be regenerated and `snapshot_*` hard-refuses them.
 const CAPI015_ARTIFACTS: &[&str] = &[
@@ -389,10 +396,43 @@ const NON_ENGINE_RESIDUE: &[(&str, &str)] = &[
 /// anchor does not move (the value authority for every untouched block is still
 /// the pinned capture), but a regenerator reading the lock must learn which
 /// bytes a pinned-oracle regen would revert. Same pattern convention and
-/// disjointness rule as [`NON_ENGINE_RESIDUE`].
-const CAPI_V0145_OVERLAYS: &[(&str, &str)] = &[(
-    "tests/golden/reports/dump3_commands.txt",
-    "PARTLY HAND-LANDED, not purely the pinned oracle's capture: the [Relay]/[Recloser]/[Fuse]/\
+/// disjointness rule as [`NON_ENGINE_RESIDUE`]. The nine rows are the complete
+/// set of Dump goldens a pinned-oracle re-capture does not reproduce (the
+/// RF-D08-06 audit re-captured all 44 `gen_reports.py::gen_dump_decks` outputs:
+/// 35 identical, these 9 differ). A G3 step that de-anchors `reports/dump*`
+/// drops them in the same commit (the hygiene test reds on the overlap).
+const CAPI_V0145_OVERLAYS: &[(&str, &str)] = &[
+    (
+        "tests/golden/reports/dump3_bare.txt",
+        DUMP_BH_REGCONTROL_OVERLAY,
+    ),
+    (
+        "tests/golden/reports/dump3_commands.txt",
+        DUMP3_COMMANDS_OVERLAY,
+    ),
+    (
+        "tests/golden/reports/dump3_debug.txt",
+        DUMP_BH_REGCONTROL_OVERLAY,
+    ),
+    ("tests/golden/reports/dump_autotrans.txt", DUMP_BH_OVERLAY),
+    ("tests/golden/reports/dump_autotrans3.txt", DUMP_BH_OVERLAY),
+    (
+        "tests/golden/reports/dump_regcontrol.txt",
+        DUMP_REGCONTROL_OVERLAY,
+    ),
+    ("tests/golden/reports/dump_transformer.txt", DUMP_BH_OVERLAY),
+    (
+        "tests/golden/reports/dump_transformer3.txt",
+        DUMP_BH_OVERLAY,
+    ),
+    (
+        "tests/golden/reports/dump_transformer_disabled.txt",
+        DUMP_BH_OVERLAY,
+    ),
+];
+
+/// `reports/dump3_commands.txt`: the property-help listing of every class.
+const DUMP3_COMMANDS_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: the [Relay]/[Recloser]/[Fuse]/\
      [SwtControl] blocks are the r4133 property surfaces (Relay 71, Recloser 46, Fuse 12, \
      SwtControl 9 props; help verbatim from the r4133 binary's own Dump commands via \
      tools/golden/r4133_help.py; 845fdd2f, 288afc35), and the 0.15.x property lines of \
@@ -405,8 +445,42 @@ const CAPI_V0145_OVERLAYS: &[(&str, &str)] = &[(
      every other block ([execcommands], [execoptions] and the remaining class sections) is \
      still the tools/golden/gen_reports.py capture on the pinned oracle, as is the deck \
      sidecar dump3_commands.meta.json (untouched since 34b15a12). A regen from the pinned \
-     oracle reverts every hand-landed block; it must re-land them.",
-)];
+     oracle reverts every hand-landed block; it must re-land them.";
+
+/// The five object dumps whose only hand-landed lines are 702adcbd's BH-curve
+/// props (WP-U1.6 C6): `dump_{autotrans,autotrans3}` (one AutoTrans each) and
+/// `dump_{transformer,transformer3,transformer_disabled}` (one Transformer each).
+const DUMP_BH_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C6) \
+     hand-edited the 0.15.x default BH-curve lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` into \
+     every Transformer/AutoTrans object block to match the port's render. The pinned 0.14.5 \
+     engine has no BH property, so golden_reports.rs pins those three lines \
+     SELF-REFERENTIALLY against our own render, while every other line is still the \
+     tools/golden/gen_reports.py capture on the pinned oracle. A regen from the pinned oracle \
+     drops them and must re-land them.";
+
+/// `dump_regcontrol`: 702adcbd's RegControl lines only (WP-U1.6 C5).
+const DUMP_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C5) \
+     hand-edited the RegControl object block to match the port's render: `~ RevThreshold=-100` \
+     (the signed-threshold default, docs/upgrade/DIVERGENCES.md WP-U1.6 C5) where the pinned \
+     0.14.5 engine renders 100 (.inputs/dss_capi/src/Controls/RegControl.pas:525-526), plus the \
+     0.15.x lines `~ Idle=No`, `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`, \
+     props the pinned engine does not have. golden_reports.rs pins them SELF-REFERENTIALLY \
+     against our own render, while every other line is still the tools/golden/gen_reports.py \
+     capture on the pinned oracle. A regen from the pinned oracle reverts them and must re-land \
+     them.";
+
+/// `dump3_bare` / `dump3_debug`: both kinds of 702adcbd lines (two Transformers
+/// and one RegControl in the `dump3.dss` fixture).
+const DUMP_BH_REGCONTROL_OVERLAY: &str = "PARTLY HAND-LANDED, not purely the pinned oracle's capture: 702adcbd (WP-U1.6 C5/C6) \
+     hand-edited two kinds of lines in to match the port's render: the 0.15.x default BH-curve \
+     lines `~ BHPoints=0`, `~ BHCurrent=`, `~ BHFlux=` in every Transformer object block, and in \
+     the RegControl object block `~ RevThreshold=-100` (the signed-threshold default, \
+     docs/upgrade/DIVERGENCES.md WP-U1.6 C5) where the pinned 0.14.5 engine renders 100 \
+     (.inputs/dss_capi/src/Controls/RegControl.pas:525-526), plus the 0.15.x lines `~ Idle=No`, \
+     `~ IdleReverse=No`, `~ IdleForward=No`, `~ FwdThreshold=100`. The pinned engine renders \
+     none of those lines as landed, so golden_reports.rs pins them SELF-REFERENTIALLY against \
+     our own render, while every other line is still the tools/golden/gen_reports.py capture on \
+     the pinned oracle. A regen from the pinned oracle reverts them and must re-land them.";
 
 /// One fingerprinted artifact.
 ///
@@ -631,19 +705,74 @@ fn capi015_sidecar_violations(paths: &[&str], stamped: &[&str], capi015: &[&str]
     out
 }
 
-/// The `.meta.json` artifacts among `disk` whose own provenance stamp declares
-/// `"oracle": "capi015"` — the evidence-side input of
-/// [`capi015_sidecar_violations`].
-fn capi015_stamped_sidecars(root: &Path, disk: &BTreeMap<String, String>) -> Vec<String> {
+/// The capi015 stamp rail (RF-D08-06 settlement), both directions, over the
+/// artifacts whose own provenance block declares capi015 (`stamped`, read from
+/// disk by [`capi015_stamped_artifacts`]). Forward: a stamped capture that is
+/// not a `.meta.json` must be registered — the sidecar half of that direction
+/// is [`capi015_sidecar_violations`]'s, which also follows the payloads.
+/// Converse: every registered artifact either declares capi015 itself or is a
+/// payload of a registered capi015 sidecar — payloads carry no block of their
+/// own. The converse is also the reader's non-vacuity guard: a reader that
+/// finds nothing reds every stamped registration instead of silently emptying
+/// the forward arm. With both, the register is decided by the corpus and the
+/// closed-set count is a cross-check. One message per violation, parameterized
+/// so `capi015_stamp_rail_reds_on_a_dropped_or_unread_capture` can drive it red.
+fn capi015_stamp_violations(stamped: &[&str], capi015: &[&str]) -> Vec<String> {
+    let mut out = Vec::new();
+    for &s in stamped {
+        if !s.ends_with(".meta.json") && !capi015.contains(&s) {
+            out.push(format!(
+                "  UNREGISTERED CAPI015 CAPTURE: {s} declares oracle.engine_spec \"capi015\" but \
+                 CAPI015_ARTIFACTS does not list it, so it falls to the capi_v0145 residue — an \
+                 engine that cannot produce it\n"
+            ));
+        }
+    }
+    for &p in capi015 {
+        let is_payload = capi015
+            .iter()
+            .any(|s| s.ends_with(".meta.json") && is_sidecar_payload(s, p));
+        if !is_payload && !stamped.contains(&p) {
+            out.push(format!(
+                "  CAPI015 ARTIFACT WITHOUT STAMP: {p} is registered capi015 but neither declares \
+                 it in its own provenance block (\"oracle\": \"capi015\" or oracle.engine_spec) \
+                 nor is a payload of a registered capi015 sidecar\n"
+            ));
+        }
+    }
+    out
+}
+
+/// Does a JSON artifact's own provenance block declare the retired capi015
+/// stack? Two spellings exist on disk (measured): the `.meta.json` sidecars
+/// carry a top-level `"oracle": "capi015"`, the `props/` + `line_constants/`
+/// dumps an `"oracle": {"engine_spec": "capi015", …}` block.
+fn declares_capi015(doc: &serde_json::Value) -> bool {
+    match doc.get("oracle") {
+        Some(serde_json::Value::String(engine)) => engine == "capi015",
+        Some(block) => {
+            block.get("engine_spec").and_then(serde_json::Value::as_str) == Some("capi015")
+        }
+        None => false,
+    }
+}
+
+/// The JSON artifacts among `disk` whose own provenance block declares capi015
+/// ([`declares_capi015`]) — the evidence side of both capi015 rails. Only a file
+/// holding the literal `"capi015"` can carry either spelling, so only those are
+/// parsed (a parse failure among them panics: fail loud, never skip).
+fn capi015_stamped_artifacts(root: &Path, disk: &BTreeMap<String, String>) -> Vec<String> {
     disk.keys()
-        .filter(|p| p.ends_with(".meta.json"))
+        .filter(|p| p.ends_with(".json"))
         .filter(|p| {
             let abs = root.join(p);
             let text = std::fs::read_to_string(&abs)
-                .unwrap_or_else(|e| panic!("read sidecar {}: {e}", abs.display()));
-            let doc: serde_json::Value = serde_json::from_str(&text)
-                .unwrap_or_else(|e| panic!("parse sidecar {}: {e}", abs.display()));
-            doc.get("oracle").and_then(serde_json::Value::as_str) == Some("capi015")
+                .unwrap_or_else(|e| panic!("read {}: {e}", abs.display()));
+            text.contains("\"capi015\"") && {
+                let doc: serde_json::Value = serde_json::from_str(&text)
+                    .unwrap_or_else(|e| panic!("parse {}: {e}", abs.display()));
+                declares_capi015(&doc)
+            }
         })
         .cloned()
         .collect()
@@ -866,14 +995,19 @@ fn serialize_lock(artifacts: &[Artifact]) -> String {
     s
 }
 
-/// What a regen did to a row's provenance, so the knob can announce it instead
-/// of writing a provenance claim nobody reviewed.
+/// What a regen did to a row, so the knob can announce it instead of writing a
+/// provenance claim or a digest nobody reviewed.
 enum Seeded {
     /// The path is new to the lock: the registers classified it, and the
     /// `capi_v0145` residue in particular is a claim that wants confirming.
     New(Anchor),
     /// The stored row disagreed with the registers and was reset to them.
     ReAnchored(Anchor, Anchor),
+    /// The stored digest (carried here) differs from the bytes on disk and was
+    /// rewritten. Announced under the check arm's `DIGEST MOVED` label, so a
+    /// regen that moved no golden byte is provable from its own output (the
+    /// RF-D08-06 audit found that claim unfalsifiable while regens were silent).
+    DigestMoved(String),
 }
 
 /// Rebuild the row set from disk. Provenance always comes from
@@ -907,6 +1041,9 @@ fn regenerate(
                 );
                 if prev.anchor != anchor {
                     report.push((path.clone(), Seeded::ReAnchored(prev.anchor, anchor)));
+                }
+                if prev.sha256 != *sha256 {
+                    report.push((path.clone(), Seeded::DigestMoved(prev.sha256.clone())));
                 }
             } else {
                 report.push((path.clone(), Seeded::New(anchor)));
@@ -978,6 +1115,10 @@ fn golden_lock_matches_the_committed_artifacts() {
                 Seeded::ReAnchored(from, to) => {
                     eprintln!("  RE-ANCHORED {p}: {from:?} -> {to:?} (the registers are the truth)")
                 }
+                Seeded::DigestMoved(locked) => eprintln!(
+                    "  DIGEST MOVED {p}: locked {locked} rewritten from disk — commit it only \
+                     together with the change that moved the bytes"
+                ),
             }
         }
         return;
@@ -1182,13 +1323,23 @@ fn golden_lock_matches_the_committed_artifacts() {
         }
     }
 
-    // The capi015 sidecar↔payload rail, over what is on disk: a payload a
-    // capi015 generator call wrote beside its sidecar carries no provenance
-    // block of its own, so only this rail keeps it out of the residue.
-    let stamped = capi015_stamped_sidecars(&root, &disk);
+    // The two capi015 rails, over what is on disk. The stamp rail binds the
+    // register to the artifacts that declare capi015 themselves (both
+    // directions — the converse also proves the reader found them). The
+    // sidecar↔payload rail follows each capi015 `.meta.json` to the payloads
+    // its generator call wrote, which carry no provenance block of their own.
+    let stamped = capi015_stamped_artifacts(&root, &disk);
     let stamped: Vec<&str> = stamped.iter().map(String::as_str).collect();
+    let stamped_sidecars: Vec<&str> = stamped
+        .iter()
+        .copied()
+        .filter(|p| p.ends_with(".meta.json"))
+        .collect();
     let on_disk: Vec<&str> = disk.keys().map(String::as_str).collect();
-    for v in capi015_sidecar_violations(&on_disk, &stamped, CAPI015_ARTIFACTS) {
+    for v in capi015_stamp_violations(&stamped, CAPI015_ARTIFACTS) {
+        diff.push_str(&v);
+    }
+    for v in capi015_sidecar_violations(&on_disk, &stamped_sidecars, CAPI015_ARTIFACTS) {
         diff.push_str(&v);
     }
 
@@ -1302,9 +1453,10 @@ fn provenance_registers_are_well_formed() {
          GOLDEN_REBASE_PLAN.md G0.1 enumerated plus the six unstamped payloads their sidecars' \
          generator calls wrote (registered by RF-D08-06) — and never grows: that beta \
          environment is gone. A deletion is caught corpus-side by the STALE CAPI015_ARTIFACTS \
-         sweep and a payload/sidecar split by the capi015 sidecar↔payload rail, which is what \
-         keeps this count from guarding a constant against itself; shrink them together, \
-         deliberately."
+         sweep, a stamped capture dropped from the list (or a reader that finds no stamp) by \
+         the capi015 stamp rail, and a payload/sidecar split by the capi015 sidecar↔payload \
+         rail — they are what keeps this count from guarding a constant against itself. \
+         Shrink them together, deliberately."
     );
 
     // The classification must be unambiguous: no artifact may fall into two
@@ -1566,18 +1718,91 @@ fn capi015_sidecar_rail_reds_on_an_unregistered_payload() {
     ));
 }
 
+/// The capi015 stamp rail and its reader predicate, driven red: both on-disk
+/// spellings are recognized (fixtures shaped like the real stamps of
+/// `ncim/pq.meta.json` and `props/transformer_bh.json`) and the r4133 /
+/// pinned-oracle spellings are not. A stamped dump dropped from the register
+/// and a reader that finds nothing (the two holes the RF-D08-06 audit
+/// mutation-proved) each red with their named violation, while a registered
+/// sidecar's payloads need no stamp of their own.
+#[test]
+fn capi015_stamp_rail_reds_on_a_dropped_or_unread_capture() {
+    let parse = |s: &str| -> serde_json::Value { serde_json::from_str(s).expect("fixture") };
+    assert!(declares_capi015(&parse(
+        r#"{"deck": ["clear"], "oracle": "capi015"}"#
+    )));
+    assert!(declares_capi015(&parse(
+        r#"{"schema": 1, "oracle": {"engine_spec": "capi015", "engine": "DSS C-API 0.15.0b4"}}"#
+    )));
+    for other in [
+        r#"{"deck": ["clear"], "oracle": "capi_v0145"}"#,
+        r#"{"schema": 1, "oracle": {"engine_spec": "r4133"}}"#,
+        r#"{"schema": 1, "oracle": {"engine_spec": "oddie:r4133", "rev": "r4133"}}"#,
+        r#"{"schema": 1, "engine_spec": "capi015"}"#,
+        r#"["capi015"]"#,
+    ] {
+        assert!(!declares_capi015(&parse(other)), "{other}");
+    }
+
+    let registered = [
+        "tests/golden/ncim/pq.meta.json",
+        "tests/golden/ncim/pq_Jacobian.csv",
+        "tests/golden/props/transformer_bh.json",
+    ];
+    let stamped = [
+        "tests/golden/ncim/pq.meta.json",
+        "tests/golden/props/transformer_bh.json",
+    ];
+    assert!(capi015_stamp_violations(&stamped, &registered).is_empty());
+
+    // A stamped dump dropped from the register (count and lock edited to match).
+    let v = capi015_stamp_violations(&stamped, &registered[..2]);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains("UNREGISTERED CAPI015 CAPTURE: tests/golden/props/transformer_bh.json"));
+
+    // A reader that finds nothing: every stamped registration reds, the
+    // sidecar's payload does not.
+    let v = capi015_stamp_violations(&[], &registered);
+    assert_eq!(v.len(), 2, "{v:?}");
+    assert!(v[0].contains("CAPI015 ARTIFACT WITHOUT STAMP: tests/golden/ncim/pq.meta.json"));
+    assert!(
+        v[1].contains("CAPI015 ARTIFACT WITHOUT STAMP: tests/golden/props/transformer_bh.json")
+    );
+
+    // A payload whose sidecar left the register is no longer excused.
+    let v = capi015_stamp_violations(&stamped[1..], &registered[1..]);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains("CAPI015 ARTIFACT WITHOUT STAMP: tests/golden/ncim/pq_Jacobian.csv"));
+
+    // An unregistered stamped sidecar is the sidecar rail's to report, together
+    // with its payloads — not repeated here.
+    assert!(capi015_stamp_violations(&stamped[..1], &[]).is_empty());
+}
+
 /// Expected-value pins of the classification this step corrected: the six
 /// capi015 payloads carry their sidecars' anchor and reason, the two
 /// reason-only registers put a reason on a row without moving it off the
-/// `capi_v0145` residue, and their unregistered neighbours keep the plain
-/// residue.
+/// `capi_v0145` residue (the nine hand-landed Dump goldens included), and their
+/// unregistered neighbours keep the plain residue.
 #[test]
 fn residue_reasons_and_capi015_payloads_classify_as_registered() {
-    for payload in [
-        "tests/golden/ncim/pq_Jacobian.csv",
-        "tests/golden/ncim/pv_qlimit_PV2PQ.txt",
-        "tests/golden/reports/export_overloads_seasonal.txt",
-    ] {
+    let payloads: Vec<&str> = CAPI015_ARTIFACTS
+        .iter()
+        .copied()
+        .filter(|p| CAPI015_ARTIFACTS.iter().any(|s| is_sidecar_payload(s, p)))
+        .collect();
+    assert_eq!(
+        payloads,
+        [
+            "tests/golden/ncim/pq_Jacobian.csv",
+            "tests/golden/ncim/pq_PV2PQ.txt",
+            "tests/golden/ncim/pv_qlimit_Jacobian.csv",
+            "tests/golden/ncim/pv_qlimit_PV2PQ.txt",
+            "tests/golden/reports/export_capacity_seasonal.txt",
+            "tests/golden/reports/export_overloads_seasonal.txt",
+        ]
+    );
+    for payload in payloads {
         let sidecar = CAPI015_ARTIFACTS
             .iter()
             .find(|s| is_sidecar_payload(s, payload))
@@ -1606,6 +1831,38 @@ fn residue_reasons_and_capi015_payloads_classify_as_registered() {
     // Its deck sidecar is the untouched pinned-oracle capture.
     assert_eq!(
         seed_metadata("tests/golden/reports/dump3_commands.meta.json"),
+        (Anchor::CapiV0145, String::new(), None)
+    );
+    // The eight other Dump goldens 702adcbd hand-landed lines into (the
+    // settlement's AC-1), each naming what a pinned-oracle regen would revert;
+    // an untouched Dump golden of the same generator keeps the plain residue.
+    for (path, landed) in [
+        ("tests/golden/reports/dump3_bare.txt", "BHPoints"),
+        ("tests/golden/reports/dump3_debug.txt", "IdleReverse"),
+        ("tests/golden/reports/dump_autotrans.txt", "BHFlux"),
+        ("tests/golden/reports/dump_autotrans3.txt", "BHFlux"),
+        (
+            "tests/golden/reports/dump_regcontrol.txt",
+            "RevThreshold=-100",
+        ),
+        ("tests/golden/reports/dump_transformer.txt", "BHCurrent"),
+        ("tests/golden/reports/dump_transformer3.txt", "BHCurrent"),
+        (
+            "tests/golden/reports/dump_transformer_disabled.txt",
+            "BHPoints",
+        ),
+    ] {
+        let (anchor, reason, produced_by) = seed_metadata(path);
+        assert_eq!((anchor, produced_by), (Anchor::CapiV0145, None), "{path}");
+        assert!(
+            reason.starts_with("PARTLY HAND-LANDED")
+                && reason.contains("702adcbd")
+                && reason.contains(landed),
+            "{path}: {reason}"
+        );
+    }
+    assert_eq!(
+        seed_metadata("tests/golden/reports/dump_loadshape.txt"),
         (Anchor::CapiV0145, String::new(), None)
     );
 
