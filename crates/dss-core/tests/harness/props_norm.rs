@@ -21,12 +21,12 @@
 //! r4133 site that proves its category plus the witness that still holds the
 //! port's value (capi coverage or a named expected-value pin — and a capi
 //! witness alone is not enough for a row whose cells reach `engines: "r4133"`
-//! cases, [`ECHO_ROWS_ON_R4133_ONLY_CASES`]). 62 of the 82 rows are pair-scoped
+//! cases, [`ECHO_ROWS_ON_R4133_ONLY_CASES`]). 61 of the 82 rows are pair-scoped
 //! minus their [`ECHO_CARVE_OUTS`]: the one measured cell whose divergence its
-//! citation does not explain stays comparable. The other 20 — the pairs that
-//! also carry a [`PROPS_NORM_R4133`] row — are **per cell** since RP4.1's
-//! precondition 1: [`ECHO_NARROWED`] lists the 66 spellings they cover, and a
-//! refused cell of such a pair is compared, not masked.
+//! citation does not explain stays comparable. The other 21 are **per cell**:
+//! the 20 that also carry a [`PROPS_NORM_R4133`] row since RP4.1's precondition
+//! 1, plus `generator.model` (RF-D07-07) — [`ECHO_NARROWED`] lists the 67
+//! spellings they cover, and any other cell of such a pair is compared, not masked.
 //!
 //! Since **RP2.4** it owns the chain's fourth and last link as well:
 //! [`R4133_DISPLAY_FLOOR`], the *display floor*. Where a rule re-spells and an
@@ -1406,9 +1406,9 @@ static NORM_HITS: [AtomicUsize; PROPS_NORM_R4133.len()] =
 /// run cannot make a whole-population staleness claim, so it makes none; the
 /// mandatory gate never sets the variable.
 ///
-/// The OFFLINE half of the same obligation — every row claims at least one
-/// vendored census example row — is RP2.1 part C's replay test, which does not
-/// need the live gate at all.
+/// The OFFLINE half — every row claims a vendored census example row — is RP2.1
+/// part C's replay test; it alone holds the eight rows no r4133-gating case ever
+/// visits ([`NORM_ROWS_WITH_NO_IN_SCOPE_CELL`], declared by RF-D07-07).
 pub fn assert_norm_rows_are_live() {
     if std::env::var("DSS_GATE_ONLY").is_ok() {
         return;
@@ -1711,9 +1711,9 @@ const fn echo(
 /// mechanisms plan §RP4.1 admits: [`ECHO_NARROWED`] gives each of those 20 rows
 /// the 66 measured spellings its citation explains and the seam excludes only
 /// those, so a refused cell of a mixed pair is now compared on r4133 as well.
-/// The other 62 rows keep the pair scope §1.2 prescribes. The narrowing was not
-/// RP2.3's to do — its row shape §1.2 fixes — which is why the split landed
-/// here.
+/// The other 62 kept the pair scope §1.2 prescribes (61 since RF-D07-07 narrowed
+/// `generator.model`, [`ECHO_NARROWED_PURE_PAIRS`]). The narrowing was not
+/// RP2.3's to do — its row shape §1.2 fixes — which is why the split landed here.
 ///
 /// # The 82 rows — RP2.3's 81, plus RP3.3's one
 ///
@@ -2188,14 +2188,14 @@ pub fn r4133_only_exposure(class: &str, prop: &str) -> Option<(u32, u32)> {
 /// seen must stay inside the cited exclusion rather than silently fall out of
 /// it.
 ///
-/// **That conservative rule holds for the 62 pair-scoped rows only.** On the 20
-/// MIXED pairs RP4.1 P1 deliberately inverts it — [`ECHO_NARROWED`] lists the
-/// spellings a row covers, and an unseen spelling there falls OUT of the
-/// exclusion and is compared, because on a mixed pair the unseen spelling is
-/// exactly the cell the typed rule refused. The two mechanisms are complementary
-/// rather than contradictory: a carve-out removes one cited counterexample from
-/// an otherwise pair-wide row, a narrowed row states the whole of what its row
-/// covers. See [`ECHO_NARROWED`]'s doc for why the inversion is bounded.
+/// **That conservative rule holds for the 61 pair-scoped rows only.** On the 21
+/// narrowed ones (RP4.1 P1's 20 MIXED pairs, plus `generator.model`) it is
+/// inverted — [`ECHO_NARROWED`] lists the spellings a row covers, and an unseen
+/// spelling there falls OUT of the exclusion and is compared, because on a mixed
+/// pair the unseen spelling is exactly the cell the typed rule refused. The two
+/// mechanisms are complementary: a carve-out removes one cited counterexample
+/// from an otherwise pair-wide row, a narrowed row states the whole of what its
+/// row covers. See [`ECHO_NARROWED`]'s doc for why the inversion is bounded.
 #[derive(Debug)]
 pub struct EchoCarveOut {
     /// Class, as the census spells it (matched case-insensitively).
@@ -2250,7 +2250,7 @@ pub const ECHO_CARVE_OUTS: &[EchoCarveOut] = &[EchoCarveOut {
 /// other table here carries, so a second carve-out cannot appear un-reviewed.
 const ECHO_CARVE_OUT_CELLS: usize = 1;
 
-/// **One MIXED pair's measured echo spellings** — the per-cell narrowing RP4.1's
+/// **One narrowed pair's measured echo spellings** — the per-cell narrowing RP4.1's
 /// precondition 1 owes (plan §RP4.1 ¶1, RP2.3's audit settlement 2026-08-23).
 ///
 /// 20 of [`PROPS_ECHO_R4133`]'s 82 pairs also hold a [`PROPS_NORM_R4133`] row.
@@ -2296,17 +2296,17 @@ const ECHO_CARVE_OUT_CELLS: usize = 1;
 /// there with disposition `echo-row`, and the census reports no `echo-row`
 /// spelling on these 20 pairs that this table lacks.
 ///
-/// # Why this INVERTS [`ECHO_CARVE_OUTS`]' rule, deliberately, for these 20 rows
+/// # Why this INVERTS [`ECHO_CARVE_OUTS`]' rule, deliberately, for these rows
 ///
 /// A carve-out is conservative by design: "a spelling the census has not seen
 /// must stay inside the cited exclusion rather than silently fall out of it".
-/// A narrowed row is the opposite: an unseen spelling on one of these 20 pairs
+/// A narrowed row is the opposite: an unseen spelling on one of these pairs
 /// falls **out** of the exclusion and is compared. That inversion is the whole
 /// content of RP4.1's precondition — on a mixed pair the unseen spelling is
 /// precisely the regression a typed rule would have caught — and it is bounded:
-/// it applies to these 20 pairs only, the other 62 keep the conservative
-/// pair-scoped rule, and a new spelling that turns out to be an echo after all
-/// lands here with its own citation instead of being masked in advance.
+/// it applies to the 20 mixed pairs and the closed [`ECHO_NARROWED_PURE_PAIRS`]
+/// list only, the other 61 keep the conservative pair-scoped rule, and a new
+/// spelling that is an echo after all lands here with its own citation.
 #[derive(Debug)]
 pub struct EchoNarrowedRow {
     /// Class, as the census spells it (matched case-insensitively).
@@ -2321,7 +2321,7 @@ pub struct EchoNarrowedRow {
     pub src: &'static str,
 }
 
-/// Table constructor, so the 20 rows below read as data.
+/// Table constructor, so the 21 rows below read as data.
 const fn narrowed(
     class: &'static str,
     prop: &'static str,
@@ -2336,7 +2336,7 @@ const fn narrowed(
     }
 }
 
-/// **The 20 narrowed rows and their 66 measured spellings** (RP4.1 P1).
+/// **The 21 narrowed rows and their 67 measured spellings** (RP4.1 P1, RF-D07-07).
 ///
 /// Sorted by `(class, prop)` — [`narrowed_row`] binary-searches it, and the
 /// order is asserted by `tests::the_narrowed_table_is_sorted_and_unique`.
@@ -2358,6 +2358,7 @@ pub const ECHO_NARROWED: &[EchoNarrowedRow] = &[
         ("Line.la", ""),
         ("Line.lb", ""),
     ], "examples_full.txt:128-129,131-132"),
+    narrowed("generator", "model", &[("4", "3")], "examples_full.txt:1435"),
     narrowed("generator", "userdata", &[
         ("", "()"),
     ], "examples_supplement.txt:74"),
@@ -2450,17 +2451,16 @@ pub const ECHO_NARROWED: &[EchoNarrowedRow] = &[
     ], "examples_full.txt:949"),
 ];
 
-/// Count lock for [`ECHO_NARROWED`]: the mixed pairs.
-///
-/// Derived, not chosen: `props_r4133_replay::
-/// the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline` measures
-/// exactly 20 pairs of [`PROPS_ECHO_R4133`] whose normalization count is
-/// non-zero, and the narrowing covers all of them.
-const ECHO_NARROWED_PAIRS: usize = 20;
-/// Count lock, spellings — the sum of the table's third column, i.e. the 66
-/// census example rows the 20 pairs leave to their echo rows (the same 66 the
-/// split literal's second column sums to).
-const ECHO_NARROWED_SPELLINGS: usize = 66;
+/// Count lock for [`ECHO_NARROWED`]: the 20 mixed pairs — derived, not chosen:
+/// `props_r4133_replay::the_typed_rules_and_the_echo_rows_split_their_shared_pairs_offline`
+/// measures exactly 20 pairs of [`PROPS_ECHO_R4133`] with a non-zero normalization
+/// count and the narrowing covers all of them — plus [`ECHO_NARROWED_PURE_PAIRS`]'
+/// one pure echo pair, `generator.model` (RF-D07-07).
+const ECHO_NARROWED_PAIRS: usize = 21;
+/// Count lock, spellings — the sum of the table's third column: the 66 census
+/// example rows the 20 mixed pairs leave to their echo rows (the same 66 the split
+/// literal's second column sums to) plus `generator.model`'s one `('4', '3')`.
+const ECHO_NARROWED_SPELLINGS: usize = 67;
 
 /// Index of [`ECHO_NARROWED`]'s row for `(class, prop)`, case-insensitively.
 fn narrowed_row(class: &str, prop: &str) -> Option<&'static EchoNarrowedRow> {
@@ -2481,8 +2481,8 @@ pub fn narrowed_spellings(
 /// **Does this pair's echo row cover this exact cell?** — the per-cell half of
 /// the exclusion, asked after [`find_echo_row`] has said the pair is cited.
 ///
-/// `true` for every cell of the 62 pair-scoped rows (that is what pair-scoped
-/// means), and for a cell of one of the 20 [`ECHO_NARROWED`] rows only when the
+/// `true` for every cell of the 61 pair-scoped rows (that is what pair-scoped
+/// means), and for a cell of one of the 21 [`ECHO_NARROWED`] rows only when the
 /// spelling is one the row measured.
 fn row_covers(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
     match narrowed_row(class, prop) {
@@ -2512,7 +2512,7 @@ pub fn has_echo_row(class: &str, prop: &str) -> bool {
 /// Is `(class, prop)`'s cell `(rust, oracle)` value-excluded on the r4133
 /// channel? — the offline twin of [`echo_excluded_r4133`], counters aside.
 ///
-/// **Pair-scoped for 62 rows, per-cell for the other 20.** Pair-scoped is the
+/// **Pair-scoped for 61 rows, per-cell for the other 21.** Pair-scoped is the
 /// shape plan §1.2 prescribes (`SKIP_PROPS`'), and the guard against
 /// over-breadth is what every row carries — the r4133 citation and the witness —
 /// plus two narrowing valves:
@@ -2520,12 +2520,12 @@ pub fn has_echo_row(class: &str, prop: &str) -> bool {
 /// * [`ECHO_CARVE_OUTS`] takes back the one measured cell a row's citation does
 ///   not explain (`reactor.kvar`'s `MakePosSequence` round trip);
 /// * [`ECHO_NARROWED`] holds the 20 **mixed** pairs — those that also carry a
-///   [`PROPS_NORM_R4133`] row — to the 66 spellings their citations actually
-///   explain, so a cell the typed rule *refused* is compared on r4133 instead of
-///   being swallowed by the pair (RP4.1's precondition 1; before it, that gap
-///   was invisible only because the channel compared no property at all).
+///   [`PROPS_NORM_R4133`] row — to the 66 spellings their citations explain, so
+///   a cell the typed rule *refused* is compared on r4133 instead of swallowed
+///   (RP4.1's precondition 1), and `generator.model` to its one NCIM spelling,
+///   so its agreeing r4133-only cells are compared too (RF-D07-07).
 ///
-/// For a cell of one of the other 62 pairs the two values are read *only* by the
+/// For a cell of one of the other 61 pairs the two values are read *only* by the
 /// carve-out lookup: the answer is `true` whatever they say, which is exactly
 /// what makes this an exclusion and not a normalization rule.
 ///
@@ -2559,7 +2559,7 @@ fn carved_out(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
 /// rows: "covered" now gates the exclusion and the counters alike.
 ///
 /// A consequence worth stating, because it changes what the liveness guard can
-/// prove for those 20 rows: every covered spelling is divergent by construction
+/// prove for those 21 rows: every covered spelling is divergent by construction
 /// (the census records divergent cells only), so a narrowed row's visits equal
 /// its hits and `check_echo_rows_are_live`'s `visits > 0 && hits == 0` arm can
 /// never fire on one. Two things replace it. Static: a narrowed row literally
@@ -2569,7 +2569,7 @@ fn carved_out(class: &str, prop: &str, rust: &str, oracle: &str) -> bool {
 /// Live (RP4.1 audit settlement, 2026-09-03): the staleness arm the coverage
 /// gate disabled is replaced by its mirror image — a narrowed row that is
 /// **never visited** in a run whose seam ran at all has stopped excluding
-/// anything, which is the same rot the `hits == 0` arm reports for the 62
+/// anything, which is the same rot the `hits == 0` arm reports for the 61
 /// pair-scoped rows. Without it a narrowed row could go dead exactly the way
 /// `swtcontrol.normal`/`.state` did (RP4.1 P4b) and no live guard would say so,
 /// because the offline derivation reads the FROZEN census, which still carries
@@ -2639,7 +2639,7 @@ pub fn echo_counters(class: &str, prop: &str) -> Option<(usize, usize)> {
 ///
 /// A row that was VISITED on r4133 and never excluded a differing cell is
 /// masking a divergence that is no longer there: drop it, or re-measure it. It
-/// is **silent when the row was never visited** — except for the 20
+/// is **silent when the row was never visited** — except for the 21
 /// [`ECHO_NARROWED`] rows, where "never visited" IS the rot signal (see the
 /// second arm in [`check_echo_rows_are_live`]) — and silent for the two rows the
 /// census measured as having no in-scope cell at all
@@ -2671,12 +2671,12 @@ pub fn assert_echo_rows_are_live() {
 /// [`tests::the_echo_liveness_guard_fires_on_a_stale_row`],
 /// [`tests::the_echo_liveness_guard_fires_on_an_unvisited_narrowed_row`]).
 ///
-/// **Two arms, because the 20 [`ECHO_NARROWED`] rows count differently**
+/// **Two arms, because the 21 [`ECHO_NARROWED`] rows count differently**
 /// (RP4.1 audit settlement, 2026-09-03):
 ///
-/// * pair-scoped row (62 of them) — `visits > 0 && hits == 0`: it was asked
+/// * pair-scoped row (61 of them) — `visits > 0 && hits == 0`: it was asked
 ///   about compared cells and stopped excluding any of them;
-/// * narrowed row (20) — `visits == 0` in a run whose seam ran at all: a
+/// * narrowed row (21) — `visits == 0` in a run whose seam ran at all: a
 ///   narrowed row only ever counts a *covered* (hence divergent) cell, so
 ///   `visits == hits` by construction and the first arm cannot fire on it; what
 ///   rot looks like there is the counter staying at zero while the rest of the
@@ -2685,15 +2685,15 @@ pub fn assert_echo_rows_are_live() {
 /// The `seam_ran` qualifier keeps the second arm from firing on a process that
 /// never compared a property at all — that case is the global guard's
 /// ([`check_r4133_props_compare_ran`], invoked first in the gate epilogue), and
-/// it deserves its own one-line diagnosis rather than 19 row messages.
+/// it deserves its own one-line diagnosis rather than 20 row messages.
 ///
 /// Honest limit of the second arm: the shipped statics are process-global, so a
 /// sibling unit test in the same binary that drives the comparator on one of the
-/// 20 pairs supplies that row's visit by itself. In the gate binary that is
+/// 21 pairs supplies that row's visit by itself. In the gate binary that is
 /// exactly one row — `load.yearly`, via
 /// `harness::tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`,
 /// which asserts the row still excludes its own measured spelling. The arm is
-/// therefore a floor for the other 19 and a no-op for that one, the same
+/// therefore a floor for the other 20 and a no-op for that one, the same
 /// property the global guard's doc records about table sums.
 fn check_echo_rows_are_live(table: &[EchoRow], visits: &[usize], hits: &[usize]) {
     assert_eq!(
@@ -2937,6 +2937,59 @@ pub fn unexposed_on_r4133_only_cases(class: &str, prop: &str) -> Option<u32> {
 pub fn echo_rows_with_no_in_scope_cell() -> &'static [(&'static str, &'static str)] {
     ECHO_ROWS_WITH_NO_IN_SCOPE_CELL
 }
+
+/// **The pure echo pairs narrowed on purpose** — the [`ECHO_NARROWED`] rows whose
+/// pair holds NO [`PROPS_NORM_R4133`] row (RF-D07-07, 2026-09-25).
+///
+/// RP4.1 narrowed only the mixed pairs and left every pure echo row the pair
+/// scope plan §1.2 prescribes. That scope costs nothing while a capi witness
+/// still compares the pair's other cells; on `engines: "r4133"` cases nothing
+/// does. `generator.model` is that case: its row cites two cells — the NCIM PV→PQ
+/// conversion's live `'4'` against r4133's echoed store `'3'`
+/// (`Version8/Source/PCElements/generator.pas:3007-3038`, no arm 6) — both on
+/// r4133-only cases, while the pair scope also masked the 41 cells the four
+/// other r4133-only generator decks carry, compared by no channel at all.
+/// Narrowed to its one measured spelling (`examples_full.txt:1435`), every other
+/// cell of the pair is compared on r4133.
+///
+/// Closed: `tests::the_narrowed_rows_are_sorted_well_formed_and_actually_narrow`
+/// accepts a non-mixed narrowed row only from here, and
+/// `props_r4133_replay::the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave`
+/// re-derives this row's spelling from the census exactly as it does the mixed
+/// ones'.
+pub const ECHO_NARROWED_PURE_PAIRS: &[(&str, &str)] = &[("generator", "model")];
+
+/// **The normalization rows whose pair has no cell on an r4133-gating case** —
+/// the [`PROPS_NORM_R4133`] analogue of [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`]
+/// (RF-D07-07, 2026-09-25).
+///
+/// [`check_rows_are_live`] reports a row only when it was visited and folded
+/// nothing, so a row the gate never visits is silent forever. These eight are
+/// never visited: every corpus deck that declares a `GenDispatcher` or a
+/// `Sensor` gates `capi_v0145` only, so their pairs carry `cells_in_scope = 0`
+/// in the frozen census — `bins.tsv` for six of them, the WP-RP1 README records
+/// for the two `enabled` rows (`gendispatcher.enabled`'s own `(0)`,
+/// `sensor.enabled` through `shape_in_scope.txt`'s `rows_in_scope=0` for its
+/// class). The live anti-rot guard cannot fire on them; the offline replay
+/// (every row claims a vendored example) is all that holds them. Declared here
+/// rather than left implicit, and pinned both ways against those files by
+/// `props_r4133_replay::the_norm_rows_with_no_in_scope_cell_are_exactly_the_declared_ones`:
+/// a listed row that gains an in-scope cell, or an unlisted row that has none,
+/// reds there. Gating a sensor or gendispatcher deck on r4133 would make the
+/// eight live — a corpus change, recorded as an RF follow-up, not done here.
+pub const NORM_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[
+    ("gendispatcher", "element"),
+    ("gendispatcher", "enabled"),
+    ("gendispatcher", "genlist"),
+    ("sensor", "currents"),
+    ("sensor", "element"),
+    ("sensor", "enabled"),
+    ("sensor", "kvars"),
+    ("sensor", "kws"),
+];
+
+/// Count lock for [`NORM_ROWS_WITH_NO_IN_SCOPE_CELL`].
+const NORM_NO_IN_SCOPE_ROWS: usize = 8;
 
 /// Which link of the r4133 **value** chain claims one divergent cell.
 ///
@@ -4778,6 +4831,91 @@ mod tests {
             66,
             "rows whose witness is (also) a pin"
         );
+        // …and the MAPPING, row by row (RF-D07-07). The two locks above hold the
+        // count and the name SET, so re-pointing a row at another pin that
+        // already exists — `relay.action` at `fault_bus2_renders_the_live_terminal`,
+        // say — kept every guard green while the row's value lost its holder.
+        // Sorted like the table; a row that moves pin, gains one or loses one
+        // is an edit here, next to the witness it changes.
+        #[rustfmt::skip]
+        const ROW_PINS: &[(&str, &str, &str)] = &[
+            ("autotrans", "bhcurrent", "autotrans_bh_arrays_render_empty_when_unset"),
+            ("autotrans", "bhflux", "autotrans_bh_arrays_render_empty_when_unset"),
+            ("autotrans", "pctperm", "pd_element_perm_and_repair_render_the_live_ratings"),
+            ("autotrans", "repair", "pd_element_perm_and_repair_render_the_live_ratings"),
+            ("capcontrol", "reset", "energymeter_action_and_capcontrol_reset_render_no_pending_command"),
+            ("energymeter", "action", "energymeter_action_and_capcontrol_reset_render_no_pending_command"),
+            ("energymeter", "peakcurrent", "energymeter_peakcurrent_renders_the_live_one_element_array"),
+            ("expcontrol", "derlist", "expcontrol_derlist_renders_the_der_list"),
+            ("fault", "bus2", "fault_bus2_renders_the_live_terminal"),
+            ("fault", "pctperm", "pd_element_perm_and_repair_render_the_live_ratings"),
+            ("fuse", "switchedobj", "fuse_switchedobj_defaults_to_the_monitored_element"),
+            ("generator", "d", "generator_d_renders_the_documented_damping_default"),
+            ("generator", "dynout", "generator_dynout_renders_the_named_variables"),
+            ("generator", "model", "generator_model_renders_the_live_pv2pq_conversion"),
+            ("generator", "shaftdata", "der_user_model_arrays_render_empty_when_unset"),
+            ("generator", "userdata", "der_user_model_arrays_render_empty_when_unset"),
+            ("gicsource", "spectrum", "gicsource_spectrum_renders_the_live_empty_spectrum"),
+            ("gictransformer", "pctperm", "gictransformer_pctperm_renders_the_live_rating"),
+            ("invcontrol", "lpftau", "invcontrol_defaults_render_the_live_values"),
+            ("invcontrol", "mode", "invcontrol_defaults_render_the_live_values"),
+            ("invcontrol", "monvoltagecalc", "invcontrol_defaults_render_the_live_values"),
+            ("invcontrol", "pvsystemlist", "invcontrol_defaults_render_the_live_values"),
+            ("invcontrol", "risefalllimit", "invcontrol_defaults_render_the_live_values"),
+            ("invcontrol", "vsetpoint", "invcontrol_defaults_render_the_live_values"),
+            ("line", "cncables", "line_conductors_renders_the_live_conductor_list"),
+            ("line", "conductors", "line_conductors_renders_the_live_conductor_list"),
+            ("line", "spacing", "line_spacing_renders_empty_once_the_spacing_is_killed"),
+            ("line", "tscables", "line_conductors_renders_the_live_conductor_list"),
+            ("line", "wires", "line_conductors_renders_the_live_conductor_list"),
+            ("load", "yearly", "load_yearly_renders_the_resolved_loadshape_name"),
+            ("load", "zipv", "load_zipv_renders_the_live_seven_element_vector"),
+            ("pvsystem", "%pminkvarmax", "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits"),
+            ("pvsystem", "%pminnovars", "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits"),
+            ("pvsystem", "amplimit", "der_amp_limits_render_the_live_sentinel_and_gain"),
+            ("pvsystem", "amplimitgain", "der_amp_limits_render_the_live_sentinel_and_gain"),
+            ("pvsystem", "dynout", "der_user_model_arrays_render_empty_when_unset"),
+            ("pvsystem", "userdata", "der_user_model_arrays_render_empty_when_unset"),
+            ("reactor", "kvar", "reactor_kvar_renders_the_live_rating"),
+            ("recloser", "debugtrace", "recloser_eventlog_and_debugtrace_default_to_no"),
+            ("recloser", "eventlog", "recloser_eventlog_and_debugtrace_default_to_no"),
+            ("recloser", "switchedobj", "recloser_switchedobj_defaults_to_the_monitored_element"),
+            ("regcontrol", "fwdthreshold", "regcontrol_idle_flags_and_thresholds_render_the_live_values"),
+            ("regcontrol", "idle", "regcontrol_idle_flags_and_thresholds_render_the_live_values"),
+            ("regcontrol", "idleforward", "regcontrol_idle_flags_and_thresholds_render_the_live_values"),
+            ("regcontrol", "idlereverse", "regcontrol_idle_flags_and_thresholds_render_the_live_values"),
+            ("regcontrol", "revthreshold", "regcontrol_idle_flags_and_thresholds_render_the_live_values"),
+            ("relay", "action", "relay_action_distreverse_and_reset_render_the_live_values"),
+            ("relay", "distreverse", "relay_action_distreverse_and_reset_render_the_live_values"),
+            ("relay", "reset", "relay_action_distreverse_and_reset_render_the_live_values"),
+            ("relay", "switchedobj", "relay_switchedobj_defaults_to_the_monitored_element"),
+            ("storage", "%pminkvarmax", "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits"),
+            ("storage", "%pminnovars", "pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits"),
+            ("storage", "amplimit", "der_amp_limits_render_the_live_sentinel_and_gain"),
+            ("storage", "amplimitgain", "der_amp_limits_render_the_live_sentinel_and_gain"),
+            ("storage", "dynadata", "der_user_model_arrays_render_empty_when_unset"),
+            ("storage", "dynadll", "storage_dynadll_renders_the_typed_path"),
+            ("storage", "userdata", "der_user_model_arrays_render_empty_when_unset"),
+            ("storagecontroller", "modedischarge", "storagecontroller_modedischarge_renders_schedule"),
+            ("storagecontroller", "seasontargets", "storagecontroller_seasontargets_render_the_live_targets"),
+            ("storagecontroller", "seasontargetslow", "storagecontroller_seasontargets_render_the_live_targets"),
+            ("swtcontrol", "action", "swtcontrol_action_renders_the_live_switch_state"),
+            ("transformer", "bhcurrent", "transformer_bh_arrays_render_empty_when_unset"),
+            ("transformer", "bhflux", "transformer_bh_arrays_render_empty_when_unset"),
+            ("transformer", "pctperm", "pd_element_perm_and_repair_render_the_live_ratings"),
+            ("transformer", "repair", "pd_element_perm_and_repair_render_the_live_ratings"),
+            ("windgen", "dynout", "windgen_dynout_renders_empty_when_unset"),
+        ];
+        let row_pins: Vec<(&str, &str, &str)> = PROPS_ECHO_R4133
+            .iter()
+            .filter_map(|r| r.witness.pin().map(|pin| (r.class, r.prop, pin)))
+            .collect();
+        assert_eq!(
+            row_pins, ROW_PINS,
+            "the (class, prop) -> pin mapping of PROPS_ECHO_R4133 moved: each row's pin is the \
+             expected-value test that holds the port's value for THAT pair, so re-pointing it is \
+             a witness change — re-read the pin, then edit this literal"
+        );
     }
 
     /// **A `Capi` witness must name a pair the capi channel really compares.**
@@ -4983,11 +5121,36 @@ mod tests {
         }
     }
 
+    /// **[`NORM_ROWS_WITH_NO_IN_SCOPE_CELL`] is well formed** — sorted, unique,
+    /// count-locked, and every entry a shipped [`PROPS_NORM_R4133`] row. Its
+    /// CONTENTS are the census's, re-derived both ways by `props_r4133_replay::
+    /// the_norm_rows_with_no_in_scope_cell_are_exactly_the_declared_ones`; this
+    /// test guards the shape that derivation reads (RF-D07-07).
+    #[test]
+    fn the_norm_rows_with_no_in_scope_cell_are_well_formed() {
+        assert_eq!(NORM_ROWS_WITH_NO_IN_SCOPE_CELL.len(), NORM_NO_IN_SCOPE_ROWS);
+        for w in NORM_ROWS_WITH_NO_IN_SCOPE_CELL.windows(2) {
+            assert_eq!(
+                ci_cmp(w[0].0, w[1].0).then_with(|| ci_cmp(w[0].1, w[1].1)),
+                Ordering::Less,
+                "NORM_ROWS_WITH_NO_IN_SCOPE_CELL must be sorted and unique: {:?} vs {:?}",
+                w[0],
+                w[1]
+            );
+        }
+        for (class, prop) in NORM_ROWS_WITH_NO_IN_SCOPE_CELL {
+            assert!(
+                find_row(PROPS_NORM_R4133, class, prop).is_some(),
+                "{class}.{prop}: listed but not a PROPS_NORM_R4133 row"
+            );
+        }
+    }
+
     /// **The live seam counts what the gate saw, and answers the *covered*
     /// question.** A visit is a compared cell the row COVERS; a hit is a visit
     /// whose sides differed, i.e. a compare the row really stopped. "Covered" is
-    /// every cell of the 62 pair-scoped rows minus their carve-outs, and only
-    /// the measured spellings of the 20 [`ECHO_NARROWED`] rows.
+    /// every cell of the 61 pair-scoped rows minus their carve-outs, and only
+    /// the measured spellings of the 21 [`ECHO_NARROWED`] rows.
     ///
     /// The exact deltas are read per thread ([`seam_touches_here`]) — sibling
     /// tests in the same binary drive the very same seam, so the process-global
@@ -5004,7 +5167,7 @@ mod tests {
         assert!(!echo_excluded_r4133("Foo", "Bar", "a", "b"));
         assert_eq!(seam_touches_here().echo, before);
         // Equal sides on a PAIR-SCOPED row: visited, not a hit — nothing was
-        // excluded. (`regcontrol.idleforward` is one of the 62; its mixed
+        // excluded. (`regcontrol.idleforward` is one of the 61; its mixed
         // sibling `idle` answers the narrowed question instead, below.)
         assert!(echo_excluded_r4133("RegControl", "IdleForward", "No", "No"));
         assert_eq!(seam_touches_here().echo, (before.0 + 1, before.1));
@@ -5122,12 +5285,18 @@ mod tests {
                 r.class,
                 r.prop
             );
-            // …and only on a MIXED pair: the 62 pure echo rows keep the pair
-            // scope plan §1.2 prescribes, so a narrowing there would be a
-            // silent unmask with no typed rule behind it.
+            // …and only on a MIXED pair, or on one of the closed list of pure
+            // pairs narrowed on purpose: the other 61 pure echo rows keep the
+            // pair scope plan §1.2 prescribes, so a narrowing there would be a
+            // silent unmask with no typed rule and no recorded reason behind it.
+            let mixed = find_row(PROPS_NORM_R4133, r.class, r.prop).is_some();
+            let listed_pure = ECHO_NARROWED_PURE_PAIRS
+                .iter()
+                .any(|(c, p)| c.eq_ignore_ascii_case(r.class) && p.eq_ignore_ascii_case(r.prop));
             assert!(
-                find_row(PROPS_NORM_R4133, r.class, r.prop).is_some(),
-                "{}.{}: narrowed but not mixed — no PROPS_NORM_R4133 row",
+                mixed != listed_pure,
+                "{}.{}: a narrowed row must be mixed (a PROPS_NORM_R4133 row) or listed in \
+                 ECHO_NARROWED_PURE_PAIRS, never both and never neither (mixed: {mixed})",
                 r.class,
                 r.prop
             );
@@ -5178,8 +5347,27 @@ mod tests {
                 ));
             }
         }
-        // The other 62 rows are untouched: still pair-scoped, so ANY divergent
+        // The closed pure list, the other way: each entry IS a narrowed echo row,
+        // and `generator.model` now compares every cell except its one measured
+        // NCIM spelling — the 41 agreeing cells the pair scope used to mask on
+        // r4133-only cases included (RF-D07-07).
+        for (class, prop) in ECHO_NARROWED_PURE_PAIRS {
+            assert!(
+                narrowed_row(class, prop).is_some() && has_echo_row(class, prop),
+                "{class}.{prop}: listed in ECHO_NARROWED_PURE_PAIRS but not a narrowed echo row"
+            );
+        }
+        assert_eq!(ECHO_NARROWED_PURE_PAIRS, [("generator", "model")]);
+        assert_eq!(
+            narrowed_spellings("generator", "model"),
+            Some(&[("4", "3")][..])
+        );
+        assert!(echo_excluded("Generator", "Model", "4", "3"));
+        assert!(!echo_excluded("Generator", "Model", "1", "1"));
+        assert!(!echo_excluded("Generator", "Model", "3", "1"));
+        // The other 61 rows are untouched: still pair-scoped, so ANY divergent
         // spelling of theirs is excluded.
+        assert_eq!(PROPS_ECHO_R4133.len() - ECHO_NARROWED.len(), 61);
         assert!(narrowed_spellings("regcontrol", "idleforward").is_none());
         assert!(echo_excluded(
             "RegControl",
@@ -5199,7 +5387,7 @@ mod tests {
         check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![0; n], &vec![0; n]);
         check_echo_rows_are_live(PROPS_ECHO_R4133, &vec![9; n], &vec![4; n]);
         // Visited but excluding nothing — legitimate ONLY for the exempt rows.
-        // The 20 narrowed rows must carry a visit here, or the second arm
+        // The 21 narrowed rows must carry a visit here, or the second arm
         // (RP4.1 audit settlement) reports them instead: this run's seam ran.
         let mut visits = vec![0; n];
         let mut hits = vec![0; n];
@@ -5220,7 +5408,7 @@ mod tests {
     /// …and the second arm's silent direction: every narrowed row visited, the
     /// pair-scoped ones dormant. A narrowed row's `visits == hits` is the shape
     /// [`echo_excluded_r4133`] produces for it, so this is the real full-run
-    /// shape of the 20, not a contrived one.
+    /// shape of the 21, not a contrived one.
     #[test]
     fn the_echo_liveness_guard_is_silent_when_every_narrowed_row_was_visited() {
         let n = PROPS_ECHO_R4133.len();
@@ -5239,7 +5427,7 @@ mod tests {
     /// one narrowed row's measured spellings never occurred — the rot the
     /// coverage gate made invisible to the `hits == 0` arm.
     ///
-    /// Driven on `load.yearly`, the largest of the 20 (23 measured spellings,
+    /// Driven on `load.yearly`, the largest of the 21 (23 measured spellings,
     /// tens of thousands of live cells), so a zero there can only mean the row
     /// stopped matching, never a thin population.
     #[test]
@@ -5256,7 +5444,7 @@ mod tests {
     /// …and the other direction: a row that was COMPARED and excluded nothing
     /// is masking a divergence that is no longer there, and the guard says so,
     /// naming the row. (Driven on `monitor.mode`, a **pair-scoped** row that is
-    /// not on the exemption list — the arm does not apply to the 20 narrowed
+    /// not on the exemption list — the arm does not apply to the 21 narrowed
     /// ones, whose visits are their hits; theirs is the test below.)
     #[test]
     #[should_panic(expected = "stale r4133 property echo row: monitor.mode")]
