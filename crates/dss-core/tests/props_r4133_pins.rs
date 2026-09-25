@@ -15,10 +15,10 @@
 //! cases), `Pin(name)` (no capi coverage at all — the capture has no such
 //! property under `PROPS_015X`, a `SKIP_PROPS` row masks it, the capi walk skips
 //! the element whole, or every covered cell sits on a capi-only case), or
-//! `CapiAndPin(n, name)`. **Thirty of the tests below are those `name`s**
+//! `CapiAndPin(n, name)`. **Thirty-two of the tests below are those `name`s**
 //! — the twenty RP2.3 landed, the nine its audit settlement added for the rows
-//! exposed on `engines: "r4133"` cases, and RP3.3's `generator.model` — together
-//! covering 64 of the 82 rows — and two more are the deck guard's own
+//! exposed on `engines: "r4133"` cases, RP3.3's `generator.model` and RF-D07-07's
+//! two GIC rows — together covering 66 of the 82 rows — and two more are the deck guard's own
 //! self-tests. The literal list is
 //! pinned from the table's side by
 //! `harness::props_norm::tests::every_live_semantics_row_names_a_pin`, so a row
@@ -565,6 +565,68 @@ fn generator_model_renders_the_live_pv2pq_conversion() {
             "{deck}: NCIM re-converts the restored model-3 generator"
         );
     }
+}
+
+/// `gicsource.spectrum` — `EchoDefault`, capi-witnessed on `gicsource_gic.dss`
+/// and pinned for the 2 cells it masks on `asymmetric:gic/gic_midi.dss`, an
+/// `engines: "r4133"` case since GOLDEN_REBASE G1.4a (RF-D07-07).
+///
+/// r4133 freezes the wrong value by ORDER: `TGICSourceObj.Create` runs
+/// `InitPropertyValues(0)` at `Version8/Source/PCElements/GICsource.pas:327`,
+/// while `Spectrum` still holds `TPCElement.Create`'s `'default'`
+/// (`PCElements/PCElement.pas:119`, copied into the store at `:328`), and only
+/// then forbids the spectrum with `Spectrum := ''` (`GICsource.pas:332`). The
+/// getter has arms 1..3 only (`:567-578`), so the property answers the frozen
+/// `'default'` (vendored census: `gicsource.spectrum | '' | 'default' | 4`,
+/// `examples_full.txt:150`). The port renders the live, forbidden-empty field.
+///
+/// The discriminator is a typed `spectrum=`: the port stores it for the dump
+/// round trip (it never resolves to a live spectrum), so the same getter then
+/// answers the typed name — the `''` above is the field, not a constant.
+#[test]
+fn gicsource_spectrum_renders_the_live_empty_spectrum() {
+    let mut deck = Deck::compile("asymmetric/gic/gic_midi.dss");
+    for src in ["seg45", "seg56"] {
+        assert_eq!(
+            deck.get(&format!("GICsource.{src}.spectrum")),
+            "",
+            "GICsource.{src}: the class forbids a spectrum; r4133 renders the frozen 'default'"
+        );
+    }
+    deck.cmd("edit GICsource.seg45 spectrum=default");
+    assert_eq!(deck.get("GICsource.seg45.spectrum"), "default");
+    assert_eq!(deck.get("GICsource.seg56.spectrum"), "");
+}
+
+/// `gictransformer.pctperm` — `EchoDefault`, pinned for all 22 cells it masks:
+/// every GICTransformer of the corpus sits on an `engines: "r4133"` case since
+/// GOLDEN_REBASE G1.4a (`gic_midi`, `gictransformer_gic`, `makeposseq_gic`,
+/// `GIC_Example`), so no capi channel compares one (RF-D07-07).
+///
+/// `TGICTransformerObj.Create` starts `PctPerm := 100.0`
+/// (`Version8/Source/PDElements/GICTransformer.pas:467`), but its
+/// `InitPropertyValues` overrides the PD tail's slot with `'0'` (`:708`) and the
+/// getter (`:713-734`) has no PD-tail arm, so the property answers that store
+/// through `General/DSSObject.pas:112-115` (vendored census:
+/// `gictransformer.pctperm | '100' | '0' | 22`, `examples_full.txt:1438`). The
+/// port renders the live 100 — the value `CalcFltRate` multiplies
+/// (`elements/pd/gic_transformer/solve.rs`).
+///
+/// The edit is the discriminator: the same getter follows a typed `pctperm=`,
+/// and a sibling on the same deck keeps the `Create` default.
+#[test]
+fn gictransformer_pctperm_renders_the_live_rating() {
+    let mut deck = Deck::compile("asymmetric/gic/gictransformer_gic.dss");
+    for xf in ["tg1", "tg2", "tg3"] {
+        assert_eq!(
+            deck.get(&format!("GICTransformer.{xf}.pctperm")),
+            "100",
+            "GICTransformer.{xf}: Create's live PctPerm; r4133 renders its frozen '0'"
+        );
+    }
+    deck.cmd("edit GICTransformer.tg2 pctperm=42");
+    assert_eq!(deck.get("GICTransformer.tg2.pctperm"), "42");
+    assert_eq!(deck.get("GICTransformer.tg1.pctperm"), "100");
 }
 
 /// `line.conductors` — `EchoDefault`, **pin-only** (`PROPS_015X`'s multi-line

@@ -4981,6 +4981,239 @@ fn every_echo_row_pin_is_a_test_that_exists() {
     );
 }
 
+/// The census population as `(case, engines)`: every live (`abort=0`),
+/// non-`large` case `population.lock.json` fingerprints — exactly the cases
+/// `corpus_gate/scheduler.rs::force_properties` property-compares (443 on
+/// 2026-09-25: 312 `both`, 87 `r4133`, 44 `capi_v0145`, the scheduler's own
+/// pinned split). The lock is the four manifests' `engines`/`kind` per case,
+/// re-checked against them by the anti-shrink guard, so reading it here is
+/// reading the manifests.
+fn property_population(lock: &serde_json::Value) -> Vec<(String, String)> {
+    fn section(prefix: &str, rows: &serde_json::Value, out: &mut Vec<(String, String)>) {
+        let rows = rows.as_object().expect("a rigor section is an object");
+        for (rel, rigor) in rows {
+            let rigor = rigor.as_str().expect("a rigor row is a string");
+            if rigor_field(rigor, "kind").starts_with("large") || rigor_field(rigor, "abort") != "0"
+            {
+                continue;
+            }
+            out.push((
+                format!("{prefix}:{rel}"),
+                rigor_field(rigor, "engines").to_string(),
+            ));
+        }
+    }
+    let mut out = Vec::new();
+    section("solvable_now", &lock["solvable_now"], &mut out);
+    let families = lock["family_rigor"]
+        .as_object()
+        .expect("family_rigor is an object");
+    for (family, rows) in families {
+        section(family, rows, &mut out);
+    }
+    out
+}
+
+/// The cases a ledger `skip` entry drops from `channel` — [`r4133_skipped_cases`]'
+/// reading, for either channel.
+fn ledger_skipped_cases(channel: &str) -> BTreeSet<String> {
+    let path = repo_root().join(LEDGER);
+    let doc: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
+    )
+    .expect("ledger.json is JSON");
+    doc["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array")
+        .iter()
+        .filter(|e| e["channel"] == channel && e["kind"] == "skip")
+        .filter_map(|e| e["case"].as_str().map(str::to_string))
+        .collect()
+}
+
+/// The class a `New` line declares, lower-cased — `New Line.l1 …`,
+/// `New "Line.l1"`, `New object=Line.l1` — or `None` for any other line.
+fn new_declaration_class(line: &str) -> Option<String> {
+    let lower = line.trim().to_ascii_lowercase();
+    let rest = lower.strip_prefix("new")?;
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let rest = rest.trim_start();
+    let rest = rest
+        .strip_prefix("object")
+        .and_then(|r| r.trim_start().strip_prefix('='))
+        .map_or(rest, str::trim_start)
+        .trim_start_matches(['"', '\'']);
+    let (class, _) = rest.split_once('.')?;
+    (!class.is_empty() && class.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .then(|| class.to_string())
+}
+
+/// Every element class a case's deck declares with `New`, over the deck and
+/// its exact `Redirect`/`Compile` closure ([`redirect_paths`]), with
+/// `New Circuit.<name>` read as the `Vsource` it creates — plus every argument
+/// the closure could not place, which the caller must see empty.
+fn declared_classes(case: &str) -> (BTreeSet<String>, Vec<String>) {
+    let root = repo_root().join(CORPUS);
+    let deck = case_deck(case);
+    let mut seen = BTreeSet::from([deck.clone()]);
+    let mut queue = vec![deck];
+    let (mut classes, mut unresolved) = (BTreeSet::new(), Vec::new());
+    while let Some(file) = queue.pop() {
+        let text = read_script(&root.join(&file));
+        for line in text.lines() {
+            if let Some(class) = new_declaration_class(line) {
+                classes.insert(if class == "circuit" {
+                    "vsource".to_string()
+                } else {
+                    class
+                });
+            }
+        }
+        let (resolved, lost) = redirect_paths(&text, &file, &root);
+        unresolved.extend(lost.into_iter().map(|arg| format!("{file}: {arg}")));
+        for path in resolved {
+            if seen.insert(path.clone()) {
+                queue.push(path);
+            }
+        }
+    }
+    (classes, unresolved)
+}
+
+/// **`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` is complete by derivation**
+/// (RF-D07-07) — the list used to be checked only against itself, so when
+/// GOLDEN_REBASE G1.4a flipped the GIC decks to `engines: "r4133"`
+/// (2026-09-04), `gictransformer.pctperm` (22 cells) and `gicsource.spectrum`
+/// (2) started masking cells no channel compared, under capi-only witnesses,
+/// and nothing said so.
+///
+/// Per-cell case evidence lives only in the local claims census, so the
+/// derivation works one level up, on tracked evidence only: the census
+/// population and each case's `engines` ([`property_population`], the
+/// manifests' fingerprint), the ledger's channel `skip`s
+/// ([`ledger_skipped_cases`]) and the classes each case's deck declares
+/// ([`declared_classes`]). A row can only mask a cell on an r4133-only case
+/// whose deck declares its class, so every echo row whose class such a case
+/// declares must sit in exactly one of the two lists — measured exposed (it
+/// names a pin), or measured unexposed with its class count pinned
+/// (`props_norm::ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES`, whose doc says what
+/// "covered" means for the narrowed and carved-out rows); a row whose class no
+/// r4133-only case declares needs neither, by derivation.
+///
+/// Two more readings of the same sets: a listed exposure cannot sit on more
+/// cases than declare its class, and a `Capi(n)` witness needs a capi-gating
+/// case that declares the class at all — the claim G1.4a silently voided for
+/// `gictransformer.pctperm`, whose `Capi(4)` described four decks that are all
+/// r4133-only now.
+#[test]
+fn the_r4133_only_exposure_list_is_derived_from_the_corpus() {
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    let (r4133_skipped, capi_skipped) = (
+        ledger_skipped_cases("r4133"),
+        ledger_skipped_cases("capi_v0145"),
+    );
+    let mut r4133_only: Vec<(String, BTreeSet<String>)> = Vec::new();
+    let mut capi_gating: Vec<(String, BTreeSet<String>)> = Vec::new();
+    for (case, engines) in property_population(&lock) {
+        let (classes, unresolved) = declared_classes(&case);
+        assert!(
+            unresolved.is_empty(),
+            "{case}: Redirect/Compile targets that resolve to no file ({unresolved:?}) — a \
+             declaration behind them would be invisible to this derivation"
+        );
+        let (skipped, bucket) = match engines.as_str() {
+            "r4133" => (&r4133_skipped, &mut r4133_only),
+            "both" | "capi_v0145" => (&capi_skipped, &mut capi_gating),
+            other => panic!("{case}: engines={other} is none of the three legal values"),
+        };
+        if !skipped.contains(&case) {
+            bucket.push((case, classes));
+        }
+    }
+    assert!(
+        r4133_only.len() >= 80 && capi_gating.len() >= 300,
+        "the population read back as {} r4133-only and {} capi-gating case(s) — the lock \
+         reader went vacuous",
+        r4133_only.len(),
+        capi_gating.len()
+    );
+
+    let declaring = |cases: &[(String, BTreeSet<String>)], class: &str| -> Vec<String> {
+        cases
+            .iter()
+            .filter(|(_, classes)| classes.contains(class))
+            .map(|(case, _)| case.clone())
+            .collect()
+    };
+    let mut problems = Vec::new();
+    for row in props_norm::PROPS_ECHO_R4133 {
+        let (class, prop) = (row.class, row.prop);
+        let on_r4133 = declaring(&r4133_only, class);
+        let n = on_r4133.len();
+        match (
+            props_norm::r4133_only_exposure(class, prop),
+            props_norm::unexposed_on_r4133_only_cases(class, prop),
+        ) {
+            (Some(_), Some(_)) => {
+                problems.push(format!("{class}.{prop}: listed exposed AND unexposed"));
+            }
+            (Some((cells, cases)), None) if n == 0 || cases as usize > n => {
+                problems.push(format!(
+                    "{class}.{prop}: listed as {cells} cell(s) on {cases} r4133-only case(s), \
+                     but only {n} r4133-only census case(s) declare a {class}"
+                ));
+            }
+            (None, Some(pinned)) if pinned as usize != n => {
+                problems.push(format!(
+                    "{class}.{prop}: {n} r4133-only census case(s) declare a {class}, the \
+                     unexposed list pins {pinned} — the population moved; re-measure the row \
+                     there (DSS_PROPS_CENSUS=claims) and re-count it, or move it to \
+                     ECHO_ROWS_ON_R4133_ONLY_CASES with a pin"
+                ));
+            }
+            (None, None) if n > 0 => {
+                problems.push(format!(
+                    "{class}.{prop}: {n} r4133-only census case(s) declare a {class} (first: \
+                     {}), where the capi channel never runs, and the row is in neither \
+                     ECHO_ROWS_ON_R4133_ONLY_CASES nor ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES — \
+                     measure its cells there and list it (an exposed row owes a pin)",
+                    on_r4133[0]
+                ));
+            }
+            _ => {}
+        }
+        if let props_norm::EchoWitness::Capi(w) | props_norm::EchoWitness::CapiAndPin(w, _) =
+            row.witness
+            && declaring(&capi_gating, class).is_empty()
+        {
+            problems.push(format!(
+                "{class}.{prop}: a capi witness ({w} case(s)) on a class no capi-gating \
+                 census case declares — the capi channel compares none of its cells"
+            ));
+        }
+    }
+    for (class, prop) in props_norm::echo_rows_with_no_in_scope_cell() {
+        if props_norm::unexposed_on_r4133_only_cases(class, prop).is_none() {
+            problems.push(format!(
+                "{class}.{prop}: no in-scope cell at all implies none on an r4133-only case, \
+                 so the dormant row belongs in ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES"
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "the r4133-only exposure lists no longer match the corpus:\n{}",
+        problems.join("\n")
+    );
+}
+
 /// **The landed `capi_v0145` property entries and the engine pins that witness
 /// them** — `(entry id, sub-step, pin `#[test]`, the file that defines it)`.
 ///
