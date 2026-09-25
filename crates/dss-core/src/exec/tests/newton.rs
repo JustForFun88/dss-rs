@@ -1,19 +1,27 @@
-//! `Set algorithm=Newton` — the expected-value pin of CLAUDE.md upstream bug 5
-//! (`GOLDEN_REBASE_PLAN.md` G2.3) and the in-engine dispatch tripwire that
-//! carries the gate signal both lanes give up with it.
+//! `Set algorithm=Newton` — the expected-value pins of CLAUDE.md upstream bug 5
+//! (`GOLDEN_REBASE_PLAN.md` G2.3, repaired at its root by `RETRO_FIXES_PLAN.md`
+//! RF-D00-01) and the in-engine dispatch tripwire that carries the gate signal
+//! both lanes give up with it.
 //!
-//! **The bug.** `DoNewtonSolution`'s final `SumAllCurrents` stamps every
-//! element's `Iterminal` from the pre-final voltage guess `NodeV_{n-1}` and
-//! marks it solved for the current `SolutionCount`; `NodeV -= dV` follows. So a
-//! post-solve `Get_Powers`/`Get_Losses` (cache-aware `ComputeIterminal`) reads a
-//! one-step-stale current while `Currents` (`GetCurrents`) recomputes fresh —
+//! **The bug.** r4133 `DoNewtonSolution` stamps every element's `Iterminal`
+//! from the pre-final voltage guess `NodeV_{n-1}` in its last `SumAllCurrents`
+//! and marks it solved for the live `SolutionCount`; `NodeV -= dV` follows
+//! (`Common/Solution.pas:1199`, `:1203`, `:1221-1226`). So a post-solve
+//! cache-aware read (`Get_Powers`/`Get_Losses` via `ComputeIterminal`) returns
+//! a one-step-stale current while `Currents` (`GetCurrents`) recomputes fresh —
 //! upstream reports `S != V·conj(I)` for the same element in the same read, in
 //! every vendored official rev (v9.8/r3723, v10.2/r4088, v11.0/r4133, all
-//! fingerprint 0.478 kVA, checked 2026-07-08). Both lanes now recompute all
-//! three reads at `NodeV_n` (`exec::view::snapshot_elements`).
+//! fingerprint 0.478 kVA, checked 2026-07-08).
+//!
+//! **The fix.** `do_newton_solution` drops, on exit, the stamps its last
+//! `SumAllCurrents` left on every element whose `Iterminal` is not its own model
+//! state (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`)
+//! — the cache state the normal fixed point leaves — so every reader of the
+//! engine (the snapshot, `Export`/`Show`, meters, monitors, control sampling)
+//! sees after a Newton solve what it sees after a normal one.
 //!
 //! **Why the deck is the corpus feeder.** `modes/newton/newton.dss` is the gated
-//! case whose Powers/Losses channel both lanes now exclude
+//! case whose Powers/Losses channel both lanes exclude
 //! (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional since G2.3 —
 //! no oracle channel reports it correctly), so the fix is pinned here on exactly
 //! the model that stopped being oracle-compared there. Its content is inlined
@@ -35,21 +43,29 @@ const DECK: &[&str] = &[
     "Calcvoltagebases",
 ];
 
-/// Build and solve the deck under `algorithm`.
-fn solve_with(algorithm: &str) -> Dss {
+/// Build the deck, `Solve` it under `algorithm`, and return the engine together
+/// with how far that one `Solve` advanced `SolutionCount`.
+fn solve_counting(algorithm: &str) -> (Dss, i32) {
     let mut dss = Dss::new();
     for line in DECK {
         dss.command(line);
         assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
     }
     dss.command(&format!("Set algorithm={algorithm}"));
+    let before = dss.circuit().unwrap().solution.solution_count;
     dss.command("Solve");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     assert!(
         dss.circuit().unwrap().is_solved,
         "{algorithm} did not solve"
     );
-    dss
+    let advance = dss.circuit().unwrap().solution.solution_count - before;
+    (dss, advance)
+}
+
+/// Build and solve the deck under `algorithm`.
+fn solve_with(algorithm: &str) -> Dss {
+    solve_counting(algorithm).0
 }
 
 // EXPECTED-VALUE-PIN(POWERS_REUSE_STALE_NEWTON_ITERMINAL): after a Newton solve
@@ -61,9 +77,10 @@ fn solve_with(algorithm: &str) -> Dss {
 ///
 /// Newton and the normal fixed point land on the same voltages (measured: max
 /// |ΔV| = 7.6e-12 V, both in 2 iterations), and the *normal* solve leaves no
-/// valid `Iterminal` cache, so its reported powers are fresh by construction.
-/// Newton-vs-normal on the same deck is therefore a direct read of the stale
-/// current, in physical units:
+/// valid `Iterminal` stamp on a line or the source (its loads keep their
+/// model-state current, as they do under Newton), so its reported powers carry
+/// no Newton staleness by construction. Newton-vs-normal on the same deck is
+/// therefore a direct read of any stale current, in physical units:
 ///
 /// | quantity | upstream / the pre-G2.3 parity lane | both lanes today |
 /// |---|---|---|
@@ -209,72 +226,182 @@ fn newton_total_powers_match_the_normal_algorithm() {
     }
 }
 
-/// **The replacement Newton-dispatch tripwire** — stronger than the gate signal
-/// both lanes give up, and running in *both* lanes.
+/// **The Newton-dispatch tripwire** — the gate signal both lanes give up,
+/// asserted at its source and in *both* lanes.
 ///
 /// On the `newton*` decks Newton and the normal fixed point converge to the same
-/// voltages in the same iteration count, so the stale-`Iterminal` divergence in
-/// the reported powers was the ONLY channel there that would notice `Set
-/// algorithm=Newton` silently falling back to `DoNormalSolution`. Neither lane
-/// exposes it since G2.3 (nor did the default lane before that), so the property
-/// is asserted at its source instead:
-/// only `DoNewtonSolution`'s per-iteration `SumAllCurrents` stamps a **PD**
-/// element's `Iterminal` at the live `SolutionCount`, and it does so from the
-/// pre-update guess.
+/// voltages in the same iteration count, and since RF-D00-01 they also leave the
+/// same `Iterminal` cache, so no reported quantity notices `Set
+/// algorithm=Newton` silently falling back to `DoNormalSolution` any more (the
+/// signal G2.3's tripwire used — `Line.l1`'s cache left valid on a current
+/// 7.378239e-2 A off its fresh recompute — was the bug itself, and is gone with
+/// it). What stays Newton-only is the loop's own bookkeeping: r4133
+/// `DoNewtonSolution` increments `SolutionCount` at the top of every iteration
+/// (`Common/Solution.pas:1199`, "SumAllCurrents Uses ITerminal So must force a
+/// recalc") on top of the single `Inc(SolutionCount)` of `DoPFLOWsolution`
+/// (`:2441`), while `DoNormalSolution` (`:1036`) adds none.
 ///
-/// So after a Newton solve `Line.l1`'s cache is *valid and stale* (measured
-/// 7.378e-2 A off a recompute at the converged `NodeV`), while after a normal
-/// solve it is not marked for this `SolutionCount` at all — every read
-/// recomputes, which is why no other algorithm can show the quirk. Both facts
-/// are engine state, independent of the lane and of any report.
+/// So one `Solve` advances `SolutionCount` by `1 + Iteration` under Newton and
+/// by exactly `1` under the normal algorithm — measured 3 and 1 on this deck,
+/// both algorithms in 2 iterations. Engine state, independent of the lane and
+/// of any report.
 #[test]
-fn newton_dispatch_leaves_a_valid_but_stale_iterminal_cache() {
-    let (newton_valid, newton_gap) = iterminal_cache_state(&mut solve_with("Newton"), "l1");
-    assert!(
-        newton_valid,
-        "Set algorithm=Newton did not stamp Line.l1's Iterminal for the live \
-         SolutionCount — DoNewtonSolution's SumAllCurrents did not run, i.e. \
-         Newton dispatch is broken (or fell back to DoNormalSolution)"
+fn newton_dispatch_advances_the_solution_count_once_per_iteration() {
+    let (newton, newton_advance) = solve_counting("Newton");
+    let (normal, normal_advance) = solve_counting("Normal");
+    let newton_iterations = newton.circuit().unwrap().solution.iteration;
+    let normal_iterations = normal.circuit().unwrap().solution.iteration;
+    assert_eq!(
+        (newton_iterations, normal_iterations),
+        (2, 2),
+        "both algorithms solve this deck in 2 iterations (both gating oracles \
+         agree) — the premise of the counts below"
     );
-    assert!(
-        (newton_gap - 7.378_239e-2).abs() < 1e-6,
-        "the stamped current must be the pre-update guess's (measured 7.378e-2 A \
-         off the converged recompute); got {newton_gap:.6e} A"
+    assert_eq!(
+        normal_advance, 1,
+        "the normal fixed point must advance SolutionCount once per Solve \
+         (DoPFLOWsolution's Inc only)"
     );
-
-    let (normal_valid, _) = iterminal_cache_state(&mut solve_with("Normal"), "l1");
-    assert!(
-        !normal_valid,
-        "the normal fixed point must leave no valid Iterminal cache on a PD \
-         element — if it did, the tripwire above would no longer distinguish \
-         the two algorithms"
+    assert_eq!(
+        newton_advance,
+        1 + newton_iterations,
+        "Set algorithm=Newton must advance SolutionCount once per Newton \
+         iteration on top of DoPFLOWsolution's Inc (measured 3) — anything else \
+         means DoNewtonSolution did not run (or fell back to DoNormalSolution)"
     );
 }
 
-/// `(cache is valid for the live SolutionCount, max |cached − fresh| in A)` for
-/// `Line.<name>`. Reading the cache before refreshing it is what makes this a
-/// measurement of the solver's leftovers rather than of the reporting path.
-fn iterminal_cache_state(dss: &mut Dss, line: &str) -> (bool, f64) {
-    let ci = dss.class_by_name["line"];
-    let oi = dss.classes[ci].name_to_idx[line];
+// EXPECTED-VALUE-PIN(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the torn-down row at
+// its root — after a Newton solve no element's `Iterminal` cache is stale,
+// asserted in both lanes, where upstream leaves three of six elements stale.
+/// A Newton solve leaves exactly the `Iterminal` cache the normal fixed point
+/// leaves, and nothing a cache-aware reader can see is stale (RF-D00-01).
+///
+/// Per energized element, straight after the solve:
+///
+/// * the current a cache-aware read returns (`compute_iterminal`, r4133
+///   `ComputeIterminal` — what `Get_Power`, `Get_Losses`, Export/Show Powers,
+///   meters and monitors read) equals the element's own scratch-buffer
+///   `GetCurrents` **bit for bit**, under both algorithms;
+/// * whether its stamp is valid for the live `SolutionCount` is the same under
+///   both — `false` on the two lines and the source (the stamps the Newton
+///   loop's last `SumAllCurrents` formed at the pre-update guess, which the
+///   solver drops), `true` on the three loads (their model-state current,
+///   `ITerminalUpdated`, which both algorithms leave from their last pass at
+///   `NodeV_{n-1}`).
+///
+/// Measured with the solver's stamp drop disabled (the pre-RF-D00-01 engine —
+/// r4133's `DoNewtonSolution` as ported): `Vsource.source`
+/// 7.378239345614925e-2 A, `Line.l1` 7.378239345633905e-2 A (the G2.3
+/// tripwire's 7.378239e-2 A) and `Line.l2` 1.9101628302694115e-2 A off their
+/// own `GetCurrents`, the loads 0 — every Export/Show/meter/monitor read after
+/// the solve reported those three.
+#[test]
+fn newton_leaves_the_iterminal_cache_the_normal_algorithm_leaves() {
+    let newton = iterminal_cache_census(&mut solve_with("Newton"));
+    let normal = iterminal_cache_census(&mut solve_with("Normal"));
+    let names = |c: &[(String, bool, f64)]| c.iter().map(|e| e.0.clone()).collect::<Vec<_>>();
+    assert_eq!(names(&newton), names(&normal), "element order");
+    assert_eq!(newton.len(), 6, "the source, two lines and three loads");
+
+    // Every element is checked before anything is reported, so a regression
+    // names all the stale elements at once, with their gaps.
+    let stale = |census: &[(String, bool, f64)]| {
+        census
+            .iter()
+            .filter(|e| e.2 != 0.0)
+            .map(|(name, _, gap)| format!("{name}: {gap:e} A"))
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        stale(&newton).is_empty(),
+        "after a Newton solve the cache-aware read is off the element's own \
+         GetCurrents (the upstream stale read: Vsource.source \
+         7.378239345614925e-2 A, Line.l1 7.378239345633905e-2 A, Line.l2 \
+         1.9101628302694115e-2 A): {:?}",
+        stale(&newton)
+    );
+    assert!(
+        stale(&normal).is_empty(),
+        "after a normal solve the cache-aware read is off the element's own \
+         GetCurrents: {:?}",
+        stale(&normal)
+    );
+    let parity: Vec<String> = newton
+        .iter()
+        .zip(&normal)
+        .filter(|(n, o)| n.1 != o.1)
+        .map(|(n, o)| format!("{}: Newton {} vs normal {}", n.0, n.1, o.1))
+        .collect();
+    assert!(
+        parity.is_empty(),
+        "Newton must leave the Iterminal stamps the normal algorithm leaves \
+         (stamp valid for the live SolutionCount): {parity:?}"
+    );
+
+    // Both kinds of stamp are present, so the parity above is not vacuous.
+    let valid = |who: &str| {
+        newton
+            .iter()
+            .find(|e| e.0 == who)
+            .unwrap_or_else(|| panic!("{who} not in the census {:?}", names(&newton)))
+            .1
+    };
+    for who in ["Vsource.source", "Line.l1", "Line.l2"] {
+        assert!(
+            !valid(who),
+            "{who}: the Newton loop's SumAllCurrents stamp must be dropped on exit"
+        );
+    }
+    for who in ["Load.ld1", "Load.ld2", "Load.ld3"] {
+        assert!(
+            valid(who),
+            "{who}: a load's model-state stamp must survive the Newton exit, as it \
+             survives the normal fixed point"
+        );
+    }
+}
+
+/// `(element, stamp valid for the live SolutionCount, max |cache-aware read −
+/// fresh GetCurrents| in A)` for every energized circuit element. The stamp is
+/// read before anything touches it — a measurement of the solver's leftovers,
+/// not of a reporting path — then the cache-aware read (`compute_iterminal`) is
+/// set against the element's own `GetCurrents` into a scratch buffer: the two
+/// read paths upstream's `Powers` and `Currents` take.
+fn iterminal_cache_census(dss: &mut Dss) -> Vec<(String, bool, f64)> {
     let Dss {
         classes, circuit, ..
     } = dss;
     let ckt = circuit.as_ref().expect("solved circuit");
     let sys = crate::solution::solution::sys_ctx(ckt);
     let node_v = ckt.solution.node_v.clone();
-    let elem = classes[ci]
-        .arena
-        .try_ckt_elem_mut(oi)
-        .expect("a Line is a circuit element");
-    let yorder = elem.cd().yorder;
-    let valid = elem.cd().iterminal_solved_for(sys.solution_count);
-    let cached: Vec<num_complex::Complex64> = elem.cd().iterminal[..yorder].to_vec();
-    elem.refresh_iterminal(&sys, &node_v);
-    let gap = cached
-        .iter()
-        .zip(&elem.cd().iterminal[..yorder])
-        .map(|(a, b)| (a - b).norm())
-        .fold(0.0_f64, f64::max);
-    (valid, gap)
+    let mut out = Vec::new();
+    for &r in &ckt.ckt_elements {
+        let class_name = classes[r.class_ord()].props.class_name();
+        let name = format!(
+            "{}.{}",
+            class_name,
+            classes[r.class_ord()].arena[r.index()].data().name()
+        );
+        let elem = classes[r.class_ord()]
+            .arena
+            .try_ckt_elem_mut(r.index())
+            .expect("ckt_elements refs are circuit elements");
+        if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
+            continue;
+        }
+        let valid = elem.cd().iterminal_solved_for(sys.solution_count);
+        elem.compute_iterminal(&sys, &node_v);
+        let yorder = elem.cd().yorder;
+        let cached = elem.cd().iterminal[..yorder].to_vec();
+        let mut fresh = vec![num_complex::Complex64::ZERO; yorder];
+        elem.get_currents(&sys, &node_v, &mut fresh);
+        let gap = cached
+            .iter()
+            .zip(&fresh)
+            .map(|(a, b)| (a - b).norm())
+            .fold(0.0_f64, f64::max);
+        out.push((name, valid, gap));
+    }
+    out
 }
