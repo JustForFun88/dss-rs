@@ -1564,10 +1564,10 @@ pub enum EchoWitness {
     /// [`NormRow::cells`] it is **not** re-derivable from the vendored evidence
     /// — that census's per-channel case counts are not in
     /// `tests/corpus/props_r4133/` — so it is a dated measurement, and only its
-    /// load-bearing half is asserted here (`n > 0`: the capi channel really is
-    /// a witness). A re-census that moved it would not red anything; what the
-    /// number is for is letting a reader see at a glance whether a row leans on
-    /// one case or on ninety-nine.
+    /// load-bearing half is asserted (`n > 0` here; since RF-D07-07 also that a
+    /// capi-gating census case declares the class, `props_r4133_replay::
+    /// the_r4133_only_exposure_list_is_derived_from_the_corpus`). A re-census
+    /// that moved `n` would not red anything.
     ///
     /// **What a capi witness cannot say** (RP2.3 audit settlement, 2026-08-23).
     /// Two limits, both now enforced rather than left to the reader:
@@ -1577,7 +1577,7 @@ pub enum EchoWitness {
     ///   element skip would be claiming a witness that cannot exist
     ///   ([`tests::a_capi_witness_is_a_pair_the_capi_channel_can_compare`]);
     /// * it says **nothing about cells on `engines: "r4133"` cases**, where the
-    ///   capi channel never runs at all. 58 of the 82 pairs mask such cells
+    ///   capi channel never runs at all. 60 of the 82 pairs mask such cells
     ///   ([`ECHO_ROWS_ON_R4133_ONLY_CASES`]), and each of them must therefore
     ///   also name a pin — the rule `swtcontrol.action` applied by hand in part
     ///   B2, now a test
@@ -1823,10 +1823,10 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          CapiAndPin(26, "der_user_model_arrays_render_empty_when_unset")),
     echo("gicsource", "spectrum", EchoDefault, 4,
          "GICsource.pas:567-578 (arms 1..3) + :327 InitPropertyValues BEFORE :332 Spectrum:='' -> PCElement.pas:119 'default' frozen",
-         Capi(2)),
+         CapiAndPin(2, "gicsource_spectrum_renders_the_live_empty_spectrum")),
     echo("gictransformer", "pctperm", EchoDefault, 22,
          "GICTransformer.pas:708 ('0') -> DSSObject.pas:112-115",
-         Capi(4)),
+         Pin("gictransformer_pctperm_renders_the_live_rating")),
     echo("invcontrol", "lpftau", EchoDefault, 257,
          "InvControl.pas:2828 ('0.0') vs Create :1166 FLPFTau:=0.001; no arm 19 (:3232-3285)",
          CapiAndPin(87, "invcontrol_defaults_render_the_live_values")),
@@ -2055,16 +2055,16 @@ const ECHO_ROWS_WITH_NO_IN_SCOPE_CELL: &[(&str, &str)] = &[("fault", "bus2"), ("
 /// (2026-08-23) measured the whole population and made it a rule
 /// ([`tests::every_row_exposed_on_r4133_only_cases_names_a_pin`]).
 ///
-/// **Measured**, not asserted: the full claims census at HEAD
-/// (`DSS_PROPS_CENSUS=claims`, 439 cases × 2 channels) crossed with each case's
-/// `engines` flag in `tests/corpus/manifests/` (97 of the 439 walked cases are
-/// r4133-only). 58 of the 82 rows carry such cells — 34 971 in total — and each
-/// one therefore names a pin. The numbers are a dated measurement like
-/// [`EchoWitness::Capi`]'s `n`; what the tests enforce is the pin obligation and
-/// the count locks, so a *new* echo row on one of these pairs cannot ship with a
-/// capi-only witness. A pair that is NOT listed here (`line.linecode`,
-/// `upfc.*`, `vccs.*`, …) has all its masked cells on `both`/`capi_v0145` cases,
-/// where the capi witness is the whole point.
+/// **Measured**, and since RF-D07-07 (2026-09-25) **complete by derivation**:
+/// the numbers are the claims census (`DSS_PROPS_CENSUS=claims`) crossed with
+/// each case's `engines`, a dated measurement like [`EchoWitness::Capi`]'s `n`;
+/// the MEMBERSHIP is re-derived on every run by `props_r4133_replay::
+/// the_r4133_only_exposure_list_is_derived_from_the_corpus`, which reds on an
+/// echo row whose class an r4133-only case declares and which sits neither here
+/// nor in [`ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES`]. It is what the G1.4a flip
+/// of the GIC decks to `r4133` (2026-09-04) needed and did not have: 60 of the
+/// 82 rows carry such cells — 34 995 in total, `gictransformer.pctperm`'s 22 and
+/// `gicsource.spectrum`'s 2 included — and each one therefore names a pin.
 ///
 /// **`generator.model` is RP3.3's row (2026-08-24), and it is the extreme case
 /// of the rule**: *both* of its cells sit on r4133-only cases
@@ -2093,6 +2093,8 @@ const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
     ("generator", "model", 2, 2),
     ("generator", "shaftdata", 43, 6),
     ("generator", "userdata", 43, 6),
+    ("gicsource", "spectrum", 2, 1),
+    ("gictransformer", "pctperm", 22, 4),
     ("invcontrol", "lpftau", 18, 13),
     ("invcontrol", "mode", 1, 1),
     ("invcontrol", "monvoltagecalc", 8, 3),
@@ -2140,19 +2142,17 @@ const ECHO_ROWS_ON_R4133_ONLY_CASES: &[(&str, &str, u32, u32)] = &[
     ("windgen", "dynout", 5, 5),
 ];
 
-/// Count lock for [`ECHO_ROWS_ON_R4133_ONLY_CASES`]: rows, and the cells behind
-/// them.
-const R4133_ONLY_ROWS: usize = 58;
+/// Count lock for [`ECHO_ROWS_ON_R4133_ONLY_CASES`]: rows, and the cells behind them.
+const R4133_ONLY_ROWS: usize = 60;
 /// Count lock, cells — the sum of the table's third column.
-const R4133_ONLY_CELLS: u32 = 34971;
+const R4133_ONLY_CELLS: u32 = 34995;
 /// Count lock, cases — the sum of the table's **fourth** column, which carried
 /// no value lock at all until the RP3.3 audit settlement (2026-08-24): the
 /// per-row split of a measured exposure was free to drift as long as the row
-/// count and the cell sum held, so a mutation of one row's `cases` shipped
-/// green. A sum is still not a per-row proof — the rows whose split IS derived
-/// tie themselves to it through [`r4133_only_exposure`] — but it makes any
-/// single-row edit visible, exactly as [`R4133_ONLY_CELLS`] does for column 3.
-const R4133_ONLY_CASES: u32 = 833;
+/// count and the cell sum held. A sum is still not a per-row proof — the rows
+/// whose split IS derived tie themselves to it through [`r4133_only_exposure`]
+/// — but it makes any single-row edit visible, as [`R4133_ONLY_CELLS`] does.
+const R4133_ONLY_CASES: u32 = 838;
 
 /// One pair's measured exposure on `engines: "r4133"` cases —
 /// `(cells, cases)` from [`ECHO_ROWS_ON_R4133_ONLY_CASES`], or `None` for a
@@ -2861,6 +2861,81 @@ fn check_r4133_props_compare_ran(walks: usize, elements: usize) {
          (`corpus_gate/scheduler.rs::force_properties`, and the per-channel clears RP4.1 \
          removed), which no manifest flag and no `population.lock.json` fingerprint would show."
     );
+}
+
+/// **The echo rows whose CLASS the `engines: "r4133"` cases declare, yet which
+/// mask no cell there** — `(class, prop, cases, why)`, where `cases` counts the
+/// r4133-only census cases whose deck declares an element of the class
+/// (RF-D07-07, 2026-09-25).
+///
+/// [`ECHO_ROWS_ON_R4133_ONLY_CASES`] was only ever checked against itself, so
+/// when GOLDEN_REBASE G1.4a flipped the GIC decks to `r4133` (2026-09-04) two
+/// rows started masking 24 cells no channel compared, and nothing said so. The
+/// cell-level evidence that would decide exposure per row is the claims census,
+/// which is not vendored; what IS tracked decides it per class:
+/// `population.lock.json` (every case's `engines`/`kind`/`abort`, i.e. the four
+/// manifests), the ledger's channel `skip`s and each census case's deck. So
+/// `props_r4133_replay::the_r4133_only_exposure_list_is_derived_from_the_corpus`
+/// counts, for every echo row, the r4133-only census cases whose deck declares
+/// its class, and requires the row to be in exactly one place:
+///
+/// * in [`ECHO_ROWS_ON_R4133_ONLY_CASES`] (it masks cells there, so it names a
+///   pin), with no more `cases` than the class count;
+/// * here, with the class count pinned EXACTLY — the class sits on those cases
+///   but no cell the row COVERS differs there ([`echo_excluded`]'s predicate:
+///   the measured spellings of an [`ECHO_NARROWED`] row, the pair minus its
+///   [`ECHO_CARVE_OUTS`] otherwise). That half is a measurement (the claims
+///   census of 2026-09-03 crossed with today's manifests: 0 covered cells on
+///   every row below), so the exact count is its fingerprint: an r4133-only
+///   case that gains or loses the class reds until the row is re-measured and
+///   moved or re-counted;
+/// * nowhere, when no r4133-only case declares the class at all — derived.
+///
+/// Both [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`] rows are here: no in-scope cell at
+/// all implies none on an r4133-only case, and the replay asserts that
+/// inclusion.
+///
+/// Sorted by `(class, prop)`; the literal and the count are pinned by
+/// [`tests::the_unexposed_row_list_is_pinned`].
+#[rustfmt::skip]
+pub const ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES: &[(&str, &str, u32, &str)] = &[
+    ("capcontrol", "type", 1,
+     "narrowed to the pf/volt tokens the store echoes (CapControl.pas:296-297); none typed there"),
+    ("energymeter", "peakcurrent", 3,
+     "narrowed to '[ 400]'; the 45 r4133-only cells are '[ 400 400 400]', which ArrayForm folds"),
+    ("fault", "bus2", 31,
+     "narrowed to ('b2.0', 'b2.0.0.0'); the 10 r4133-only cells are 'b3.0'/'B3.0', CaseFold's"),
+    ("line", "spacing", 84,
+     "EchoParse: only the killed-spacing deck (capi-only) keeps a stale 'sp' (Line.pas:2266-2276)"),
+    ("monitor", "mode", 22,
+     "EchoParse: the raw mode= token (Monitor.pas:359) spells the live mode on every r4133-only deck"),
+    ("reactor", "bus2", 9,
+     "narrowed to seven stale bus1= snapshots of Bus2 (Reactor.pas:419-420); none on these cases"),
+    ("regcontrol", "remoteptratio", 4,
+     "EchoDefault: '60' (RegControl.pas:1452) diverges only once ptratio= moves the live value (:484)"),
+    ("storage", "dynadll", 5,
+     "LiveSemanticsDiffer: needs a typed DynaDLL= (StoreUserModel.pas:195-240); none typed there"),
+    ("storagecontroller", "modedischarge", 1,
+     "LiveSemanticsDiffer: needs ModeDischarge=Schedule (StorageController.pas:1200-1214); not typed"),
+    ("vsource", "yearly", 87,
+     "EchoDefault: '' (Vsource.pas:1310); a cell needs a typed yearly= shape, none on these cases"),
+];
+
+/// Count lock for [`ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES`].
+const UNEXPOSED_ROWS: usize = 10;
+
+/// The pinned r4133-only class count of an [`ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES`]
+/// row, or `None` for a pair the list does not hold.
+pub fn unexposed_on_r4133_only_cases(class: &str, prop: &str) -> Option<u32> {
+    ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES
+        .iter()
+        .find(|(c, p, _, _)| c.eq_ignore_ascii_case(class) && p.eq_ignore_ascii_case(prop))
+        .map(|(_, _, cases, _)| *cases)
+}
+
+/// [`ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`], for the replay's inclusion check.
+pub fn echo_rows_with_no_in_scope_cell() -> &'static [(&'static str, &'static str)] {
+    ECHO_ROWS_WITH_NO_IN_SCOPE_CELL
 }
 
 /// Which link of the r4133 **value** chain claims one divergent cell.
@@ -4668,6 +4743,8 @@ mod tests {
                 "generator_d_renders_the_documented_damping_default",
                 "generator_dynout_renders_the_named_variables",
                 "generator_model_renders_the_live_pv2pq_conversion",
+                "gicsource_spectrum_renders_the_live_empty_spectrum",
+                "gictransformer_pctperm_renders_the_live_rating",
                 "invcontrol_defaults_render_the_live_values",
                 "line_conductors_renders_the_live_conductor_list",
                 "line_spacing_renders_empty_once_the_spacing_is_killed",
@@ -4689,15 +4766,16 @@ mod tests {
                 "windgen_dynout_renders_empty_when_unset",
             ],
             "the expected-value pins the rows depend on — 20 from RP2.3 part B2, nine added by \
-             its audit settlement for the rows exposed on r4133-only cases, and RP3.3's \
-             generator.model (whose two cells are BOTH on r4133-only cases)"
+             its audit settlement for the rows exposed on r4133-only cases, RP3.3's \
+             generator.model (whose two cells are BOTH on r4133-only cases) and RF-D07-07's \
+             two GIC rows (exposed once G1.4a flipped the GIC decks to r4133)"
         );
         assert_eq!(
             PROPS_ECHO_R4133
                 .iter()
                 .filter(|r| r.witness.pin().is_some())
                 .count(),
-            64,
+            66,
             "rows whose witness is (also) a pin"
         );
     }
@@ -4832,6 +4910,75 @@ mod tests {
             assert!(
                 has_echo_row(class, prop),
                 "{class}.{prop} is exempted but has no echo row to exempt"
+            );
+        }
+    }
+
+    /// **The r4133-only-unexposed list is pinned literally** (RF-D07-07), for the
+    /// reason the dormant list above is: an entry there exempts a row from the
+    /// r4133-only pin obligation of [`ECHO_ROWS_ON_R4133_ONLY_CASES`], so adding
+    /// one is a measured decision, never a tidy-up. The per-row class counts are
+    /// re-derived from the corpus by `props_r4133_replay::
+    /// the_r4133_only_exposure_list_is_derived_from_the_corpus`; this pins the
+    /// row set, its order and its disjointness from the exposure list.
+    #[test]
+    fn the_unexposed_row_list_is_pinned() {
+        let got: Vec<(&str, &str, u32)> = ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES
+            .iter()
+            .map(|(c, p, n, _)| (*c, *p, *n))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("capcontrol", "type", 1),
+                ("energymeter", "peakcurrent", 3),
+                ("fault", "bus2", 31),
+                ("line", "spacing", 84),
+                ("monitor", "mode", 22),
+                ("reactor", "bus2", 9),
+                ("regcontrol", "remoteptratio", 4),
+                ("storage", "dynadll", 5),
+                ("storagecontroller", "modedischarge", 1),
+                ("vsource", "yearly", 87),
+            ],
+            "the rows whose class the r4133-only cases declare while their covered cells there \
+             all agree (claims census 2026-09-03 x the 2026-09-25 manifests)"
+        );
+        assert_eq!(got.len(), UNEXPOSED_ROWS);
+        for w in ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES.windows(2) {
+            assert!(
+                (w[0].0, w[0].1) < (w[1].0, w[1].1),
+                "the unexposed list must be sorted by (class, prop) with no duplicate"
+            );
+        }
+        for (class, prop, cases, why) in ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES {
+            assert!(
+                has_echo_row(class, prop),
+                "{class}.{prop} is listed unexposed but has no echo row"
+            );
+            assert!(
+                r4133_only_exposure(class, prop).is_none(),
+                "{class}.{prop} cannot be both exposed and unexposed on r4133-only cases"
+            );
+            assert!(
+                *cases > 0,
+                "{class}.{prop}: a class count of 0 is the derived case"
+            );
+            // The reason's shape follows what the row COVERS (`echo_excluded`): a
+            // narrowed row is unexposed because its measured spellings are absent
+            // there, any other row because its category's mechanism leaves no
+            // divergent cell there — so the two cannot be swapped silently.
+            let i = find_echo_row(PROPS_ECHO_R4133, class, prop).expect("checked above");
+            let want = if narrowed_row(class, prop).is_some() {
+                "narrowed".to_string()
+            } else {
+                format!("{}:", PROPS_ECHO_R4133[i].category.tag())
+            };
+            assert!(
+                why.starts_with(&want),
+                "{class}.{prop}: the reason must start with {want:?} — a narrowed row is \
+                 unexposed by its measured spellings (ECHO_NARROWED), any other by its \
+                 category's mechanism"
             );
         }
     }
