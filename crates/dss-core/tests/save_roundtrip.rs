@@ -167,15 +167,79 @@ fn round_trip(tag: &str, master: PathBuf) {
 }
 
 /// General round-trip driver. `pre_only` are commands applied **once**, right
-/// after the initial compile — element-creating setup (e.g. `New Energymeter…`)
-/// that gets serialized into the saved deck, so it must NOT be replayed after the
-/// re-compile (the emitted tree already carries it). `both` are option commands
+/// after the initial compile — element-creating setup (e.g. `New Energymeter…`),
+/// or an `Edit` whose effect (values or set order) the saved deck carries — so it
+/// must NOT be replayed after the re-compile (the emitted tree already carries
+/// it). `both` are option commands
 /// (`Set Maxiterations=…`) that `Save` does NOT persist, so they are re-applied
 /// on both the pre-save and post-recompile solves to reach the same fixpoint.
 /// `vtol` is the node-voltage relative tolerance (1e-6 for the clean-round-trip
 /// feeders; a proven Save-precision floor for IEEE-8500, see that test). Discrete
 /// control state (reg taps + cap banks) is always compared **exactly**.
 fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str], vtol: f64) {
+    round_trip_watch(tag, master, pre_only, both, vtol, &[]);
+}
+
+/// A deck element whose sizing property and the arrays it sizes must come back
+/// unchanged from a Save round trip — the contract of the Save sizing-property
+/// hoist (`report/save/save.rs::save_order`, RF-D01-04). The solve observables
+/// [`round_trip_full`] compares cannot see it: a `Ratings` array reloaded as
+/// `[ 400 0]` moves no voltage and no Y entry.
+struct SizedArrays {
+    /// `Class.name` as the `?` surface spells it.
+    element: &'static str,
+    /// The sizing property; the deck must have set it, so Save emits it.
+    sizer: &'static str,
+    /// Properties whose text parse is sized by `sizer`'s live value.
+    arrays: &'static [&'static str],
+}
+
+/// The `?` values of `w.sizer` then `w.arrays`, keyed by the names as listed.
+fn sized_values(dss: &mut Dss, tag: &str, w: &SizedArrays) -> Vec<(String, String)> {
+    let props = dss
+        .element_properties(w.element)
+        .unwrap_or_else(|| panic!("{tag}: {} not found", w.element));
+    std::iter::once(w.sizer)
+        .chain(w.arrays.iter().copied())
+        .map(|name| {
+            let (_, v) = props
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case(name))
+                .unwrap_or_else(|| panic!("{tag}: {}.{name}: no such property", w.element));
+            (name.to_string(), v.clone())
+        })
+        .collect()
+}
+
+/// The `New "<Class>.<name>"` line the Save tree under `out` emitted for
+/// `element` (lowercased, for a case-blind token search).
+fn emitted_line(out: &std::path::Path, tag: &str, element: &str) -> String {
+    let head = format!("new \"{}\"", element.to_ascii_lowercase());
+    emitted_set(out)
+        .iter()
+        .filter(|rel| rel.ends_with(".dss"))
+        .find_map(|rel| {
+            let text = std::fs::read_to_string(out.join(rel))
+                .unwrap_or_else(|e| panic!("{tag}: read {rel}: {e}"));
+            text.lines()
+                .map(str::to_ascii_lowercase)
+                .find(|l| l.starts_with(&head))
+        })
+        .unwrap_or_else(|| panic!("{tag}: no `New \"{element}\"` line in the Save tree"))
+}
+
+/// [`round_trip_full`] plus, for every `watch` entry, the sizing-property
+/// contract on the emitted deck: the sizer token precedes each sized token on
+/// the element's `New` line, and the sizer and every sized array read back the
+/// pre-save `?` value (numeric-token compare, [`assert_prop_token_eq`]).
+fn round_trip_watch(
+    tag: &str,
+    master: PathBuf,
+    pre_only: &[&str],
+    both: &[&str],
+    vtol: f64,
+    watch: &[SizedArrays],
+) {
     assert!(master.is_file(), "missing master: {}", master.display());
     let out = scratch_dir(tag);
 
@@ -205,6 +269,10 @@ fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str],
     let pre_discrete = discrete_state(&dss);
     let pre_bases = bus_kv_bases(&dss);
     let pre_y = y_checkpoint(&mut dss);
+    let pre_sized: Vec<_> = watch
+        .iter()
+        .map(|w| sized_values(&mut dss, tag, w))
+        .collect();
     assert!(!pre.is_empty(), "{tag}: no nodes pre-save");
     assert!(
         pre_bases.values().any(|&b| b > 0.0),
@@ -253,6 +321,28 @@ fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str],
     let post_discrete = discrete_state(&dss);
     let post_bases = bus_kv_bases(&dss);
     let post_y = y_checkpoint(&mut dss);
+
+    // The sizing-property contract of every watched element (see `SizedArrays`):
+    // emitted order first, then the reloaded values.
+    for (w, pre_vals) in watch.iter().zip(&pre_sized) {
+        let line = emitted_line(&out, tag, w.element);
+        let at = |name: &str| {
+            line.find(&format!(" {}=", name.to_ascii_lowercase()))
+                .unwrap_or_else(|| panic!("{tag}: no `{name}=` token in {line:?}"))
+        };
+        for array in w.arrays {
+            assert!(
+                at(w.sizer) < at(array),
+                "{tag}: {}: `{}=` is written after `{array}=`, so the reload parses \
+                 the array at the stale size: {line:?}",
+                w.element,
+                w.sizer
+            );
+        }
+        for ((name, pre_v), (_, post_v)) in pre_vals.iter().zip(sized_values(&mut dss, tag, w)) {
+            assert_prop_token_eq(pre_v, &post_v, &format!("{tag}: {}.{name}", w.element));
+        }
+    }
 
     // Base kV, exactly (see `bus_kv_bases`): the one quantity of the emitted
     // deck that every other compare here is blind to.
@@ -500,6 +590,79 @@ fn save_roundtrip_ieee13_lineandcablespacing() {
     round_trip("ie13lcs", corpus("Test/IEEE13_LineAndCableSpacing.dss"));
 }
 
+/// Sizing-property hoist, Capacitor `NumSteps` (RF-D01-04, `RP|RP3.11|AC1|AC-1`).
+/// The vendored asymmetric-capacitor deck sets its four-step bank in the corpus
+/// spelling `kvar=600 kv=12.47 numsteps=4 states=[1 0 1 0]`: `kvar` ahead of the
+/// `NumSteps` that sizes its parse (r4133 `PDElements/Capacitor.pas:374`
+/// `FNumSteps := InterpretDblArray(Param, FNumSteps, FkvarRating)`). Written in
+/// set order — r4133's `TDSSObject.SaveWrite` guards only `LoadShape`
+/// (`General/DSSObject.pas:144`) — the line reloads the four 150 kvar steps as
+/// one 150 kvar value split four ways, `4 × 37.5`: the two energized steps put
+/// 75 kvar instead of 300 on the bus, which the checkpoint-Y and node-voltage
+/// compares catch. The watch pins the reloaded `kvar`/`States` themselves, and
+/// `Phases → CMatrix` on the asymmetric `cmatrix` bank next to it.
+#[test]
+fn save_roundtrip_capacitor_numsteps_hoist() {
+    round_trip_watch(
+        "capsteps",
+        repo("tests/corpus/asymmetric/capacitor/capacitor_asym.dss"),
+        &[],
+        &[],
+        1e-6,
+        &[
+            SizedArrays {
+                element: "capacitor.cstep",
+                sizer: "NumSteps",
+                arrays: &["kvar", "States"],
+            },
+            SizedArrays {
+                element: "capacitor.cmat",
+                sizer: "Phases",
+                arrays: &["CMatrix"],
+            },
+        ],
+    );
+}
+
+/// Sizing-property hoist, `Seasons → Ratings` (RF-D01-04, `RP|RP3.11|AT1|AT-1`)
+/// on the vendored seasonal-rating IEEE-13 feeder (`StoCtrl_SeasonTarget`:
+/// every LineCode and `Line.632670` carry `Seasons=2 Ratings=[..]`). The deck
+/// sets them in natural order; re-setting `Seasons` afterwards (an `Edit`, the
+/// shape a script that changes the season count takes) moves the sizer behind
+/// its `Ratings` in the set order, and r4133 parses `Ratings` at the live
+/// season count (`General/LineCode.pas:436`/`:442`,
+/// `PDElements/Line.pas:638-645`) — written in set order, both reload as
+/// `[ x 0]`. One generic-walk class (LineCode) and one override class (Line,
+/// whose `Seasons` must also stay behind its `LineCode=` reference, which
+/// re-fetches the season count on reload — r4133 `PDElements/Line.pas:420-421`).
+/// Ratings move no solve observable, so the watch is the only compare that sees
+/// them.
+#[test]
+fn save_roundtrip_seasons_ratings_hoist() {
+    round_trip_watch(
+        "seasons",
+        corpus("Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss"),
+        &[
+            "edit linecode.mtx601 seasons=2",
+            "edit line.632670 seasons=2",
+        ],
+        &[],
+        1e-6,
+        &[
+            SizedArrays {
+                element: "linecode.mtx601",
+                sizer: "Seasons",
+                arrays: &["Ratings"],
+            },
+            SizedArrays {
+                element: "line.632670",
+                sizer: "Seasons",
+                arrays: &["Ratings"],
+            },
+        ],
+    );
+}
+
 /// `Save circuit` round-trip over a **protection-heavy** deck (WP-U2.5): a
 /// Relay + Recloser + Fuse + SwtControl, each carrying r4133-surface property
 /// values — renamed props (`PhCurve`/`PhFastCurve`/`CurveMultiplier`), the new
@@ -691,17 +854,23 @@ fn assert_prop_token_eq(a: &str, b: &str, ctx: &str) {
                 {
                     end += 1;
                 }
+                // The longest prefix that parses is the number. A flag, not
+                // `e == i`, tells "none parsed": after a parse `i` is moved to
+                // `e`, so that test also held on success and left the number's
+                // first byte in the skeleton while skipping the byte after it.
                 let mut e = end;
+                let mut parsed = false;
                 while e > i {
                     if let Ok(v) = s[i..e].parse::<f64>() {
                         nums.push(v);
                         skel.push('#');
                         i = e;
+                        parsed = true;
                         break;
                     }
                     e -= 1;
                 }
-                if e == i {
+                if !parsed {
                     skel.push(c as char);
                     i += 1;
                 }
@@ -726,6 +895,24 @@ fn assert_prop_token_eq(a: &str, b: &str, ctx: &str) {
             "{ctx}: number differs ({x} vs {y}) in {a:?} vs {b:?}"
         );
     }
+}
+
+/// [`assert_prop_token_eq`] compares the text between numbers exactly and the
+/// numbers within its floor — the separator after a number included, and not
+/// the number's first digit (both were inverted before RF-D01-04 part 3).
+#[test]
+fn prop_token_compare_checks_separators_and_values() {
+    assert_prop_token_eq("[ 150 150]", "[ 150 150.0000000000001]", "floor");
+    assert_prop_token_eq("0.99999999999999", "1", "first digit");
+    let red = |a: &'static str, b: &'static str| {
+        std::panic::catch_unwind(|| assert_prop_token_eq(a, b, "probe")).is_err()
+    };
+    assert!(
+        red("[ 400 500]", "[ 400|500]"),
+        "a separator after a number"
+    );
+    assert!(red("[ 600 700]", "[ 600 0]"), "a value");
+    assert!(red("[ 1 2]", "[ 1 2 3]"), "a count");
 }
 
 /// Collect the set of emitted files relative to `root`, using `/` separators.
