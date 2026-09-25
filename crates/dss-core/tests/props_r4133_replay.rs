@@ -4613,8 +4613,11 @@ fn every_example_row_is_claimed_or_declared_exactly_once() {
 ///   with the row's citation behind it, so it has to be a reviewed edit here.
 ///
 /// It also pins the shape the narrowing depends on: the table names a pair iff
-/// that pair is mixed (holds both kinds of row), so the 62 pure echo rows keep
-/// the conservative pair scope.
+/// that pair is mixed (holds both kinds of row) or sits on the closed
+/// `props_norm::ECHO_NARROWED_PURE_PAIRS` list (`generator.model`, RF-D07-07),
+/// so the other 61 pure echo rows keep the conservative pair scope. A listed
+/// pure pair is held to the same Direction 2 as a mixed one: its spellings are
+/// exactly the census rows no earlier link claims, i.e. all of its rows.
 #[test]
 fn the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave() {
     /// Per pair: how many rows the links BEFORE the exclusion claim, and the
@@ -4647,20 +4650,48 @@ fn the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave() {
         .map(|(p, (_, sp))| (*p, sp))
         .collect();
 
-    // Direction 1: the table names exactly the mixed pairs.
+    // The closed list of pure pairs narrowed on purpose: each is a pure echo
+    // pair (no earlier link claims a row of it) that the census does carry.
+    let pure: BTreeMap<String, &BTreeSet<(&str, &str)>> = props_norm::ECHO_NARROWED_PURE_PAIRS
+        .iter()
+        .map(|(class, prop)| {
+            let pair = format!("{class}.{prop}");
+            let (claimed, spellings) = left.get(pair.as_str()).unwrap_or_else(|| {
+                panic!("{pair}: listed in ECHO_NARROWED_PURE_PAIRS but no census row carries it")
+            });
+            assert_eq!(
+                *claimed, 0,
+                "{pair}: listed as a PURE narrowed pair, yet an earlier link claims {claimed} \
+                 of its census row(s) — a mixed pair belongs to the derivation below"
+            );
+            (pair, spellings)
+        })
+        .collect();
+
+    // Direction 1: the table names exactly the mixed pairs plus the listed pure
+    // ones.
     let named: BTreeSet<String> = props_norm::ECHO_NARROWED
         .iter()
         .map(|r| format!("{}.{}", r.class, r.prop))
         .collect();
-    let measured: BTreeSet<String> = mixed.keys().map(|p| p.to_string()).collect();
+    let measured: BTreeSet<String> = mixed
+        .keys()
+        .map(|p| p.to_string())
+        .chain(pure.keys().cloned())
+        .collect();
     assert_eq!(
         named, measured,
         "ECHO_NARROWED must hold exactly the pairs that carry BOTH a typed rule and an echo \
-         row — the 62 pure echo rows keep the pair scope plan §1.2 prescribes"
+         row, plus ECHO_NARROWED_PURE_PAIRS — the other 61 pure echo rows keep the pair scope \
+         plan §1.2 prescribes"
     );
 
     // Direction 2: per pair, exactly the spellings the earlier links leave.
-    for (pair, want) in &mixed {
+    let every = mixed
+        .iter()
+        .map(|(p, sp)| (*p, *sp))
+        .chain(pure.iter().map(|(p, sp)| (p.as_str(), *sp)));
+    for (pair, want) in every {
         let (class, prop) = pair.split_once('.').expect("class.prop");
         let got: BTreeSet<(&str, &str)> = props_norm::narrowed_spellings(class, prop)
             .unwrap_or_else(|| panic!("{pair}: a mixed pair with no ECHO_NARROWED row"))
@@ -4668,13 +4699,14 @@ fn the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave() {
             .copied()
             .collect();
         assert_eq!(
-            got, **want,
+            got, *want,
             "{pair}: ECHO_NARROWED must carry exactly the census spellings the typed rules leave"
         );
     }
 
     // …and the two locks the table states, re-derived here rather than read
-    // back off the table itself.
+    // back off the table itself: 20 mixed pairs leaving 66 spellings, plus
+    // `generator.model`'s one, for 21 rows and 67 spellings in all.
     assert_eq!(mixed.len(), 20, "mixed pairs");
     assert_eq!(
         mixed.values().map(|s| s.len()).sum::<usize>(),
@@ -4682,9 +4714,110 @@ fn the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave() {
         "the spellings the 20 mixed pairs leave to their echo rows"
     );
     assert_eq!(
+        (named.len(), pure.values().map(|s| s.len()).sum::<usize>()),
+        (21, 1),
+        "ECHO_NARROWED's rows, and the spellings of its one listed pure pair (generator.model)"
+    );
+    assert_eq!(
         left.values().map(|(claimed, _)| claimed).sum::<usize>(),
         MIXED_PAIR_NORM_ROWS,
         "…and their complement is the mixed-pair normalization lock"
+    );
+}
+
+/// **`props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL` is the census's, both ways**
+/// (RF-D07-07) — the normalization half of the declaration the echo half has
+/// carried since RP2.3 (`props_norm::echo_rows_with_no_in_scope_cell`).
+///
+/// The live guard `props_norm::assert_norm_rows_are_live` reports a row only
+/// when a full gate run visited it and it folded nothing, so a row whose pair
+/// has no cell on an r4133-gating case is never visited and silent forever.
+/// Which rows those are is a census fact, read here the way [`Corpus::load`]
+/// resolves it: `bins.tsv`'s `cells_in_scope` for a `BinsTsv` row; for a
+/// WP-RP1 row its README record's `(in scope)` split or, where the record has
+/// none, its class's `rows_in_scope` in `shape_in_scope.txt`. Both directions
+/// fail with their own message — an unlisted row with no in-scope cell is an
+/// undeclared hole; a listed row that has one (what gating a sensor or
+/// gendispatcher deck on r4133 would produce) is a stale declaration, and the
+/// row then belongs to the live guard again. The class side is read straight
+/// off `shape_in_scope.txt` as well: a class with `rows_in_scope=0` can hold no
+/// in-scope cell on any pair, and every listed row's class is such a class.
+#[test]
+fn the_norm_rows_with_no_in_scope_cell_are_exactly_the_declared_ones() {
+    let corpus = Corpus::load();
+    let class_rows = shape_rows_in_scope();
+    let declared: BTreeSet<(&str, &str)> = props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL
+        .iter()
+        .copied()
+        .collect();
+    let mut dormant: BTreeSet<(&str, &str)> = BTreeSet::new();
+    let mut problems: Vec<String> = Vec::new();
+    for row in props_norm::PROPS_NORM_R4133 {
+        let pair = format!("{}.{}", row.class, row.prop);
+        let in_scope: Option<usize> = match row.src {
+            props_norm::Evidence::BinsTsv => {
+                let records = corpus
+                    .bins
+                    .get(&pair)
+                    .unwrap_or_else(|| panic!("{pair}: a BinsTsv row with no bins.tsv record"));
+                Some(
+                    records
+                        .iter()
+                        .map(|e| e.cells_in_scope.expect("bins.tsv records the split"))
+                        .sum(),
+                )
+            }
+            _ => {
+                corpus
+                    .supplement
+                    .get(&pair)
+                    .unwrap_or_else(|| panic!("{pair}: a WP-RP1 row with no README record"))
+                    .cells_in_scope
+            }
+        };
+        if in_scope == Some(0) {
+            dormant.insert((row.class, row.prop));
+        }
+        if class_rows.get(row.class) == Some(&0) && in_scope != Some(0) {
+            problems.push(format!(
+                "{pair}: shape_in_scope.txt gives its class rows_in_scope=0, yet the pair \
+                 records {in_scope:?} in-scope cell(s)"
+            ));
+        }
+    }
+    for (class, prop) in dormant.difference(&declared) {
+        problems.push(format!(
+            "{class}.{prop}: no cell on an r4133-gating case and NOT declared in \
+             props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL — the live guard can never visit it, \
+             so the hole must be named"
+        ));
+    }
+    for (class, prop) in declared.difference(&dormant) {
+        problems.push(format!(
+            "{class}.{prop}: declared in props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL but it DOES \
+             carry an in-scope cell, or it is no PROPS_NORM_R4133 row at all — the live guard \
+             covers an in-scope row, so drop the declaration"
+        ));
+    }
+    for (class, prop) in &declared {
+        if class_rows.get(*class) != Some(&0) {
+            problems.push(format!(
+                "{class}.{prop}: a declared row's class must have rows_in_scope=0 in \
+                 shape_in_scope.txt (no r4133-gating case holds an element of it), got {:?}",
+                class_rows.get(*class)
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL no longer matches the frozen census:\n{}",
+        problems.join("\n")
+    );
+    assert_eq!(
+        dormant.len(),
+        8,
+        "the gendispatcher (3) and sensor (5) rows — every corpus deck declaring either class \
+         gates capi_v0145 only"
     );
 }
 
@@ -8054,6 +8187,15 @@ fn the_rp33_census_decomposition_is_read_off_the_corpus() {
         Some("generator_model_renders_the_live_pv2pq_conversion"),
         "every cell is on an r4133-only case, so the row's witness can only be a pin"
     );
+    // …and the row's SCOPE (RF-D07-07): narrowed to the one spelling derived
+    // above, so every other `generator.model` cell on an r4133-only case — the
+    // 41 agreeing ones of the non-NCIM generator decks — is compared on r4133
+    // instead of being masked by a pair-wide row with no channel behind it.
+    assert_eq!(
+        props_norm::narrowed_spellings(class, prop),
+        Some(&[(row.rust.as_str(), row.r4133.as_str())][..]),
+        "props_norm::ECHO_NARROWED must hold {PAIR} to exactly its one derived spelling"
+    );
     // …and the row's exposure entry, the second consumer. Its `(cells, cases)`
     // is claimed to be derived per case; before the RP3.3 audit settlement no
     // test read the entry at all and its `cases` column had no value lock
@@ -10146,6 +10288,65 @@ fn the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation(
     // quietly deleted.
     assert!(!props_norm::has_echo_row("gictransformer", "r2"));
     assert!(props_norm::has_echo_row("generator", "model"));
+}
+
+/// **The display floor's empty band, asserted** (RF-D07-07) — the right-hand
+/// half of RP2.4's derivation (`props_norm::R4133_DISPLAY_FLOOR`'s doc table),
+/// which until now lived only in doc comments and one panic message.
+///
+/// The floor is placed, not tuned, because the band between the worst cell it
+/// claims (`load.pf`, 6.431124e-05, pinned by
+/// [`the_echo_table_claims_only_its_cited_pairs_and_the_floor_only_its_derivation`])
+/// and the nearest numeric-comparable spelling above it
+/// (`storagecontroller.kwneed`, 1.374769e-03) holds NO vendored spelling, so
+/// every cut inside it partitions the census the same way. This walks every
+/// vendored spelling (`examples_full.txt` + `examples_supplement.txt`) through
+/// the shipped metric, `props_norm::display_rel`, whatever link claims it, and
+/// asserts both halves: nothing strictly inside the band, and the nearest
+/// spelling above it is `storagecontroller.kwneed` at 1.374769e-03. The floor
+/// constant is neither read nor moved here (R8): a spelling inside the band
+/// re-opens the derivation, it never licenses a new number.
+#[test]
+fn the_display_floor_band_is_empty_over_the_vendored_spellings() {
+    const WORST_CLAIMED: f64 = 6.431_124e-5;
+    const NEAREST_ABOVE: f64 = 1.374_769e-3;
+    // The two edges are 7-digit roundings of measured cells that sit ON them,
+    // so "strictly inside" keeps a 1e-6 relative margin off each.
+    let (lo, hi) = (WORST_CLAIMED * (1.0 + 1e-6), NEAREST_ABOVE * (1.0 - 1e-6));
+    let corpus = Corpus::load();
+    let mut comparable = 0usize;
+    let mut inside: Vec<String> = Vec::new();
+    let mut nearest: Option<(f64, String)> = None;
+    for row in &corpus.rows {
+        let Some(rel) = props_norm::display_rel(&row.rust, &row.r4133) else {
+            continue;
+        };
+        comparable += 1;
+        let who = format!("{} '{}' vs '{}'", row.pair, row.rust, row.r4133);
+        if rel > lo && rel < hi {
+            inside.push(format!("{who} ({rel:e})"));
+        }
+        if rel > lo && nearest.as_ref().is_none_or(|(best, _)| rel < *best) {
+            nearest = Some((rel, who));
+        }
+    }
+    assert!(
+        comparable >= 2000,
+        "only {comparable} numeric-comparable vendored spelling(s) — the walk went vacuous"
+    );
+    assert!(
+        inside.is_empty(),
+        "the r4133 display floor's empty band (6.431124e-05, 1.374769e-03) is no longer empty — \
+         the floor's derivation (props_norm::R4133_DISPLAY_FLOOR) no longer holds and must be \
+         re-derived, never re-tuned: {inside:?}"
+    );
+    let (rel, who) = nearest.expect("a numeric-comparable spelling above the band");
+    assert!(
+        who.starts_with("storagecontroller.kwneed ") && (rel - NEAREST_ABOVE).abs() < 1e-9,
+        "the nearest vendored spelling above the display floor's band must be \
+         storagecontroller.kwneed at 1.374769e-03 (the band's upper edge in the floor's \
+         derivation) — measured {rel:e} on {who}"
+    );
 }
 
 /// **The carve-outs and their routing describe the same cells** — the
