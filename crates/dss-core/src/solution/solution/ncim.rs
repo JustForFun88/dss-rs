@@ -259,7 +259,7 @@ fn ncim_init(ckt: &mut Circuit, env: &mut SolveEnv, init_y: bool) -> Result<usiz
 }
 
 /// Pascal `TSolutionObj.GetNumGenerators` (**r4133** `Common/Solution.pas`
-/// l.1884-1990; `NCIM_GetNumGenerators` l.574 in the retired capi015 refactor):
+/// l.1884-1988; `NCIM_GetNumGenerators` l.574 in the retired capi015 refactor):
 /// classify each enabled generator as a
 /// PV-bus (model-3 with Q-limits) participant, assign its `NCIM_Idx`, tally the
 /// per-node Q-limits and generator counts. Returns the total number of PV-bus
@@ -556,7 +556,7 @@ fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
 }
 
 /// Pascal `TSolutionObj.InitPQGen` (**r4133** `Common/Solution.pas`
-/// l.1662-1681; `NCIM_InitPQGen` l.419 in the retired capi015 refactor): seed
+/// l.1662-1684; `NCIM_InitPQGen` l.419 in the retired capi015 refactor): seed
 /// the enabled non-PV (`GenModel <> 3`) generators' `deltaQNom` with their
 /// nominal per-phase Q.
 ///
