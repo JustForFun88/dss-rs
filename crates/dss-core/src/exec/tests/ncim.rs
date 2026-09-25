@@ -1939,7 +1939,7 @@ fn ncim_generator_reenabled_between_solves_resumes_from_its_kept_q() {
 /// l.4575-4591, error 28728 otherwise), so the machine goes with its branch:
 /// `Remove ElementName=Line.l2 KeepLoad=no` disables `Line.l2` and every shunt
 /// element below it — here the generator on `farbus` (`DoRemoveBranches`,
-/// `Meters/ReduceAlgs.pas` l.372-450) — and `farbus` leaves the node space
+/// `Meters/ReduceAlgs.pas` l.372-451) — and `farbus` leaves the node space
 /// (9 → 6 nodes). The port re-initialises the NCIM node space that no longer
 /// spans the circuit (`do_ncim_solution`) and converges onto the fresh
 /// generator-free deck, which r4133 answers ([`R4133_NO_GEN`], case
