@@ -1196,8 +1196,9 @@ fn save_write_puts_npts_first_for_loadshape() {
 ///
 /// The divergence runs both ways on this surface: r4133's own `SaveWrite` emits
 /// `kvar=0` for a `windgen`, which on reload flattens `PFNominal` to 1.0 and
-/// `kvarMax`/`kvarMin` to 0 (`tests/props_r4133_replay.rs:1197-1199`) — an
-/// upstream defect the port does not have.
+/// `kvarMax`/`kvarMin` to 0 (the RP3.2 `"windgen.kvar"` verdict of
+/// `RP3_ROUTING` in `tests/props_r4133_replay.rs`) — an upstream defect the
+/// port does not have.
 #[test]
 fn save_renders_the_live_model_after_ncim_pv2pq() {
     let deck = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
