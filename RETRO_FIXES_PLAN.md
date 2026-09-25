@@ -74,9 +74,9 @@ Worktrees are removed only by the junction-safe PowerShell procedure of CLAUDE.m
 | executor, `high` step | opus / high — S doc, citation, comment work |
 | executor, `xhigh` step | opus / xhigh — M test/code work, anything moving ledger / pins / goldens |
 | executor, `max` step | opus / max — L items, major-severity engine changes |
-| audit-code, audit-tests | opus / xhigh for `high` steps; **fable / high for `xhigh` and `max` steps** (user rule: an opus xhigh/max executor is checked by fable) |
-| settler | fable / high |
-| settlement audit | opus / xhigh (a different model from the settler) |
+| audit-code, audit-tests | opus / xhigh for `high` steps; **opus / max for `xhigh` and `max` steps** (user rule 2026-09-25: fable replaced by opus max for cost - a fresh agent per role, never the executor) |
+| settler | opus / max (a fresh agent - neither the executor nor an auditor) |
+| settlement audit | opus / xhigh (a fresh agent, never the settler) |
 | coordinator merge / gate | opus / high |
 
 Budget per agent: ≤ 200–300k tokens of context. A step that cannot fit is split into `parts`;
