@@ -526,18 +526,21 @@
       "path": "tests/golden/feeders_controlsoff/ieee123_controlsoff.dss",
       "sha256": "118bcc1f08d182b73be3dd7e96e0dfbe2d0e4ccb899f7fa8f6187edb70a10cd8",
       "anchor": "capi_v0145",
+      "reason": "input deck written by tools/golden/gen_feeders_controlsoff.py from the vendored corpus master (copied line by line, solve/buscoords dropped, redirects rewritten, Set controlmode=OFF + Solve appended); no oracle bytes — the oracle output is feeders_controlsoff.json. The capi_v0145 anchor is the residue, not a provenance claim: GOLDEN_REBASE_PLAN.md §1.2 has no anchor value for a derived input, and G3.2a deletes the family.",
       "produced_by": null
     },
     {
       "path": "tests/golden/feeders_controlsoff/ieee13_controlsoff.dss",
       "sha256": "2f49e6d2e264586b0ae904090e35e29e2df045d9f8d19beb0409e7bd55cc9d2d",
       "anchor": "capi_v0145",
+      "reason": "input deck written by tools/golden/gen_feeders_controlsoff.py from the vendored corpus master (copied line by line, solve/buscoords dropped, redirects rewritten, Set controlmode=OFF + Solve appended); no oracle bytes — the oracle output is feeders_controlsoff.json. The capi_v0145 anchor is the residue, not a provenance claim: GOLDEN_REBASE_PLAN.md §1.2 has no anchor value for a derived input, and G3.2a deletes the family.",
       "produced_by": null
     },
     {
       "path": "tests/golden/feeders_controlsoff/ieee37_controlsoff.dss",
       "sha256": "d7eac12de2ef77d7782c788e8086ed3cfd89a07731a4819e01029491b4b9102c",
       "anchor": "capi_v0145",
+      "reason": "input deck written by tools/golden/gen_feeders_controlsoff.py from the vendored corpus master (copied line by line, solve/buscoords dropped, redirects rewritten, Set controlmode=OFF + Solve appended); no oracle bytes — the oracle output is feeders_controlsoff.json. The capi_v0145 anchor is the residue, not a provenance claim: GOLDEN_REBASE_PLAN.md §1.2 has no anchor value for a derived input, and G3.2a deletes the family.",
       "produced_by": null
     },
     {
@@ -1086,6 +1089,7 @@
       "path": "tests/golden/json/schema_divergences.json",
       "sha256": "7d83b18876f520422cce3fc849c2a63502503811178f1caddad9beff22288234",
       "anchor": "capi_v0145",
+      "reason": "hand-authored inventory of the port's documented schema divergences from the pinned 0.14.5 oracle (r4133 / 0.15.x adoptions, each with its upstream cause), applied by golden_schema.rs between the port's render and json/schema_full_oracle.json and edited by hand whenever a divergence is adopted; no engine writes it (tools/golden/gen_schema.py writes only the oracle half). The capi_v0145 anchor is the residue, not a provenance claim; it is not `self` because no lane (re)produces it, so snapshot_* must never write it.",
       "produced_by": null
     },
     {
@@ -1098,7 +1102,7 @@
       "path": "tests/golden/json/schema_full_port.json",
       "sha256": "06a2d5b2849f57f5f9c0879e6c0b9229fd47b6107ebb1d97002709cf257288c6",
       "anchor": "self",
-      "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half (json/schema_full_oracle.json + json/schema_divergences.json) stays capi_v0145 and frozen. Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
+      "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half is json/schema_full_oracle.json (capi_v0145, written by tools/golden/gen_schema.py on the pinned oracle); the divergence inventory json/schema_divergences.json between the two is hand-authored and engine-less (NON_ENGINE_RESIDUE). Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
       "produced_by": "parity"
     },
     {
@@ -1250,13 +1254,15 @@
     {
       "path": "tests/golden/ncim/pq_Jacobian.csv",
       "sha256": "27ec6472e8ccb75b57f5eda9a6a83e6a71880d3988feb23a89b80cec1150bd82",
-      "anchor": "capi_v0145",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
       "produced_by": null
     },
     {
       "path": "tests/golden/ncim/pq_PV2PQ.txt",
       "sha256": "a87d0dbe72f1322349fa6eddc2eaa0d158edfec56b94ba086c7e6b2767d9826c",
-      "anchor": "capi_v0145",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
       "produced_by": null
     },
     {
@@ -1269,13 +1275,15 @@
     {
       "path": "tests/golden/ncim/pv_qlimit_Jacobian.csv",
       "sha256": "70e59bae8dafce168cb23fc502ad57da060130ca6275cd6e961e730b6e37d3cd",
-      "anchor": "capi_v0145",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
       "produced_by": null
     },
     {
       "path": "tests/golden/ncim/pv_qlimit_PV2PQ.txt",
       "sha256": "88d27eb411fce7e0a6c7011bcb101d8623174b8e1b3ad558e1e236be97c9439e",
-      "anchor": "capi_v0145",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
       "produced_by": null
     },
     {
@@ -1989,6 +1997,7 @@
       "path": "tests/golden/reports/dump3_commands.txt",
       "sha256": "ee449c29845edc495f379cae2fa74684354444649afc438863b6544a16d45ec6",
       "anchor": "capi_v0145",
+      "reason": "PARTLY HAND-LANDED, not purely the pinned oracle's capture: the [Relay]/[Recloser]/[Fuse]/[SwtControl] blocks are the r4133 property surfaces (Relay 71, Recloser 46, Fuse 12, SwtControl 9 props; help verbatim from the r4133 binary's own Dump commands via tools/golden/r4133_help.py; 845fdd2f, 288afc35), and the 0.15.x property lines of [CNData] (SemiconLayer), [LineSpacing] (Detailed/EqDistPhPh/EqDistPhN/AvgPhaseHeight/AvgNeutralHeight), [Transformer]/[AutoTrans] (BHPoints/BHCurrent/BHFlux) and [RegControl] (Idle/IdleReverse/IdleForward/FwdThreshold) were hand-edited in to match the port's render (2a20b97c, d9ee3f1c, 702adcbd). The pinned oracle renders none of them, so all of them are pinned SELF-REFERENTIALLY against our own render by golden_reports.rs::dump3_commands_matches_oracle. The anchor stays capi_v0145 because every other block ([execcommands], [execoptions] and the remaining class sections) is still the tools/golden/gen_reports.py capture on the pinned oracle, as is the deck sidecar dump3_commands.meta.json (untouched since 34b15a12). A regen from the pinned oracle reverts every hand-landed block; it must re-land them.",
       "produced_by": null
     },
     {
@@ -2601,7 +2610,8 @@
     {
       "path": "tests/golden/reports/export_capacity_seasonal.txt",
       "sha256": "ee093018fa29626a791d677e1b11002052eafbff690303b8929b4833fc877a83",
-      "anchor": "capi_v0145",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
       "produced_by": null
     },
     {
@@ -2986,7 +2996,8 @@
     {
       "path": "tests/golden/reports/export_overloads_seasonal.txt",
       "sha256": "3e4eab3d14bff8951d56c8d6cb265224686dda52bbeb610d0cf50f01544728f1",
-      "anchor": "capi_v0145",
+      "anchor": "capi015",
+      "reason": "captured on the retired dss_capi 0.15.0b4 / DSS-Python 0.16.0b2 beta stack (the pinned 0.14.5 oracle cannot render these 0.15.x-only surfaces); that environment no longer exists, so the bytes are unreproducible and snapshot_* hard-refuses them.",
       "produced_by": null
     },
     {

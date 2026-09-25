@@ -4,8 +4,9 @@ Generators (`gen_*.py`) and probes for the **committed** goldens under
 `tests/golden/`, plus the pinned-oracle version pin.
 
 - **`PIN.txt`** — the exact oracle: dss-python 0.15.7 / dss_capi 0.14.5 (the
-  Pascal source vendored at `.inputs/dss_capi`). Every golden is produced with
-  this and only this.
+  Pascal source vendored at `.inputs/dss_capi`). Every oracle capture anchored
+  `capi_v0145` in `tests/golden/golden.lock.json` is produced with this and only
+  this.
 - **`gen_*.py`** — one generator per golden family (see the table in
   `TESTING.md`). Each runs the pinned oracle, captures the result, and writes
   `tests/golden/<family>/…`. `generate.py` + `cases.json` drive the named-feeder
@@ -14,7 +15,13 @@ Generators (`gen_*.py`) and probes for the **committed** goldens under
   EPRI r4133 DLL through the in-house `epri-worker` bridge
   (`tools/opendss/epri_worker.py`; payload byte-parity with the retired
   Oddie-era captures is proven — STATUS "EPRI bridge parity round"), and the
-  frozen capi015-era generators document their own retired engines.
+  frozen capi015-era generators (`gen_ncim_reports.py`, the
+  `DSS_ORACLE_ENGINE=capi015` seasonal arm of `gen_reports.py`) document their
+  own retired engines — every file one of their calls wrote, payload and
+  `.meta.json` sidecar alike, is locked `capi015`. Not every file a generator
+  writes is an oracle capture: `gen_feeders_controlsoff.py` also writes the
+  controls-off INPUT decks, and `tests/golden/json/schema_divergences.json` is
+  hand-authored (no generator); their lock rows say so in `reason`.
 - **`report_decks/`** — fixture decks the report goldens (`gen_reports.py`)
   replay.
 - **`probe_*.py`** — one-off empirical probes (the project's "settle it against
