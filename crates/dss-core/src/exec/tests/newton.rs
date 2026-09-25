@@ -405,3 +405,69 @@ fn iterminal_cache_census(dss: &mut Dss) -> Vec<(String, bool, f64)> {
     }
     out
 }
+
+/// `Set algorithm=Newton` under AutoAdd: the Newton loop adds the trial
+/// device's current (r4133 `Common/Solution.pas:1213` `IF UseAuxCurrents THEN
+/// AddInAuxCurrents(NEWTONSOLVE)`, capi 0.14.5 `:957`), so the capacity search
+/// scores every candidate bus with its trial generator connected and picks the
+/// bus the normal fixed point picks, with the same improvement. Without that
+/// call each candidate solves the base case and scores no improvement.
+///
+/// The search reads its losses through the meters' cache-aware sampling, so it
+/// also rides on the solver's stamp drop above: a stale post-Newton current
+/// would score every candidate off the normal algorithm's figure.
+#[test]
+fn newton_autoadd_scores_the_trial_generator_like_the_normal_algorithm() {
+    let search = |algorithm: &str| -> (String, f64) {
+        // AutoAddLog / AutoAddedGenerators side files go to a scratch dir.
+        let scratch = std::env::temp_dir().join(format!(
+            "dss_newton_autoadd_{algorithm}_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&scratch).ok();
+        let mut dss = Dss::new();
+        for line in DECK {
+            dss.command(line);
+            assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+        }
+        dss.command("New EnergyMeter.m1 element=Line.l1 terminal=1");
+        dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+        dss.command("Set addtype=generator genkw=300 genpf=1.0");
+        dss.command("Set autobuslist=(b1, b2)");
+        dss.command(&format!("Set algorithm={algorithm}"));
+        dss.command("solve mode=autoadd");
+        assert!(dss.errors().is_empty(), "{algorithm}: {:?}", dss.errors());
+        let last = dss.result().to_string();
+        std::fs::remove_dir_all(&scratch).ok();
+        let (bus, figure) = last
+            .split_once(", ")
+            .unwrap_or_else(|| panic!("{algorithm}: GlobalResult not `<bus>, <figure>`: {last:?}"));
+        let figure = figure
+            .parse::<f64>()
+            .unwrap_or_else(|e| panic!("{algorithm}: improvement {figure:?}: {e}"));
+        (bus.to_string(), figure)
+    };
+    let (newton_bus, newton_gain) = search("Newton");
+    let (normal_bus, normal_gain) = search("Normal");
+    assert!(
+        normal_gain > 0.0,
+        "the trial generator must improve the losses under the normal algorithm \
+         (got {normal_gain:e}) — else the comparison below is vacuous"
+    );
+    assert_eq!(
+        newton_bus, normal_bus,
+        "AutoAdd must pick the same bus under Newton ({newton_gain:e}) as under \
+         the normal algorithm ({normal_gain:e})"
+    );
+    // Measured `b2` under both, 1.21581112543944e-2 vs 1.21581112543933e-2 —
+    // 9e-14 relative, the cross-algorithm voltage floor seen through the
+    // 15-digit `GlobalResult`. Refused: without the aux currents Newton picks
+    // `b1` at -1.05519285051277e-6; with them but with the solver's stamp drop
+    // disabled (the stale meter samples) it scores `b2` at 1.21128540007173e-2,
+    // 3.7e-3 relative off.
+    assert!(
+        (newton_gain - normal_gain).abs() <= 1e-10 * normal_gain.abs(),
+        "AutoAdd improvement under Newton {newton_gain:e} vs normal {normal_gain:e} \
+         (measured 9e-14 relative)"
+    );
+}

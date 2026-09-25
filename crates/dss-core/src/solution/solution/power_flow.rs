@@ -244,8 +244,10 @@ pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
         if ckt.solution.system_y_changed {
             build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
         }
-        // UseAuxCurrents/AddInAuxCurrents(NEWTONSOLVE): AutoAdd only.
-
+        // AutoAdd's trial device (r4133 `Common/Solution.pas:1213`, capi `:957`).
+        if ckt.solution.use_aux_currents {
+            add_in_aux_currents(ckt, SolveAlgorithm::Newton);
+        }
         // Solve for the change in voltages and update the guess.
         ckt.solution.solve_system_newton_step()?;
         ckt.solution.loads_need_updating = false;
