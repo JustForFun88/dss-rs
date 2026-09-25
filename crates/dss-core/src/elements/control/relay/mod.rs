@@ -64,7 +64,10 @@
 //! the live `PosSeqCtx`, so after `makeposseq` the relay renders `[closed, ]`
 //! exactly as r4133's live `ControlledElement.NPhases` loop does. Every byte in
 //! this paragraph was measured on the vendored r4133 DLL
-//! (`tmp/rp37/out_b1.txt`, `out_b1b.txt`).
+//! (`tmp/rp37/out_b1.txt`, `out_b1b.txt`). The one deliberate exception is a
+//! controlled element with more than six phases: the port clips the count at
+//! six where r4133's uncapped getters read past the six-slot array
+//! (`Relay::state_size`).
 //!
 //! Concern split mirrors the Recloser: this file holds the property metadata, the
 //! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
@@ -604,8 +607,22 @@ impl Relay {
     }
 
     /// Per-phase state-array count (Pascal `Min(RELAYCONTROLMAXDIM,
-    /// ControlledElement.NPhases)` — GetPropertyValue 39/40, VoltageLogic,
-    /// Sample, Reset, ...). The per-phase state arrays are dimensioned by the
+    /// ControlledElement.NPhases)`, the bound of r4133's drive/sense/reset
+    /// loops: `Relay.pas:683` MakeLike, `:965` RecalcElementData, `:1318`
+    /// Sample, `:1454` Reset, `:1787` OvercurrentLogic, `:2404`
+    /// DirectionalOvercurrentLogic, `:2852` VoltageLogic, ...).
+    ///
+    /// The render ([`Self::render_size`]) reuses the clip although r4133's
+    /// getters do not: `GetPropertyValue` 39/40 loop `ControlledElement.NPhases`
+    /// uncapped (`:1409`/`:1420`), so on a >6-phase controlled element their
+    /// 7th token reads `FPresentState^[7]` past the six-slot `StateArray`
+    /// (`:62`) and past `Create`'s 3-entry allocation (`:829-830`). That
+    /// out-of-bounds read is never reproduced (2026-08-02 policy): the port
+    /// renders six tokens where r4133 renders `NPhases` (seven on a 7-phase
+    /// line, RF-D01-01 probe (b)), pinned by
+    /// `tests::a_seven_phase_controlled_element_renders_six_tokens`.
+    ///
+    /// The per-phase state arrays are dimensioned by the
     /// SWITCHED (controlled) element's phase count, NOT the relay's own
     /// `FNPhases` (which Pascal forces to `MonitoredElement.NPhases`,
     /// RecalcElementData line 906 — used only for `vbase`, `cBuffer` sizing and

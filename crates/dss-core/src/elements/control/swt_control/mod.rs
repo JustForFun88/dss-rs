@@ -43,7 +43,9 @@
 //! like `Create`'s initialized slots: observables (render token count = the
 //! controlled element's `NPhases`, per-phase drive of each conductor, the
 //! 5-token per-phase parse cap, ganged drive) stay r4133-exact, the OOB is not
-//! reproduced.
+//! reproduced. The render count holds up to six phases only: past six,
+//! r4133's uncapped getters read beyond the six-slot `StateArray` itself, which
+//! is not reproduced either ([`SwtControl::state_size`] clips at six).
 //!
 //! **Parse-time drive model.** r4133's `set_States` drives
 //! `ControlledElement.Closed[Idx]` immediately mid-parse (`:532-549`) and
@@ -145,7 +147,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("Delay").flags(PropFlags::UNITS_S),
         // Normal/State: the r4133 per-phase state arrays (RP3.7). The render
         // loops the LIVE controlled-element phase count exactly as r4133
-        // (`GetPropertyValue` `:589-599/:600-610`); the write takes the raw
+        // (`GetPropertyValue` `:589-599/:600-610`) up to six phases (the
+        // `state_size` clip past six); the write takes the raw
         // value through `set_enum_array_raw` → `interpret_switch_state`
         // (ganged-vs-per-phase keyed on WasQuoted, first-char token match,
         // 5-token per-phase cap — `:410-482`).
@@ -300,10 +303,17 @@ impl SwtControl {
     /// `makeposseq` the render follows the now-1-phase element exactly as
     /// r4133's live loop does (`tmp/rp37/probe.md` §6/§11.4).
     ///
-    /// The `min(SW_MAX)` clip is the module-doc bound decision: r4133 loops the
-    /// element's raw `NPhases` past its 3-entry allocation (probe P2(iv-b)
-    /// renders four tokens off a 4-phase element); the port matches every
-    /// measured observable while staying inside its own six initialized slots.
+    /// The `min(SW_MAX)` clip is the module-doc bound decision. Up to six
+    /// phases it is invisible: r4133 loops the element's raw `NPhases` past its
+    /// 3-entry allocation (probe P2(iv-b) renders four tokens off a 4-phase
+    /// element) and the port answers the same count from its own six
+    /// initialized slots. Past six it is a recorded divergence: r4133's 7th
+    /// token reads `FPresentState^[7]` beyond `StateArray =
+    /// Array[1..SWTCONTROLMAXDIM]` itself (`:14`/`:19`), an out-of-bounds read
+    /// never reproduced (2026-08-02 policy), so the port renders six tokens
+    /// where r4133 renders `NPhases` (seven, with warning #384 from `:334` on
+    /// every edit, on a 7-phase line: RF-D01-01 probe (b)). Pinned by
+    /// `tests::a_seven_phase_controlled_element_renders_six_tokens`.
     pub(crate) fn state_size(&self) -> usize {
         if self.ccd.controlled_element.is_none() {
             return 0; // `ControlledElement = NIL` → `'[]'`
