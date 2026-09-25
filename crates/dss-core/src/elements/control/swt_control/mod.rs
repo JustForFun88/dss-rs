@@ -206,10 +206,11 @@ pub struct SwtControl {
     present_state: [ControlAction; ARR],
     /// `FNormalState : pStateArray` (`SwtControl.pas:38`) — the reset target
     /// per phase. r4133 `Create` initializes it all-CLOSED with
-    /// `NormalStateSet = FALSE` (`:299-307`); the scalar-era `None`-until-first
-    /// readback survives RP3.7 A1 through [`SwtControl::normal_view`] gating on
-    /// [`Self::normal_state_set`] (A2's array render shows the r4133
-    /// all-closed array directly).
+    /// `NormalStateSet = FALSE` (`:299-307`), and the `Normal` getter renders
+    /// it whatever the latch says (`GetPropertyValue` arm 6, `:589-599`; the
+    /// port's `get_enum_array` likewise), so a fresh control reads all-closed.
+    /// [`Self::normal_state_set`] gates only the Edit supplemental
+    /// ([`SwtControl::normal_defaults_to_present`]).
     normal_state: [ControlAction; ARR],
     /// `NormalStateSet` (`SwtControl.pas:42`): FALSE until the first
     /// `Normal`/`State`/`Action` write; the Edit supplemental copies Present
@@ -275,7 +276,9 @@ impl SwtControl {
     /// The ganged (scalar) view of a per-phase state array: slot 1. Every
     /// corpus deck writes ganged (all slots equal), so the view is exact there;
     /// it feeds the 0.14.5 queue machinery (`sample`) and the scalar `Action`
-    /// readback glue only.
+    /// readback glue only. On a per-phase (heterogeneous) state it is not
+    /// exact, and the queue then ganged-rewrites every slot: `ORPHANED_GAPS.md`
+    /// §1.16.
     fn ganged_view(arr: &[ControlAction; ARR]) -> ControlAction {
         arr[1]
     }
@@ -297,11 +300,14 @@ impl SwtControl {
     /// (`RecalcElementData` `:346`, `Reset` `:633`); with `ControlledElement =
     /// NIL` both getters return the bare `'[]'` (`:589`/`:600`, measured on the
     /// orphan control — `tmp/rp37/out_nil_controlled.txt`). The port reads the
-    /// count off the controlled-element snapshot, which
-    /// [`SwtControl::recalc`] refreshes at every `EndEdit` and
-    /// `make_pos_sequence` refreshes from the live `PosSeqCtx` — so after
-    /// `makeposseq` the render follows the now-1-phase element exactly as
-    /// r4133's live loop does (`tmp/rp37/probe.md` §6/§11.4).
+    /// count off the controlled-element snapshot `ctrl_snap`, which only
+    /// `set_object_ref` (`accessors.rs`, each `switchedobj=` resolution)
+    /// writes, `make_like` copies and `make_pos_sequence` refreshes from the
+    /// live `PosSeqCtx` — so after `makeposseq` the render follows the
+    /// now-1-phase element exactly as r4133's live loop does
+    /// (`tmp/rp37/probe.md` §6/§11.4). [`SwtControl::recalc`] only reads it:
+    /// a later phase-count edit of the switched element is not seen until the
+    /// ref is re-resolved (`ORPHANED_GAPS.md` §1.13).
     ///
     /// The `min(SW_MAX)` clip is the module-doc bound decision. Up to six
     /// phases it is invisible: r4133 loops the element's raw `NPhases` past its
