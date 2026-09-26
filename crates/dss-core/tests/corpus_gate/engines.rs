@@ -1660,11 +1660,17 @@ mod di_sidecar_tests {
     /// VENDORED deck, where the runner reads it back — never one keyed by the
     /// copy, which the runner would not read (so a stale sidecar a failed run
     /// kept for triage could be compared as this run's output).
+    ///
+    /// Its own fixture key: nextest runs every test in its own process, and
+    /// `only_a_request_that_asks_for_the_di_tree_is_given_a_sidecar` creates
+    /// `/corpus/x/master.dss`'s sidecar and asserts it exists, so a shared key
+    /// would let this rail's removal race that assert (RF-I00-01 settlement
+    /// audit SA-3).
     #[test]
     fn the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy() {
         let (copy, vendored) = (
-            "/scratch/0123/port/run/x/master.dss",
-            "/corpus/x/master.dss",
+            "/scratch/0123/port/run/keyed/master.dss",
+            "/corpus/keyed/master.dss",
         );
         let req = json!({"cmd": "run", "case_path": copy, "sidecar_key": vendored, "di": true});
         for channel in [CAPI_TAG, "r4133"] {

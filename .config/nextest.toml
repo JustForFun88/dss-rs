@@ -19,6 +19,13 @@
 # part-1 gap of RF-I00-01, fixed at the writer, never here. No default-filter
 # and no setup scripts either: every test of the workspace runs, with the
 # environment the gate gives it.
+#
+# Nothing else either: the allowlist rail
+# the_nextest_profile_never_retries_and_serializes_nothing
+# (crates/dss-core/tests/oracle_parity_cfg_gate.rs) allows exactly the four
+# settings below, one line each, and reds on any other line (an override,
+# run-extra-args, even a JUnit table), however TOML spells it. A new setting
+# lands together with that rail.
 
 nextest-version = { required = "0.9.146" }
 

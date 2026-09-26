@@ -20,11 +20,11 @@ cargo test --workspace --doc --features dss-core/oracle-parity
 Commands 4-5 run the pinned **`cargo-nextest` 0.9.146** (RETRO_FIXES RF-I00-01;
 `.config/nextest.toml` refuses an older runner; install it with `cargo install
 cargo-nextest --version 0.9.146 --locked` or the prebuilt from `get.nexte.st`):
-every test in its own process, `retries = 0`, `fail-fast = false`, no test
-groups, no `default-filter` and no setup scripts - pinned by
-`the_nextest_profile_never_retries_and_serializes_nothing`
-(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`, every TOML spelling: inline,
-sub-table, dotted key) and, for what no config text shows (`NEXTEST_RETRIES`,
+every test in its own process, `retries = 0`, `fail-fast = false`, a report-only `slow-timeout`
+and nothing else (no override, test group, `default-filter`, `run-extra-args` or setup script) -
+pinned by the allowlist rail `the_nextest_profile_never_retries_and_serializes_nothing`
+(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`: those four settings, one line each, and any
+other line reds it however TOML spells it) and, for what no config text shows (`NEXTEST_RETRIES`,
 `--retries`, a profile picked on the command line), at run time by
 `this_run_gives_every_test_one_attempt_and_no_test_group`. nextest does not run
 doctests, hence commands 6-7. The RETRO_FIXES gate and CI run commands 4-5
@@ -2075,7 +2075,7 @@ is removed while it still runs, mutation-checked). New refusal rails:
 `a_parent_reference_resolves_inside_the_copy`, `a_relative_reference_that_leaves_the_corpus_is_listed`,
 `the_external_closures_are_the_pinned_population`,
 `the_dss_epri_ieee13_copy_carries_the_computed_closure` and
-`engines::tests::the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy`. The registry
+`engines::di_sidecar_tests::the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy`. The registry
 `oracle_parity_cfg_gate.rs::the_rf_i00_01_rails_the_docs_name_exist_exactly_once` reds on a
 rename or deletion of any of them.
 
