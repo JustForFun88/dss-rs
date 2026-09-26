@@ -19188,3 +19188,9 @@ mod reliability_tests {
 /// more merge-hostile edit than this placement.
 #[cfg(windows)]
 pub mod di;
+
+/// `RETRO_FIXES_PLAN.md` RF-I00-01: the per-run scratch copies every test
+/// binary that runs a vendored deck compiles instead of `tests/corpus/` (the
+/// corpus gate re-exports it as `crate::scratch`). Declared last for the
+/// reason [`di`] is.
+pub mod scratch;

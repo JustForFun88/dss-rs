@@ -6,8 +6,12 @@
 //! `2*(NumNodes+1)` shape. Shared by the `epri-worker --smoke` mode and the
 //! `smoke_*` integration `#[test]` so `cargo test --workspace` exercises it with
 //! no oracle installed.
+//!
+//! The DLL compiles a fresh scratch copy of the vendored IEEE13 deck
+//! ([`Ieee13Copy`], RETRO_FIXES RF-I00-01), never `tests/corpus/` itself.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::dss::{Engine, EngineError};
 
@@ -45,11 +49,151 @@ pub fn expect_version() -> Result<String, String> {
         .ok_or_else(|| format!("r4133.expect_version missing/empty in {}", p.display()))
 }
 
-fn ieee13_case() -> String {
-    workspace_root()
-        .join("tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss")
-        .to_string_lossy()
-        .replace('\\', "/")
+/// The vendored IEEE13 deck, below the workspace root.
+const IEEE13_REL: &str =
+    "tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss";
+
+/// A fresh scratch copy of the vendored IEEE13 deck for one r4133 run
+/// (RETRO_FIXES RF-I00-01): the DLL compiles the COPY, never `tests/corpus/`.
+///
+/// The closure is the `13Bus` folder plus the files directly in
+/// `IEEETestCases/` (the folder's own `IEEELineCodes.DSS` redirects
+/// `../IEEELineCodes.DSS`) — what `closure_of` in
+/// `crates/dss-core/tests/harness/scratch.rs` computes for this deck. The
+/// engine leaves the process working directory in the copy's deck folder after
+/// a compile (r4133 `Executive/ExecHelper.pas:752-754`), and Windows refuses to
+/// remove a process's working directory, so the removal first steps back to
+/// the directory the copy was made from, then runs within the shared budget
+/// ([`crate::guard::remove_dir_within_budget`]).
+pub struct Ieee13Copy {
+    run_dir: PathBuf,
+    deck: String,
+    home: PathBuf,
+    removed: bool,
+}
+
+impl Ieee13Copy {
+    /// Copy the closure into a fresh `<temp>/dss-epri-scratch/ieee13-<nonce>/`,
+    /// which must not exist yet.
+    pub fn new() -> Result<Ieee13Copy, String> {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let home = std::env::current_dir()
+            .map_err(|e| format!("IEEE13 scratch copy: no working directory: {e}"))?;
+        let master = workspace_root().join(IEEE13_REL);
+        let bus13 = master.parent().expect("the deck has a folder");
+        let cases = bus13.parent().expect("13Bus has a parent");
+        let parent = std::env::temp_dir().join("dss-epri-scratch");
+        std::fs::create_dir_all(&parent).map_err(|e| {
+            format!(
+                "IEEE13 scratch copy: cannot create {}: {e}",
+                parent.display()
+            )
+        })?;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let run_dir = parent.join(format!(
+            "ieee13-{}-{nanos:x}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&run_dir).map_err(|e| {
+            format!(
+                "IEEE13 scratch copy: the run directory {} could not be created fresh: {e}",
+                run_dir.display()
+            )
+        })?;
+        let deck = run_dir.join("IEEETestCases/13Bus/IEEE13Nodeckt.dss");
+        // From here on an early `Err` drops `copy`, which removes the partial copy.
+        let copy = Ieee13Copy {
+            deck: deck.to_string_lossy().replace('\\', "/"),
+            run_dir,
+            home,
+            removed: false,
+        };
+        let to_cases = copy.run_dir.join("IEEETestCases");
+        copy_dir(cases, &to_cases, false)?;
+        copy_dir(bus13, &to_cases.join("13Bus"), true)?;
+        if !deck.is_file() {
+            return Err(format!("IEEE13 master missing: {}", master.display()));
+        }
+        Ok(copy)
+    }
+
+    /// The deck path the engine compiles (forward-slashed).
+    pub fn deck(&self) -> &str {
+        &self.deck
+    }
+
+    /// Step back to the directory the copy was made from, then remove the copy
+    /// within the shared budget; `Err` names the producer, the vendored deck,
+    /// the copy and what is still there.
+    pub fn remove(mut self) -> Result<(), String> {
+        self.removed = true;
+        self.remove_now()
+    }
+
+    fn remove_now(&self) -> Result<(), String> {
+        std::env::set_current_dir(&self.home).map_err(|e| {
+            format!(
+                "IEEE13 scratch copy: cannot step back to {}: {e}",
+                self.home.display()
+            )
+        })?;
+        crate::guard::remove_dir_within_budget(&self.run_dir).map_err(|left| {
+            format!(
+                "the `r4133` producer's scratch copy {} of {IEEE13_REL} survived {} \
+                 removal attempts {:?} apart; still there: {}. A handle the engine \
+                 still holds blocks the removal — fix the producer, never widen the \
+                 budget (RETRO_FIXES RF-I00-01).",
+                self.run_dir.display(),
+                crate::guard::COPY_REMOVE_ATTEMPTS + 1,
+                crate::guard::COPY_REMOVE_PAUSE,
+                left.join(", ")
+            )
+        })
+    }
+}
+
+impl Drop for Ieee13Copy {
+    /// An early exit still removes the copy, quietly: the run already fails
+    /// for its own reason.
+    fn drop(&mut self) {
+        if self.removed {
+            return;
+        }
+        if let Err(e) = self.remove_now() {
+            eprintln!("{e}");
+        }
+    }
+}
+
+/// Copy `src`'s regular files (and, when `recursive`, its subtrees) into `dst`.
+fn copy_dir(src: &Path, dst: &Path, recursive: bool) -> Result<(), String> {
+    std::fs::create_dir_all(dst)
+        .map_err(|e| format!("IEEE13 scratch copy: cannot create {}: {e}", dst.display()))?;
+    let rd = std::fs::read_dir(src)
+        .map_err(|e| format!("IEEE13 scratch copy: cannot list {}: {e}", src.display()))?;
+    for entry in rd {
+        let entry =
+            entry.map_err(|e| format!("IEEE13 scratch copy: listing {}: {e}", src.display()))?;
+        let to = dst.join(entry.file_name());
+        match entry.file_type() {
+            Ok(t) if t.is_dir() && recursive => copy_dir(&entry.path(), &to, true)?,
+            Ok(t) if t.is_file() => {
+                std::fs::copy(entry.path(), &to).map_err(|e| {
+                    format!(
+                        "IEEE13 scratch copy: cannot copy {} -> {}: {e}",
+                        entry.path().display(),
+                        to.display()
+                    )
+                })?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// The printable smoke report (lines committed to STATUS).
@@ -77,13 +221,12 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
     }
     lines.push(format!("version OK: {ver}"));
 
-    // 2. IEEE13 compile + solve converges.
-    let ieee13 = ieee13_case();
-    if !PathBuf::from(&ieee13).is_file() {
-        return Err(format!("IEEE13 master missing: {ieee13}"));
-    }
+    // 2. IEEE13 compile + solve converges — on its own scratch copy (RF-I00-01).
+    let copy = Ieee13Copy::new()?;
     engine.clear().map_err(|e| e.to_string())?;
-    engine.compile(&ieee13, false).map_err(|e| e.to_string())?;
+    engine
+        .compile(copy.deck(), false)
+        .map_err(|e| e.to_string())?;
     engine.solve(false).map_err(|e| e.to_string())?;
     if !engine.converged() {
         return Err("IEEE13 did not converge".to_string());
@@ -154,5 +297,9 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
         dump.len()
     ));
 
+    // The engine goes first, then its copy: a copy that survives the budget
+    // fails the smoke naming the producer.
+    drop(engine);
+    copy.remove()?;
     Ok(SmokeReport { lines })
 }
