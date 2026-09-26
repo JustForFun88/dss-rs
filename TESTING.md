@@ -463,7 +463,7 @@ checkpoint members: `aggregates` (`losses_w`, the one W/var member, plus
 (`mode`, `hour`, `year`, `control_iterations`, `total_iterations`,
 `most_iterations_done`, `control_actions_done`, `system_y_changed`, `seconds`,
 `load_mult`). `harness::aggregates::compare_aggregates`
-(`crates/dss-core/tests/harness/aggregates.rs:251`) and its
+(`crates/dss-test-harness/src/harness/aggregates.rs:251`) and its
 `compare_solution_scalars` sibling run on **every** live case of every gating
 channel; because there is no flag to name, the surface refuses an absent capture
 with its own assert naming surface, channel tag and case rather than with
@@ -549,7 +549,7 @@ eleventh flag cannot own the fingerprint table and silently miss the refusal.
 
 **And a wired flag may not compare nothing.** Every flag-gated comparator calls
 `harness::capture_guard::require_capture`
-(`crates/dss-core/tests/harness/capture_guard.rs:68`) — or `require_capture_opt`
+(`crates/dss-test-harness/src/harness/capture_guard.rs:68`) — or `require_capture_opt`
 (`capture_guard.rs:86`) in place of an `unwrap` — **before** it compares: if the
 flag is on for a (case, channel) and that channel's capture for the surface is
 absent or empty, the case **fails**, naming the flag, the channel tag and the
@@ -871,7 +871,7 @@ knowing:
   `DDLL/DCktElement.pas:651`, capi `CAPI/CAPI_Alt.pas:466`) is a
   capture-boundary encoding applied at exactly one site, this comparator.
 * **`PhaseLosses` is the first channel to JOIN `LANE_SKIP_ELEM_POWERS`**
-  (`crates/dss-core/tests/harness/lane.rs:145`), where G1.3a's three polar
+  (`crates/dss-test-harness/src/harness/lane.rs:145`), where G1.3a's three polar
   channels did not: `GetPhaseLosses` opens with the same cache-aware
   `ComputeIterminal` as `Get_Powers`/`Get_Losses`, so on the two `newton*` decks
   no oracle reports it at the converged `NodeV` (CLAUDE.md bug 5 / G2.3). The

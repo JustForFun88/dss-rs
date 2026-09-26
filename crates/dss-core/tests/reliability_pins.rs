@@ -1372,14 +1372,14 @@ const RELIABILITY_PIN_SOURCES: &[&str] = &[
     // per-column non-vacuity of `compare_bus_reliability` and the fail-loud
     // decode of a non-finite cell are pinned where the comparator and the caps
     // live, so the docs that name them are covered by the same guard.
-    "crates/dss-core/tests/harness/mod.rs",
+    "crates/dss-test-harness/src/harness/mod.rs",
 ];
 
 /// Every `pin: "…"` of `harness::RELIABILITY_SKIP_FIELDS`, read out of the
-/// table's own source (the harness is a `mod` of other test binaries, not a
-/// library this one links, so the table is reached textually).
+/// table's own source in the `dss-test-harness` crate (this binary does not
+/// import the harness, so the table is reached textually).
 fn reliability_skip_pins() -> Vec<String> {
-    let src = read_source("crates/dss-core/tests/harness/mod.rs");
+    let src = read_source("crates/dss-test-harness/src/harness/mod.rs");
     let start = src
         .find("pub const RELIABILITY_SKIP_FIELDS: &[ReliabilitySkipRow] = &[")
         .expect("harness/mod.rs has no RELIABILITY_SKIP_FIELDS table");
@@ -2480,7 +2480,10 @@ fn bus_int_duration_stays_in_the_meters_zone_on_the_live_population() {
 #[test]
 fn every_bus_reliability_column_is_read_by_some_transport() {
     let view = struct_field_names("crates/dss-core/src/exec/view.rs", "BusReliabilityView");
-    let wire = struct_field_names("crates/dss-core/tests/harness/mod.rs", "BusReliabilityCap");
+    let wire = struct_field_names(
+        "crates/dss-test-harness/src/harness/mod.rs",
+        "BusReliabilityCap",
+    );
     let mut want: Vec<String> = vec!["name".to_string()];
     want.extend(BUS_RELIABILITY_COLUMNS.iter().map(|s| s.to_string()));
     want.sort();

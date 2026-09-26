@@ -23,7 +23,7 @@
 //! (`run_rust_capture`/`compare_capture` + abort/pending + CorpusGuard),
 //! `scheduler` (task grouping + thread pool + contamination-proof modes).
 
-mod harness;
+use dss_test_harness::harness;
 
 // The gate's own module tree lives under `tests/corpus_gate/` (a subdirectory,
 // so cargo does not pick the pieces up as separate integration-test binaries);

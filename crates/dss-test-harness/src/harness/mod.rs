@@ -11102,7 +11102,7 @@ pub const PD_SKIP_FIELDS: &[PdSkipRow] = &[
 /// The file, relative to `crates/dss-core`, that must define every
 /// [`PdSkipRow::pin`] — checked by
 /// `pd_elements_tests::every_pd_skip_row_pin_is_a_test_that_exists`.
-const PD_PINS_FILE: &str = "tests/pd_elements_pins.rs";
+const PD_PINS_FILE: &str = "../dss-core/tests/pd_elements_pins.rs";
 
 /// Per-row visit counter, indexed exactly like [`PD_SKIP_FIELDS`]: cells the
 /// row was consulted about.

@@ -241,6 +241,22 @@ fn oracle_parity_cfg_appears_only_in_compat_modules_and_tests() {
 /// exactly one such reader, and it is the reason the allowance exists:
 /// `lane_dump` stamps the lane it was built in into its dump header, which is
 /// how the differential job knows it compared two *different* lanes.
+/// The workspace's test-only library crates, by repo-relative path prefix:
+/// never linked into the shipped engine (`publish = false`, a dev-dependency
+/// only), so a read of the lane constant there is test code wherever in the
+/// crate it sits. `dss-test-harness` is the golden harness moved out of
+/// `crates/dss-core/tests/harness/` by RETRO_FIXES RF-I00-04; its
+/// `lane::PARITY` IS `compat::ORACLE_PARITY` (`harness/lane.rs`). The cfg
+/// string is deliberately NOT sanctioned there ([`is_sanctioned`] is
+/// path-based and the crate has no `tests` component): the crate declares no
+/// lane feature, so a stray lane cfg in it would read `false` in the parity
+/// lane.
+const TEST_ONLY_CRATES: &[&str] = &["crates/dss-test-harness/"];
+
+fn is_test_only_crate(rel: &str) -> bool {
+    TEST_ONLY_CRATES.iter().any(|c| rel.starts_with(c))
+}
+
 #[test]
 fn the_lane_constant_is_read_only_by_compat_modules_and_tests() {
     let root = repo_root();
@@ -264,7 +280,7 @@ fn the_lane_constant_is_read_only_by_compat_modules_and_tests() {
             .unwrap_or(&path)
             .components()
             .any(|c| c.as_os_str().eq_ignore_ascii_case("examples"));
-        if is_sanctioned(&path, &root) || in_examples {
+        if is_sanctioned(&path, &root) || in_examples || is_test_only_crate(&rel) {
             sanctioned += 1;
             continue;
         }
@@ -934,8 +950,8 @@ fn names_token(text: &str, token: &str) -> bool {
 ///
 /// The accepted forms are a read of the lane constant `ORACLE_PARITY` or of the
 /// harness alias `lane::PARITY` — legitimate because `harness/lane.rs:78`
-/// defines `PARITY` as `cfg!(feature = "oracle-parity")` and asserts it equals
-/// `dss_core::compat::ORACLE_PARITY` (`lane.rs:795-796`), so reading it *is*
+/// defines `PARITY` as `dss_core::compat::ORACLE_PARITY` itself (the harness
+/// crate has no lane feature of its own, RF-I00-04), so reading it *is*
 /// reading the lane. Deriving the expectation from the row's **own** alias was
 /// accepted until F-settle W4 and is now rejected: engine and test then read
 /// the same constant, so the pin asserts "the engine agrees with the
@@ -981,7 +997,7 @@ fn names_token(text: &str, token: &str) -> bool {
 /// that file's only remaining read; `skip_prop`'s, which was the *first* of its
 /// two, went unconditional in G2.2b);
 /// `harness/lane.rs`, which uses the bare name because it declares it, names
-/// `ORACLE_PARITY` in that same assert and is credited by the first arm.
+/// `ORACLE_PARITY` in that same declaration and is credited by the first arm.
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
     names_token(text, "ORACLE_PARITY") || names_token(text, "lane::PARITY")
 }
@@ -1790,7 +1806,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // half (`exec/command.rs`: `.base_frequency = fundamental;` with no
         // `is_monitor` arm at all) is carried by the same pin.
         Evidence::Exclusion(
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
             &["\n    let lane_skipped = LANE_SKIP_PROPS"],
         ),
         Some((
@@ -2078,7 +2094,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // cache behind — so a re-split engine fails the pin whichever way its
         // branch is written.
         Evidence::Exclusion(
-            "crates/dss-core/tests/harness/lane.rs",
+            "crates/dss-test-harness/src/harness/lane.rs",
             &["\n    if LANE_SKIP_ELEM_POWERS.contains(&label) {"],
         ),
         Some((
@@ -2435,7 +2451,7 @@ fn balanced_block(text: &str, open: usize) -> Option<&str> {
 ///
 /// Three, and the third is why this is a function: the engine constant
 /// `ORACLE_PARITY`, the cfg itself, and the **harness** constant
-/// `harness::lane::PARITY` (`lane.rs:78`, `cfg!(feature = …)`), which is how the
+/// `harness::lane::PARITY` (`lane.rs:78`, `compat::ORACLE_PARITY`), which is how the
 /// integration tests that hold most of the exclusion-flavoured pins —
 /// `golden_reports.rs` above all — read the lane. A check that knew only the
 /// first would wave through exactly the pins WP-G2's largest sub-steps produce.
@@ -3506,7 +3522,7 @@ fn resolve_cited(by_base: &BTreeMap<String, Vec<String>>, cited: &str, base: &st
 ///
 /// Resolution follows the reader's own rule: a path is matched against the tree
 /// by suffix, and a shortened repeat (`mod.rs:3281` after the section spelled
-/// `crates/dss-core/tests/harness/mod.rs:3243`) is disambiguated by the nearest
+/// `crates/dss-test-harness/src/harness/mod.rs:3243`) is disambiguated by the nearest
 /// fully-qualified mention **earlier in the same document**. A citation that
 /// resolves to neither fails rather than being skipped — an ambiguous citation
 /// is a doc defect, not an exemption.
@@ -4031,7 +4047,7 @@ fn every_pin_the_g10_record_names_exists_and_is_cited() {
         ),
         (
             "an_empty_capture_fails",
-            "crates/dss-core/tests/harness/capture_guard.rs",
+            "crates/dss-test-harness/src/harness/capture_guard.rs",
         ),
     ];
     let root = repo_root();
@@ -4194,63 +4210,63 @@ fn every_pin_the_g13a_record_names_exists_and_is_cited() {
         // Comparator floors (`harness::derived_polar_floors`).
         (
             "the_angle_comparison_is_wrap_aware",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_sign_flipped_angle_still_fails_the_band",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_angle_band_never_exceeds_one_radian_in_degrees",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_residual_floor_is_the_sum_of_the_conductor_bands",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_residual_above_the_conductor_sum_band_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_inherited_current_band_is_a_disc_not_a_rectangle",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_rectangles_diagonal_reach_fails_the_disc_band",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_angle_band_is_the_conservative_linearization_of_its_exact_image",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_zero_terminal_element_is_accepted_when_both_sides_are_empty",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_zero_terminal_element_with_an_oracle_payload_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_capi_default_result_sentinel_reads_as_no_payload",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_sentinel_shaped_but_non_zero_oracle_payload_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_zero_terminal_element_with_a_port_payload_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "conductor_slots_without_terminals_still_fail_the_shape_assert",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "terminals_without_conductor_slots_still_fail_the_length_asserts",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         // Ledger and scheduler.
         (
@@ -4279,7 +4295,7 @@ fn every_pin_the_g13a_record_names_exists_and_is_cited() {
         ),
         (
             "harness::derived_polar_floors",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
             15,
         ),
     ];
@@ -4409,79 +4425,79 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
         // Comparator rules (`harness::element_extras_pins`).
         (
             "the_measured_fixture_element_compares_clean",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_no_meter_sentinel_is_normalized_on_both_channels",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_meter_named_zero_reds_instead_of_passing",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_meter_name_is_compared_without_case_folding",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_port_that_lost_the_meter_name_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_extras_comparator_requires_the_capture_to_carry_them",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_counts_are_compared_exactly",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_counts_must_explain_the_oracle_currents_length",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "the_node_order_is_compared_slot_by_slot",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_short_oracle_node_order_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_short_port_node_order_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_zero_terminal_element_has_no_node_order_on_either_side",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_zero_terminal_element_with_an_oracle_node_order_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_zero_terminal_element_with_a_port_node_order_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_disabled_element_keeps_its_port_node_order_while_the_oracle_stays_silent",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "a_disabled_element_with_an_oracle_node_order_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "enabled_is_compared_by_this_comparator_too",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         (
             "an_element_missing_from_the_snapshot_fails",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
         ),
         // The corpus census behind the no-meter sentinel normalization.
         (
@@ -4527,7 +4543,7 @@ fn every_pin_the_g13d1_record_names_exists_and_is_cited() {
         ),
         (
             "harness::element_extras_pins",
-            "crates/dss-core/tests/harness/mod.rs",
+            "crates/dss-test-harness/src/harness/mod.rs",
             19,
         ),
         (
@@ -4867,7 +4883,7 @@ fn the_g1_8_pins_the_docs_cite_exist_exactly_once() {
 #[test]
 fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
     const ENGINE: &str = "crates/dss-core/src/exec/tests/element_extras.rs";
-    const HARNESS: &str = "crates/dss-core/tests/harness/mod.rs";
+    const HARNESS: &str = "crates/dss-test-harness/src/harness/mod.rs";
     const LEDGER: &str = "crates/dss-core/tests/corpus_gate/ledger.rs";
     const G13D2_PINS: &[(&str, &str)] = &[
         // Engine — `PhaseLosses` (`crate::exec::tests::element_extras`).
@@ -5072,7 +5088,7 @@ fn every_pin_the_g13d2_record_names_exists_and_is_cited() {
 #[test]
 fn every_pin_the_g13b_record_names_exists_and_is_cited() {
     const ENGINE: &str = "crates/dss-core/src/exec/tests/derived_seq.rs";
-    const HARNESS: &str = "crates/dss-core/tests/harness/mod.rs";
+    const HARNESS: &str = "crates/dss-test-harness/src/harness/mod.rs";
     const LEDGER: &str = "crates/dss-core/tests/corpus_gate/ledger.rs";
     const G13B_PINS: &[(&str, &str)] = &[
         // Engine — the accessor's own three arms (`crate::exec::tests::derived_seq`).
@@ -5291,7 +5307,7 @@ fn every_pin_the_g13b_record_names_exists_and_is_cited() {
 /// one definition; the comparator [`compare_bus_distances`] is in the list
 /// because the three documents describe the surface BY it.
 const G1_4B_PINS: [(&str, usize); 15] = [
-    // the comparator and its committed offline drives (`tests/harness/mod.rs`)
+    // the comparator and its committed offline drives (`harness/mod.rs`)
     ("compare_bus_distances", 1),
     ("compare_bus_distances_accepts_the_engines_own_surface", 1),
     // the two both-numbers pins (`tests/corpus_gate.rs`)
@@ -5392,7 +5408,7 @@ fn the_g1_4b_pins_the_docs_cite_exist_exactly_once() {
 fn every_pin_the_g13c_record_names_exists_and_is_cited() {
     const ENGINE: &str = "crates/dss-core/src/exec/tests/derived_totals.rs";
     const NEWTON: &str = "crates/dss-core/src/exec/tests/newton.rs";
-    const HARNESS: &str = "crates/dss-core/tests/harness/mod.rs";
+    const HARNESS: &str = "crates/dss-test-harness/src/harness/mod.rs";
     const LEDGER: &str = "crates/dss-core/tests/corpus_gate/ledger.rs";
     const ORDER: &str = "crates/dss-core/tests/capture_order.rs";
     const G13C_PINS: &[(&str, &str)] = &[
@@ -5707,7 +5723,7 @@ const G1_10_PINS: [(&str, usize); 135] = [
     ("the_harmonics_scratch_file_is_declined_on_the_nev_deck", 1),
     ("the_two_oracle_spellings_of_auto1bus_fold_to_one_member", 1),
     // the comparator and the port-side probe
-    // (`crates/dss-core/tests/harness/run_files.rs`)
+    // (`crates/dss-test-harness/src/harness/run_files.rs`)
     ("compare_run_files", 1),
     ("finish_and_clean", 1),
     ("scratch_decline_table", 1),
@@ -5857,7 +5873,7 @@ const G1_10_PINS: [(&str, usize); 135] = [
     ),
     // The surface itself: the cell comparator, the sidecar transport and the
     // shared selection/decode the three producers run
-    // (`tests/harness/{run_file_contents,run_files}.rs`,
+    // (`harness/{run_file_contents,run_files}.rs`,
     // `crates/dss-epri/src/guard.rs`, `tests/corpus_gate/scheduler.rs`,
     // `tests/capture_order.rs`).
     // The audit settlement (2026-09-12): the two producers' value pins — the
@@ -5928,7 +5944,7 @@ const G1_10_PINS: [(&str, usize); 135] = [
         1,
     ),
     // the comparator, its class table and the census
-    // (`crates/dss-core/tests/harness/di.rs`)
+    // (`crates/dss-test-harness/src/harness/di.rs`)
     ("compare_di", 1),
     ("classify_member", 1),
     ("di_census", 1),
@@ -6139,10 +6155,10 @@ fn the_g1_10_pins_the_docs_cite_exist_exactly_once() {
 /// the surface, and losing one silently would leave the prose describing a gate
 /// that no longer exists.
 const G1_4D_PINS: [(&str, usize); 21] = [
-    // the comparator (`tests/harness/mod.rs`)
+    // the comparator (`harness/mod.rs`)
     ("compare_bus_at_bus", 1),
     // the completeness direction the channel assertions cannot state, added by
-    // the G1.4d audit settlement (`tests/harness/mod.rs`)
+    // the G1.4d audit settlement (`harness/mod.rs`)
     ("assert_port_at_bus_is_s4", 1),
     // the two both-numbers pins on `modes:makeposseq/makeposseq_xfmr.dss`
     // (`tests/corpus_gate.rs`)
@@ -6183,7 +6199,7 @@ const G1_4D_PINS: [(&str, usize); 21] = [
         1,
     ),
     ("bus_elements_answers_one_bus_and_agrees_with_the_sweep", 1),
-    // the comparator's own offline drives (`tests/harness/mod.rs`)
+    // the comparator's own offline drives (`harness/mod.rs`)
     (
         "compare_bus_at_bus_accepts_each_channels_own_walk_and_counts_the_divergence",
         1,

@@ -37,13 +37,21 @@ fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
 }
 
+/// Crates under `crates/` whose `src/` is test code by construction and so
+/// outside every engine metric: `dss-test-harness` is the golden harness of
+/// the dss-core integration tests (moved out of `crates/dss-core/tests/
+/// harness/` by RETRO_FIXES RF-I00-04; `publish = false`, a dev-dependency
+/// only), whose seam counters and panic silencers are `thread_local!`s.
+const TEST_ONLY_CRATES: &[&str] = &["dss-test-harness"];
+
 /// Every `.rs` file under `crates/<crate>/src/`, for the crates named by
 /// `only` (empty = all of them).
 ///
 /// Deliberately `src` only: the metrics are about the **engine**, and test
 /// code legitimately builds the shapes they ban (a `#[cfg(test)]` sink may hold
 /// an `Rc<RefCell<_>>` if that is what a probe needs — `plot/tests.rs` explains
-/// why the real one no longer does).
+/// why the real one no longer does). For the same reason the test-only
+/// crates of [`TEST_ONLY_CRATES`] are never walked.
 fn engine_sources(root: &Path, only: &[&str]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let crates = root.join("crates");
@@ -52,7 +60,9 @@ fn engine_sources(root: &Path, only: &[&str]) -> Vec<PathBuf> {
         .flatten()
     {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !only.is_empty() && !only.contains(&name.as_str()) {
+        if TEST_ONLY_CRATES.contains(&name.as_str())
+            || (!only.is_empty() && !only.contains(&name.as_str()))
+        {
             continue;
         }
         let src = entry.path().join("src");
