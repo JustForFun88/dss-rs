@@ -5756,10 +5756,7 @@ const G1_10_PINS: [(&str, usize); 135] = [
         "corpus_guard_does_not_serialize_two_different_case_directories",
         1,
     ),
-    (
-        "two_manifest_rows_in_one_case_directory_land_in_one_task",
-        1,
-    ),
+    ("every_case_is_its_own_task_heaviest_first", 1),
     (
         "a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_respawn",
         1,

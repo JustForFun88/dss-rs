@@ -1021,9 +1021,9 @@ byte-for-byte on IEEE13, two harmonics decks and the two user-model decks.
 **The `PDElements` walk (G1.6b, 2026-09-04).** `compare_pdelements` turns on the
 per-PD-element walk fastdss compares wholesale — the **13** `IPDElements._columns`
 of `DSS-Python@origin/fastdss` plus `parent_name` — on every live non-`large`
-case (`force_pdelements`, `crates/dss-core/tests/corpus_gate/scheduler.rs:335`;
+case (`force_pdelements`, `crates/dss-core/tests/corpus_gate/scheduler.rs:323`;
 the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
-`crates/dss-core/tests/corpus_gate/scheduler.rs:356`). The port side is
+`crates/dss-core/tests/corpus_gate/scheduler.rs:344`). The port side is
 `Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:2561`), a `&self` read of
 `CktElementData`; the comparator is `harness::compare_pd_elements`
 (`crates/dss-core/tests/harness/mod.rs:11229`), which asserts the walk first
@@ -1090,11 +1090,11 @@ knowing:
   comparator asserts `Σ nodes == len(AllBusVmagPu)` so the first two cannot
   drift apart silently.
 * **No manifest case sets the flag; the scheduler forces it.** `force_bus`
-  (`crates/dss-core/tests/corpus_gate/scheduler.rs:609`) turns the surface on for
+  (`crates/dss-core/tests/corpus_gate/scheduler.rs:597`) turns the surface on for
   every live case whose `kind` does not start with `large`, exactly like
   `force_properties`. `population.lock.json` fingerprints the **manifest** flag,
   so it cannot see that rule at all: the guard is the pinned
-  `FORCED_BUS_POPULATION` (`scheduler.rs:626`) plus the oracle-free
+  `FORCED_BUS_POPULATION` (`scheduler.rs:614`) plus the oracle-free
   re-derivation `the_bus_forcing_rule_is_every_live_non_large_case`.
 * **The bands add no tolerance constant.** Each one is the exact image of the
   already-calibrated node-voltage band over the same `Solution.NodeV`
@@ -1298,9 +1298,9 @@ knowing:
   cases are printed beside the causing entry exactly as for `compare_bus`.
 
 Like `compare_bus`, no *vendored* case sets the flag: `force_zsc`
-(`crates/dss-core/tests/corpus_gate/scheduler.rs:709`) turns it on for every
+(`crates/dss-core/tests/corpus_gate/scheduler.rs:697`) turns it on for every
 live non-`large*` case, guarded by the pinned `FORCED_ZSC_POPULATION`
-(`scheduler.rs:723`) and its oracle-free re-derivation. The one hand-set row is
+(`scheduler.rs:711`) and its oracle-free re-derivation. The one hand-set row is
 the new `modes/faultstudy` sub-family's `faultstudy_micro.dss` — the corpus's
 only short-circuit deck at the `micro` band (the four vendored ones —
 `IEEE123Master-SC`, `ieee34Mod2_SC_Case_II`, `Run_NEV` and `ieee37_SC_Currents`,
@@ -2088,11 +2088,13 @@ compiles `ad_sweep.json` decks **in place**, so three `8500-Node` decks execute 
 `Show`/`Export` lines during `compile`, before `datapath` is re-pointed at a scratch dir. Pinned by
 `runner::corpus_guard_serializes_two_threads_in_one_case_directory`,
 `runner::corpus_guard_does_not_serialize_two_different_case_directories` (per directory, never a
-global corpus lock) and `scheduler::two_manifest_rows_in_one_case_directory_land_in_one_task`.
+global corpus lock); the scheduler half is `scheduler::every_case_is_its_own_task_heaviest_first`
+since RETRO_FIXES RF-I00-01 part 1 made a task one case, each producer in its own scratch copy.
 Since **D35(3)** *every* producer in that directory takes the claim, the two cross-transport
 `#[test]`s included: `the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case` and its
 short-circuit twin drive both oracle transports over one corpus deck and were the last guard-less
-producers — each now opens with a `CorpusGuard` (`corpus_gate.rs:1265`, `:1565`). Measured after the
+producers — each opened with a `CorpusGuard` until RF-I00-01 part 1 gave each transport its own
+`scratch::in_copy` (`corpus_gate.rs:1264`, `:1564`). Measured after the
 change: the intermittent single-case capi red ("You must create a new circuit object first") did
 not recur in four consecutive full default-lane drives — it did recur once on 2026-09-06, on a
 parity drive taken while three other lanes were building on the same machine (CPU at 100 %), and
@@ -2901,12 +2903,12 @@ population, and `FORCED_BUS_POPULATION` = (443, 312, 87, 44) is re-derived by
 `the_bus_forcing_rule_is_every_live_non_large_case` on every run — the manifests
 set the flag on no case (`bus=0` on all 526), so this const is the only guard
 the lock cannot supply. G1.3d(i) added the fourth:
-`force_element_extras` (`crates/dss-core/tests/corpus_gate/scheduler.rs:203`)
+`force_element_extras` (`crates/dss-core/tests/corpus_gate/scheduler.rs:191`)
 turns `compare_element_extras` on for every live case except `kind=large*` on the
 `solvable_now` arm — no opt-in table, because fastdss's `KNOWN_COM_DIFF` carries
 no row for any of the five fields — and `FORCED_ELEMENT_EXTRAS_POPULATION` =
-(443, 312, 87, 44) (`scheduler.rs:231`) is re-derived on every run by
-`the_element_extras_forcing_rule_is_every_live_non_large_case` (`:803`). It is the
+(443, 312, 87, 44) (`scheduler.rs:219`) is re-derived on every run by
+`the_element_extras_forcing_rule_is_every_live_non_large_case` (`:791`). It is the
 same 443 as `FORCED_PROPS_POPULATION`, which is the same rule without opt-ins.
 **Cost (G1.3d(i)):** the five extra reads per element bought **no measurable gate
 time** — `cargo test -p dss-core --test corpus_gate` measured 218.7 s / 179.3 s /
@@ -3401,8 +3403,8 @@ skipped on capi only, because their Rust tables are r4133-shaped
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
-(`corpus_gate/scheduler.rs:252`, `FORCED_PROPS_POPULATION` = (443, 312, 87, 44)
-at `:175`).
+(`corpus_gate/scheduler.rs:240`, `FORCED_PROPS_POPULATION` = (443, 312, 87, 44)
+at `:163`).
 
 **Where the rest of the machinery is documented:** the measurement knob
 `DSS_PROPS_CENSUS` and its `claims` disposition mode — §"Vendored r4133 property

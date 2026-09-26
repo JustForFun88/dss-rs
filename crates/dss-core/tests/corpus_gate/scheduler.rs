@@ -3044,8 +3044,10 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
                 let cc = uc.case.clone();
                 // RF-I00-01: the channel compiles its own fresh scratch copy;
                 // the request's sidecars stay keyed by the vendored deck.
-                let copy = ScratchCopy::new(&uc.abs, channel.tag());
-                let req = build_run_request(copy.deck(), &uc.abs, &cc);
+                let (copy, req) = match channel_copy(uc, channel.tag(), &cc) {
+                    Ok(v) => v,
+                    Err(e) => return fail_outcome(format!("[{ch:?}] {e}"), dump_val),
+                };
                 let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     channel.call(&req)
                 })) {
@@ -3090,6 +3092,23 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
             ok_outcome(dump_val)
         }
     }
+}
+
+/// The channel's fresh scratch copy of `uc` and the run request that points
+/// its producer at it (RF-I00-01), `catch_unwind`-isolated: a copy that cannot
+/// be made fails the case with the copy's own message, never the scheduler
+/// thread that runs it.
+fn channel_copy(
+    uc: &UnifiedCase,
+    tag: &'static str,
+    cc: &SolvableCase,
+) -> Result<(ScratchCopy, Value), String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let copy = ScratchCopy::new(&uc.abs, tag);
+        let req = build_run_request(copy.deck(), &uc.abs, cc);
+        (copy, req)
+    }))
+    .map_err(panic_msg)
 }
 
 /// The result of one gate run: outcomes (manifest order) + wall-clock + config.
@@ -3404,8 +3423,10 @@ fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
     // measurement must see exactly what the gate compares, on both channels. The
     // clone is what the compare closure below owns.
     let cc = uc.case.clone();
-    let copy = ScratchCopy::new(&uc.abs, channel.tag());
-    let req = build_run_request(copy.deck(), &uc.abs, &cc);
+    let (copy, req) = match channel_copy(uc, channel.tag(), &cc) {
+        Ok(v) => v,
+        Err(e) => return mk("error", e),
+    };
     let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req))) {
         Ok(r) => r,
         Err(e) => return mk("error", format!("fetch panic: {}", panic_msg(e))),
@@ -3615,8 +3636,10 @@ fn census_one(
     // The knob's whole point: the property capture is requested on BOTH channels,
     // regardless of the plan §1.1 masks the gate and the seeding path apply.
     cc.compare_all_properties = true;
-    let copy = ScratchCopy::new(&uc.abs, channel.tag());
-    let req = build_run_request(copy.deck(), &uc.abs, &cc);
+    let (copy, req) = match channel_copy(uc, channel.tag(), &cc) {
+        Ok(v) => v,
+        Err(e) => return oracle_error(e),
+    };
     let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req))) {
         Ok(r) => r,
         Err(e) => return oracle_error(format!("fetch panic: {}", panic_msg(e))),
@@ -3687,6 +3710,10 @@ fn census_one(
                 row
             }));
         }
+        // A copy the port still holds after its walk is a leak on the census
+        // as on the gate: the walk's RustError row names the producer.
+        drop(dss);
+        copy.finish();
         (rows, blind)
     }));
     match walked {
