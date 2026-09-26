@@ -3808,3 +3808,92 @@ record block written.
   before/after on an idle machine, three runs each.
 **Acceptance:** the six names unchanged, every pin unchanged in bytes, the lane wall reduction
 measured and recorded (record block).
+
+### RF-I00-04 — The golden harness as a workspace crate `dss-test-harness` (R12 follow-up of RF-I00-01)
+<!-- RF-STEP {"step": "RF-I00-04", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-I00-01", "RF-I00-03"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full (the seven commands, unchanged
+in text). **After:** RF-I00-01, RF-I00-03 (both edit driver files whose header this step rewrites).
+Scheduled by hand (§6) on one lane with no other workflow running, and landed BEFORE waves 1-2
+resume: every lane branch edits harness files, and a merge across the move relies on git's rename
+detection, which the byte-faithful move keeps at 100 % similarity. **Brief:** the measurement below
+(`tmp/retro_fix/state/RF-I00-01/settle2_gate_4.log` / `_5.log`, the wave-100 landing gate logs).
+**Files:** `Cargo.toml` (workspace members), `crates/dss-test-harness/Cargo.toml` and
+`crates/dss-test-harness/src/lib.rs` (new), `crates/dss-test-harness/src/harness/*.rs` (the 14 files
+moved from `crates/dss-core/tests/harness/`), `crates/dss-core/Cargo.toml`, the 27 drivers under
+`crates/dss-core/tests/*.rs` that declare `mod harness;` and `crates/dss-core/tests/props_r4133_pins.rs`,
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `TESTING.md` (in-step, R9: the harness map and
+the `tests/harness/` paths), `CLAUDE.md` (5 path mentions), `tests/TOLERANCE_NOTES.md` (5), the
+doc-comment path mentions in `crates/dss-core/src/compat.rs`, `exec/view.rs`, `exec/tests/*.rs`,
+`obj/props/prop_flags.rs`, `report/table.rs` and `crates/dss-epri/src/capture.rs`, `guard.rs`,
+`smoke.rs` (path prefix only, line-neutral), `docs/phase-records/retro-fixes.md`,
+`RETRO_FIXES_PLAN.md`.
+**Measured (2026-09-26, the reason for this step):** RF-I00-01 settle-2 gate, default lane, idle
+16-core machine: 13 709 test executions for 3 075 distinct names. `mod harness;` in 27 drivers
+textually includes the 14 harness files (36 891 lines) into 27 test crates, so each of the 409
+harness self-tests (the `#[cfg(test)]` modules of `harness/*.rs`) is compiled and run 27 times:
+11 043 executions, 10 634 of them redundant, ~1 039 core-s of the lane's ~2 665 core-s of test CPU
+(39 %, median 0.066 s per execution under nextest's process-per-test model). The harness is also
+compiled 27 times per lane by each of commands 2-5. Lane WALL on an idle machine is bounded by
+`corpus_gate_all_cases_match_engines` (210 s of 217 s), so the win is CPU and build time: it shows
+under load and in every build (the wave-100 landing gate on a cold `target/` spent 17 min 34 s of
+command 4's 1 291 s compiling the 77 test binaries and 222 s running them).
+**Parts:**
+1. `INFRA|6` - the crate. New workspace member `crates/dss-test-harness` (`publish = false`,
+   `#![forbid(unsafe_code)]`, edition 2024, no `[features]`, dependencies = exactly what the harness
+   imports today: `dss-core`, `dss-epri`, `num-complex`, `serde`, `serde_json`, each `.workspace`
+   or `path`). `src/lib.rs` holds the crate doc and `pub mod harness;` only, so the 14 files are
+   `git mv`ed byte-for-byte to `src/harness/` (SPLITTING_RULES.md protocol: same bytes, same line
+   numbers, `git log --follow` intact) with exactly two line-neutral edits: (a) `harness/lane.rs:78`
+   reads `dss_core::compat::ORACLE_PARITY` instead of `cfg!(feature = "oracle-parity")` (the crate
+   has no lane feature, and a stray `cfg(feature = "oracle-parity")` inside it is `unexpected_cfgs`
+   under `-D warnings`, so the lane can never silently read false), (b) the `PD_PINS_FILE` join in
+   `harness/mod.rs` is re-based onto `../dss-core/tests/pd_elements_pins.rs`. The five
+   `CARGO_MANIFEST_DIR/../..` repo-root sites stay valid because the crate sits at the same depth.
+   `#![allow(dead_code)]`, the `#[cfg(windows)]` declarations of `di`, `run_files`,
+   `run_file_contents` and the `crate::harness::` paths inside the harness stay as they are. Every
+   doc fence in the harness is a `text` fence (9 blocks), so commands 6/7 gain no doctest - verify,
+   never mark a fence to make one pass. Drivers: each `mod harness;` line becomes
+   `use dss_test_harness::harness;` (line-neutral, every `harness::...` and `crate::harness::...`
+   path in the driver and in `corpus_gate/*.rs` resolves unchanged), `props_r4133_pins.rs`'s
+   `#[path = "harness/scratch.rs"] mod scratch;` becomes `use dss_test_harness::harness::scratch;`,
+   `crates/dss-core/Cargo.toml` gains the dev-dependency (a dev-dependency cycle, which cargo
+   allows). Rails in `oracle_parity_cfg_gate.rs`: `rust_sources` covers the new crate (verify, the
+   walk is `crates/`-shaped), the `lane.rs:78` sanction row is deleted (the cfg string no longer
+   exists there), the full-path registers (`.../harness/mod.rs`, `lane.rs`, `capture_guard.rs` in
+   the G1.9 / G1.3a pin rails and the evidence registers) are re-pointed,
+   `operational_docs_line_citations_point_at_the_line_they_name` resolves `harness/<file>.rs:N` in
+   the new location - the 30 short-form citations in TESTING.md, `tests/TOLERANCE_NOTES.md` and
+   `golden-rebase.md` keep their line numbers because the move is line-neutral, so none is
+   re-spelled. New pin in one dss-core driver: `harness::lane::PARITY == cfg!(feature =
+   "oracle-parity")`, green in both lanes - cargo built ONE `dss-core` for the drivers and the
+   harness (a second instance already fails to type-check across the crate boundary, the pin makes
+   the feature unification explicit). Evidence in `part_1.md`: `cargo tree -e features -p
+   dss-test-harness` per lane, nextest's `dss-test-harness` listing (409 tests, or the measured
+   count with the delta explained), executions per lane before/after (13 709 -> 3 075 expected,
+   distinct names 3 075 -> 3 075). Gate, three runs on an idle machine with the wall of commands 2-5
+   and the nextest CPU sum (per-test seconds summed) against the same three-run baseline taken at the
+   step's base commit before any edit; commit.
+2. `INFRA|6` - documents: TESTING.md (the harness map: where the harness lives, the crate in the
+   layers section, every `tests/harness/` path), CLAUDE.md (the Conventions bullet, the lane-policy
+   sentence, the three pin citations), `tests/TOLERANCE_NOTES.md`, the 21 doc-comment path mentions
+   under `crates/dss-core/src` and `crates/dss-epri/src` (prefix re-point only), the record block in
+   `docs/phase-records/retro-fixes.md` (5-10 lines: executions, core-s and wall before/after, the
+   commits). Gate; commit.
+**Findings**
+- `INFRA|6` (major) - `crates/dss-core/tests/*.rs` (27 drivers), `mod harness;`: the 14-file harness
+  is compiled into 27 test crates and its 409 self-tests run 27 times per lane - 10 634 redundant
+  executions, ~1 039 core-s, 39 % of the lane's test CPU, pure overhead under nextest's
+  process-per-test model, plus 27 compilations of 36 891 lines under every clippy and build.
+**Probes:** the three-run baseline at the base commit and the three runs after part 1 are the
+probes. A test whose outcome differs between them is a real finding (the move is behaviour-neutral
+by construction), never a re-run into green.
+**Acceptance:**
+- One crate `dss-test-harness`, its 14 files byte-identical to the moved ones bar the two named
+  line-neutral edits, `git log --follow` reaches the pre-move history of every file.
+- Every harness self-test executes exactly once per lane, distinct test names unchanged (3 075), no
+  golden byte moves, `ledger.json` unchanged, every pin unchanged.
+- The seven commands unchanged in text, the `PARITY` pin green in both lanes, the cfg gate walks the
+  new crate, the citation rail resolves the moved files without a citation being re-spelled.
+- Measured on an idle machine, three runs each: executions, nextest CPU sum, wall of commands 2-5
+  before and after, recorded.
+- Record block written, the uid closed or recorded with a reason.
