@@ -28,8 +28,8 @@ use crate::harness::{
 use crate::manifest::{EngineChannel, SolvableCase};
 
 // ---------------------------------------------------------------------------
-// Corpus guard (unchanged; keeps the vendored corpus pristine across both
-// engines' report/trace writes). RAII: created before the runs, restores on drop.
+// Corpus guard: since RF-I00-01 part 2 it brackets the port's scratch copy
+// (`compare_with_result`, the two smoke arms), never a vendored folder.
 // ---------------------------------------------------------------------------
 
 /// Buffer small files up to this size for overwrite-restore. Mirrors the oracle
@@ -58,13 +58,13 @@ struct DirClaim {
 /// Live claims per **canonical** case directory, plus the condvar a producer
 /// waiting for a directory parks on.
 ///
-/// The corpus puts many decks in one folder (`Test/AutoTrans`,
-/// `IEEETestCases/8500-Node`, `StorageControllerTechNote/Support`, …), and this
-/// test binary has more than one producer walking them. The gate's scheduler is
-/// not the problem — its task unit IS the case-dir group, so its own cases in
-/// one folder are already sequential — but libtest runs the gate `#[test]`
+/// Historical (RF-I00-01 part 1 moved every producer onto a scratch copy): the
+/// corpus puts many decks in one folder (`Test/AutoTrans`, `8500-Node`, …), and
+/// this test binary had more than one producer walking them. The scheduler was
+/// not the problem — its task unit WAS the case-dir group, so its own cases in
+/// one folder were sequential — but libtest runs the gate `#[test]`
 /// concurrently with its siblings in the same binary, and
-/// `corpus_ad_matches_normal_mode` compiles `ad_sweep.json`'s decks **in place**
+/// `corpus_ad_matches_normal_mode` compiled `ad_sweep.json`'s decks **in place**
 /// (`8500-Node/Run_8500Node.dss`, `Run_8500Node_Unbal.dss` and
 /// `Run_RecloserSiting.DSS` all carry `ad: "pf"`). A deck's own `Show`/`Export`
 /// lines run during `compile`, i.e. before `ad_solve_normal` re-points
@@ -76,14 +76,14 @@ struct DirClaim {
 /// SET picked up another deck's reports — `ieee8500_*` and `ieee8500u_*` in a
 /// single reply — on a different (case, channel) pair each run.
 ///
-/// So the claim is **exclusive per directory** (coordinator decision D33(2)):
-/// exactly one producer at a time owns a case dir, from the pre-run snapshot
-/// through both oracle captures, the port run, and the sweep + restore. It is
-/// **reentrant for the owning thread** — [`assert_deferred_rust_smoke`] takes a
-/// second guard inside `scheduler::run_one_case`'s, and the overlap fixture
-/// below takes two — and those nested guards share the one pristine snapshot,
-/// so the names set is always the pre-run one and exactly one sweep runs, when
-/// the last of them leaves.
+/// So the claim was made **exclusive per directory** (coordinator decision
+/// D33(2)). Since RF-I00-01 a claim only ever sits on the port's own scratch
+/// copy (`CorpusGuard::new` refuses a vendored folder): `run_one_case` takes
+/// none, the oracle captures run in their own copies without this guard, and
+/// `deferred_smoke_in` takes one on its copy. It stays **reentrant for the
+/// owning thread** — the overlap fixture below takes two nested guards, which
+/// share the one pristine snapshot, so the names set is always the pre-run one
+/// and exactly one sweep runs, when the last of them leaves.
 type DirRegistry = (Mutex<HashMap<PathBuf, DirClaim>>, Condvar);
 
 fn dir_registry() -> &'static DirRegistry {
@@ -157,7 +157,7 @@ impl CorpusGuard {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
-        let key = dir_claim_key(&dir);
+        let key = dir_claim_key(crate::scratch::not_vendored(&dir, "runner::CorpusGuard"));
         let me = std::thread::current().id();
         let waiting = Instant::now();
         let (reg, cv) = dir_registry();
@@ -336,7 +336,7 @@ impl Drop for CorpusGuard {
                 // another panic aborts the process), so it says so on stderr,
                 // where a full-drive log keeps it greppable.
                 eprintln!(
-                    "corpus guard: leaked dropping(s) under {}: {} — the sweep                      could not remove them (a producer is still holding the file                      open). They stay in the vendored corpus and poison the next                      producer's pre-run snapshot of this directory.",
+                    "corpus guard: leaked dropping(s) under {}: {} - the sweep could not remove them (a producer still holds the file open). Since RF-I00-01 the folder is the port's scratch copy, whose bounded removal (`ScratchCopy::finish`) then fails the case naming the producer.",
                     self.dir.display(),
                     leaked.join(", "),
                 );
@@ -1725,13 +1725,13 @@ pub(crate) fn compare_capture(
 /// does with the filesystem.
 ///
 /// `swept` is the transport's own `sweep_failed` report: what its `CorpusGuard`
-/// classified as run-created and then could NOT remove. Such an entry stays in
-/// the case directory, so the next producer of this case (the other channel, or
-/// the port's probe) snapshots it as pre-existing and silently drops that name
-/// from its created set. Not hypothetical: dss_capi never closes a Storage
+/// classified as run-created and then could NOT remove, i.e. an engine leak. On
+/// the shared tree (before RF-I00-01) such an entry poisoned the next producer's
+/// snapshot. On a per-producer copy it poisons nothing, and for the two oracle
+/// channels this report stays THE leak rail (their process has exited before
+/// the gate removes the copy). Not hypothetical: dss_capi never closes a Storage
 /// `debugtrace` stream (`src/PCElements/Storage.pas:872`, freed only at
-/// `:871`/`:1199`), so the capi channel used to leak `STOR_<name>.csv` and make
-/// the `r4133` channel report an empty set for that deck (G1.10a F4).
+/// `:871`/`:1199`), so the capi channel used to leak `STOR_<name>.csv` (G1.10a F4).
 ///
 /// `None` is a MISSING report, not a clean one: the field was a plain
 /// `Vec<String>` behind `serde(default)` until the audit settlement, so a
@@ -1742,12 +1742,21 @@ pub(crate) fn compare_capture(
 fn assert_swept_clean(label: &str, producer: &str, swept: Option<&[String]>) {
     let Some(swept) = swept else {
         panic!(
-            "{label}: the `{producer}` producer sent no `sweep_failed` report.              Every transport reports it on every case (it is the D32(2) leak              rail); a reply without the key can never be read as \"the sweep              was clean\"."
+            "{label}: the `{producer}` producer sent no `sweep_failed` report. \
+             Every transport reports it on every case (it is the D32(2) leak \
+             rail); a reply without the key can never be read as \"the sweep \
+             was clean\".",
         );
     };
     assert!(
         swept.is_empty(),
-        "{label}: the `{producer}` producer left {} leaked dropping(s) in the          case directory that its corpus guard classified as run-created and          could not remove: {}. A file still held open by that engine poisons          every later producer's pre-run snapshot (and pollutes the vendored          corpus). Fix the producer — release the circuit (`clear`) before the          guard sweeps, or close the file — never widen the surface around it.",
+        "{label}: the `{producer}` producer left {} leaked dropping(s) in its \
+         scratch copy that its corpus guard classified as run-created and could \
+         not remove: {}. The engine still holds the file open (the dss_capi \
+         Storage `DebugTrace` class); on the shared tree it poisoned the next \
+         producer's snapshot, and on a copy it is still an engine leak. Fix the \
+         producer - release the circuit (`clear`) before the guard sweeps, or \
+         close the file - never widen the surface around it.",
         swept.len(),
         swept.join(", "),
     );
@@ -1827,26 +1836,35 @@ pub(crate) fn compare_with_result(
     // G1.10a / coordinator decision D32(2) — hygiene H1, checked BEFORE anything
     // else this case does with the filesystem. `sweep_failed` is what the
     // channel's own `CorpusGuard` classified as run-created and then could not
-    // remove; the entry stays in the case directory, so the NEXT producer of
-    // this case (the other channel, or the port's probe below) snapshots it as
-    // pre-existing and silently drops that name from its created set. That is
-    // not hypothetical: dss_capi never closes a Storage `debugtrace` stream
+    // remove: an engine leak. On the shared tree (before RF-I00-01) the entry
+    // stayed in the case directory and the NEXT producer of the case dropped
+    // that name from its created set. Every producer now runs its own copy, so
+    // nothing is poisoned, but the engine still holds the file. Not
+    // hypothetical: dss_capi never closes a Storage `debugtrace` stream
     // (`src/PCElements/Storage.pas:872`, freed only at `:871`/`:1199`), so the
-    // capi channel used to leak `STOR_<name>.csv` and make the `r4133` channel
-    // report an empty set for that deck (G1.10a F4). Both transports now release
-    // the circuit before their guard sweeps, and any survivor fails the case
-    // here instead of hiding — the order-coupling can never come back silently.
+    // capi channel used to leak `STOR_<name>.csv` (G1.10a F4). Both transports
+    // release the circuit before their guard sweeps, and any survivor fails the
+    // case here, and for the oracle channels this report is the leak rail.
     assert_swept_clean(label, channel_tag(channel), oc.sweep_failed.as_deref());
     let tol = tol_for(&c.kind);
+    // RETRO_FIXES RF-I00-01: the port compiles its OWN fresh scratch copy of the
+    // case — never the vendored deck, and never the copy the oracle ran in — so
+    // `deck` is what the engine and the probe see, while `case_path` (the
+    // vendored deck) keeps keying the oracle's sidecars below. The copy is
+    // removed at the end, or the case fails naming the `port` producer.
+    let copy = crate::scratch::ScratchCopy::new(case_path, crate::scratch::PORT);
+    let deck = copy.deck();
+    // RF-I00-01 part 2 (guard reuse on the copy): the port's corpus guard
+    // brackets the copy exactly as it bracketed the vendored folder before —
+    // snapshot, `classify_created`, sweep, restore, and the D32(2) leak report
+    // on stderr — and is dropped before `copy.finish()`, whose bounded removal
+    // then fails the case naming the `port` producer if anything survived.
+    let port_guard = CorpusGuard::new(deck);
     // G1.10a — the run-produced FILE SET. The port needs its OWN before/after
     // bracket (and must sweep what it classified) because the scheduler runs the
-    // Rust engine once PER CHANNEL: on an `engines: "both"` case the second run
-    // would otherwise find channel 1's files already on disk and report an empty
-    // created set. The outer `CorpusGuard` (`scheduler::run_one_case`) stays the
-    // safety net and is never bypassed. Started here, before the engine touches
-    // the directory and after the oracle result is already in hand, so anything
-    // the ORACLE's own guard failed to sweep sits in the probe's "before"
-    // snapshot and can never be mis-attributed to the port.
+    // Rust engine once PER CHANNEL; since RF-I00-01 each of those runs also has
+    // its own scratch copy, so the "before" snapshot is the copy's initial
+    // listing and no other producer's file can be in it.
     //
     // G1.10c: the probe is also the port-side producer of the demand-interval
     // tree's CONTENTS, and three of the five DI cases are `kind = large` (so not
@@ -1862,7 +1880,7 @@ pub(crate) fn compare_with_result(
     // SET differs by one member there and would red instantly.
     #[cfg(windows)]
     let run_file_probe = (c.compare_run_files || c.compare_di)
-        .then(|| harness::run_files::RunFileProbe::start(case_path));
+        .then(|| harness::run_files::RunFileProbe::start(deck));
     // The classification itself is portable since D33(3) (`dss_epri::guard` is
     // ungated, and `CorpusGuard::sweep_created` above runs it on every
     // platform), but the SURFACE is compared only against the gate's two oracle
@@ -1878,14 +1896,14 @@ pub(crate) fn compare_with_result(
          `harness::run_files` and `harness::di` are declared under \
          `#[cfg(windows)]`"
     );
-    let (mut dss, baseline) = run_rust_capture(label, case_path, c);
+    let (mut dss, baseline) = run_rust_capture(label, deck, c);
     compare_capture(
-        &mut dss, baseline, oc, label, case_path, c, &tol, channel, ledger,
+        &mut dss, baseline, oc, label, deck, c, &tol, channel, ledger,
     );
     // The port's run is over: drop the engine BEFORE the probe reads, so a file
     // the engine still holds open is closed (and flushed) first — a removal that
-    // failed on an open handle would make the next channel's probe see the file
-    // as pre-existing.
+    // failed on an open handle would leave the file in this copy and fail the
+    // case when the copy is removed.
     drop(dss);
     #[cfg(windows)]
     if let Some(probe) = run_file_probe {
@@ -1912,9 +1930,9 @@ pub(crate) fn compare_with_result(
             );
             // G1.10b: the CONTENTS of the members the gate selected. The oracle's
             // bytes came back through the case's sidecar directory (coordinator
-            // decision D40(6)); read them — which also deletes the directory, inside
-            // this case's `CorpusGuard` bracket — and pair them with the port's,
-            // which the probe above read in place before its sweep. The same
+            // decision D40(6)); read them — which also deletes the directory — and
+            // pair them with the port's, read in its own scratch copy (RF-I00-01)
+            // by the probe above before its sweep. The same
             // `excluded` closure partitions both surfaces: a name whose PRESENCE is
             // triaged has no contents to compare either.
             let oracle_contents = harness::run_files::read_sidecar(
@@ -1982,14 +2000,16 @@ pub(crate) fn compare_with_result(
             crate::engines::remove_di_sidecar(case_path, tag);
         }
     }
+    drop(port_guard);
+    copy.finish();
 }
 
 /// `GOLDEN_REBASE_PLAN.md` G1.10c — read one oracle channel's
 /// demand-interval capture back off its sidecar directory.
 ///
 /// The transports cannot answer with the file TEXT: the tree is run-created, so
-/// each channel's own `CorpusGuard` sweeps it away at the end of that run, long
-/// before the port re-runs the same case in the same directory and this gate
+/// each channel's guard sweeps it away in the channel's scratch copy (RF-I00-01)
+/// before the port re-runs the same case in its own copy and this gate
 /// compares. They therefore COPY the selected members into
 /// `<target>/corpus_gate/di/<case key>/<channel>/`
 /// (`engines::di_sidecar_dir`, coordinator decision D42(5)) and reply with
@@ -2070,7 +2090,8 @@ fn sidecar_member_path(dir: &Path, name: &str, rel: &str, channel: &str, label: 
 /// fetch the pinned oracle model once, compare against the `capi_v0145` channel
 /// (no ledger — the report tests predate it).
 pub(crate) fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCase) {
-    let _guard = CorpusGuard::new(case_path);
+    // Each producer runs in its own scratch copy (RF-I00-01): the oracle's is
+    // made and removed inside `run_case`, the port's inside the compare.
     let oc = oracle.run_case(case_path, c);
     compare_with_result(&oc, label, case_path, c, EngineChannel::CapiV0145, None);
 }
@@ -2095,9 +2116,17 @@ pub(crate) fn run_and_compare_abort(
 
     // The abort request drives `Compile` (which executes the deck's own `Solve`);
     // the oracle raises on the aborting solve → `ok:false` carrying the message.
+    // RF-I00-01: the oracle and the port each abort in their own fresh copy.
+    let copy = crate::scratch::ScratchCopy::new(case_path, channel.tag());
+    // Hand-built, so it refuses a vendored deck itself, as `build_run_request`
+    // does for every other request (the transports' guards bracket its folder).
+    let deck = crate::scratch::not_vendored(
+        std::path::Path::new(copy.deck()),
+        "runner::run_and_compare_abort",
+    );
     let req = json!({
         "cmd": "run",
-        "case_path": case_path,
+        "case_path": deck.to_string_lossy(),
         "post": c.post,
         "n_steps": c.n_steps,
         "selected_elements": c.selected_elements,
@@ -2109,6 +2138,7 @@ pub(crate) fn run_and_compare_abort(
         "ctrlqueue": false,
     });
     let resp = channel.call(&req);
+    copy.finish();
     assert!(
         !resp.ok,
         "{label}: oracle did NOT abort the solve (expected an abort containing {expected:?})"
@@ -2119,22 +2149,25 @@ pub(crate) fn run_and_compare_abort(
         "{label}: oracle abort message {oracle_err:?} does not contain {expected:?}"
     );
 
-    let mut dss = Dss::new();
-    dss.command("clear");
-    dss.command(&format!("compile \"{case_path}\""));
-    for cmd in &c.post {
-        dss.command(cmd);
-    }
-    assert!(
-        dss.circuit().is_some_and(|ckt| ckt.solution.solution_abort),
-        "{label}: Rust engine did NOT set solution_abort — the malformed input must abort \
-         the solve like the oracle (message: {expected:?})"
-    );
-    assert!(
-        dss.errors().iter().any(|e| e.contains(expected)),
-        "{label}: Rust engine did not surface {expected:?}: {:?}",
-        dss.errors()
-    );
+    crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
+        let _port_guard = CorpusGuard::new(deck);
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command(&format!("compile \"{deck}\""));
+        for cmd in &c.post {
+            dss.command(cmd);
+        }
+        assert!(
+            dss.circuit().is_some_and(|ckt| ckt.solution.solution_abort),
+            "{label}: Rust engine did NOT set solution_abort — the malformed input must abort \
+             the solve like the oracle (message: {expected:?})"
+        );
+        assert!(
+            dss.errors().iter().any(|e| e.contains(expected)),
+            "{label}: Rust engine did not surface {expected:?}: {:?}",
+            dss.errors()
+        );
+    });
 }
 
 /// Schema v2 (§4 Phase C step c): a `defer_ledger` case is parked from live
@@ -2149,7 +2182,15 @@ pub(crate) fn run_and_compare_abort(
 /// the plan's `pending` fallback (which asserts an error) and membership is
 /// preserved, but it is a bounded, temporary reduction in verification depth.
 pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &SolvableCase) {
-    let (mut dss, baseline_errors) = run_rust_capture(label, case_path, c);
+    crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
+        deferred_smoke_in(label, deck, c)
+    });
+}
+
+/// [`assert_deferred_rust_smoke`] on the port's scratch copy `deck`.
+fn deferred_smoke_in(label: &str, deck: &str, c: &SolvableCase) {
+    let _port_guard = CorpusGuard::new(deck);
+    let (mut dss, baseline_errors) = run_rust_capture(label, deck, c);
     for i in 0..c.n_steps.max(1) {
         dss.command("solve");
         assert_eq!(
@@ -2170,9 +2211,17 @@ pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &Solva
 /// GAPS_PLAN.md §2.3 pending discipline: the unported feature must surface as an
 /// engine error (a clean run means a silent fallback masks the gap).
 pub(crate) fn assert_pending_errors_loudly(label: &str, case_path: &str, c: &SolvableCase) {
+    crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
+        pending_errors_in(label, deck, c)
+    });
+}
+
+/// [`assert_pending_errors_loudly`] on the port's scratch copy `deck`.
+fn pending_errors_in(label: &str, deck: &str, c: &SolvableCase) {
+    let _port_guard = CorpusGuard::new(deck);
     let mut dss = Dss::new();
     dss.command("clear");
-    dss.command(&format!("compile \"{case_path}\""));
+    dss.command(&format!("compile \"{deck}\""));
     for cmd in &c.post {
         dss.command(cmd);
     }
@@ -2263,5 +2312,29 @@ mod tests {
                 "{escape:?} must be refused by name, not by luck: {msg}"
             );
         }
+    }
+
+    /// RF-I00-01 part 2 — the port's corpus guard brackets a scratch copy,
+    /// never the vendored tree: pointed at a vendored deck it refuses before it
+    /// claims or photographs anything, so no producer can run under it there.
+    #[test]
+    fn the_port_guard_refuses_a_vendored_case_directory() {
+        let deck =
+            crate::scratch::corpus_root().join("electricdss-tst/Test/AutoTrans/Auto1bus.dss");
+        let msg = std::panic::catch_unwind(|| CorpusGuard::new(&deck.to_string_lossy()))
+            .map(|_| panic!("a guard on the vendored {deck:?} was taken"))
+            .map_err(panic_msg)
+            .unwrap_err();
+        assert!(
+            msg.contains("runner::CorpusGuard") && msg.contains("lies inside the vendored corpus"),
+            "{msg}"
+        );
+        // Nothing was claimed: the registry holds no key for that folder.
+        let key = dir_claim_key(deck.parent().expect("a deck has a folder"));
+        let reg = dir_registry().0.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(
+            !reg.contains_key(&key),
+            "a refused guard left a claim on {key:?}"
+        );
     }
 }

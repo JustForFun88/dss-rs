@@ -19,7 +19,8 @@
 //! Each pin drives the **gate-side** comparator
 //! (`harness::run_files::compare_run_files`) against the oracle sets measured on
 //! the named channel, and takes the port's side from the port itself — the very
-//! `RunFileProbe` the corpus gate uses, over the vendored corpus deck (never
+//! `RunFileProbe` the corpus gate uses, over a fresh scratch copy of the
+//! vendored corpus deck (`harness::scratch`, RETRO_FIXES RF-I00-01; never
 //! `.inputs/`, CLAUDE.md). Every oracle number below was measured by the G1.10a
 //! probes and re-measured by the live gate: `tmp/g110a/oracle_diff.txt` (the
 //! 14-deck capi↔r4133 diff), `tmp/g110a/f_F1_capi_files.json` (pinned
@@ -39,6 +40,7 @@ use std::sync::{Arc, Mutex};
 
 use dss_core::exec::Dss;
 use harness::run_files::{RunFileProbe, compare_run_files};
+use harness::scratch::{PORT, ScratchCopy};
 
 /// The vendored corpus path of a deck, exactly as the corpus gate addresses it
 /// (`corpus_gate::scheduler`'s `abs`): the deck FILE, whose parent is the case
@@ -63,12 +65,14 @@ fn corpus_deck(rel: &str) -> PathBuf {
 /// run-file probe, and return `(created set, the Visualize payloads the deck
 /// fired)`.
 ///
-/// The probe classifies what the run created and then **removes it**, so the
-/// vendored corpus directory is left exactly as it was found — the same
-/// contract `RunFileProbe` keeps inside the gate.
+/// The run happens in the port's own fresh scratch copy of the case
+/// (`harness::scratch`, RETRO_FIXES RF-I00-01), never in the vendored tree: the
+/// probe classifies what the run created in the copy and removes it — the
+/// same contract `RunFileProbe` keeps inside the gate — then the copy goes.
 fn port_run_files(rel: &str, n_steps: usize) -> (Vec<String>, Vec<String>) {
-    let deck = corpus_deck(rel);
-    let case_path = deck.to_string_lossy().to_string();
+    let copy = ScratchCopy::new(&corpus_deck(rel).to_string_lossy(), PORT);
+    let deck = PathBuf::from(copy.deck());
+    let case_path = copy.deck().to_string();
     let plots: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let probe = RunFileProbe::start(&case_path);
     let mut dss = Dss::new();
@@ -97,6 +101,7 @@ fn port_run_files(rel: &str, n_steps: usize) -> (Vec<String>, Vec<String>) {
     let created = probe
         .finish_and_clean(&format!("run_files_pins:{rel}"), false)
         .created;
+    copy.finish();
     let fired = plots.lock().unwrap_or_else(|e| e.into_inner()).clone();
     (created, fired)
 }

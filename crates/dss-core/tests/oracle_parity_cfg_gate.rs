@@ -5756,10 +5756,7 @@ const G1_10_PINS: [(&str, usize); 135] = [
         "corpus_guard_does_not_serialize_two_different_case_directories",
         1,
     ),
-    (
-        "two_manifest_rows_in_one_case_directory_land_in_one_task",
-        1,
-    ),
+    ("every_case_is_its_own_task_heaviest_first", 1),
     (
         "a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exits_for_respawn",
         1,
@@ -6241,6 +6238,375 @@ fn the_g1_4d_pins_the_docs_cite_exist_exactly_once() {
             "the G1.4d name `{pin}` is in this registry but no longer named by any \
              of {} — either restore the citation or drop it from the list",
             G1_4D_PIN_DOCS.join(" / ")
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The gate's test runner (RETRO_FIXES_PLAN.md RF-I00-01 INFRA|3).
+// ---------------------------------------------------------------------------
+
+/// The `cargo-nextest` release the gate pins: `.config/nextest.toml`'s
+/// `nextest-version` and the gate section of `TESTING.md` both name it.
+const NEXTEST_PINNED: &str = "0.9.146";
+
+/// Every broken promise of the nextest config text `toml` (empty = all kept).
+///
+/// The gate's test commands run under `.config/nextest.toml`, so the config is
+/// part of the gate, and it is judged as an ALLOWLIST (RF-I00-01 settlement
+/// round 2): every line that is neither blank nor a comment is one of these
+/// five (key and value compared trimmed), and all four settings are there:
+/// - at top level, `nextest-version = { required = "<NEXTEST_PINNED>" }`: an
+///   older runner is refused;
+/// - the header `[profile.default]`, and under it
+/// - `retries = 0`: a retried red is a green nobody fixed (RETRO_FIXES R11:
+///   never retried into green);
+/// - `fail-fast = false`: the first red would hide the rest of the lane;
+/// - `slow-timeout = { period = "600s" }`: report only, because a
+///   `terminate-after` would kill the corpus gate mid-walk (the gate's own
+///   per-request deadline is `DSS_ORACLE_TIMEOUT_SECS`).
+///
+/// Any other line is refused, whatever it sets and however TOML spells it: a
+/// table or array-of-tables header, a dotted or quoted key, an inline table or
+/// array, a value continued on the next line. A denylist of nextest's keys and
+/// spellings could not keep up, each gap probe-proved on the pinned runner:
+/// after the first settlement closed the sub-table and dotted-key spellings,
+/// one inline array under `[profile.default]`, `overrides = [{ filter =
+/// 'binary(corpus_gate)', retries = 2 }]`, still retried a red into green
+/// (settlement audit SA-1), and `run-extra-args = ["--skip", "<test>"]`, a key
+/// the list never named, reports a red test as PASS without running it
+/// (settlement round 2). Refused with them: a `default-filter` (it drops
+/// tests, whole binaries included, and the run still exits 0 - RETRO_FIXES §0:
+/// no filter that greens), setup or wrapper `scripts` and an `experimental`
+/// list (a script can export environment, a `DSS_GATE_ONLY`, into every test),
+/// and `[test-groups]`, `test-group` or `threads-required`. Those serialize
+/// tests, and nothing needs that, because no test writes under `tests/corpus/`
+/// (measured per binary in RF-I00-01 part 1: every former writer and every
+/// corpus-gate producer runs a scratch copy, `harness/scratch.rs`, and the
+/// corpus gate fails on a change of the vendored tree during its own walk,
+/// `scheduler::GateRun::assert_complete`): a test that needed one would be a
+/// tree writer to convert, never a group to add. A harmless setting (JUnit
+/// output, status levels) is refused as well until this rail lists it: the
+/// gate's runner config changes only together with its rail.
+///
+/// What no config text shows (`NEXTEST_RETRIES`, `--retries`, a profile picked
+/// on the command line) is checked at run time by
+/// [`this_run_gives_every_test_one_attempt_and_no_test_group`].
+fn nextest_profile_violations(toml: &str) -> Vec<String> {
+    // Why a refused line matters when it names a setting known to turn a red
+    // green or to hide it; every message also quotes the line itself.
+    fn why(line: &str) -> &'static str {
+        const KNOWN: [(&str, &str); 10] = [
+            ("retries", " - it retries a red into green"),
+            ("fail-fast", " - a red stops the rest of the lane"),
+            ("terminate-after", " - it kills a slow test mid-run"),
+            (
+                "default-filter",
+                " - it drops tests and the run still exits 0",
+            ),
+            (
+                "run-extra-args",
+                " - it hands the test binaries extra arguments",
+            ),
+            ("test-group", " - it serializes tests"),
+            ("threads-required", " - it serializes tests"),
+            ("script", " - a script runs before or around the tests"),
+            ("experimental", " - it enables setup scripts"),
+            ("overrides", " - it changes the settings of chosen tests"),
+        ];
+        KNOWN
+            .iter()
+            .find(|&&(name, _)| line.contains(name))
+            .map_or("", |&(_, reason)| reason)
+    }
+    let pinned = format!("{{ required = \"{NEXTEST_PINNED}\" }}");
+    // (table header, key, the one value); "" is the top level.
+    let allowed = [
+        ("", "nextest-version", pinned.as_str()),
+        ("[profile.default]", "retries", "0"),
+        ("[profile.default]", "fail-fast", "false"),
+        ("[profile.default]", "slow-timeout", "{ period = \"600s\" }"),
+    ];
+    let mut present = vec![false; allowed.len()];
+    let mut out = Vec::new();
+    let mut table = String::new();
+    for raw in toml.lines() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') {
+            if line != "[profile.default]" {
+                out.push(format!(
+                    "not a table the gate runs with{}: {raw}",
+                    why(line)
+                ));
+            }
+            table = line.to_string();
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            out.push(format!("not a `key = value` line{}: {raw}", why(line)));
+            continue;
+        };
+        let (key, value) = (key.trim(), value.trim());
+        match allowed.iter().position(|&(t, k, _)| t == table && k == key) {
+            None => out.push(format!(
+                "not a setting the gate runs with{}: {raw}",
+                why(line)
+            )),
+            Some(i) => {
+                present[i] = true;
+                let want = allowed[i].2;
+                if value != want {
+                    out.push(format!("`{key}` must be `{want}`{}: {raw}", why(line)));
+                }
+            }
+        }
+    }
+    for (&(table, key, want), seen) in allowed.iter().zip(present) {
+        if !seen {
+            let place = if table.is_empty() {
+                "at top level"
+            } else {
+                table
+            };
+            out.push(format!("`{key} = {want}` is missing ({place})"));
+        }
+    }
+    out
+}
+
+/// RETRO_FIXES RF-I00-01 INFRA|3: the gate's test runner config keeps every
+/// promise of [`nextest_profile_violations`], `TESTING.md` names the same
+/// pinned runner, and each rule is proved live by breaking it alone.
+#[test]
+fn the_nextest_profile_never_retries_and_serializes_nothing() {
+    let root = repo_root();
+    let path = root.join(".config").join("nextest.toml");
+    let toml = fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "{}: {e} - the gate's test runner config is missing",
+            path.display()
+        )
+    });
+    let broken = nextest_profile_violations(&toml);
+    assert!(
+        broken.is_empty(),
+        "{} breaks the gate's runner promises: {broken:#?}",
+        path.display()
+    );
+    let testing = fs::read_to_string(root.join("TESTING.md")).expect("TESTING.md");
+    assert!(
+        testing
+            .lines()
+            .any(|l| l.contains("cargo-nextest") && l.contains(NEXTEST_PINNED)),
+        "TESTING.md's gate section must name the pinned runner `cargo-nextest` {NEXTEST_PINNED}"
+    );
+    let ci =
+        fs::read_to_string(root.join(".github").join("workflows").join("ci.yml")).expect("ci.yml");
+    assert!(
+        ci.contains(&format!("tool: nextest@{NEXTEST_PINNED}")),
+        "ci.yml must install the pinned runner (`tool: nextest@{NEXTEST_PINNED}`)"
+    );
+    for (from, to) in [
+        ("retries = 0", "retries = 1"),
+        ("fail-fast = false", "fail-fast = true"),
+        (
+            "{ period = \"600s\" }",
+            "{ period = \"600s\", terminate-after = 2 }",
+        ),
+        ("{ period = \"600s\" }", "{ period = \"60s\" }"),
+        ("required = \"0.9.146\"", "required = \"0.9.100\""),
+        (
+            "retries = 0",
+            "retries = 0\ndefault-filter = 'not binary(corpus_gate)'",
+        ),
+    ] {
+        assert!(
+            toml.contains(from),
+            "mutation anchor {from:?} not in the config"
+        );
+        let mutated = toml.replacen(from, to, 1);
+        assert!(
+            !nextest_profile_violations(&mutated).is_empty(),
+            "`{from}` -> `{to}` must be caught"
+        );
+    }
+    for extra in [
+        "\n[test-groups]\ncorpus = { max-threads = 1 }\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\ntest-group = 'corpus'\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\nthreads-required = 4\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\nretries = 2\n",
+        "\n[profile.ci]\nretries = { backoff = \"fixed\", count = 2 }\n",
+        // RF-I00-01 settlement: the spellings nextest honours that a plain
+        // `key = value` match missed (sub-tables, dotted keys, filters, setup
+        // scripts), each proved live on the pinned runner by the audits.
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\n[profile.default.overrides.retries]\nbackoff = \"fixed\"\ncount = 2\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\nretries.backoff = \"fixed\"\nretries.count = 2\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\nslow-timeout.period = \"60s\"\nslow-timeout.terminate-after = 2\n",
+        "\n[profile.ci.slow-timeout]\nperiod = \"60s\"\nterminate-after = 2\n",
+        "\n[profile.ci]\nfail-fast = { max-fail = 1 }\n",
+        "\n[profile.ci]\ndefault-filter = 'not binary(corpus_gate)'\n",
+        "\n[[profile.default.overrides]]\nplatform = 'cfg(windows)'\ndefault-filter = 'none()'\n",
+        "\n[scripts.setup.env]\ncommand = 'echo'\n",
+        "\n[[profile.default.scripts]]\nfilter = 'all()'\nsetup = 'env'\n",
+        "\nexperimental = [\"setup-scripts\"]\n",
+        // Settlement round 2 (audit SA-1): the rail is an allowlist, so a
+        // line under `[profile.default]` is refused whatever it spells. The
+        // inline overrides the first denylist missed (the audit's probe on
+        // the pinned runner: one retried a red into green, one dropped a red
+        // test), the same array continued over lines, a quoted and a
+        // unicode-escaped key, a key that list never named (`run-extra-args`
+        // with a `--skip` reports the skipped red test as PASS, probe-proved)
+        // and a harmless unlisted table.
+        "\noverrides = [{ filter = 'binary(corpus_gate)', retries = 2 }]\n",
+        "\noverrides = [{ platform = 'cfg(windows)', default-filter = 'not binary(corpus_gate)' }]\n",
+        "\noverrides = [{ filter = 'all()', threads-required = 4 }]\n",
+        "\noverrides = [\n  { filter = 'all()', retries = 2 },\n]\n",
+        "\n\"default-filter\" = 'none()'\n",
+        "\n\"default\\u002dfilter\" = 'none()'\n",
+        "\nrun-extra-args = [\"--skip\", \"tests::always_red\"]\n",
+        "\n[profile.default.junit]\npath = 'junit.xml'\n",
+    ] {
+        let mutated = format!("{toml}{extra}");
+        assert!(
+            !nextest_profile_violations(&mutated).is_empty(),
+            "an appended {extra:?} must be caught"
+        );
+    }
+    let without_retries: String = toml
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("retries"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert!(
+        !nextest_profile_violations(&without_retries).is_empty(),
+        "a profile that stops spelling `retries = 0` must be caught"
+    );
+}
+
+/// RETRO_FIXES RF-I00-01 settlement: the retry budget and the test group this
+/// very run gives its tests, which no config-text rail can see
+/// (`NEXTEST_RETRIES`, `--retries`, a `--profile` picked on the command line).
+/// nextest exports both to every test process, so a gate run whose runner would
+/// retry a red into green, or serialize a test into a group, reds here. Under
+/// plain `cargo test` (no retries, no groups) there is nothing to check.
+#[test]
+fn this_run_gives_every_test_one_attempt_and_no_test_group() {
+    let under_nextest = ["NEXTEST", "NEXTEST_RUN_ID", "NEXTEST_EXECUTION_MODE"]
+        .iter()
+        .any(|v| std::env::var_os(v).is_some());
+    if !under_nextest {
+        return;
+    }
+    let attempts = std::env::var("NEXTEST_TOTAL_ATTEMPTS").unwrap_or_else(|_| {
+        panic!(
+            "cargo-nextest {NEXTEST_PINNED} exports NEXTEST_TOTAL_ATTEMPTS to every \
+             test; without it this rail cannot see the run's retry budget"
+        )
+    });
+    assert_eq!(
+        attempts, "1",
+        "this nextest run retries a failing test ({attempts} attempts): a retried \
+         red is a green nobody fixed (RETRO_FIXES R11) - drop NEXTEST_RETRIES / \
+         --retries / the retrying profile"
+    );
+    let group = std::env::var("NEXTEST_TEST_GROUP").unwrap_or_default();
+    assert!(
+        group.is_empty() || group == "@global",
+        "this test runs in the nextest test group {group:?}: the gate serializes nothing"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The RF-I00-01 rails the docs cite by name.
+// ---------------------------------------------------------------------------
+
+/// Every rail RETRO_FIXES RF-I00-01 (per-run scratch copies, the nextest gate)
+/// added or re-targeted, with how many `fn` definitions of that name the tree
+/// holds (`a_run_directory_that_already_exists_is_refused` has a `dss-epri`
+/// twin). `TESTING.md` or the step record names each of them.
+const RF_I00_01_PINS: [(&str, usize); 21] = [
+    (
+        "two_runs_of_one_case_get_two_fresh_copies_and_both_are_removed",
+        1,
+    ),
+    ("a_run_directory_that_already_exists_is_refused", 2),
+    ("the_copy_removal_budget_is_25_attempts_200_ms_apart", 1),
+    ("a_copy_a_producer_still_holds_fails_naming_the_producer", 1),
+    ("a_holder_released_within_the_budget_is_waited_out", 1),
+    ("a_parent_reference_resolves_inside_the_copy", 1),
+    ("a_relative_reference_that_leaves_the_corpus_is_listed", 1),
+    ("the_external_closures_are_the_pinned_population", 1),
+    ("the_dss_epri_ieee13_copy_carries_the_computed_closure", 1),
+    (
+        "a_tree_photograph_sees_every_way_a_producer_touches_the_tree",
+        1,
+    ),
+    (
+        "a_changed_vendored_tree_fails_the_gate_naming_the_failed_cases",
+        1,
+    ),
+    ("a_vendored_path_is_refused_and_a_copy_passes", 1),
+    ("the_port_guard_refuses_a_vendored_case_directory", 1),
+    ("the_probe_refuses_a_vendored_deck", 1),
+    ("a_request_for_a_vendored_deck_is_refused", 1),
+    ("the_vendored_ieee13_deck_is_refused_and_its_copy_passes", 1),
+    (
+        "the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy",
+        1,
+    ),
+    (
+        "the_capi_transport_steps_out_of_the_copy_before_replying",
+        1,
+    ),
+    (
+        "the_r4133_transport_steps_out_of_the_copy_before_replying",
+        1,
+    ),
+    (
+        "the_nextest_profile_never_retries_and_serializes_nothing",
+        1,
+    ),
+    ("this_run_gives_every_test_one_attempt_and_no_test_group", 1),
+];
+
+/// The documents that name [`RF_I00_01_PINS`].
+const RF_I00_01_PIN_DOCS: [&str; 2] = ["TESTING.md", "docs/phase-records/retro-fixes.md"];
+
+/// A rename, a deletion or an undocumented second copy of an RF-I00-01 rail
+/// reds here instead of leaving `TESTING.md` naming a test that is gone
+/// (the G1.10 registry's contract, [`the_g1_10_pins_the_docs_cite_exist_exactly_once`]).
+#[test]
+fn the_rf_i00_01_rails_the_docs_name_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let docs: Vec<String> = RF_I00_01_PIN_DOCS
+        .iter()
+        .map(|rel| {
+            fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the RF-I00-01 doc surface: {e}"))
+        })
+        .collect();
+    for (pin, want) in RF_I00_01_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the RF-I00-01 rail `{pin}` is defined {defs} times in the tree, expected \
+             exactly {want} — {} name it, so a rename, a deletion or an undocumented \
+             second copy must red here instead of leaving them stale",
+            RF_I00_01_PIN_DOCS.join(" / ")
+        );
+        assert!(
+            docs.iter().any(|d| d.contains(pin)),
+            "the RF-I00-01 rail `{pin}` is in this registry but named by none of {}",
+            RF_I00_01_PIN_DOCS.join(" / ")
         );
     }
 }

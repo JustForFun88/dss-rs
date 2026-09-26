@@ -31,7 +31,8 @@
 //! Each pin drives the **gate-side** comparator (`harness::di::compare_di` and
 //! `harness::di::classify_member`, the very code `corpus_gate::runner` calls)
 //! and takes the port's side from the port itself: the five vendored corpus
-//! decks are run through the gate's own `harness::run_files::RunFileProbe`, and
+//! decks are run, each in a fresh scratch copy (`harness::scratch`, RETRO_FIXES
+//! RF-I00-01), through the gate's own `harness::run_files::RunFileProbe`, and
 //! each tree is read exactly where the runner reads it — after the engine is
 //! dropped, before the probe sweeps. Never `.inputs/` at runtime (CLAUDE.md).
 //!
@@ -65,6 +66,7 @@ use std::sync::OnceLock;
 use dss_core::exec::Dss;
 use harness::di::{DiClass, DiTree, classify_member, compare_di};
 use harness::run_files::RunFileProbe;
+use harness::scratch::{self, ScratchCopy};
 use harness::tol_for;
 
 // ---------------------------------------------------------------------------
@@ -221,12 +223,15 @@ fn corpus_deck(rel: &str) -> PathBuf {
 /// engine is DROPPED (so every demand-interval stream the run closed is on disk;
 /// `crates/dss-core/src/solution/meters/demand_interval.rs:515-570`
 /// `close_all_di_files`) and before `RunFileProbe::finish_and_clean`, which
-/// sweeps the tree away and leaves the vendored corpus as it was found.
+/// sweeps the tree away. Each deck runs in its own fresh scratch copy
+/// (`harness::scratch`, RETRO_FIXES RF-I00-01), removed after the sweep; the
+/// vendored corpus is never written.
 fn run_di_cases() -> PortRun {
     let mut trees = BTreeMap::new();
     let mut ckt7_tie = Vec::new();
     for case in &DI_CASES {
-        let deck = corpus_deck(case.rel);
+        let copy = ScratchCopy::new(&corpus_deck(case.rel).to_string_lossy(), scratch::PORT);
+        let deck = PathBuf::from(copy.deck());
         let ctx = format!("di_pins:{}", case.label);
         let probe = RunFileProbe::start(&deck.to_string_lossy());
         let mut dss = Dss::new();
@@ -259,6 +264,7 @@ fn run_di_cases() -> PortRun {
         drop(dss);
         let tree = probe.di_tree(&ctx);
         probe.finish_and_clean(&ctx, false);
+        copy.finish();
         trees.insert(case.label, tree);
     }
     PortRun {
@@ -279,12 +285,16 @@ fn run_di_cases() -> PortRun {
 /// measurement at the case's calibrated voltage class instead of a hand-chosen
 /// cross-snapshot band (audit findings AC-6 / AT-5).
 ///
-/// Its own run-file bracket: the compile writes the same droppings every other
-/// run of this deck does, and they are swept here exactly as the gate sweeps
-/// them.
+/// Its own scratch copy and run-file bracket: the compile writes the same
+/// droppings every other run of this deck does, and they are swept here
+/// exactly as the gate sweeps them.
 fn ckt7_snapshot_tie() -> Vec<(String, Vec<f64>)> {
-    let deck =
-        corpus_deck("electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss");
+    let copy = ScratchCopy::new(
+        &corpus_deck("electricdss-tst/Version8/Distrib/EPRITestCircuits/ckt7/Master_ckt7.dss")
+            .to_string_lossy(),
+        scratch::PORT,
+    );
+    let deck = PathBuf::from(copy.deck());
     let ctx = "di_pins:ckt7-snapshot";
     let probe = RunFileProbe::start(&deck.to_string_lossy());
     let mut dss = Dss::new();
@@ -310,6 +320,7 @@ fn ckt7_snapshot_tie() -> Vec<(String, Vec<f64>)> {
         .collect();
     drop(dss);
     probe.finish_and_clean(ctx, false);
+    copy.finish();
     tie
 }
 
@@ -1551,8 +1562,14 @@ fn scratch_dir(tag: &str) -> PathBuf {
 /// port-side producer and return its demand-interval tree, optionally closing
 /// the second cycle before the capture.
 fn di_cycle_tree(tag: &str, close_second_cycle: bool) -> DiTree {
-    let master =
-        corpus_deck("electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss");
+    // The master compiles from its own scratch copy (RF-I00-01), like every
+    // vendored deck a test runs.
+    let master_copy = ScratchCopy::new(
+        &corpus_deck("electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss")
+            .to_string_lossy(),
+        scratch::PORT,
+    );
+    let master = PathBuf::from(master_copy.deck());
     let scratch = scratch_dir(tag);
     // The probe's "case directory" is the deck's parent, so the fixture deck must
     // exist BEFORE the snapshot — otherwise it is itself run-created.
@@ -1583,6 +1600,7 @@ fn di_cycle_tree(tag: &str, close_second_cycle: bool) -> DiTree {
     let tree = probe.di_tree(&ctx);
     probe.finish_and_clean(&ctx, false);
     let _ = std::fs::remove_dir_all(&scratch);
+    master_copy.finish();
     tree
 }
 

@@ -1069,6 +1069,74 @@ impl Drop for CorpusGuard {
     }
 }
 
+/// How many times a per-run scratch copy's removal is retried after the first
+/// attempt, and the pause before each retry (RETRO_FIXES RF-I00-01): 25 x
+/// 200 ms = 5 s at most, spent only while a removal does not take. A transient
+/// holder (a Defender scan of a file the producer just closed, a worker process
+/// that exits right after its reply) is waited out; a handle held for the
+/// producer's lifetime outlasts it and fails the case naming the producer.
+/// The one budget of every copy: the corpus gate's and the dss-core pin
+/// binaries' (`crates/dss-core/tests/harness/scratch.rs`) and this crate's
+/// IEEE13 copies (`dss_epri::smoke::Ieee13Copy`).
+pub const COPY_REMOVE_ATTEMPTS: u32 = 25;
+/// See [`COPY_REMOVE_ATTEMPTS`].
+pub const COPY_REMOVE_PAUSE: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Remove `dir` within [`COPY_REMOVE_ATTEMPTS`] x [`COPY_REMOVE_PAUSE`]; `Err`
+/// lists (up to 10) entries still present. "Gone" is proven by a FRESH listing
+/// of the parent plus a `NotFound` lookup, never by `Path::exists` alone: a
+/// delete-pending entry is still enumerated while a handle is open on it.
+pub fn remove_dir_within_budget(dir: &Path) -> Result<(), Vec<String>> {
+    let gone = || {
+        let name = dir.file_name().map(|n| n.to_os_string());
+        let listed = dir
+            .parent()
+            .and_then(|p| std::fs::read_dir(p).ok())
+            .map(|rd| rd.flatten().any(|e| Some(e.file_name()) == name))
+            .unwrap_or(true);
+        !listed
+            && matches!(
+                std::fs::symlink_metadata(dir),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound
+            )
+    };
+    for attempt in 0..=COPY_REMOVE_ATTEMPTS {
+        if attempt > 0 {
+            std::thread::sleep(COPY_REMOVE_PAUSE);
+        }
+        let _ = std::fs::remove_dir_all(dir);
+        if gone() {
+            return Ok(());
+        }
+    }
+    let mut left = Vec::new();
+    list_below(dir, dir, &mut left);
+    if left.is_empty() {
+        left.push(".".to_string());
+    }
+    left.truncate(10);
+    Err(left)
+}
+
+/// Every entry below `dir`, relative to `root`, forward-slashed.
+fn list_below(dir: &Path, root: &Path, out: &mut Vec<String>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        out.push(
+            p.strip_prefix(root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/"),
+        );
+        if e.file_type().is_ok_and(|t| t.is_dir()) {
+            list_below(&p, root, out);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
