@@ -201,8 +201,21 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 /// SumCurrents`: `ComputeIterminal`, then `Currents[NodeRef[i]] += Iterminal[i]`
 /// with `NodeRef=0` accumulating harmlessly into the ground slot). Primarily
 /// for the Newton iteration.
+///
+/// One departure from r4133: the sum never takes the direct-solve shortcut of
+/// `TPCElement.GetCurrents` (`PCElements/PCElement.pas:284`, `CalcYPrimContribution`
+/// while `LastSolutionWasDirect`). r4133 clears that flag only after the algorithm
+/// dispatch (`Common/Solution.pas:2481`), so on the first Newton solve after a direct
+/// one (`SolveDirect` `:2782` / `SolveAD` `:2669`: `Solve mode=direct`, a fault study,
+/// harmonics, `LoadModel=Admittance`) every PC element reports `Yprim·V` instead of
+/// its model current and Newton converges to the direct (constant-Z) solution —
+/// measured 10.0756 V off a fresh Newton solve on the `modes/newton/newton.dss` feeder,
+/// in r4133 and capi 0.14.5 alike (`exec::tests::newton::
+/// newton_after_a_direct_solve_matches_a_fresh_newton_solve`). An upstream bug the port
+/// never reproduces. The flag itself keeps r4133's lifecycle: only this sum ignores it.
 fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
-    let sys = sys_ctx(ckt);
+    let mut sys = sys_ctx(ckt);
+    sys.last_solution_was_direct = false;
     let sol = &mut ckt.solution;
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
@@ -221,9 +234,11 @@ fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
 /// `Vn+1 = Vn - [Y]⁻¹·Termcurr` driving the sum of terminal currents into every node to zero
 /// — `Termcurr` is `SumAllCurrents` (PD: `Yprim·V`; PC: the compensation currents) — under
 /// `DoNormalSolution`'s convergence/budget clause; `dV` (`ReAllocMem(dV, NumNodes+1)`) is the
-/// per-step scratch inside `solve_system_newton_step`. One departure from r4133: the exit
+/// per-step scratch inside `solve_system_newton_step`. Two departures from r4133: the exit
 /// drops the `Iterminal` stamps the last `SumAllCurrents` formed at the pre-update guess
-/// ([`drop_stale_newton_iterminal_stamps`], CLAUDE.md upstream bug 5).
+/// ([`drop_stale_newton_iterminal_stamps`], CLAUDE.md upstream bug 5), on the converged
+/// and the iteration-limit exit alike; and the sum evaluates every PC model even right
+/// after a direct solve ([`sum_all_currents`]).
 pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // ControlIteration == 1: update the load multipliers for this solution.
     if ckt.solution.control_iteration == 1 {
