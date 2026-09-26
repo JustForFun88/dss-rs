@@ -2094,7 +2094,10 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // the normal algorithm leaves; red at 7.378e-2 A on `Line.l1` with the
         // solver's stamp drop removed) — so a re-split that brings the stale
         // read back, at the snapshot or at the solver, fails a pin in the lane
-        // it is split into.
+        // it is split into. The row's pin alone cannot see the solver (it reads
+        // through that `refresh_iterminal`), so every Newton pin and the solver
+        // lines they guard are registered, with the module's exact test count,
+        // by `every_rf_d00_01_newton_pin_exists_and_the_solver_repair_is_wired`.
         Evidence::Exclusion(
             "crates/dss-core/tests/harness/lane.rs",
             &["\n    if LANE_SKIP_ELEM_POWERS.contains(&label) {"],
@@ -5673,6 +5676,104 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
     assert!(
         bad.is_empty(),
         "G1.3c pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
+}
+
+/// `RETRO_FIXES_PLAN.md` RF-D00-01 (its settlement, audit AT-1): every pin that
+/// holds the solver-level repair of CLAUDE.md upstream bug 5 exists once, the
+/// list is the whole of `exec::tests::newton`, and the solver lines those pins
+/// guard sit in the functions that own them.
+///
+/// The `POWERS_REUSE_STALE_NEWTON_ITERMINAL` row of [`TORN_DOWN_ROWS`] carries a
+/// single pin, `newton_powers_match_the_normal_algorithm`, which reads through
+/// `snapshot_elements`' own `refresh_iterminal` and so cannot see the solver:
+/// with `drop_stale_newton_iterminal_stamps` removed it stays green while the
+/// cache census, the AutoAdd pin and the seven report pins red (the audit's
+/// mutation). Nothing executable named those, so deleting or renaming one, or
+/// the solver call itself, left every rail green. Here the module's `#[test]`
+/// count is EXACT (a new Newton pin is registered in the same commit), and the
+/// three solver lines — the stamp drop and the AutoAdd aux currents inside
+/// `do_newton_solution`, the direct-shortcut override inside `sum_all_currents`
+/// — are needled inside those function bodies.
+#[test]
+fn every_rf_d00_01_newton_pin_exists_and_the_solver_repair_is_wired() {
+    const NEWTON: &str = "crates/dss-core/src/exec/tests/newton.rs";
+    const SOLVER: &str = "crates/dss-core/src/solution/solution/power_flow.rs";
+    const PINS: &[&str] = &[
+        "newton_powers_match_the_normal_algorithm",
+        "newton_total_powers_match_the_normal_algorithm",
+        "newton_dispatch_advances_the_solution_count_once_per_iteration",
+        "newton_leaves_the_iterminal_cache_the_normal_algorithm_leaves",
+        "newton_after_a_direct_solve_matches_a_fresh_newton_solve",
+        "newton_iteration_limit_exit_leaves_the_iterminal_cache_the_normal_algorithm_leaves",
+        "newton_leaves_the_normal_iterminal_cache_on_every_element_class",
+        "newton_autoadd_scores_the_trial_generator_like_the_normal_algorithm",
+        "newton_export_powers_match_the_normal_algorithm",
+        "newton_export_losses_match_the_normal_algorithm",
+        "newton_export_summary_matches_the_normal_algorithm",
+        "newton_show_powers_match_the_normal_algorithm",
+        "newton_export_currents_match_the_normal_algorithm",
+        "newton_show_currents_match_the_normal_algorithm",
+        "newton_reports_read_like_the_normal_algorithm",
+    ];
+    // `(the function's signature prefix, a line its body must hold exactly once)`.
+    const SOLVER_LINES: &[(&str, &str)] = &[
+        (
+            "fn do_newton_solution(",
+            "drop_stale_newton_iterminal_stamps(ckt, env);",
+        ),
+        (
+            "fn do_newton_solution(",
+            "add_in_aux_currents(ckt, SolveAlgorithm::Newton);",
+        ),
+        (
+            "fn sum_all_currents(",
+            "sys.last_solution_was_direct = false;",
+        ),
+    ];
+    let root = repo_root();
+    let read = |file: &str| {
+        std::fs::read_to_string(root.join(file))
+            .unwrap_or_else(|e| panic!("read {file}: {e}"))
+            .replace("\r\n", "\n")
+    };
+    let mut bad = Vec::new();
+    let newton = read(NEWTON);
+    for pin in PINS {
+        let decl = format!("#[test]\nfn {pin}(");
+        let found = newton.matches(&decl).count();
+        if found != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `#[test] fn {pin}(` in {NEWTON}, found {found}"
+            ));
+        }
+    }
+    let tests = newton.matches("#[test]").count();
+    if tests != PINS.len() {
+        bad.push(format!(
+            "{NEWTON} carries {tests} tests against {} registered here — register (or \
+             drop) the Newton pin in the same commit",
+            PINS.len()
+        ));
+    }
+    let solver = read(SOLVER);
+    for (func, line) in SOLVER_LINES {
+        let body = solver
+            .split_once(func)
+            .map(|(_, rest)| rest.split("\n}\n").next().unwrap_or(rest));
+        match body {
+            None => bad.push(format!("`{func}` is gone from {SOLVER}")),
+            Some(body) if body.matches(line).count() != 1 => bad.push(format!(
+                "`{func}` in {SOLVER} holds `{line}` {} times, expected exactly once",
+                body.matches(line).count()
+            )),
+            Some(_) => {}
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "RF-D00-01 Newton pin registry is stale:\n  {}",
         bad.join("\n  ")
     );
 }
