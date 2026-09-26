@@ -3681,19 +3681,23 @@ changes are superseded by the copies).
    result; a path-embedding surface is normalized at the seam, never excluded). Scheduler: a task
    is now a CASE, not a case-directory group (§3.3 simplification withdrawn), still longest-first;
    `DSS_GATE_JOBS` unchanged. Gate with the OLD commands, three runs; commit.
-2. `INFRA|2` - guard teardown. The vendored tree is read-only during the gate, so the
-   photograph / restore / sweep machinery of `dss_epri::guard::CorpusGuard`,
-   `corpus_gate/runner.rs::CorpusGuard`, `corpus_guard.py::CorpusGuard`, the `capture_guard` and
-   the `RunFileProbe` restore paths, and every rail that pins restoring/resurrecting/sweeping the
-   vendored tree (G1.10a "restores what was overwritten", D32(3) sibling-case deletion, D33(1)'s
-   teardown `clear` guard stays - it is about the capi worker, not the tree) are deleted, each
-   replaced by the rail that now carries the claim on the copy mechanism (copy is fresh; copy is
-   removed; a surviving copy names the producer; the vendored tree's listing + mtimes are
-   unchanged after a full gate - a new rail in `corpus_manifest.rs`; the census
-   `no_corpus_energymeter_is_named_zero` no longer depends on `cargo`'s sequencing - the D13
-   premise paragraph of TESTING.md is rewritten to say why). `classify_created`,
-   `normalize_created_name`, `is_engine_scratch_file` and the shared synthetic fixture stay (the
-   created-name surface is unchanged). Gate with the OLD commands, three runs; commit.
+2. `INFRA|2` - guard reuse on the copy (user decision 2026-09-26: keep the guard code, point it
+   at the scratch copies instead of deleting it). The three guards
+   (`dss_epri::guard::CorpusGuard`, `corpus_gate/runner.rs::CorpusGuard`,
+   `corpus_guard.py::CorpusGuard`), the `capture_guard` and the `RunFileProbe` now bracket the
+   COPY: snapshot, `classify_created`, sweep (with the part-1 retry) and the `sweep_failed`
+   report keep their jobs unchanged - the created-name surface and the D32(2) engine-leak rail
+   live on the copy. The restore-of-overwritten / never-resurrect paths stay as code (harmless on
+   a directory that is discarded) but the tree-specific rules that cannot hold on a copy are
+   retired in TESTING.md with their rails kept green on fixture directories or re-targeted: the
+   D32(3) sibling-case deletion hazard, the parent/child two-claim-key concurrency rule, the
+   "survivor reads as pre-existing next run" order-coupling. New rails: the copy is fresh; the
+   copy is removed after the run; a surviving copy fails the case naming the producer; the
+   vendored tree's listing + mtimes are unchanged after a full gate (`corpus_manifest.rs`); the
+   census `no_corpus_energymeter_is_named_zero` no longer depends on `cargo`'s sequencing (the
+   D13 premise paragraph rewritten to say why). Nothing is deleted unless it is unreachable after
+   the re-pointing, with the compile-level proof in `part_2.md`. Gate with the OLD commands, three
+   runs; commit.
 3. `INFRA|3` - cargo-nextest as the gate's test runner. Install `cargo-nextest` (`cargo install
    cargo-nextest --locked`, or the prebuilt from get.nexte.st into `~/.cargo/bin`; pin the version
    in the header comment of `.config/nextest.toml` and in TESTING.md). `.config/nextest.toml`:
@@ -3720,9 +3724,9 @@ changes are superseded by the copies).
   `dss-epri/src/guard.rs`, `corpus_guard.py`: producers write exports into the vendored tree and
   a photograph/restore/sweep guard tries to undo it; concurrent parent/child directory cases turn
   a transient reader into a "leaked dropping" red of the whole gate (28 of 41 red runs).
-- `INFRA|2` (major) - the same guard: ~2 000 lines of restore/resurrect/sweep logic and rails exist
-  only because the tree is shared; with per-run copies every one of them is dead weight that can
-  still red the gate.
+- `INFRA|2` (major) - the same guard: its restore/resurrect/sweep logic and rails assume the shared
+  vendored tree (sibling cases, parent/child concurrency, order-coupling); on per-run copies those
+  rules are moot and must be retired in the docs while the guard keeps bracketing the copy.
 - `INFRA|3` (major) - CLAUDE.md "## Gate", TESTING.md:916: `cargo test --workspace` runs the 77
   test binaries strictly one after another; the non-corpus part of a lane is 4-6 min under load,
   and the census separation premise (D13) is documented as depending on that sequencing.
@@ -3736,8 +3740,9 @@ part 1 is the path-embedding probe.
   retry budget; a surviving copy fails the case naming the producer; the created-name surface,
   the CONTENTS surface and the DI sidecar are unchanged in bytes (no golden byte moves,
   `ledger.json` unchanged, the population locks unchanged).
-- The photograph/restore/sweep machinery and its tree rails are gone; each claim has its
-  copy-side rail; `classify_created` + the shared Rust/Python fixture survive with their self-test.
+- The three guards bracket the copy (snapshot / classify / sweep-with-retry / `sweep_failed`);
+  the tree-only rules are retired in TESTING.md with their rails green; the copy-side rails
+  exist; `classify_created` + the shared Rust/Python fixture survive with their self-test.
 - `.config/nextest.toml` exists with `retries = 0`, `fail-fast = false`, no test groups; doctests
   run through commands 6/7; CLAUDE.md, TESTING.md, ci.yml and §2.2 agree on the seven commands.
 - Twelve consecutive gate runs recorded with wall times (3 after each part): zero infra-class reds
