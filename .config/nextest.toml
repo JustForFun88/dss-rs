@@ -12,10 +12,13 @@
 # gate adds `cargo test --workspace --doc` per lane for those.
 #
 # No test groups and no serialization: no test writes under tests/corpus/
-# (every producer runs a scratch copy, harness/scratch.rs, and the corpus gate
-# fails on any change of the vendored tree - scheduler::GateRun::assert_complete).
-# A test that needed a group would be a part-1 gap of RF-I00-01, fixed at the
-# writer, never here.
+# (measured per test binary in RF-I00-01 part 1: every former writer and every
+# corpus-gate producer runs a scratch copy, harness/scratch.rs, and the corpus
+# gate fails on a change of the vendored tree during its own walk -
+# scheduler::GateRun::assert_complete). A test that needed a group would be a
+# part-1 gap of RF-I00-01, fixed at the writer, never here. No default-filter
+# and no setup scripts either: every test of the workspace runs, with the
+# environment the gate gives it.
 
 nextest-version = { required = "0.9.146" }
 

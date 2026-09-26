@@ -1654,6 +1654,37 @@ mod di_sidecar_tests {
             remove_di_sidecar("/corpus/x/master.dss", channel);
         }
     }
+
+    /// RF-I00-01: a request that names a scratch copy as its `case_path` and the
+    /// vendored deck as its `sidecar_key` is given the sidecar keyed by the
+    /// VENDORED deck, where the runner reads it back — never one keyed by the
+    /// copy, which the runner would not read (so a stale sidecar a failed run
+    /// kept for triage could be compared as this run's output).
+    #[test]
+    fn the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy() {
+        let (copy, vendored) = (
+            "/scratch/0123/port/run/x/master.dss",
+            "/corpus/x/master.dss",
+        );
+        let req = json!({"cmd": "run", "case_path": copy, "sidecar_key": vendored, "di": true});
+        for channel in [CAPI_TAG, "r4133"] {
+            let sent = attach_di_sidecar(&req, channel);
+            let dir = sent["di_dir"]
+                .as_str()
+                .expect("the sidecar travels in the request");
+            assert_eq!(
+                std::path::Path::new(dir),
+                di_sidecar_dir(vendored, channel),
+                "keyed by the vendored deck"
+            );
+            assert_ne!(
+                std::path::Path::new(dir),
+                di_sidecar_dir(copy, channel),
+                "never keyed by the copy"
+            );
+            remove_di_sidecar(vendored, channel);
+        }
+    }
 }
 
 /// RF-I00-01 (coordinator ruling 2026-09-26 14:30, answer 2): the one duty the
@@ -1715,10 +1746,12 @@ mod transport_cwd_tests {
     }
 
     /// RF-I00-01 part 2 — the request builder never hands a transport's corpus
-    /// guard a vendored deck: the request for [`CASE`] names its copy, and the
-    /// vendored deck itself is refused before any transport could see it.
+    /// guard a vendored deck: the request for [`CASE`] names its copy (and keys
+    /// its sidecars by the vendored deck), and the vendored deck itself is
+    /// refused before any transport could see it. Only the second call may
+    /// panic (settlement: a `should_panic` on the whole body also passed a
+    /// builder that refused the copy).
     #[test]
-    #[should_panic(expected = "engines::build_run_request")]
     fn a_request_for_a_vendored_deck_is_refused() {
         let abs = crate::manifest::corpus_file(CASE);
         let case = crate::manifest::load_solvable()
@@ -1728,7 +1761,20 @@ mod transport_cwd_tests {
         let copy = ScratchCopy::new(&abs, crate::scratch::PORT);
         let req = build_run_request(copy.deck(), &abs, &case);
         assert_eq!(req["case_path"], copy.deck(), "the request names the copy");
+        assert_eq!(
+            req["sidecar_key"],
+            abs.as_str(),
+            "keyed by the vendored deck"
+        );
         copy.finish();
-        let _ = build_run_request(&abs, &abs, &case);
+        let refused = std::panic::catch_unwind(|| build_run_request(&abs, &abs, &case));
+        let msg = crate::runner::panic_msg(
+            refused.expect_err("a request for the vendored deck must be refused"),
+        );
+        assert!(
+            msg.contains("engines::build_run_request")
+                && msg.contains("lies inside the vendored corpus"),
+            "{msg}"
+        );
     }
 }

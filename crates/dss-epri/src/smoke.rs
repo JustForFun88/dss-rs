@@ -77,6 +77,21 @@ impl Ieee13Copy {
     /// which must not exist yet.
     pub fn new() -> Result<Ieee13Copy, String> {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        Self::new_in(&format!(
+            "ieee13-{}-{nanos:x}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    /// [`Self::new`] with the run directory's name given: the seam the
+    /// fresh-directory rail drives with a name it has already used, so a
+    /// pre-existing run directory is refused by this very code.
+    pub fn new_in(run_name: &str) -> Result<Ieee13Copy, String> {
         let home = std::env::current_dir()
             .map_err(|e| format!("IEEE13 scratch copy: no working directory: {e}"))?;
         let master = workspace_root().join(IEEE13_REL);
@@ -89,15 +104,7 @@ impl Ieee13Copy {
                 parent.display()
             )
         })?;
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let run_dir = parent.join(format!(
-            "ieee13-{}-{nanos:x}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
+        let run_dir = parent.join(run_name);
         std::fs::create_dir(&run_dir).map_err(|e| {
             format!(
                 "IEEE13 scratch copy: the run directory {} could not be created fresh: {e}",
@@ -134,23 +141,33 @@ impl Ieee13Copy {
         self.remove_now()
     }
 
+    /// The removal is attempted even when the step back fails, and every
+    /// message names the copy and the case (a failed step back usually leaves
+    /// the working directory inside the copy, so the removal then fails too).
     fn remove_now(&self) -> Result<(), String> {
-        std::env::set_current_dir(&self.home).map_err(|e| {
-            format!(
-                "IEEE13 scratch copy: cannot step back to {}: {e}",
-                self.home.display()
-            )
-        })?;
-        crate::guard::remove_dir_within_budget(&self.run_dir).map_err(|left| {
+        let stepped = std::env::set_current_dir(&self.home);
+        let removed = crate::guard::remove_dir_within_budget(&self.run_dir);
+        let still_there = match &removed {
+            Ok(()) => "The copy itself was removed".to_string(),
+            Err(left) => format!("Still there: {}", left.join(", ")),
+        };
+        if let Err(e) = stepped {
+            return Err(format!(
+                "the `r4133` producer's scratch copy {} of {IEEE13_REL}: cannot step \
+                 back to {}: {e}. {still_there}.",
+                self.run_dir.display(),
+                self.home.display(),
+            ));
+        }
+        removed.map_err(|_| {
             format!(
                 "the `r4133` producer's scratch copy {} of {IEEE13_REL} survived {} \
-                 removal attempts {:?} apart; still there: {}. A handle the engine \
+                 removal attempts {:?} apart. {still_there}. A handle the engine \
                  still holds blocks the removal — fix the producer, never widen the \
                  budget (RETRO_FIXES RF-I00-01).",
                 self.run_dir.display(),
                 crate::guard::COPY_REMOVE_ATTEMPTS + 1,
                 crate::guard::COPY_REMOVE_PAUSE,
-                left.join(", ")
             )
         })
     }
@@ -167,6 +184,36 @@ impl Drop for Ieee13Copy {
             eprintln!("{e}");
         }
     }
+}
+
+/// `Err` when `deck` lies inside the vendored corpus (`tests/corpus/`, compared
+/// lexically and case-insensitively): the r4133 DLL compiles a scratch copy
+/// ([`Ieee13Copy`]), never the vendored tree (RETRO_FIXES RF-I00-01), and the
+/// two call sites check the path they actually compile, so a revert to the
+/// vendored deck is refused before the DLL sees it.
+pub fn refuse_vendored(deck: &str) -> Result<(), String> {
+    fn fold(p: &Path) -> Vec<String> {
+        let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+        let mut out: Vec<String> = Vec::new();
+        for c in abs.components() {
+            match c {
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir => {
+                    out.pop();
+                }
+                other => out.push(other.as_os_str().to_string_lossy().to_lowercase()),
+            }
+        }
+        out
+    }
+    let corpus = fold(&workspace_root().join("tests").join("corpus"));
+    if fold(Path::new(deck)).starts_with(&corpus) {
+        return Err(format!(
+            "{deck} lies inside the vendored corpus: the r4133 DLL compiles a scratch \
+             copy (`smoke::Ieee13Copy`), never `tests/corpus/` (RETRO_FIXES RF-I00-01)"
+        ));
+    }
+    Ok(())
 }
 
 /// Copy `src`'s regular files (and, when `recursive`, its subtrees) into `dst`.
@@ -223,6 +270,7 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
 
     // 2. IEEE13 compile + solve converges — on its own scratch copy (RF-I00-01).
     let copy = Ieee13Copy::new()?;
+    refuse_vendored(copy.deck())?;
     engine.clear().map_err(|e| e.to_string())?;
     engine
         .compile(copy.deck(), false)
@@ -297,9 +345,59 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
         dump.len()
     ));
 
-    // The engine goes first, then its copy: a copy that survives the budget
-    // fails the smoke naming the producer.
+    // The copy goes last, after the engine's final call. Dropping the engine
+    // releases nothing (`Engine` has no `Drop`, the DLL is never unloaded):
+    // what lets the copy go is `Ieee13Copy::remove` stepping back out of it
+    // (the compile left the process working directory there). A copy that
+    // survives the budget fails the smoke naming the producer.
     drop(engine);
     copy.remove()?;
     Ok(SmokeReport { lines })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A run directory must not pre-exist: [`Ieee13Copy::new_in`] is handed a
+    /// name whose directory is already there and must refuse it, leaving the
+    /// first copy alone (the twin of the dss-core harness rail
+    /// `scratch::tests::a_run_directory_that_already_exists_is_refused`).
+    #[test]
+    fn a_run_directory_that_already_exists_is_refused() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let name = format!("fresh-rail-{}-{nanos:x}", std::process::id());
+        let first = Ieee13Copy::new_in(&name).unwrap_or_else(|e| panic!("{e}"));
+        let again = match Ieee13Copy::new_in(&name) {
+            Ok(reused) => {
+                let _ = reused.remove();
+                let _ = first.remove();
+                panic!("a pre-existing run directory was reused instead of refused");
+            }
+            Err(e) => e,
+        };
+        assert!(again.contains("could not be created fresh"), "{again}");
+        assert!(
+            Path::new(first.deck()).is_file(),
+            "the refusal left the first copy alone"
+        );
+        first.remove().unwrap_or_else(|e| panic!("{e}"));
+    }
+
+    /// The vendored deck is refused, in any spelling; a copy passes.
+    #[test]
+    fn the_vendored_ieee13_deck_is_refused_and_its_copy_passes() {
+        let vendored = workspace_root().join(IEEE13_REL);
+        let spelled = vendored.to_string_lossy().to_uppercase().replace('/', "\\");
+        for deck in [vendored.to_string_lossy().into_owned(), spelled] {
+            let err = refuse_vendored(&deck).expect_err("the vendored deck must be refused");
+            assert!(err.contains("lies inside the vendored corpus"), "{err}");
+        }
+        let copy = Ieee13Copy::new().unwrap_or_else(|e| panic!("{e}"));
+        refuse_vendored(copy.deck()).unwrap_or_else(|e| panic!("{e}"));
+        copy.remove().unwrap_or_else(|e| panic!("{e}"));
+    }
 }

@@ -49,17 +49,66 @@ mod tests {
         assert!(!da.exists() && !db.exists());
     }
 
-    /// A run directory must not pre-exist: `create_dir` on the last level is
-    /// what makes a stale or colliding directory loud instead of a copy that
-    /// silently carries another run's files.
+    /// A run directory must not pre-exist: [`ScratchCopy::new_in`], the code
+    /// every copy is made by, is handed a nonce whose directory is already
+    /// there and must refuse it (`create_dir` on the last level) instead of
+    /// running in a stale or colliding directory that silently carries another
+    /// run's files (RETRO_FIXES RF-I00-01 settlement: the rail used to exercise
+    /// `std::fs::create_dir` alone, so `create_dir_all` there stayed green).
     #[test]
     fn a_run_directory_that_already_exists_is_refused() {
-        let root = fixture_root("fresh");
-        let dir = root.join("nonce");
-        std::fs::create_dir(&dir).unwrap();
-        let again = std::fs::create_dir(&dir).expect_err("create_dir refuses an existing dir");
-        assert_eq!(again.kind(), std::io::ErrorKind::AlreadyExists);
-        let _ = std::fs::remove_dir_all(&root);
+        let deck = crate::manifest::corpus_file("Test/AutoTrans/Auto3bus.dss");
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let nonce = format!("fresh-rail-{}-{nanos:x}", std::process::id());
+        let first = ScratchCopy::new_in(&deck, PORT, nonce.clone());
+        assert!(first.run_dir().ends_with(&nonce), "{:?}", first.run_dir());
+        assert!(
+            Path::new(first.deck()).is_file(),
+            "the first copy holds the deck"
+        );
+        let again = std::panic::catch_unwind(|| ScratchCopy::new_in(&deck, PORT, nonce.clone()));
+        let msg = match again {
+            Ok(reused) => {
+                reused.finish();
+                first.finish();
+                panic!("a pre-existing run directory was reused instead of refused");
+            }
+            Err(e) => crate::runner::panic_msg(e),
+        };
+        assert!(
+            msg.contains("could not be created fresh")
+                && msg.contains("Test/AutoTrans/Auto3bus.dss")
+                && msg.contains("(port)"),
+            "the refusal names the case and the producer: {msg}"
+        );
+        assert!(
+            Path::new(first.deck()).is_file(),
+            "the refusal left the first copy alone"
+        );
+        first.finish();
+    }
+
+    /// The copy-removal budget is 25 attempts 200 ms apart (RETRO_FIXES
+    /// RF-I00-01 part 1), and `TESTING.md` states the same numbers. Coordinator
+    /// ruling 2026-09-26 16:40: a copy that survives it is a producer to fix,
+    /// never a budget to widen, so a widened budget reds here instead of only
+    /// slowing the held-file rail down.
+    #[test]
+    fn the_copy_removal_budget_is_25_attempts_200_ms_apart() {
+        assert_eq!(
+            (COPY_REMOVE_ATTEMPTS, COPY_REMOVE_PAUSE),
+            (25, std::time::Duration::from_millis(200)),
+            "the copy-removal budget moved: fix the producer, never widen the budget"
+        );
+        let testing =
+            std::fs::read_to_string(corpus_root().join("../../TESTING.md")).expect("TESTING.md");
+        assert!(
+            testing.contains("25 x 200 ms"),
+            "TESTING.md must state the copy-removal budget as `25 x 200 ms`"
+        );
     }
 
     /// The D32(2) rail on its new footing: a created file the producer still
@@ -149,6 +198,73 @@ mod tests {
                 dss.errors()
             );
         });
+    }
+
+    /// A RELATIVE reference that climbs out of `tests/corpus/` cannot be
+    /// carried into a copy, so the closure lists it like an absolute one
+    /// instead of skipping it in silence (RETRO_FIXES RF-I00-01 settlement). A
+    /// deck outside the corpus stands in for such a deck, since no vendored
+    /// deck has one (`the_external_closures_are_the_pinned_population`).
+    #[test]
+    fn a_relative_reference_that_leaves_the_corpus_is_listed() {
+        let root = fixture_root("escape");
+        std::fs::create_dir_all(root.join("case")).unwrap();
+        std::fs::write(root.join("shared.dss"), b"! shared").unwrap();
+        std::fs::write(
+            root.join("case/deck.dss"),
+            b"redirect ../shared.dss\nnew circuit.c\n",
+        )
+        .unwrap();
+        let c = closure_of(&root.join("case/deck.dss"));
+        assert!(
+            c.outside.contains("../shared.dss"),
+            "a relative escape must be listed: {:?}",
+            c.outside
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// `dss_epri::smoke::Ieee13Copy` spells the IEEE13 closure by hand (that
+    /// crate cannot see this harness): it must carry exactly the files a
+    /// [`ScratchCopy`] of the same deck carries, so the two cannot drift apart.
+    #[cfg(windows)]
+    #[test]
+    fn the_dss_epri_ieee13_copy_carries_the_computed_closure() {
+        fn files(root: &Path) -> BTreeSet<String> {
+            let mut out = BTreeSet::new();
+            let mut stack = vec![root.to_path_buf()];
+            while let Some(dir) = stack.pop() {
+                for e in std::fs::read_dir(&dir).unwrap().flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        stack.push(p);
+                    } else {
+                        out.insert(fold(&rel(&p, root)));
+                    }
+                }
+            }
+            out
+        }
+        let deck =
+            crate::manifest::corpus_file("Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss");
+        let ours = ScratchCopy::new(&deck, "r4133");
+        let theirs = dss_epri::smoke::Ieee13Copy::new().unwrap_or_else(|e| panic!("{e}"));
+        let root_of = |d: &str| {
+            Path::new(d)
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_path_buf()
+        };
+        let (a, b) = (files(&root_of(ours.deck())), files(&root_of(theirs.deck())));
+        ours.finish();
+        theirs.remove().unwrap_or_else(|e| panic!("{e}"));
+        assert!(a.len() > 1, "the computed closure carries files: {a:?}");
+        assert_eq!(
+            a, b,
+            "Ieee13Copy's hand-spelled closure drifted from closure_of"
+        );
     }
 
     /// The closures that reach outside their case folder, pinned by count and

@@ -21,8 +21,12 @@ Commands 4-5 run the pinned **`cargo-nextest` 0.9.146** (RETRO_FIXES RF-I00-01;
 `.config/nextest.toml` refuses an older runner; install it with `cargo install
 cargo-nextest --version 0.9.146 --locked` or the prebuilt from `get.nexte.st`):
 every test in its own process, `retries = 0`, `fail-fast = false`, no test
-groups - pinned by `the_nextest_profile_never_retries_and_serializes_nothing`
-(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`). nextest does not run
+groups, no `default-filter` and no setup scripts - pinned by
+`the_nextest_profile_never_retries_and_serializes_nothing`
+(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`, every TOML spelling: inline,
+sub-table, dotted key) and, for what no config text shows (`NEXTEST_RETRIES`,
+`--retries`, a profile picked on the command line), at run time by
+`this_run_gives_every_test_one_attempt_and_no_test_group`. nextest does not run
 doctests, hence commands 6-7. The RETRO_FIXES gate and CI run commands 4-5
 with `DSS_ORACLE_TIMEOUT_SECS=600`. Process-per-test changes one cost: a
 per-binary `OnceLock` memo is now per test *process*. `di_pins::PORT` (the five
@@ -943,19 +947,27 @@ gate-written `.txt` made the walk panic (an instrumented run counted 1311 files 
 the census was reading the gate's own droppings). Moving the module to the
 oracle-free corpus-hygiene binary removed that race, and since RETRO_FIXES
 RF-I00-01 the separation no longer rests on `cargo`'s sequential runner (the old
-D13 premise): every producer of every test binary compiles a scratch copy under
-`target/` (`harness::scratch::ScratchCopy`), each gate-side guard entry point
-refuses a vendored folder (`harness::scratch::not_vendored`, called by
-`runner::CorpusGuard::new`, `RunFileProbe::start` and
-`engines::build_run_request`), and the corpus gate photographs `tests/corpus/`
-(listing + every entry's own mtime, `harness::scratch::TreePhoto`) before its
-first case and after its last and fails on any difference. That read-only-tree
-rail lives where every producer runs, in the corpus gate's `run_gate` and
-`scheduler::GateRun::assert_complete`, not in this binary. Its photograph is
-pinned by `scratch::tests::a_tree_photograph_sees_every_way_a_producer_touches_the_tree`
-and its wiring was mutation-proved red on a create+delete under `Test/`. No
-runner, sequential or parallel, puts a writer beside the walk: under
-`cargo-nextest` the census runs concurrently with the corpus gate and was
+D13 premise) but on a measured property of the tree: no test WRITES under it.
+Every former tree writer and every corpus-gate producer compiles a scratch copy
+(`harness::scratch::ScratchCopy` under `target/`, `dss_epri::smoke::Ieee13Copy`
+under the temp directory). The lib unit tests and several pin binaries still
+compile vendored decks that carry no writing verb in place, read-only, measured
+non-writing once per test binary (RF-I00-01 part 1: 72 targets x 0 changes).
+The gate-side guard entry points refuse a vendored folder
+(`harness::scratch::not_vendored`, called by `runner::CorpusGuard::new`,
+`RunFileProbe::start`, `engines::build_run_request`,
+`runner::run_and_compare_abort` and `props_r4133_pins`'s `Deck::compile_inner`,
+and the two `dss-epri` sites check with `dss_epri::smoke::refuse_vendored`), and the
+corpus gate photographs `tests/corpus/` (listing + every entry's own mtime,
+`harness::scratch::TreePhoto`) before its first case and after its last and
+fails on any difference. That read-only-tree rail lives in the corpus gate's
+`run_gate` and `scheduler::GateRun::assert_complete`, not in this binary, so it
+sees a writer in another test process only while that writer overlaps the
+gate's own walk. Its photograph is pinned by
+`scratch::tests::a_tree_photograph_sees_every_way_a_producer_touches_the_tree`,
+its decision by `scheduler::a_changed_vendored_tree_fails_the_gate_naming_the_failed_cases`,
+and its wiring was mutation-proved red once on a create+delete under `Test/`.
+Under `cargo-nextest` the census runs concurrently with the corpus gate and was
 measured green there (six lanes, RETRO_FIXES RF-I00-01 part 3). No assertion was
 weakened, and there is still no retry, skip or `#[ignore]` in it.
 
@@ -1167,7 +1179,7 @@ Every one goes straight to `Solution.NodeV` (`CAPI_Alt.pas:2276` == r4133
 `DDLL/DBus.pas:423`) and moves only `ActiveBusIndex`, so no bus read stales a
 cached `Iterminal` or is staled by one. What
 `the_bus_capture_reads_in_one_fixed_order_on_both_transports`
-(`crates/dss-core/tests/corpus_gate.rs:728`) pins is therefore the agreement of
+(`crates/dss-core/tests/corpus_gate.rs:730`) pins is therefore the agreement of
 the two transports, not a staleness hazard: the same five per-bus quantities in
 the same order on the capi and r4133 sides, the bus block after
 `variables`/`eventlog`/`ctrlqueue` and before `all_properties` (which stays the
@@ -1177,7 +1189,7 @@ contract to **sixteen** per-bus reads in one order across the three tables
 (fifteen until G1.4b added `Bus.Distance` to `BUS_READ_ORDER`)
 (`BUS_READ_ORDER` → `SEQ_VLL_READ_ORDER` → `SC_READ_ORDER`), asserted by
 `the_sequence_and_line_to_line_capture_reads_in_one_fixed_order_on_both_transports`
-(`corpus_gate.rs:1003`), which also refuses the unguarded `bus_vll` /
+(`corpus_gate.rs:1005`), which also refuses the unguarded `bus_vll` /
 `bus_pu_vll` accessors inside the r4133 capture. **Corrected 2026-09-06 (G1.4d):**
 the chain is now **eighteen** per-bus reads across **four** tables — the fourth is
 `AT_BUS_READ_ORDER`, the two at-bus lists, asserted to come after every entry of
@@ -1276,7 +1288,7 @@ knowing:
   forced cases, whose decks run none (five run one). The capture-order test
   asserts that the short-circuit segment calls no refresh on either transport
   (`the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports`,
-  `crates/dss-core/tests/corpus_gate.rs:889`), and the comparator's **first**
+  `crates/dss-core/tests/corpus_gate.rs:891`), and the comparator's **first**
   assertion is the discrete "study ran" bit, before any number.
 * **A third ordering convention.** These arrays are indexed by the bus's
   *internal* (insertion) node index — `for i … for j … Zsc.GetElement(i, j)`,
@@ -2040,8 +2052,11 @@ that producer's own copy (the transports through the request's `case_path`, whic
 copy's deck, and the port through `runner::CorpusGuard` on its copy), so a leaked dropping is
 reported on the producer's own copy and the message names it. An engine that still holds a file
 is a leak on a copy as much as on the shared tree, and a copy that survives the removal budget
-fails the case naming the producer: the D32(2) engine-leak rail on its new footing
-(`scratch::tests::a_copy_a_producer_still_holds_fails_naming_the_producer`). Both transports step
+fails the case naming the producer: the D32(2) engine-leak rail on its new footing for the port
+(`scratch::tests::a_copy_a_producer_still_holds_fails_naming_the_producer`). An oracle producer's
+process has exited before the gate removes its copy (a pooled worker is recycled after every case
+unless `DSS_GATE_RECYCLE_AFTER` > 1, a one-shot exits), so for the two oracle channels the leak rail
+stays the transport's `sweep_failed` report (`runner::assert_swept_clean`). Both transports step
 back to their startup directory before replying, because r4133 leaves the process in the deck
 folder (`Executive/ExecHelper.pas:752-754`), dss_capi does the same through `SetCurrentDSSDir`, and
 Windows refuses to remove a process's working directory. Pinned by
@@ -2050,8 +2065,19 @@ Windows refuses to remove a process's working directory. Pinned by
 is removed while it still runs, mutation-checked). New refusal rails:
 `runner::tests::the_port_guard_refuses_a_vendored_case_directory`,
 `harness::run_files::tests::the_probe_refuses_a_vendored_deck`,
-`engines::transport_cwd_tests::a_request_for_a_vendored_deck_is_refused` and
-`scratch::tests::a_vendored_path_is_refused_and_a_copy_passes`.
+`engines::transport_cwd_tests::a_request_for_a_vendored_deck_is_refused`,
+`scratch::tests::a_vendored_path_is_refused_and_a_copy_passes` and, in `dss-epri`,
+`smoke::tests::the_vendored_ieee13_deck_is_refused_and_its_copy_passes`. The copies themselves:
+`scratch::tests::two_runs_of_one_case_get_two_fresh_copies_and_both_are_removed`,
+`a_run_directory_that_already_exists_is_refused` (driving `ScratchCopy::new_in`, and its
+`dss-epri` twin drives `Ieee13Copy::new_in`), `a_holder_released_within_the_budget_is_waited_out`,
+`the_copy_removal_budget_is_25_attempts_200_ms_apart` (the budget is a ruling, never widened),
+`a_parent_reference_resolves_inside_the_copy`, `a_relative_reference_that_leaves_the_corpus_is_listed`,
+`the_external_closures_are_the_pinned_population`,
+`the_dss_epri_ieee13_copy_carries_the_computed_closure` and
+`engines::tests::the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy`. The registry
+`oracle_parity_cfg_gate.rs::the_rf_i00_01_rails_the_docs_name_exist_exactly_once` reds on a
+rename or deletion of any of them.
 
 **That teardown `clear` is guarded (D33(1)).** The pinned dss_capi 0.14.5 faults on a second `clear`
 after an AutoAdd solve — `DSSException (#303) … ProcessCommand … clear … Access violation`,
@@ -2189,8 +2215,12 @@ Pinned by `runner::a_parent_guard_does_not_resurrect_a_sibling_cases_swept_outpu
 child-writes / parent-photographs / child-sweeps / parent-restores interleaving, red before the
 fix); measured 9 leaked files before, **0** over four consecutive full drives after. On a scratch
 copy (RETRO_FIXES RF-I00-01) neither the sibling-case deletion hazard nor the "a survivor reads as
-pre-existing next run" order-coupling can occur: each copy holds one case for one producer and is
-removed after the run. The code stays (harmless on a discarded directory) and its rails stay green
+pre-existing next run" order-coupling can occur for a file a gate run creates: each copy holds one
+case for one producer and is removed after the run. An untracked file already sitting in a vendored
+case directory is another matter: it is copied into all three producers' copies and drops out of
+the created-name surface on every side alike, and nothing checks the vendored tree against its
+manifest at gate start, so `git status tests/corpus` must be clean before a gate run. The code
+stays (harmless on a discarded directory) and its rails stay green
 on fixture directories (`runner::a_parent_guard_does_not_resurrect_a_sibling_cases_swept_output`,
 `dss_epri::guard::tests::a_sibling_cases_files_under_a_pre_existing_subdirectory_are_neither_reported_nor_swept`).
 
@@ -3384,7 +3414,7 @@ written, never which value it is; anything else is an exclusion, not a rule.
 that the four per-kind locks (`NORM_ROWS` … `NORM_ENUM_SYNONYM_ROWS`,
 `props_norm.rs:742-764`) partition it, so a row cannot be added without moving a
 documented number. *Liveness:* `props_norm::assert_norm_rows_are_live`
-(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:295`) fails
+(`props_norm.rs:1412`, called in the gate epilogue, `corpus_gate.rs:297`) fails
 a full run in which a row was visited and folded nothing — the fail-on-stale
 half. The offline half is the replay (§"The r4133 props replay accounting"):
 every row must claim at least one vendored example row. Only the **live** half
@@ -3428,7 +3458,7 @@ converse guard `a_capi_witness_is_a_pair_the_capi_channel_can_compare` refuses a
 tied to the table both ways by
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists`. *Liveness:*
 `props_norm::assert_echo_rows_are_live` (`props_norm.rs:2657`,
-`corpus_gate.rs:306`) — `visits > 0 && hits == 0` for a pair-scoped row,
+`corpus_gate.rs:308`) — `visits > 0 && hits == 0` for a pair-scoped row,
 `visits == 0` for a narrowed one (a narrowed row counts only covered cells, so
 `visits == hits` by construction and the first arm cannot fire on it).
 
@@ -3472,7 +3502,7 @@ skipped on capi only, because their Rust tables are r4133-shaped
 `recloser_and_relay_are_whole_element_skipped_on_capi_only`, `mod.rs:8466`).
 
 **Did the chain run at all?** `props_norm::assert_r4133_props_compare_ran`
-(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:283`),
+(`props_norm.rs:2841`) runs first in the gate epilogue (`corpus_gate.rs:285`),
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
@@ -3838,11 +3868,13 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 
 ## Procedures
 
-**Run the gate** — the seven commands above. `tests/corpus` stays pristine by
-construction: no test runs a deck inside it (every producer compiles its own
-scratch copy under `target/`, RETRO_FIXES RF-I00-01), and the corpus gate fails
-on any change of the tree's listing or mtimes between its first case and its
-last (`scheduler::GateRun::assert_complete`). A manual `dss-cli` invocation on a
+**Run the gate** — the seven commands above. `tests/corpus` stays pristine
+because no test writes under it (measured per test binary: every former writer
+and every corpus-gate producer compiles its own scratch copy, RETRO_FIXES
+RF-I00-01, while decks with no writing verb are still read in place), and the
+corpus gate fails on any change of the tree's listing or mtimes between its
+first case and its last (`scheduler::GateRun::assert_complete`, which sees a
+writer in another test process only while it overlaps that walk). A manual `dss-cli` invocation on a
 vendored deck is outside that rail, so check `git status tests/corpus` after one
 and `git restore`/path-limited `git clean` the subtree if anything lingers. **Probe a
 vendored deck on a copy, never in place:** several of them write next to

@@ -76,14 +76,14 @@ struct DirClaim {
 /// SET picked up another deck's reports — `ieee8500_*` and `ieee8500u_*` in a
 /// single reply — on a different (case, channel) pair each run.
 ///
-/// So the claim is **exclusive per directory** (coordinator decision D33(2)):
-/// exactly one producer at a time owns a case dir, from the pre-run snapshot
-/// through both oracle captures, the port run, and the sweep + restore. It is
-/// **reentrant for the owning thread** — [`assert_deferred_rust_smoke`] takes a
-/// second guard inside `scheduler::run_one_case`'s, and the overlap fixture
-/// below takes two — and those nested guards share the one pristine snapshot,
-/// so the names set is always the pre-run one and exactly one sweep runs, when
-/// the last of them leaves.
+/// So the claim was made **exclusive per directory** (coordinator decision
+/// D33(2)). Since RF-I00-01 a claim only ever sits on the port's own scratch
+/// copy (`CorpusGuard::new` refuses a vendored folder): `run_one_case` takes
+/// none, the oracle captures run in their own copies without this guard, and
+/// `deferred_smoke_in` takes one on its copy. It stays **reentrant for the
+/// owning thread** — the overlap fixture below takes two nested guards, which
+/// share the one pristine snapshot, so the names set is always the pre-run one
+/// and exactly one sweep runs, when the last of them leaves.
 type DirRegistry = (Mutex<HashMap<PathBuf, DirClaim>>, Condvar);
 
 fn dir_registry() -> &'static DirRegistry {
@@ -1725,13 +1725,13 @@ pub(crate) fn compare_capture(
 /// does with the filesystem.
 ///
 /// `swept` is the transport's own `sweep_failed` report: what its `CorpusGuard`
-/// classified as run-created and then could NOT remove. Such an entry stays in
-/// the case directory, so the next producer of this case (the other channel, or
-/// the port's probe) snapshots it as pre-existing and silently drops that name
-/// from its created set. Not hypothetical: dss_capi never closes a Storage
+/// classified as run-created and then could NOT remove, i.e. an engine leak. On
+/// the shared tree (before RF-I00-01) such an entry poisoned the next producer's
+/// snapshot. On a per-producer copy it poisons nothing, and for the two oracle
+/// channels this report stays THE leak rail (their process has exited before
+/// the gate removes the copy). Not hypothetical: dss_capi never closes a Storage
 /// `debugtrace` stream (`src/PCElements/Storage.pas:872`, freed only at
-/// `:871`/`:1199`), so the capi channel used to leak `STOR_<name>.csv` and make
-/// the `r4133` channel report an empty set for that deck (G1.10a F4).
+/// `:871`/`:1199`), so the capi channel used to leak `STOR_<name>.csv` (G1.10a F4).
 ///
 /// `None` is a MISSING report, not a clean one: the field was a plain
 /// `Vec<String>` behind `serde(default)` until the audit settlement, so a
@@ -1836,15 +1836,15 @@ pub(crate) fn compare_with_result(
     // G1.10a / coordinator decision D32(2) — hygiene H1, checked BEFORE anything
     // else this case does with the filesystem. `sweep_failed` is what the
     // channel's own `CorpusGuard` classified as run-created and then could not
-    // remove; the entry stays in the case directory, so the NEXT producer of
-    // this case (the other channel, or the port's probe below) snapshots it as
-    // pre-existing and silently drops that name from its created set. That is
-    // not hypothetical: dss_capi never closes a Storage `debugtrace` stream
+    // remove: an engine leak. On the shared tree (before RF-I00-01) the entry
+    // stayed in the case directory and the NEXT producer of the case dropped
+    // that name from its created set. Every producer now runs its own copy, so
+    // nothing is poisoned, but the engine still holds the file. Not
+    // hypothetical: dss_capi never closes a Storage `debugtrace` stream
     // (`src/PCElements/Storage.pas:872`, freed only at `:871`/`:1199`), so the
-    // capi channel used to leak `STOR_<name>.csv` and make the `r4133` channel
-    // report an empty set for that deck (G1.10a F4). Both transports now release
-    // the circuit before their guard sweeps, and any survivor fails the case
-    // here instead of hiding — the order-coupling can never come back silently.
+    // capi channel used to leak `STOR_<name>.csv` (G1.10a F4). Both transports
+    // release the circuit before their guard sweeps, and any survivor fails the
+    // case here, and for the oracle channels this report is the leak rail.
     assert_swept_clean(label, channel_tag(channel), oc.sweep_failed.as_deref());
     let tol = tol_for(&c.kind);
     // RETRO_FIXES RF-I00-01: the port compiles its OWN fresh scratch copy of the
@@ -1902,8 +1902,8 @@ pub(crate) fn compare_with_result(
     );
     // The port's run is over: drop the engine BEFORE the probe reads, so a file
     // the engine still holds open is closed (and flushed) first — a removal that
-    // failed on an open handle would make the next channel's probe see the file
-    // as pre-existing.
+    // failed on an open handle would leave the file in this copy and fail the
+    // case when the copy is removed.
     drop(dss);
     #[cfg(windows)]
     if let Some(probe) = run_file_probe {
@@ -2118,9 +2118,15 @@ pub(crate) fn run_and_compare_abort(
     // the oracle raises on the aborting solve → `ok:false` carrying the message.
     // RF-I00-01: the oracle and the port each abort in their own fresh copy.
     let copy = crate::scratch::ScratchCopy::new(case_path, channel.tag());
+    // Hand-built, so it refuses a vendored deck itself, as `build_run_request`
+    // does for every other request (the transports' guards bracket its folder).
+    let deck = crate::scratch::not_vendored(
+        std::path::Path::new(copy.deck()),
+        "runner::run_and_compare_abort",
+    );
     let req = json!({
         "cmd": "run",
-        "case_path": copy.deck(),
+        "case_path": deck.to_string_lossy(),
         "post": c.post,
         "n_steps": c.n_steps,
         "selected_elements": c.selected_elements,

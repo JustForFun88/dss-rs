@@ -330,7 +330,7 @@ One section per step, grouped by domain part; the `<!-- RF-STEP {...} -->` heade
 
 ### RF-D00-01 — Recompute Newton Iterminal at the converged NodeV for every reader (Export/Show/Summary/monitors/meters)
 <!-- RF-STEP {"step": "RF-D00-01", "effort": "max", "parts": 3, "gate": "full", "oracle": true, "after": [], "n_uids": 3} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -; plus `lane_diff.ps1` (§2.2).
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -; plus `lane_diff.ps1` (§2.2).
 **Files:** `crates/dss-core/src/compat.rs`, `crates/dss-core/src/elements/traits.rs`, `crates/dss-core/src/exec/tests/newton.rs`, `crates/dss-core/src/exec/view.rs`, `crates/dss-core/src/report/export/currents.rs`, `crates/dss-core/src/report/show/bus_powers.rs`, `crates/dss-core/src/report/show/currents.rs`, `crates/dss-core/src/report/show/powers.rs`, `crates/dss-core/src/solution/solution/power_flow.rs`, `crates/dss-core/tests/harness/lane.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/corpus/ledger.json`, `tests/corpus/modes/manifest.json`
 **Doc notes (§4):** `CLAUDE.md` (R2: factual sync of the Newton bug note only), `GOLDEN_REBASE_PLAN.md`, `STATUS.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 
@@ -356,7 +356,7 @@ Background (one defect, three faces): `do_newton_solution` (`solution/solution/p
 
 ### RF-D00-02 — Fix CIM grounded/SpacingSpecified export bugs and the CIM citation/test notes
 <!-- RF-STEP {"step": "RF-D00-02", "effort": "max", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-01"], "n_uids": 7} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-01.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-01.
 **Files:** `crates/dss-core/src/cim/export.rs`, `crates/dss-core/src/compat.rs`, `crates/dss-core/tests/golden_cim.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`, `docs/phase-records/r4133-props-rp3.md`
 
@@ -377,7 +377,7 @@ Background (one defect, three faces): `do_newton_solution` (`solution/solution/p
 
 ### RF-D00-03 — Pin the Newton exclusions (aggregates, phase_losses, newton_feeder) and repair stale citations around them
 <!-- RF-STEP {"step": "RF-D00-03", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-01", "RF-D00-02"], "n_uids": 15} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-01, RF-D00-02.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-01, RF-D00-02.
 **Files:** `crates/dss-core/src/compat.rs`, `crates/dss-core/src/elements/meter/monitor/mod.rs`, `crates/dss-core/src/exec/tests/derived_totals.rs`, `crates/dss-core/src/exec/tests/newton.rs`, `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/harness/aggregates.rs`, `crates/dss-core/tests/harness/lane.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `crates/dss-epri/src/dss.rs`
 **Doc notes (§4):** `CLAUDE.md` (R2), `GOLDEN_REBASE_PLAN.md`, `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`
 
@@ -413,7 +413,7 @@ Start from the `exec/tests/newton.rs` that RF-D00-01 left (its tripwire was rewr
 
 ### RF-D00-04 — Give the G1.9 aggregates surface a fail-on-stale witness register and a real Get_Losses band pin
 <!-- RF-STEP {"step": "RF-D00-04", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-03"], "n_uids": 3} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-03.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-03.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/aggregates.rs`, `crates/dss-core/tests/harness/mod.rs`
 **Doc notes (§4):** `TESTING.md`, `tests/TOLERANCE_NOTES.md`
 
@@ -430,7 +430,7 @@ Start from the `exec/tests/newton.rs` that RF-D00-01 left (its tripwire was rewr
 
 ### RF-D00-05 — Make NCIM re-initialise generator Q when generators are added/enabled after the first solve (index-OOB panic)
 <!-- RF-STEP {"step": "RF-D00-05", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -; plus `lane_diff.ps1` (§2.2).
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -; plus `lane_diff.ps1` (§2.2).
 **Files:** `crates/dss-core/src/exec/tests/ncim.rs`, `crates/dss-core/src/solution/solution/ncim.rs`, `crates/dss-core/src/solution/solution/state.rs`
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `STATUS.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`
 
@@ -451,7 +451,7 @@ Start from the `exec/tests/newton.rs` that RF-D00-01 left (its tripwire was rewr
 
 ### RF-D00-06 — Correct the NCIM swing-source sum: element set, multi-terminal stride, enabled filter, clip, bystander cache writes
 <!-- RF-STEP {"step": "RF-D00-06", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D00-01", "RF-D00-05"], "n_uids": 6} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-01, RF-D00-05; plus `lane_diff.ps1` (§2.2).
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-01, RF-D00-05; plus `lane_diff.ps1` (§2.2).
 **Files:** `crates/dss-core/src/elements/traits.rs`, `crates/dss-core/src/exec/tests/ncim.rs`, `crates/dss-core/src/solution/solution/ncim.rs`, `investigations/to_opendss/` (R1: main checkout, local-only), `tests/corpus/ledger.json` (only for a gated NCIM cell proven to move, each entry with its pin)
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/upgrade/DIVERGENCES.md`
 
@@ -481,7 +481,7 @@ All six findings sit on one function, `solution/solution/ncim.rs::ncim_stamp_swi
 
 ### RF-D00-07 — Harden the NCIM tripwire population and replace the vacuous P8/P9 legs with real r4133 pins
 <!-- RF-STEP {"step": "RF-D00-07", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D00-06"], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-06.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-06.
 **Files:** `crates/dss-core/src/exec/tests/ncim.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`
 
@@ -503,7 +503,7 @@ Test-only step on the file RF-D00-06 just changed: re-read the final swing-sourc
 
 ### RF-D00-08 — Stop reproducing the two r4133 WindGen kvarBase/varBase bugs; exclude and pin the divergences
 <!-- RF-STEP {"step": "RF-D00-08", "effort": "max", "parts": 3, "gate": "full", "oracle": true, "after": ["RF-D00-03"], "n_uids": 2} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-03; plus `lane_diff.ps1` (§2.2).
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-03; plus `lane_diff.ps1` (§2.2).
 **Files:** `crates/dss-core/src/elements/pc/windgen/nominal.rs`, `crates/dss-core/src/elements/pc/windgen/tests.rs`, `crates/dss-core/tests/harness/lane.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `investigations/to_opendss/55-windgen-qmode0-zero-var-dispatch.md`, `investigations/to_opendss/77-windgen-qmode2-negative-kvarbase-double-negation.md`, `investigations/to_opendss/78-windgen-varbase-before-kvarbase-renormalisation.md`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `STATUS.md`, `docs/phase-records/r4133-props-rp3.md`
 
@@ -530,7 +530,7 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-09 — Tighten the WindGen value pins (Model=6 Yprim, WTG3 band, corpus-deck loading)
 <!-- RF-STEP {"step": "RF-D00-09", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-08"], "n_uids": 3} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-08.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-08.
 **Files:** `crates/dss-core/src/elements/pc/windgen/tests.rs`, `crates/dss-core/tests/props_r4133_pins.rs`
 **Doc notes (§4):** -
 
@@ -547,7 +547,7 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-10 — Document and pin the WindGen variable-surface fixes; restore the abort flag in the get_currents drain
 <!-- RF-STEP {"step": "RF-D00-10", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D00-09", "RF-D02-15"], "n_uids": 3} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-09, RF-D02-15.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-09, RF-D02-15.
 **Files:** `crates/dss-core/src/elements/pc/generator/accessors.rs`, `crates/dss-core/src/elements/pc/generator/tests.rs`, `crates/dss-core/src/elements/pc/windgen/accessors.rs`, `crates/dss-core/src/elements/pc/windgen/tests.rs`, `crates/dss-core/src/exec/tests/windgen_usermodel.rs`, `investigations/to_opendss/38-windgen-get-set-variable-usermodel-tail.md`, `investigations/to_opendss/75-windgen-numvariables-ignores-dynamicexp.md`, `investigations/to_opendss/76-windgen-usermodel-tail-fixed-offset.md`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp0-rp1.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -565,7 +565,7 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-11 — Route every WindGen user-model access through take_live_user_model; carry tstart/tstop/intHour and surface guest traps
 <!-- RF-STEP {"step": "RF-D00-11", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-06", "RF-D00-10"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-06, RF-D00-10.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-06, RF-D00-10.
 **Files:** `crates/dss-core/src/elements/pc/generator/user_model.rs`, `crates/dss-core/src/elements/pc/windgen/user_model.rs`, `crates/dss-core/src/elements/traits.rs`, `crates/dss-core/src/exec/tests/windgen_usermodel.rs`, `docs/wasm/USERMODEL_ABI.md`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp0-rp1.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -584,7 +584,7 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-12 — Extend the windgen_usermodel pins (record fields, 1-phase VTarget, VariableName) and fix its r4133 citations
 <!-- RF-STEP {"step": "RF-D00-12", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-11"], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-11.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-11.
 **Files:** `crates/dss-core/src/elements/pc/windgen/mod.rs`, `crates/dss-core/src/elements/pc/windgen/tests.rs`, `crates/dss-core/src/exec/tests/windgen_usermodel.rs`, `docs/wasm/USERMODEL_ABI.md`
 **Doc notes (§4):** -
 **Findings**
@@ -601,13 +601,13 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-13 — Make cloned Generator/PVSystem/Storage/CapControl user models live (ensure_live reachable)
 <!-- RF-STEP {"step": "RF-D00-13", "effort": "max", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-11"], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-11.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-11.
 **Files:** `crates/dss-core/src/elements/control/cap_control/control_loop.rs`, `crates/dss-core/src/elements/control/cap_control/user_model.rs`, `crates/dss-core/src/elements/pc/generator/user_model.rs`, `crates/dss-core/src/elements/pc/pvsystem/user_model.rs`, `crates/dss-core/src/elements/pc/storage/registers.rs`, `crates/dss-core/src/elements/pc/storage/user_model.rs`, `crates/dss-core/src/exec/tests/mod.rs`, `crates/dss-core/src/exec/tests/user_model_clone.rs`
 **Doc notes (§4):** -
 **Findings**
 - `RP|RP1.3|SA1|SA-6` (minor) - each sibling slot's `ensure_live` (`generator/user_model.rs`, `pvsystem/user_model.rs`, `storage/user_model.rs`, `cap_control/user_model.rs`) is reached only from inside the slot's own calc/init/integrate/sample/do_pending, while every engine-side caller first guards on `user_model_exists()` = `live.is_some_and(|l| l.exists())` (Generator callers incl. the ShaftModel; `pvsystem/user_model.rs`; `storage/registers.rs`; `cap_control/control_loop.rs`), so a cloned element (live = None) silently falls back to its built-in model. Fix: port the WindGen settlement shape - `windgen/user_model.rs::take_live_user_model` (engine-side `ensure_live` revive ahead of the `exists()` guard), as it stands after RF-D00-11 - to the four classes, Generator's ShaftModel slot included; load errors are surfaced into the ErrorLog, never swallowed. Add one clone-then-solve pin per class in the new `exec/tests/user_model_clone.rs` (declared in `exec/tests/mod.rs`), mirroring the clone pins of `exec/tests/windgen_usermodel.rs`: clone the circuit (`ClassArena::clone_ckt`), solve, and assert the user model - not the built-in - produced the result (a guest-distinctive value), plus a failing-load case that yields a diagnostic.
 **Parts:**
-1. P1 - Generator (UserModel + ShaftModel) and PVSystem: make the engine-side sites revive a cloned slot; create `exec/tests/user_model_clone.rs` with the Generator and PVSystem pins; five-command gate; commit. Hands over in `tmp/retro_fix/state/RF-D00-13.md`: the revive helper shape used, the fixture guests/decks used by the pins, anything found in Storage/CapControl while reading.
+1. P1 - Generator (UserModel + ShaftModel) and PVSystem: make the engine-side sites revive a cloned slot; create `exec/tests/user_model_clone.rs` with the Generator and PVSystem pins; full gate (§2.2); commit. Hands over in `tmp/retro_fix/state/RF-D00-13.md`: the revive helper shape used, the fixture guests/decks used by the pins, anything found in Storage/CapControl while reading.
 2. P2 - Storage (+ `storage/registers.rs`) and CapControl (+ `cap_control/control_loop.rs`): same shape, same pins per class; full gate; commit. Run `tools/lanes/lane_diff.ps1` only if a solver path or compat kernel was touched (not expected).
 **Acceptance:**
 - `exec/tests/user_model_clone.rs` holds a clone-then-solve pin for each of Generator, PVSystem, Storage, CapControl, each red when the revive is removed (prove locally), green in both lanes.
@@ -617,7 +617,7 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-14 — Give the StorageController / IndMach012 / Isource pins teeth
 <!-- RF-STEP {"step": "RF-D00-14", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-09"], "n_uids": 9} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-09.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-09.
 **Files:** `crates/dss-core/src/elements/control/storage_controller/tests.rs`, `crates/dss-core/src/elements/pc/ind_mach012/tests.rs`, `crates/dss-core/src/elements/pc/isource/tests.rs`, `crates/dss-core/tests/golden_reports.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_roundtrip.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`
 **Findings**
@@ -641,7 +641,7 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-15 — Fix reduce SpacingSpecified, record the r4133 MergeWith/#363/LogEvents divergences, and repair reduce pins and cites
 <!-- RF-STEP {"step": "RF-D00-15", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D00-02"], "n_uids": 12} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-02.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-02.
 **Files:** `crates/dss-core/src/exec/reduce.rs`, `crates/dss-core/src/exec/tests/reduce.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`, `docs/upgrade/DIVERGENCES.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -669,7 +669,7 @@ The two uids describe the same two defects from the settlement side and the code
 
 ### RF-D00-16 — Close the props_r4133 evidence-lock holes (digest, max_rel/example columns, population drift, supplement header)
 <!-- RF-STEP {"step": "RF-D00-16", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": [], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_evidence_lock.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `tests/corpus/props_r4133/examples_supplement.txt`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/r4133-props-rp0-rp1.md`, `tests/corpus/props_r4133/README.md`
 Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 of RP2.1) FIRST, then compute the new digests, so the supplement is hashed in its final form. The frozen data rows of every evidence file stay byte-identical; only comment/header lines of the supplement change.
@@ -694,7 +694,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D00-17 — Retarget the 109 root R4133_PROPS_PLAN.md citations to docs/plans-archive/ (scripted)
 <!-- RF-STEP {"step": "RF-D00-17", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-01", "RF-D00-02", "RF-D00-03", "RF-D00-04", "RF-D00-05", "RF-D00-06", "RF-D00-07", "RF-D00-08", "RF-D00-09", "RF-D00-10", "RF-D00-11", "RF-D00-12", "RF-D00-13", "RF-D00-14", "RF-D00-15", "RF-D00-16"], "n_uids": 1} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-01, RF-D00-02, RF-D00-03, RF-D00-04, RF-D00-05, RF-D00-06, RF-D00-07, RF-D00-08 … (16 steps, see the header).
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-01, RF-D00-02, RF-D00-03, RF-D00-04, RF-D00-05, RF-D00-06, RF-D00-07, RF-D00-08 … (16 steps, see the header).
 **Files:** `PLAN_SEQUENCE.md`, `crates/dss-core/src/elements/pc/windgen/nominal.rs`, `crates/dss-core/src/elements/pc/windgen/solve.rs`, `crates/dss-core/src/elements/pc/windgen/tests.rs`, `crates/dss-core/src/exec/tests/windgen_usermodel.rs`, `crates/dss-core/src/obj/dss_enum/registry/pc.rs`, `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/corpus_gate/manifest.rs`, `crates/dss-core/tests/corpus_gate/props_census.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/golden_lock.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `crates/dss-core/tests/props_r4133_evidence_lock.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `crates/dss-core/tests/props_roundtrip.rs`, `crates/dss-usermodel/src/records.rs`, `crates/dss-usermodel/tests/windgen_shuttle.rs`, `tests/corpus/README.md`, `tools/fpc/usermodel_abi/README.md`, `tools/wasm_usermodel/PIN.txt`, `tools/wasm_usermodel/models/wgturbine/src/lib.rs`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `ORPHANED_GAPS.md`, `STATUS.md`, `TESTING.md`, `docs/upgrade/DIVERGENCES.md`, `tests/TOLERANCE_NOTES.md`, `tests/corpus/props_r4133/README.md`
 **Findings**
@@ -707,7 +707,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-01 — Fix Relay/SwtControl per-phase state parse off-by-one and pin the >6-phase render clip
 <!-- RF-STEP {"step": "RF-D01-01", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 8} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/control/relay/mod.rs`, `crates/dss-core/src/elements/control/relay/tests.rs`, `crates/dss-core/src/elements/control/swt_control/mod.rs`, `crates/dss-core/src/elements/control/swt_control/tests.rs`, `investigations/to_opendss/` (R1: main checkout, local-only)
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -733,7 +733,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-02 — Re-point the RP3.7 tmp/rp37 pin provenance and clean the civanlar comments in controls.rs
 <!-- RF-STEP {"step": "RF-D01-02", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-01"], "n_uids": 5} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-01.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-01.
 **Files:** `crates/dss-core/src/elements/control/control_elem.rs`, `crates/dss-core/src/elements/control/relay/accessors.rs`, `crates/dss-core/src/elements/control/relay/mod.rs`, `crates/dss-core/src/elements/control/relay/tests.rs`, `crates/dss-core/src/elements/control/swt_control/accessors.rs`, `crates/dss-core/src/elements/control/swt_control/mod.rs`, `crates/dss-core/src/elements/control/swt_control/tests.rs`, `crates/dss-core/src/exec/tests/controls.rs`, `crates/dss-core/src/obj/dss_enum/registry/control.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`
 **Findings**
@@ -751,7 +751,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-03 — Tighten props_r4133 evidence lock, props_roundtrip population doc and WindGen ABI probe pin
 <!-- RF-STEP {"step": "RF-D01-03", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/props_r4133_evidence_lock.rs`, `crates/dss-core/tests/props_roundtrip.rs`, `crates/dss-usermodel/src/records.rs`, `tests/corpus/modes/manifest.json`
 **Doc notes (§4):** `tests/corpus/props_r4133/README.md`
 **Findings**
@@ -768,7 +768,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-04 — Generalise the Save sizing-property hoist beyond the six hardcoded classes
 <!-- RF-STEP {"step": "RF-D01-04", "effort": "max", "parts": 3, "gate": "full", "oracle": true, "after": [], "n_uids": 3} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/exec/tests/report.rs`, `crates/dss-core/src/report/save/save.rs`, `crates/dss-core/tests/save_roundtrip.rs`
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `STATUS.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -788,7 +788,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-05 — Make save_roundtrip compare emitted-deck properties, not only solve observables
 <!-- RF-STEP {"step": "RF-D01-05", "effort": "max", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D01-04"], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-04.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-04.
 **Files:** `crates/dss-core/src/report/save/save.rs`, `crates/dss-core/tests/save_roundtrip.rs`
 **Doc notes (§4):** -
 **Findings**
@@ -804,7 +804,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-06 — Pin the RegControl TapNum Save resync and the two unowned r4133 Dump cell divergences
 <!-- RF-STEP {"step": "RF-D01-06", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-02", "RF-D01-04", "RF-D01-05", "RF-D01-10"], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-02, RF-D01-04, RF-D01-05, RF-D01-10.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-02, RF-D01-04, RF-D01-05, RF-D01-10.
 **Files:** `crates/dss-core/src/exec/command.rs`, `crates/dss-core/src/exec/tests/report.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `docs/phase-records/follow-ups-carried.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/phase-records/r4133-props-rp5.md`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -819,7 +819,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-07 — Port the r4133 HAS_OCP_DEVICE / HAS_AUTO_OCP_DEVICE clear-and-recompute at control recalc
 <!-- RF-STEP {"step": "RF-D01-07", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/exec/command.rs`, `crates/dss-core/src/exec/tests/element_extras.rs`, `crates/dss-core/src/exec/tests/reliability.rs`, `crates/dss-core/src/solution/meters/zones/build.rs`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `ORPHANED_GAPS.md`, `STATUS.md`, `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -836,7 +836,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-08 — Harden the element_extras pins and pin the Show Controlled attach order
 <!-- RF-STEP {"step": "RF-D01-08", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-07"], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-07.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-07.
 **Files:** `crates/dss-core/src/exec/tests/element_extras.rs`, `crates/dss-core/tests/golden_reports.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -854,7 +854,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-09 — Fix JSON import: per-phase quoted arrays and queued LoadShape/TShape saves
 <!-- RF-STEP {"step": "RF-D01-09", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-13", "RF-D01-01", "RF-D01-02", "RF-D01-07"], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-13, RF-D01-01, RF-D01-02, RF-D01-07.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-13, RF-D01-01, RF-D01-02, RF-D01-07.
 **Files:** `crates/dss-core/src/elements/control/relay/tests.rs`, `crates/dss-core/src/elements/control/swt_control/tests.rs`, `crates/dss-core/src/exec/command.rs`, `crates/dss-core/src/exec/json_import.rs`, `crates/dss-core/src/exec/tests/json_import.rs`, `crates/dss-core/src/exec/tests/mod.rs`, `crates/dss-core/src/obj/props/class_props/json_set.rs`
 **Doc notes (§4):** `ORPHANED_GAPS.md`
 **Findings**
@@ -869,7 +869,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-10 — Port ZscRefresh, settle Show Isolated's second ReProcessBusDefs, fix the G2.1f bare citations
 <!-- RF-STEP {"step": "RF-D01-10", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-04", "RF-D01-05", "RF-D01-08", "RF-D01-09"], "n_uids": 3} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-04, RF-D01-05, RF-D01-08, RF-D01-09.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-04, RF-D01-05, RF-D01-08, RF-D01-09.
 **Files:** `crates/dss-core/src/exec/command.rs`, `crates/dss-core/src/exec/report.rs`, `crates/dss-core/src/exec/tables.rs`, `crates/dss-core/src/exec/tests/report.rs`, `crates/dss-core/src/exec/view.rs`, `crates/dss-core/src/solution/solution/fault_study.rs`, `crates/dss-core/tests/golden_reports.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `docs/phase-records/golden-rebase.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -886,7 +886,7 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 
 ### RF-D01-11 — Refresh the stale reliability.rs:LINE citations, add a citation guard, pin meter_totals and D22
 <!-- RF-STEP {"step": "RF-D01-11", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-07", "RF-D01-10", "RF-D06-10"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-07, RF-D01-10, RF-D06-10.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-07, RF-D01-10, RF-D06-10.
 **Files:** `crates/dss-core/src/exec/tests/pd_elements.rs`, `crates/dss-core/src/exec/tests/reliability.rs`, `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `crates/dss-core/tests/pd_elements_pins.rs`, `crates/dss-core/tests/reliability_pins.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`, `docs/upgrade/DIVERGENCES.md`
 
@@ -910,7 +910,7 @@ Five of the eight findings are the same drifted citations seen by different audi
 
 ### RF-D01-12 — Make DeckDirGuard loud: fail on a failed pre-snapshot/removal and take a dir claim (3 copies)
 <!-- RF-STEP {"step": "RF-D01-12", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-02", "RF-D01-11", "RF-D08-08"], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-02, RF-D01-11, RF-D08-08.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-02, RF-D01-11, RF-D08-08.
 **Files:** `crates/dss-core/tests/harness/deck_dir_guard.rs` (new), `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/pd_elements_pins.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/reliability_pins.rs`
 **Doc notes (§4):** -
 
@@ -928,7 +928,7 @@ Preferred shape: hoist ONE `DeckDirGuard` (+ its directory walk) into the NEW ha
 
 ### RF-D01-13 — Close the capture_order.rs gate holes (tail scope, free-function reads, marker names, exec rail)
 <!-- RF-STEP {"step": "RF-D01-13", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": [], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/capture_order.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** -
 
@@ -956,7 +956,7 @@ Preferred shape: hoist ONE `DeckDirGuard` (+ its directory walk) into the NEW ha
 
 ### RF-D01-14 — Reclassify the five Circuit aggregate rows out of order-free capture group C
 <!-- RF-STEP {"step": "RF-D01-14", "effort": "max", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-13"], "n_uids": 3} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-13.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-13.
 **Files:** `crates/dss-core/tests/capture_order.rs`, `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-epri/src/capture.rs`, `crates/dss-epri/src/modes.rs`, `crates/dss-epri/tests/modes.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 
@@ -975,7 +975,7 @@ Preferred shape: hoist ONE `DeckDirGuard` (+ its directory walk) into the NEW ha
 
 ### RF-D01-15 — Put every dss-epri read through the mode table: kVBase, CapControlsV sentinel, S replies, errno, Capacity write
 <!-- RF-STEP {"step": "RF-D01-15", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-14"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-14.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-14.
 **Files:** `crates/dss-epri/src/capture.rs`, `crates/dss-epri/src/dss.rs`, `crates/dss-epri/src/ffi.rs`, `crates/dss-epri/src/modes.rs`, `crates/dss-epri/src/script.rs`, `crates/dss-epri/tests/modes.rs`, `crates/dss-epri/tests/protocol.rs`
 **Doc notes (§4):** - (if a shared doc states the `WP_G1_MODES` row count or the `DO_NOT_CALL` length, leave a note for it; check with `rg` before finishing).
 
@@ -1000,7 +1000,7 @@ All r4133 citations below are under `.inputs/electricdss-code-r4133-trunk/Versio
 
 ### RF-D01-16 — Add a checker that resolves every WP_G1_MODES pas citation against the r4133 source
 <!-- RF-STEP {"step": "RF-D01-16", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-15"], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-15.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-15.
 **Files:** `crates/dss-epri/src/modes.rs`, `tools/oracle/check_mode_citations.py`
 **Doc notes (§4):** `TESTING.md`
 
@@ -1014,7 +1014,7 @@ All r4133 citations below are under `.inputs/electricdss-code-r4133-trunk/Versio
 
 ### RF-D01-17 — Pin the capi DefaultBaseFrequency prelude, the worker freshness override, the PDElements population and the per-channel re-mask
 <!-- RF-STEP {"step": "RF-D01-17", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-11", "RF-D01-12", "RF-D01-13", "RF-D01-14", "RF-D01-20", "RF-D08-05"], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-11, RF-D01-12, RF-D01-13, RF-D01-14, RF-D01-20, RF-D08-05.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-11, RF-D01-12, RF-D01-13, RF-D01-14, RF-D01-20, RF-D08-05.
 **Files:** `crates/dss-core/tests/capture_order.rs`, `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/engines.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/harness/props_norm.rs`, `docs/phase-records/r4133-props-rp4.md`, `tools/opendss/README.md`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`
 
@@ -1032,7 +1032,7 @@ All r4133 citations below are under `.inputs/electricdss-code-r4133-trunk/Versio
 
 ### RF-D01-18 — Add a debugtrace relay corpus deck so the per-sample relay trace is oracle-compared
 <!-- RF-STEP {"step": "RF-D01-18", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D01-11", "RF-D09-07", "RF-D10-01"], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-11, RF-D09-07, RF-D10-01.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-11, RF-D09-07, RF-D10-01.
 **Files:** `crates/dss-core/tests/corpus_gate/manifest.rs`, `crates/dss-core/tests/harness/lane.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/corpus/controls/manifest.json`, `tests/corpus/controls/relay/relay_debugtrace.dss`, `tests/corpus/manifests/population.lock.json`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`
 
@@ -1053,7 +1053,7 @@ All r4133 citations below are under `.inputs/electricdss-code-r4133-trunk/Versio
 
 ### RF-D01-19 — Add the HeightUnit-edit deck and correct the corpus ledger sources, windgen exclusions and deck/manifest notes
 <!-- RF-STEP {"step": "RF-D01-19", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": true, "after": ["RF-D01-06", "RF-D01-07", "RF-D01-18", "RF-D02-08", "RF-D06-04", "RF-D08-03"], "n_uids": 10} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-06, RF-D01-07, RF-D01-18, RF-D02-08, RF-D06-04, RF-D08-03.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-06, RF-D01-07, RF-D01-18, RF-D02-08, RF-D06-04, RF-D08-03.
 **Files:** `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `tests/corpus/controls/autotrans/autotrans_reg.dss`, `tests/corpus/controls/autotrans/midi_autotrans.dss`, `tests/corpus/controls/autotrans/midi_autotrans_both.dss`, `tests/corpus/controls/espvlcontrol/espvlcontrol.dss`, `tests/corpus/controls/manifest.json`, `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`, `tests/corpus/manifests/solvable_now.json`, `tests/corpus/modes/manifest.json`, `tests/corpus/modes/upgrade/upgrade_linecs_heightunit_edit.dss`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `STATUS.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`, `docs/phase-records/r4133-props-rp3.md`
 
@@ -1085,7 +1085,7 @@ Rules for the whole step: editing a ledger entry (even its `source`) changes its
 
 ### RF-D01-20 — Guard snapshot_elements against a stale short NodeRef and make the DERIVED opt-in band/citations honest
 <!-- RF-STEP {"step": "RF-D01-20", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-11", "RF-D01-12", "RF-D01-19", "RF-D06-10"], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-11, RF-D01-12, RF-D01-19, RF-D06-10; plus `lane_diff.ps1` (§2.2).
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-11, RF-D01-12, RF-D01-19, RF-D06-10; plus `lane_diff.ps1` (§2.2).
 **Files:** `crates/dss-core/src/elements/ckt.rs`, `crates/dss-core/src/exec/tests/derived_polar.rs`, `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/corpus/manifests/solvable_now.json`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `docs/phase-records/golden-rebase.md`
 
@@ -1105,7 +1105,7 @@ Rules for the whole step: editing a ledger entry (even its `source`) changes its
 
 ### RF-D02-01 — Fix AutoTrans xfmrcode fetch: phases guard, BusNameRedefined, honesty guards
 <!-- RF-STEP {"step": "RF-D02-01", "effort": "max", "parts": 1, "gate": "full", "oracle": true, "after": [], "n_uids": 7} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/pd/auto_trans/accessors.rs`, `crates/dss-core/src/elements/pd/auto_trans/mod.rs`, `crates/dss-core/src/elements/pd/auto_trans/windings.rs`, `crates/dss-core/src/elements/pd/transformer/windings.rs`, `crates/dss-core/src/exec/tests/autotrans_xfmrcode.rs`, `crates/dss-core/tests/props_r4133_pins.rs`
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `docs/phase-records/r4133-props-rp0-rp1.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -1125,7 +1125,7 @@ Rules for the whole step: editing a ledger entry (even its `source`) changes its
 
 ### RF-D02-02 — Settle the empty/missed xfmrcode Save surface against r4133
 <!-- RF-STEP {"step": "RF-D02-02", "effort": "max", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D02-01"], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-01.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-01.
 **Files:** `crates/dss-core/src/exec/tests/autotrans_xfmrcode.rs`, `crates/dss-core/src/obj/props/class_props/mod.rs`, `crates/dss-core/src/obj/props/class_props/parse.rs`
 **Doc notes (§4):** `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -1140,7 +1140,7 @@ Order inside the step (one part - the probe is four small epri-worker runs and t
 
 ### RF-D02-03 — Tighten prop-flag semantics, compat_quirks pins and upstream-stub controls
 <!-- RF-STEP {"step": "RF-D02-03", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D02-02"], "n_uids": 9} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-02.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-02.
 **Files:** `crates/dss-core/src/exec/tests/compat_quirks.rs`, `crates/dss-core/src/exec/tests/upstream_stubs.rs`, `crates/dss-core/src/obj/base/mod.rs`, `crates/dss-core/src/obj/props/class_props/mod.rs`, `crates/dss-core/src/obj/props/class_props/parse.rs`, `crates/dss-core/src/obj/props/prop_def.rs`, `crates/dss-core/src/obj/props/prop_flags.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1162,7 +1162,7 @@ Order inside the step (one part - the probe is four small epri-worker runs and t
 
 ### RF-D02-04 — Make the autotrans_xfmrcode corpus deck witness every copied cell and the #100131 refusal
 <!-- RF-STEP {"step": "RF-D02-04", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D02-02"], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-02.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-02.
 **Files:** `crates/dss-core/src/exec/tests/autotrans_xfmrcode.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `tests/corpus/asymmetric/autotrans/autotrans_xfmrcode.dss`, `tests/corpus/asymmetric/manifest.json`, `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp0-rp1.md`
 **Findings**
@@ -1177,7 +1177,7 @@ Order inside the step (one part - the probe is four small epri-worker runs and t
 
 ### RF-D02-05 — Stop the corpus guard recursing into sibling case directories (Rust + Python twins)
 <!-- RF-STEP {"step": "RF-D02-05", "effort": "max", "parts": 3, "gate": "full", "oracle": false, "after": ["RF-D08-05"], "n_uids": 2} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-05.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-05.
 **Files:** `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-epri/src/guard.rs`, `tools/oracle/corpus_guard.py`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `STATUS.md`, `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1195,7 +1195,7 @@ Order inside the step (one part - the probe is four small epri-worker runs and t
 
 ### RF-D02-06 — Harden dss-epri guard unit tests and close Rust/Python twin drift
 <!-- RF-STEP {"step": "RF-D02-06", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D02-05"], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-05.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-05.
 **Files:** `crates/dss-epri/src/guard.rs`, `crates/dss-epri/src/lib.rs`, `tools/oracle/corpus_guard.py`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1212,7 +1212,7 @@ Order inside the step (one part - the probe is four small epri-worker runs and t
 
 ### RF-D02-07 — Surface epri-worker clear errors instead of a bare cleared:false
 <!-- RF-STEP {"step": "RF-D02-07", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-epri/src/bin/epri-worker.rs`, `crates/dss-epri/tests/protocol.rs`
 **Doc notes (§4):** -
 **Findings**
@@ -1226,7 +1226,7 @@ Order inside the step (one part - the probe is four small epri-worker runs and t
 
 ### RF-D02-08 — Apply Line.HeightOffset on the coordinate geometry path and fix HeightUnit claims
 <!-- RF-STEP {"step": "RF-D02-08", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D02-03", "RF-D02-04", "RF-D08-03"], "n_uids": 3} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-03, RF-D02-04, RF-D08-03; plus `lane_diff.ps1` (§2.2).
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-03, RF-D02-04, RF-D08-03; plus `lane_diff.ps1` (§2.2).
 **Files:** `crates/dss-core/src/elements/general/line_geometry/matrix.rs`, `crates/dss-core/src/elements/general/line_geometry/tests.rs`, `crates/dss-core/src/elements/pd/line/tests.rs`, `crates/dss-core/src/support/line_constants/mod.rs`, `crates/dss-core/src/support/line_constants/tests.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/corpus/ledger.json`, `tests/corpus/modes/manifest.json`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`, `docs/upgrade/DIVERGENCES.md`
 
@@ -1250,7 +1250,7 @@ Order inside the step (one part - the probe is four small epri-worker runs and t
 
 ### RF-D02-09 — Align Line spacing/linecode/geometry side effects with r4133 Line.pas
 <!-- RF-STEP {"step": "RF-D02-09", "effort": "max", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D02-08"], "n_uids": 3} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-08.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-08.
 **Files:** `crates/dss-core/src/elements/pd/line/accessors.rs`, `crates/dss-core/src/elements/pd/line/code.rs`, `crates/dss-core/src/elements/pd/line/mod.rs`, `crates/dss-core/src/elements/pd/line/tests.rs`, `crates/dss-core/src/exec/tests/line_fetch.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`
 Ledger branch (the two ledger files are in **Files** for this branch only; expected untouched): before the gate, grep the corpus for the three changed sequences - a re-`spacing=`/`geometry=` after `wires=`, and `linecode=<unresolvable>` on a spacing line (8 corpus decks define lines with `spacing=` at `ab9f0f76`; expected: no deck exercises them). If the corpus gate still moves a case, exclude the moved cells field-by-field with an expected-value pin: the entry carries `measured` (+`source`) provenance from the gate run and, when it carries element `channels`, moves `DEAD_CHANNEL_EXEMPT_CENSUS` in `corpus_gate/ledger.rs` in the same commit (the RF-D08-03 rule, landed before this step). A ledger entry without its pin is not done (R8).
@@ -1271,7 +1271,7 @@ Existing RP3.6 pins on the very arms this step changes live in `exec/tests/line_
 
 ### RF-D02-10 — Close regen.rs rail gaps: knob/lane guard on public writers, produced_by pin, announcement asserts
 <!-- RF-STEP {"step": "RF-D02-10", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-07"], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-07.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-07.
 **Files:** `crates/dss-core/tests/golden_lock.rs`, `crates/dss-core/tests/harness/regen.rs`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `docs/phase-records/golden-rebase.md`
 
@@ -1291,7 +1291,7 @@ Existing RP3.6 pins on the very arms this step changes live in `exec/tests/line_
 
 ### RF-D02-11 — Give the G1.9 aggregate pins witnesses and fix their Pascal citations
 <!-- RF-STEP {"step": "RF-D02-11", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/exec/tests/aggregates.rs`, `crates/dss-core/src/exec/view.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 
@@ -1309,7 +1309,7 @@ Existing RP3.6 pins on the very arms this step changes live in `exec/tests/line_
 
 ### RF-D02-12 — Rule on and fix substation_losses omitting AutoTrans sub=yes
 <!-- RF-STEP {"step": "RF-D02-12", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D02-01", "RF-D02-11"], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-01, RF-D02-11.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-01, RF-D02-11.
 **Files:** `crates/dss-core/src/elements/pd/auto_trans/mod.rs`, `crates/dss-core/src/exec/tests/aggregates.rs`, `crates/dss-core/src/exec/view.rs`
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `docs/phase-records/golden-rebase.md`, `docs/upgrade/DIVERGENCES.md`
 
@@ -1328,7 +1328,7 @@ Existing RP3.6 pins on the very arms this step changes live in `exec/tests/line_
 
 ### RF-D02-13 — Pin the Show Voltages LL report-side convention and the dropped stale rows
 <!-- RF-STEP {"step": "RF-D02-13", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D02-12", "RF-D09-03"], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-12, RF-D09-03.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-12, RF-D09-03.
 **Files:** `crates/dss-core/src/exec/view.rs`, `crates/dss-core/src/report/export/seq_voltages.rs`, `crates/dss-core/src/report/show/voltages.rs`, `crates/dss-core/tests/reports_show.rs`
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `TESTING.md`, `docs/upgrade/DIVERGENCES.md`
 
@@ -1346,7 +1346,7 @@ Note on files: `crates/dss-core/tests/reports_show.rs` does not exist at `ab9f0f
 
 ### RF-D02-14 — Add per-channel census and liveness asserts to the run-file comparison; fix run_files_pins citations
 <!-- RF-STEP {"step": "RF-D02-14", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D02-05", "RF-D02-08"], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-05, RF-D02-08.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-05, RF-D02-08.
 **Files:** `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/run_files.rs`, `crates/dss-core/tests/run_files_pins.rs`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`, `docs/upgrade/DIVERGENCES.md`
 
@@ -1366,7 +1366,7 @@ Note on files: `crates/dss-core/tests/reports_show.rs` does not exist at `ab9f0f
 
 ### RF-D02-15 — Append the user-model variable tail on the DynamicExp path and return r4133 empty VariableName
 <!-- RF-STEP {"step": "RF-D02-15", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/pc/generator/accessors.rs`, `crates/dss-core/src/elements/pc/generator/dynamics.rs`, `crates/dss-core/src/elements/pc/generator/tests.rs`, `crates/dss-core/src/elements/pc/ind_mach012/dynamics.rs`, `crates/dss-core/src/elements/pc/pvsystem/accessors.rs`, `crates/dss-core/src/elements/pc/pvsystem/tests.rs`, `crates/dss-core/src/elements/pc/storage/accessors.rs`, `crates/dss-core/src/elements/pc/storage/dynamics.rs`, `crates/dss-core/src/elements/pc/storage/tests.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp0-rp1.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -1386,7 +1386,7 @@ Note on files: `crates/dss-core/tests/reports_show.rs` does not exist at `ab9f0f
 
 ### RF-D02-16 — Pin Storage DebugTrace cadence and the shortcut no-record cases
 <!-- RF-STEP {"step": "RF-D02-16", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D02-15"], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-15.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-15.
 **Files:** `crates/dss-core/src/elements/pc/storage/accessors.rs`, `crates/dss-core/src/elements/pc/storage/tests.rs`, `crates/dss-core/src/exec/tests/in_show_results.rs`, `crates/dss-core/src/exec/tests/storage.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1403,7 +1403,7 @@ Note on files: `crates/dss-core/tests/reports_show.rs` does not exist at `ab9f0f
 
 ### RF-D02-17 — Adopt the r4133 %pmin* = -1.0 sentinel for PVSystem/Storage and retire the four echo rows
 <!-- RF-STEP {"step": "RF-D02-17", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-10"], "n_uids": 1} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-10.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-10.
 **Files:** `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp2.md`, `docs/upgrade/DIVERGENCES.md`
 **Ruling:** R6 stands (rulings.md, applied by RF-D08-10, which lands before this step): the port KEEPS the default `0.0` for `%pminnovars` / `%pminkvarmax`; the DIVERGENCES.md row and the pin `pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits` are RF-D08-10's. This step makes NO engine change and touches no engine file; the input's adoption sketch (construct `-1.0`, retire the rows, capi-arm exclusion) is NOT executed. It is kept only as the coordinator's alternative in `tmp/retro_fix/review/c1_fix_2.json` - if the user overrules R6, the coordinator restores the adoption shape (engine files, `harness/mod.rs`, `props_r4133_pins.rs`, effort max, 3 parts, oracle probe) before launch.
@@ -1420,7 +1420,7 @@ Note on files: `crates/dss-core/tests/reports_show.rs` does not exist at `ab9f0f
 
 ### RF-D02-18 — Derive MMF fixture sets by scan, add -text attributes, pin the Capacitor Cuf tail
 <!-- RF-STEP {"step": "RF-D02-18", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/general/load_shape/tests.rs`, `crates/dss-core/src/elements/pd/capacitor/solve.rs`, `crates/dss-core/src/elements/pd/capacitor/tests.rs`, `crates/dss-core/tests/corpus_hygiene.rs`, `tests/corpus/modes/inputformat/shape_mmf_io/.gitattributes`, `tests/corpus/modes/inputformat/shape_mmf_io/mmpq8_plain.csv`, `tests/corpus/modes/inputformat/shape_mmf_io/shape_mmf_io.dss`
 **Doc notes (§4):** -
 Note on files: `crates/dss-core/tests/corpus_hygiene.rs` does not exist at `ab9f0f76` - create it as a NEW thin integration driver (one `#[test]`; `mod harness;` only if a helper is needed), never by extending `crates/dss-core/tests/corpus_manifest.rs` (RF-D03-03's file, not in this step's files); say so in the record.
@@ -1441,7 +1441,7 @@ Note on files: `crates/dss-core/tests/corpus_hygiene.rs` does not exist at `ab9f
 
 ### RF-D02-19 — Add the missing single-point stddev and CapControl Follow positive pins
 <!-- RF-STEP {"step": "RF-D02-19", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/control/cap_control/tests.rs`, `crates/dss-core/src/elements/general/price_shape/mod.rs`, `crates/dss-core/src/elements/general/price_shape/tests.rs`, `crates/dss-core/src/elements/general/temp_shape/tests.rs`, `crates/dss-core/src/elements/pc/load/tests.rs`, `crates/dss-core/src/solution/solution/monte_carlo.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1460,7 +1460,7 @@ Note on files: `crates/dss-core/tests/corpus_hygiene.rs` does not exist at `ab9f
 
 ### RF-D02-20 — Guard hidden-prop schema order, give the RP3.11/RP3.10 pins teeth, delete dead SaveFlags
 <!-- RF-STEP {"step": "RF-D02-20", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/control/reg_control/tests.rs`, `crates/dss-core/src/elements/general/xy_curve/tests.rs`, `crates/dss-core/src/exec/save_circuit.rs`, `crates/dss-core/src/exec/tests/force_hooks.rs`, `crates/dss-core/src/report/export/json/schema/classes.rs`, `crates/dss-core/tests/golden_schema.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp0-rp1.md`, `docs/phase-records/r4133-props-rp3.md`
 **Findings**
@@ -1478,7 +1478,7 @@ Note on files: `crates/dss-core/tests/corpus_hygiene.rs` does not exist at `ab9f
 
 ### RF-D02-21 — Sweep stale Pascal citations and doc counts
 <!-- RF-STEP {"step": "RF-D02-21", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D02-13"], "n_uids": 13} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-13.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-13.
 **Files:** `.gitattributes`, `crates/dss-core/src/circuit/circuit.rs`, `crates/dss-core/src/circuit/controls.rs`, `crates/dss-core/src/elements/control/storage_controller/compute.rs`, `crates/dss-core/src/elements/pc/windgen/dynamics.rs`, `crates/dss-core/src/exec/tearing.rs`, `crates/dss-core/src/exec/tests/derived_seq.rs`, `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/harness/inc_matrix.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-epri/src/dss.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 Every bullet is comment/docstring only: no executable line, assertion or rule line moves. Before writing any Pascal line number, open the cited `.inputs` file and confirm the statement sits on that line; the numbers below are the triage's readings.
@@ -1505,7 +1505,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-01 — Correct the G2.1c zero-footprint claim: exclude and pin the negative-rating SeqCurrents divergence
 <!-- RF-STEP {"step": "RF-D03-01", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": [], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/report/export/seq_currents.rs`, `crates/dss-core/tests/golden_reports.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `STATUS.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1520,7 +1520,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-02 — Fix the max_bus_name_length unobservability claim (TERMINAL TOTAL PadDots underrun)
 <!-- RF-STEP {"step": "RF-D03-02", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D03-01"], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D03-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D03-01.
 **Files:** `crates/dss-core/src/report/show/mod.rs`, `crates/dss-core/tests/golden_reports.rs`, `investigations/issue-36-show-device-name-column-width-zero.md`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1534,7 +1534,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-03 — Give teeth to six small G0/G1 test rails and citations
 <!-- RF-STEP {"step": "RF-D03-03", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/solution/ymatrix.rs`, `crates/dss-core/src/support/mathutil/mod.rs`, `crates/dss-core/src/support/mathutil/tests.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_manifest.rs`, `crates/dss-core/tests/golden_protection.rs`, `crates/dss-core/tests/harness/capture_guard.rs`, `crates/dss-core/tests/inc_matrix_pins.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -1551,7 +1551,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-04 — RP1.3/RP3.7 user-model and SwtControl pins: real JSON-import seam, Storage UserModel= like=, citation fixes
 <!-- RF-STEP {"step": "RF-D03-04", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/control/swt_control/tests.rs`, `crates/dss-core/tests/golden_json_import.rs`, `crates/dss-core/tests/wasm_usermodels.rs`, `crates/dss-core/tests/wasm_usermodels_wm4.rs`, `tools/fpc/usermodel_abi/README.md`, `tools/fpc/usermodel_abi/abi_probe_windgenvars.pas`, `tools/fpc/usermodel_abi/build_probes.ps1`, `tools/wasm_usermodel/models/wgturbine/src/records.rs`
 **Doc notes (§4):** -
 **Findings**
@@ -1568,7 +1568,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-05 — Count per-cell skips in CensusBlindSpots (or narrow its doc) and pin the counting offline
 <!-- RF-STEP {"step": "RF-D03-05", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/corpus_gate/props_census.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/mod.rs`
 **Doc notes (§4):** `TESTING.md`, `tests/corpus/props_r4133/README.md`
 **Findings**
@@ -1581,7 +1581,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-06 — Golden tooling: repoint the EPRI-bridge citations (lock regen) and guard gen_props.py against frozen-anchor overwrite
 <!-- RF-STEP {"step": "RF-D03-06", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-07"], "n_uids": 2} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-07.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-07.
 **Files:** `crates/dss-core/tests/golden_lock.rs`, `tests/golden/golden.lock.json`, `tools/golden/README.md`, `tools/golden/gen_flicker.py`, `tools/golden/gen_props.py`, `tools/golden/gen_protection.py`
 **Doc notes (§4):** `TESTING.md`
 **Findings**
@@ -1594,7 +1594,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-07 — Re-probe the 59 A-Diakoptics off:save-roundtrip skips, flip the ones that pass, add a stale-skip probe
 <!-- RF-STEP {"step": "RF-D03-07", "effort": "max", "parts": 3, "gate": "full", "oracle": true, "after": [], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/manifest.rs`, `docs/phase-records/part2-adiakoptics.md`, `tests/corpus/manifests/ad_sweep.json`
 **Doc notes (§4):** `STATUS.md`, `TESTING.md`
 **Findings**
@@ -1612,7 +1612,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 
 ### RF-D03-08 — Re-justify the two WindGenerator hold-outs on the r4133 channel (promote or re-tag)
 <!-- RF-STEP {"step": "RF-D03-08", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D03-01", "RF-D08-03"], "n_uids": 1} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D03-01, RF-D08-03.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D03-01, RF-D08-03.
 **Files:** `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `tests/corpus/ledger.json`, `tests/corpus/manifests/skipped_oracle_issue.json`, `tests/corpus/manifests/solvable_now.json`, `tests/corpus/manifests/population.lock.json`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`, `TESTING.md` (population counts, promote branch only)
 **Findings**
@@ -1632,7 +1632,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-04, RF-D00-16, RF-D00-17, RF-D01-16, RF-D01-17, RF-D01-18, RF-D01-19 … (47 steps, see the header).
 **Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `tests/TOLERANCE_NOTES.md` (only the G1.3a SA-4 verbatim-copy sentence below; that file is not in this step's files). This step is the TESTING.md doc-owner for the G-series. **Partition rule for the TESTING.md notes file** (`tmp/retro_fix/notes/testing-md.md`, the spelling RF-D07-01 / RF-D05-04 use; the rule refines §4's first-owner rule and is stated identically in RF-D04-02): an entry `### <step> / <uid>` is applied by RF-D04-01 iff its `<uid>` starts with `G|`, by RF-D04-02 iff it starts with `RP|` (the only two prefixes in the index); a step that leaves both kinds is split by entry. Apply only entries still unmarked whose author has landed; mark each applied entry directly under its header with `<!-- applied by RF-D04-01 <commit> -->`; list the applied entries in the record by `<step> / <uid>`. RF-D04-02, RF-D04-03, RF-D04-07 and RF-D04-09 (the last TESTING.md owner, which asserts no unmarked entry remains) follow.
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (TESTING.md's second runtime reader), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (TESTING.md's second runtime reader), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Parts:**
 1. The `G|` note pass, in author-wave order: apply and mark every eligible entry, re-measure the `<!-- line-citations: N -->` marker (R10) after the pass, run the docs gate, commit green; write the applied list and any entry deferred (with the reason) to `tmp/retro_fix/state/RF-D04-01.md`. If the pass will not fit, stop after a clean commit with the remaining entries listed - the workflow spawns another part (§3).
 2. The 17 findings below, the final marker re-measure, the docs gate, commit; the record lists the applied entries of P1 by `<step> / <uid>`.
@@ -1665,7 +1665,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-04, RF-D00-16, RF-D00-17, RF-D01-03, RF-D01-16, RF-D01-17, RF-D01-18 … (52 steps, see the header).
 **Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/corpus/props_r4133/README.md`
 **Doc notes (§4):** - (doc-owner step for both files on the RP side. **Partition rule for the TESTING.md notes file** (stated identically in RF-D04-01): this step applies exactly the entries whose `<uid>` starts with `RP|` - RF-D04-01 applied the `G|` ones - among the entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-02 <commit> -->`; list the applied entries in the record by `<step> / <uid>`; re-measure the `<!-- line-citations: N -->` marker (R10) after the pass. For the README apply every unmarked landed entry (RF-D05-02, landed before this step, marked what it consumed); the last owners are RF-D04-09 (TESTING.md) and RF-D04-13 (README). Build on RF-D05-02's README edits and never re-word a README sentence it rewrote.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins`, each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins`, each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Findings** (locate by phrase; all in the r4133-props sections of TESTING.md, roughly "Re-measuring (`DSS_PROPS_CENSUS=1`)" through the claim-chain table. Exact-count rule: RF-D07-01 (landed before this step, RP5.1/SA1/SA-2) replaced the `LINE_CITED_DOCS` anti-vacuity floors by fail-on-stale EXACT per-document counts of resolved citations in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`; if an edit of this step (an applied note included - several ask for symbol-only citations) changes the number of resolvable `file:LINE` citations in TESTING.md, re-measure and update that document's exact count in the same commit (that `.rs` file is in this step's files for the count only; never keep or drop a citation just to hold the number). If RF-D07-01 landed the count as a marker inside the document instead, update the marker and leave the `.rs` file untouched.):
 - `RP|RP0.2|AC1|AC-2` (note) - TESTING.md "Re-measuring" paragraph ("the r4133 property masks bypassed"): RP4.1 (59e521e5, 2026-09-03) deleted those masks; only tombstone comments remain in `corpus_gate/scheduler.rs`. Fix: drop the phrase and state that RP4.1 removed the masks, matching the `DSS_PROPS_CENSUS` env-var table row and the `run_props_census` doc.
 - `RP|RP0.2|AT1|AT-4` (note) - same paragraph, the other half of the same defect: it does not say what the knob ignores today. Fix: in the same rewrite state that the knob ignores each case's own `engines` key (every live non-large case walks BOTH channels); mirror the env-var row's wording. One edit closes both uids.
@@ -1687,7 +1687,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-03, RF-D00-04, RF-D00-15, RF-D00-16, RF-D00-17, RF-D01-06, RF-D01-07 … (63 steps, see the header).
 **Files:** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/TOLERANCE_NOTES.md`
 **Doc notes (§4):** - (doc-owner step, under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-03 <commit> -->`; list the applied entries in the record by `<step> / <uid>`): the `tests/TOLERANCE_NOTES.md` entries still unmarked after RF-D05-04 (its first owner, landed before this step), the `TESTING.md` entries still unmarked after RF-D04-01 / RF-D04-02 that concern the sentences below, and the `GOLDEN_REBASE_PLAN.md` entries still unmarked after RF-D05-01 that concern them. Last owners: RF-D04-09 (TOLERANCE_NOTES, TESTING.md), RF-D04-07 (GOLDEN_REBASE_PLAN.md).)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (TESTING.md / TOLERANCE_NOTES' second runtime reader), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (TESTING.md / TOLERANCE_NOTES' second runtime reader), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Findings** (each sentence exists in two docs - fix both copies with the same wording. Exact-count rule: RF-D07-01 (landed before this step, RP5.1/SA1/SA-2) replaced the `LINE_CITED_DOCS` anti-vacuity floors by fail-on-stale EXACT per-document counts of resolved citations in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`; if an edit of this step (an applied note included - several ask for symbol-only citations) changes the number of resolvable `file:LINE` citations in TESTING.md or `tests/TOLERANCE_NOTES.md`, re-measure and update that document's exact count in the same commit (that `.rs` file is in this step's files for the count only; never keep or drop a citation just to hold the number). If RF-D07-01 landed the count as a marker inside the document instead, update the marker and leave the `.rs` file untouched.):
 - `G|G1.4d|AC1|AC3` (note) - TESTING.md §"The bus at-bus surface" and GOLDEN_REBASE_PLAN.md G1.4d as-executed note ("the PC criterion IS r4133's, so this list cannot diverge"): contradicts the asymmetry paragraph the settlement (dff755b5) added and the doc on the constant. Fix: `PCE_AT_BUS_DECLINES = (0,0)` holds on r4133 by construction (same predicate as `assert_port_at_bus_is_s4`) but CAN move from the CapiV0145 node-ref walk (F4 witnessed (1,1)); drop "cannot diverge" and align with the `harness/mod.rs` doc on `PCE_AT_BUS_DECLINES`.
 - `G|G1.6(ii)|AT2|AT2-1` (minor) - TESTING.md "The per-bus reliability arm (G1.6(ii))" ("The eight columns `Export BusReliability` renders") and GOLDEN_REBASE_PLAN.md (as-executed (ii) note "per-bus columns `Export BusReliability` renders", plus surface-table row 3 "the very columns ..."): the exporter `crates/dss-core/src/report/export/reliability.rs` (byte-faithful to r4133 `Common/ExportResults.pas`) renders SIX reliability columns. Fix: say six of the eight; `Cust_Duration` and `SectionID` have no byte-golden witness and are witnessed only by this live arm (as the comparator doc in `harness/mod.rs` already says).
@@ -1704,7 +1704,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-02, RF-D00-03, RF-D00-15, RF-D01-07, RF-D01-08, RF-D01-10, RF-D01-11 … (48 steps, see the header).
 **Files:** `docs/phase-records/golden-rebase.md`
 **Doc notes (§4):** - (first doc-owner step on this record. **Partition rule for the `golden-rebase.md` notes file** (refines §4's first-owner rule; stated identically in RF-D04-05 and RF-D04-06; decided by the entry's `<uid>` second segment, never by reading the note): RF-D04-04 applies the entries whose uid is `G|G0.*|...` or `G|G1.*|...` EXCEPT the `G1.4a`, `G1.4b`, `G1.4c` and `G1.5` sub-steps; RF-D04-06 applies exactly those four; RF-D04-05 applies everything else (`G|G2.*`, `G|bridge ...`, every `RP|...` entry). Apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-04 <commit> -->`; list the applied entries in the record by `<step> / <uid>`. RF-D04-05..09 follow and RF-D04-10 is the last owner of this record.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Parts:**
 1. The note pass under the partition rule, in author-wave order: apply and mark every eligible entry, re-check every pin name token the edited blocks contain against the `*_PINS` registries (see Acceptance), docs gate, commit green; applied list and any deferred entry (with reason) to `tmp/retro_fix/state/RF-D04-04.md`. If the pass will not fit, stop after a clean commit with the remaining entries listed - the workflow spawns another part (§3).
 2. The 11 findings below (each needs its own read-only `git`/registry cross-check), docs gate, commit; the record lists P1's applied entries by `<step> / <uid>`.
@@ -1731,7 +1731,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-02, RF-D00-03, RF-D00-15, RF-D01-07, RF-D01-08, RF-D01-10, RF-D01-11 … (49 steps, see the header).
 **Files:** `docs/phase-records/golden-rebase.md`
 **Doc notes (§4):** - (**Partition rule for the `golden-rebase.md` notes file** (stated identically in RF-D04-04 and RF-D04-06): this step is the catch-all - it applies every entry NOT claimed by RF-D04-04 (`G|G0.*`, `G|G1.*` bar the four sub-steps below) or RF-D04-06 (`G1.4a`/`G1.4b`/`G1.4c`/`G1.5`), i.e. the `G|G2.*`, `G|bridge ...` and all `RP|...` entries, among those still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-05 <commit> -->`; list the applied entries in the record by `<step> / <uid>`; RF-D04-10 is the last owner of this record.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Findings** (record-only; same history rule as RF-D04-04: dated amendments and symbol anchors, conclusions kept):
 - `G|G2.1a|AT1|AT-2` (note) - G2.1a record ("the unconditional 520-case corpus gate ... is the measurement that confirms the classification"): the gate cannot observe a shape's std-dev (`capture_all_properties` in `tools/oracle/oracle_server.py` walks circuit elements only; the sole `stddev` probe is on an npts=8 LoadShape). Fix: dated amendment under the block - the zero-footprint claim rests on (a) no golden building an npts=1 shape and (b) every corpus Monte deck setting `random=none`; keep the conclusion. Re-check (a)/(b) with `rg` before writing.
 - `G|G2.1b|SA1|SA-1` (note) - G2.1b fix-pass paragraph (`solution/power_flow.rs:448-494`): no such path. Fix: `crates/dss-core/src/solution/solution/power_flow.rs`, symbol `solve_snap` (line range optional).
@@ -1755,7 +1755,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-02, RF-D00-03, RF-D00-15, RF-D01-07, RF-D01-08, RF-D01-10, RF-D01-11 … (49 steps, see the header).
 **Files:** `docs/phase-records/golden-rebase.md`
 **Doc notes (§4):** - (**Partition rule for the `golden-rebase.md` notes file** (stated identically in RF-D04-04 and RF-D04-05): this step applies exactly the entries whose uid second segment is `G1.4a`, `G1.4b`, `G1.4c` or `G1.5` - RF-D04-04 and RF-D04-05 left them untouched by rule - BEFORE trimming the blocks; apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-06 <commit> -->`; list the applied entries in the record by `<step> / <uid>`; RF-D04-10 is the last owner of this record.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Findings** (one editorial pass over four adjacent blocks. Trim rule: a sentence may go only if its fact stays reachable from a pointer left in the block - plan section, TESTING.md section title, pin/registry name, `ledger.json` id, commit hash. Commits, gate result, ledger exclusions and pin names stay - pin names are load-bearing: the pin registries in `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (`G1_4A`/`G1_4B`/`G1_4C`/`G1_5`-style `*_PINS` tables, which read this record's prose together with TESTING.md) and `crates/dss-core/tests/reliability_pins.rs` red when a registered pin is no longer cited by name in the record, so before trimming a block list every `fn`-name token it contains and keep each one. Before trimming, `rg` the repo for citations INTO these blocks (e.g. "golden-rebase.md" + a quoted phrase) so no inbound reference is orphaned. The file-wide overrun of other blocks is out of scope):
 - `G|G1.4a|SA1|SA-5` (note) - G1.4a block (~64 lines): the reason for exceeding the rule exists only in gitignored `tmp/g14a/settle.md`. Fix: add one clause stating why the block is long (the sub-step carries coordinator decisions D7/D8/D11(1)+(2)/D12/D14/D13). Do NOT trim this block's landed narrative.
 - `G|G1.4b|AT1|AT-4` (note) - G1.4b settlement summary ("eight re-pointed citations"): commit 03565bf7 re-points thirteen (5 TOLERANCE_NOTES range cites + 7 `EnergyMeter.pas:1833-1838` + 1 `exec/view.rs`). Fix: "thirteen" with that breakdown; confirm with `git show 03565bf7` (read-only).
@@ -1773,7 +1773,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-02, RF-D00-03, RF-D00-04, RF-D00-15, RF-D00-16, RF-D00-17, RF-D01-07 … (73 steps, see the header).
 **Files:** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `docs/phase-records/golden-rebase.md`
 **Doc notes (§4):** - (apply every entry still unmarked in the `GOLDEN_REBASE_PLAN.md`, `golden-rebase.md` and `TESTING.md` notes files, under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-07 <commit> -->`; list the applied entries in the record by `<step> / <uid>`). This step is the LAST owner of `GOLDEN_REBASE_PLAN.md`: assert in the record that its notes file holds no unmarked entry. It is not the last owner of the other two - RF-D04-09 (TESTING.md) and RF-D04-10 (`golden-rebase.md`) follow and make that assertion.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (second runtime reader of TESTING.md and the record), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (second runtime reader of TESTING.md and the record), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Findings** (plan edits are dated amendments - the HOLD of §0 stays: no G1.11'/WP-G3 scope is added, only owners and wording for already-deferred items. Exact-count rule: RF-D07-01 (landed before this step, RP5.1/SA1/SA-2) replaced the `LINE_CITED_DOCS` anti-vacuity floors by fail-on-stale EXACT per-document counts of resolved citations in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`; if an edit of this step (an applied note included - several ask for symbol-only citations) changes the number of resolvable `file:LINE` citations in TESTING.md, re-measure and update that document's exact count in the same commit (that `.rs` file is in this step's files for the count only; never keep or drop a citation just to hold the number). If RF-D07-01 landed the count as a marker inside the document instead, update the marker and leave the `.rs` file untouched.):
 - `G|G1.10a F0-prime|SA1|SA-3` (note) - G1.10a/F0' record ("Recorded: ... no probe fires the OS editor (D38); `LINE_CITED_DOCS` stays out of the plan/record until G5.1 (D37(10))"): D38 and D37(10) exist only in gitignored `tmp/g1/BRIEF_COMMON.md`; neither deferral has an in-tree owner. Fix: (1) add a short "probes never fire the OS editor" rule to TESTING.md's probe section (say why: `FireOffEditor`-class commands open an interactive editor on the worker); (2) add a `LINE_CITED_DOCS` / identifier-citation bullet to the plan's "### G5.1 — operational docs" section (plan + record join the rail, or move to symbol citations, at G5.1); (3) make the record point at those two in-tree anchors instead of bare D38/D37(10). Read `tmp/g1/BRIEF_COMMON.md` in the MAIN checkout for the exact decisions (R1: local-only, never commit it).
 - `G|G0.2|SA1|SA-3` (note) - G0.2 settlement deferral (the `-- --nocapture` spelling sync in the baked `comment` of `tests/golden/golden.lock.json`, emitted by `COMMENT` in `crates/dss-core/tests/golden_lock.rs`) was routed to G3.6, and the same `comment` also said "R1-R4 ... land in TESTING.md with ... G0.2; until then ...". BOTH sentences are expected to be already discharged by RF-D08-07 (wave 9, in this step's after list: `G|G0.1|AT2|AT2-3` rewrites `COMMENT`, `AT3-1` adds `-- --nocapture` to every printed regen command, `AC1-3` regenerates the lock), and RF-D05-01 `G|G0.2|SA1|SA-2` (also landed before this step) added the sibling plan bullet under §G3.6 (item (b), the `-- --nocapture` spelling sync "owned by the first lock-moving sub-step"). Fix, in this order: (1) read `tests/golden/golden.lock.json` `comment` at lane HEAD; (2) if both sentences are gone (expected), do NOT carry any item to G3.2a - instead turn RF-D05-01's §G3.6 bullet (b) into a dated as-executed amendment ("discharged by RETRO_FIXES RF-D08-07, commit <hash>"), add the same one-line dated amendment to the G0.2 record naming both sentences, and apply RF-D08-07's golden-rebase.md note ("strike the record's deferred-to-G3.6 sentence") in the same edit; (3) only if a sentence is still stale, carry ONE item under G3.2a naming what is left and re-route RF-D05-01's bullet (b) there (no "else create" branch - the bullet exists). Do not touch `golden_lock.rs` or the lock (R8).
@@ -1793,7 +1793,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 **Doc notes (§4):** -
 
 This step edits shared documents directly (it is one of their doc-owner steps). All line numbers below are as of `ab9f0f76` and will have moved: re-locate every site by the quoted phrase. Before the findings, apply any entry of the `ORPHANED_GAPS.md`, `STATUS.md` or `docs/phase-records/golden-rebase.md` notes files that is still unmarked and whose author has landed, under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-08 <commit> -->`; list the applied entries in the record by `<step> / <uid>`) - the earlier owners RF-D05-02, RF-D05-05 and RF-D04-04..07 marked what they consumed (expected: none left; say so in the record). This step is the LAST owner of `STATUS.md` and `ORPHANED_GAPS.md`: assert in the record that their notes files hold no unmarked entry (`golden-rebase.md` continues to RF-D04-09 / RF-D04-10). The G2.2d SA-2 bullet below edits the STATUS.md CorpusGuard item next to the G1.10a residual-risk sentence that RF-D05-05 (G1.10a/AC2/AC2-4, landed before this step) narrowed: build on RF-D05-05's wording, do not re-word it.
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers; `STATUS.md` / `ORPHANED_GAPS.md` have none), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers; `STATUS.md` / `ORPHANED_GAPS.md` have none), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 
 **Findings**
 - `G|G1.4b|SA1|SA-2` (note) - `docs/phase-records/golden-rebase.md`, G1.4b settlement, the AC-7 disposition sentence "handed to G1.4d, which adds the fourth [comparator]" (~:3428). G1.4d landed without the shared bus-view cache, so the hand-off points at a closed sub-step and nothing owns it. Fix: add an `ORPHANED_GAPS.md` entry "shared per-(case, channel, step) bus-view cache for the `compare_bus*` comparators" naming the six comparators in `crates/dss-core/tests/harness/mod.rs` that each rebuild the view through `dss.all_bus_voltages()` (`compare_bus`, `compare_all_bus_vmag_pu`, `compare_bus_distances`, `compare_bus_short_circuit`, `compare_bus_seq_and_vll`, `compare_bus_at_bus`), classed as test-only cost / optional perf work; then append a dated note to the record sentence that G1.4d did not do it and the item now lives in ORPHANED_GAPS. Do NOT implement the cache (`harness/mod.rs` is not in this step's files).
@@ -1815,7 +1815,7 @@ This step edits shared documents directly (it is one of their doc-owner steps). 
 **Doc notes (§4):** -
 
 This step edits shared documents directly (doc-owner step). Re-locate every site by phrase; the numbers below are as of `ab9f0f76`. Before the findings, apply any entry of the `TESTING.md`, `golden-rebase.md` and `tests/TOLERANCE_NOTES.md` notes files (`notes/testing-md.md`, `notes/tolerance-notes-md.md`, and the record's) that is still unmarked and whose author has landed, under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-09 <commit> -->`; list the applied entries in the record by `<step> / <uid>`) - the earlier owners RF-D05-04 and RF-D04-01..08 marked what they consumed (expected: none left; say so in the record). This step is the LAST owner of `TESTING.md` and `tests/TOLERANCE_NOTES.md`: assert in the record that their notes files hold no unmarked entry (`golden-rebase.md` continues to RF-D04-10). Exact-count rule: RF-D07-01 (landed before this step, RP5.1/SA1/SA-2) replaced the `LINE_CITED_DOCS` anti-vacuity floors by fail-on-stale EXACT per-document counts of resolved citations in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`; if an edit of this step (an applied note included - several ask for symbol-only citations) changes the number of resolvable `file:LINE` citations in TESTING.md or `tests/TOLERANCE_NOTES.md`, re-measure and update that document's exact count in the same commit (that `.rs` file is in this step's files for the count only; never keep or drop a citation just to hold the number). If RF-D07-01 landed the count as a marker inside the document instead, update the marker and leave the `.rs` file untouched.
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (second runtime reader of all three documents), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (second runtime reader of all three documents), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
 
 **Findings**
 - `G|G1.10a|SA1|SA-4` (note) - three sites. (a) `golden-rebase.md`, G1.10a settlement citation row (~:3651-3652) names `DoSave` as the function enclosing r4133 `ExecHelper.pas:4071` (`FireOffEditor(Fname);`); the enclosing function is `DoCvrtLoadshapesCmd` (`FUNCTION` header at `.inputs/electricdss-code-r4133-trunk/Version8/Source/Executive/ExecHelper.pas:4031`, no function boundary in between) - rename it in the row. (b) `TESTING.md` (~:955) cites the `compare_yprim` call at `runner.rs:980`; it is `crates/dss-core/tests/corpus_gate/runner.rs:981`. (c) `tests/TOLERANCE_NOTES.md` (~:532 `runner.rs:927,930`, ~:572 `runner.rs:927-930`) cite the two `harness::assert_complex_close` calls, which were at :928 and :931 - (c) is VERIFY-ONLY here: RF-D07-01 (G1.10a/AC4/AC4-4, comma-form parsing) re-pointed that pair in-step and RF-D05-04 (G1.10a/AT4/AT4-3, the file's first owner; both landed before this step) verified it - check that both citations land on the two `assert_complex_close` call lines at HEAD, re-measure only if drifted, and say in the record which step closed it. Fix (b) with the number MEASURED at fix time (`grep -n "compare_yprim(dss"` on `runner.rs`), not the number quoted here. Keep (b) and (c) as line cites (never convert to symbol-only): the exact-count rule above applies, so a changed count is re-measured in the same commit.
@@ -1832,7 +1832,7 @@ This step edits shared documents directly (doc-owner step). Re-locate every site
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-02, RF-D00-03, RF-D00-15, RF-D01-07, RF-D01-08, RF-D01-10, RF-D01-11 … (51 steps, see the header).
 **Files:** `docs/phase-records/depascalize-stagef.md`, `docs/phase-records/golden-rebase.md`, `investigations/TODO_COMPAT_REGISTRY.md`
 **Doc notes (§4):** - (LAST owner of `docs/phase-records/golden-rebase.md`: apply any entry of its notes file still unmarked after RF-D04-04..09 whose author has landed - expected none - under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-10 <commit> -->`; list the applied entries in the record by `<step> / <uid>`), and assert in the record that the file holds no unmarked entry. `depascalize-stagef.md` and the registry are not §4 documents: RF-D05-05 (Stage F record) and RF-D05-07 (registry) edited them before this step - build on what they left.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers; `depascalize-stagef.md` has none), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (the record's two runtime readers; `depascalize-stagef.md` has none), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 
 **Findings**
 - `G|G2.1h|SA1|SA-2` (note) - the G2.1h audit settlement retracted the clause "the offset is stored while the engine still carries its constructed `UNITS_M`" in the four in-code texts, but left it standing at the source it names, and its pointer to that source no longer resolves. Three edits:
@@ -1853,7 +1853,7 @@ This step edits shared documents directly (doc-owner step). Re-locate every site
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-02, RF-D00-05, RF-D00-06, RF-D00-07, RF-D00-08, RF-D00-14, RF-D00-15, RF-D01-01 … (22 steps, see the header).
 **Files:** `docs/phase-records/r4133-props-rp3.md`
 **Doc notes (§4):** - (FIRST doc-owner step on this record: before the findings below, apply every entry of the `docs/phase-records/r4133-props-rp3.md` notes file that is unmarked and whose author has landed, under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-11 <commit> -->`; list the applied entries in the record by `<step> / <uid>`) - 22 earlier steps leave them, all in this step's after list; RF-D01-06 (`inline_shared`) made its forced one-line record edit in-step and left the matching entry; a note that registers or cites a pin name must land verbatim so the `props_r4133_replay` citation guards, e.g. `every_rp311_serialization_pin_exists_and_is_cited`, go green. RF-D04-12 follows and RF-D04-13 is the last owner of this record.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test props_r4133_replay` (the record's runtime reader - its citation guards), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test props_r4133_replay` (the record's runtime reader - its citation guards), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 
 This step edits the shared record directly (doc-owner step). All record line numbers are as of `ab9f0f76`; re-locate by the quoted phrase. General rule for this step: replace a rotted `file:LINE` by a by-symbol citation (fn / trait / const name) rather than a fresh number, and never remove a pin name from the record.
 
@@ -1882,7 +1882,7 @@ This step edits the shared record directly (doc-owner step). All record line num
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-02, RF-D00-05, RF-D00-06, RF-D00-07, RF-D00-08, RF-D00-10, RF-D00-11, RF-D00-14 … (44 steps, see the header).
 **Files:** `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`, `docs/upgrade/DIVERGENCES.md`
 **Doc notes (§4):** - (under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-12 <commit> -->`; list the applied entries in the record by `<step> / <uid>`): rp3-record entries left after RF-D04-11; `docs/plans-archive/R4133_PROPS_PLAN.md` entries left after RF-D05-03 / RF-D05-04 / RF-D05-07 (the plan's earlier owners, all landed before this step; RF-D05-07's RP3.2 edit sits next to the RP3.1 note site below - build on it) - this step is the plan's LAST owner and asserts in the record that its notes file holds no unmarked entry; `docs/upgrade/DIVERGENCES.md` entries left after RF-D05-05 (its first owner, which applied the DIVERGENCES notes including the RP3.13 NCIM heading change and the NCIM rows) - expected none: state it in the record and, as the file's LAST owner, assert that its notes file holds no unmarked entry. Apart from an unmarked entry so applied, this step's DIVERGENCES edits are SYMBOL RE-CITES ONLY inside the NCIM section as RF-D05-05 left it - no row, heading or note is added or reworded on this step's own account.)
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test props_r4133_replay` (the rp3 record's runtime reader; the archived plan and `DIVERGENCES.md` have none), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test props_r4133_replay` (the rp3 record's runtime reader; the archived plan and `DIVERGENCES.md` have none), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 
 This step edits shared documents directly (doc-owner step). Line numbers are as of `ab9f0f76`; re-locate by phrase. The plan under `docs/plans-archive/` and the record are HISTORICAL: refuted claims get a dated `> **Correction / as-of note (RETRO_FIXES RF-D04-12, <date>)**` line under the original text, the original text is not rewritten. Pure `file:LINE` rot is replaced in place by symbol names.
 
@@ -1906,7 +1906,7 @@ This step edits shared documents directly (doc-owner step). Line numbers are as 
 **Doc notes (§4):** -
 
 This step edits shared documents directly (doc-owner step: apply any rp3-record or README entry still unmarked after RF-D04-12 / RF-D04-02 whose author has landed, under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-13 <commit> -->`; list the applied entries in the record by `<step> / <uid>`); this step is the LAST owner of both `docs/phase-records/r4133-props-rp3.md` and `tests/corpus/props_r4133/README.md` - assert in the record that both notes files hold no unmarked entry). `tests/corpus/ledger.json` is NOT touched: the draft stays a draft, "deliberately not written to `ledger.json`". RF-D05-02 (landed before this step, `RP|RP3.9|AT2|AT2-3`) rewrote the README paragraph directly above the JSON block ("**No `property` ledger entry is staged.** ..." - 6 of 7 makeposseq decks capi_v0145, `makeposseq_gic` r4133-gated, `count_in_scope` 0): keep that paragraph as RF-D05-02 left it and derive the `causes` row text below from it.
-**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` (reads the README) and `cargo test -p dss-core --test props_r4133_replay` (the record/README guards, `the_rp39_pin_list_is_pinned` included), each in both lanes. The full five-command gate runs on the wave merge (§2 step 7).
+**Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` (reads the README) and `cargo test -p dss-core --test props_r4133_replay` (the record/README guards, `the_rp39_pin_list_is_pinned` included), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
 
 **Findings**
 - `RP|RP3.9|AC2|AC2-2` (minor) - `tests/corpus/props_r4133/README.md`, the JSON block after "**No `property` ledger entry is staged.**" (id `<class>-makeposseq-<prop>-roundtrip-r4133`, ~:954-965): it uses `"kind": "property"` plus `class`/`name`/`prop`/`reason` keys. That is not a ledger entry: `corpus_gate/ledger.rs` accepts only `divergence | skip | exclusion` (panics "unknown kind" otherwise) and requires a non-empty `match` and a `cause` or a resolving `cause_ref`. Plan §1.1(e) (`docs/plans-archive/R4133_PROPS_PLAN.md` ~:383-386) names the shape to draft. Fix: rewrite the block modelled on the live entry `makeposseq-cuf-applied-capi-props` in `tests/corpus/ledger.json`: `id`, `case`, `"channel": "r4133"`, `"kind": "divergence"`, `"match": [{"field": "property", "name_re": "(?i)^load\\.ld_wye\\.kva$", "rust": ..., "oracle": ...}]`, `cause_ref`, `source`; and draft beside it the `causes` row the `cause_ref` needs (the current `reason` text - r4133 `Load.pas:2326 -> :2331-2332`, `:1145`, the `%-.5g` re-parse, port `exec/make_pos_seq.rs`, pin `load_kva_after_makeposseq_is_the_exact_typed_conversion` - becomes that cause). The `rust`/`oracle` pair must be the MEASURED values for `Load.ld_wye.kva` from existing evidence (the pin `load_kva_after_makeposseq_is_the_exact_typed_conversion` in `props_r4133_pins.rs` and the README's chain table / claims census); if a number cannot be read from existing evidence, write an explicit placeholder named as such (`"<measure at landing>"`) - never invent a value, no probe is run in this step. Keep the trailing paragraph (per-chain heads `Vsource.pas:1397`, `Line.pas:1591`, ...) but re-word it to say the heads go into the per-chain `causes` rows. If the RP3.9 record quotes the old draft shape, sync that quote.
@@ -1948,7 +1948,7 @@ All edits are dated as-executed notes / dated corrections in the plan's existing
 
 ### RF-D05-02 — Correct the props_r4133 README, the RP0/RP1 record and ORPHANED_GAPS 1.14(b)
 <!-- RF-STEP {"step": "RF-D05-02", "effort": "high", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-05", "RF-D00-06", "RF-D00-10", "RF-D00-11", "RF-D00-16", "RF-D00-17", "RF-D01-01", "RF-D01-03", "RF-D01-04", "RF-D01-07", "RF-D01-09", "RF-D01-10", "RF-D02-01", "RF-D02-04", "RF-D02-12", "RF-D02-13", "RF-D02-15", "RF-D02-20", "RF-D03-05", "RF-D06-07", "RF-D06-08", "RF-D07-10", "RF-D09-04", "RF-D09-05", "RF-D10-02"], "n_uids": 12} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-05, RF-D00-06, RF-D00-10, RF-D00-11, RF-D00-16, RF-D00-17, RF-D01-01, RF-D01-03 … (25 steps, see the header).
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-05, RF-D00-06, RF-D00-10, RF-D00-11, RF-D00-16, RF-D00-17, RF-D01-01, RF-D01-03 … (25 steps, see the header).
 **Files:** `ORPHANED_GAPS.md`, `crates/dss-core/tests/props_r4133_evidence_lock.rs`, `docs/phase-records/r4133-props-rp0-rp1.md`, `tests/corpus/props_r4133/README.md`
 **Doc notes (§4):** - (this step is the doc-owner of the three files: first apply every entry of `tmp/retro_fix/notes/` addressed to them, under the note-consumption rule of RF-D05-01 - only unmarked entries whose author has landed, each marked `<!-- applied by RF-D05-02 <commit> -->` afterwards; `ORPHANED_GAPS.md` and the README have later owners, RF-D04-08 / RF-D04-02).
 RF-D01-03 (`RP|RP0.1|SA1|SA-2`) makes a test in `crates/dss-core/tests/props_r4133_evidence_lock.rs` read the README's corrected data-trap numbers back. If that read-back reds on a number this step edits, update its expectation in the same commit (that file is in **Files** for exactly this purpose) - never weaken the read-back; name the moved expectation in the record.
@@ -1998,7 +1998,7 @@ The archived plan and the phase records are history: every change is a dated cor
 
 ### RF-D05-04 — Refresh TOLERANCE_NOTES citations and stale present-tense claims
 <!-- RF-STEP {"step": "RF-D05-04", "effort": "high", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-03", "RF-D00-04", "RF-D00-05", "RF-D00-07", "RF-D00-15", "RF-D00-17", "RF-D01-01", "RF-D01-06", "RF-D01-08", "RF-D05-03", "RF-D06-02", "RF-D06-04", "RF-D06-05", "RF-D06-07", "RF-D06-08", "RF-D06-09", "RF-D07-01", "RF-D07-06", "RF-D07-11", "RF-D08-04", "RF-D08-08", "RF-D08-09", "RF-D09-01", "RF-D09-02", "RF-D09-05", "RF-D09-06"], "n_uids": 8} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-03, RF-D00-04, RF-D00-05, RF-D00-07, RF-D00-15, RF-D00-17, RF-D01-01, RF-D01-06 … (26 steps, see the header).
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-03, RF-D00-04, RF-D00-05, RF-D00-07, RF-D00-15, RF-D00-17, RF-D01-01, RF-D01-06 … (26 steps, see the header).
 **Files:** `docs/plans-archive/R4133_PROPS_PLAN.md`, `tests/TOLERANCE_NOTES.md`
 **Doc notes (§4):** - (doc-owner of `tests/TOLERANCE_NOTES.md`: apply every pending `tmp/retro_fix/notes/` entry for it first, under the note-consumption rule of RF-D05-01 - only unmarked entries whose author has landed, each marked `<!-- applied by RF-D05-04 <commit> -->`; RF-D04-03 and RF-D04-09 own the file later and apply what is still unmarked then; same for the archived plan, whose first owner is RF-D05-03).
 `tests/TOLERANCE_NOTES.md` is in `LINE_CITED_DOCS`: its `file:LINE` citations are walked by `oracle_parity_cfg_gate.rs`, which is why this step runs the full gate and runs after the steps that edit `harness/mod.rs` or `corpus_gate/runner.rs`. Re-measure every line number at the lane HEAD with `grep -n`; the numbers below are as of `ab9f0f76`. RF-D07-01 and RF-D07-06 (both in **After**) hardened the citation walker and, under their shared-doc clause, already made digits-only re-points in this file (listed in `tmp/retro_fix/notes/tolerance-notes-md.md`): read that list first and never re-edit a repaired line - the two citation bullets below are "verify closed, re-point only what is still stale at HEAD". Since RF-D07-01 the rail asserts, per `LINE_CITED_DOCS` document, the exact number of resolved citations that the document's own `<!-- line-citations: N -->` marker declares: if any edit of this step (a re-point that starts resolving, a symbol-only conversion from an applied note) moves that count for `tests/TOLERANCE_NOTES.md`, update the marker in the same commit - never drop or keep a citation to hold the number, and never touch `oracle_parity_cfg_gate.rs` (not in **Files**); the docs gate runs the rail, so its message names the document to re-measure.
@@ -2100,7 +2100,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-01 — Give the reliability compare real liveness rails and drive its settlement asserts
 <!-- RF-STEP {"step": "RF-D06-01", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-02"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-02.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-02.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/reliability_pins.rs`
 **Doc notes (§4):** `TESTING.md`
 **Findings**
@@ -2121,7 +2121,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-02 — Fix the alloc_factors MeteredTerminal offset, the zero-peakcurrent skip and the reliability measurement docs
 <!-- RF-STEP {"step": "RF-D06-02", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D06-01"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-01.
 **Files:** `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/reliability_pins.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`
 **Findings** (the first three are one defect - fix once, close all three)
@@ -2141,7 +2141,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-03 — Add fail-on-stale liveness to LANE_SKIP_PROPS and harden the monitor-pad rail
 <!-- RF-STEP {"step": "RF-D06-03", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D06-02", "RF-D09-07"], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-02, RF-D09-07.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-02, RF-D09-07.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/harness/lane.rs`, `crates/dss-core/tests/harness/mod.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`
 **Findings** (both pairs install the same pattern: hit counter + pure check core + gate-epilogue assert)
@@ -2158,7 +2158,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-04 — Pin the D11(2) suppression set, the SC Voc/Isc liveness and make `variables` exclusions hit-on-mask
 <!-- RF-STEP {"step": "RF-D06-04", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D06-03", "RF-D08-01"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-03, RF-D08-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-03, RF-D08-01.
 **Files:** `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/harness/mod.rs`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`, `docs/phase-records/r4133-props-rp3.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -2178,7 +2178,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-05 — Drive the untested element derived/seq/cplx-seq arms and bound the ledger-rewritten seq band
 <!-- RF-STEP {"step": "RF-D06-05", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D06-04"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-04.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-04.
 **Files:** `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/harness/mod.rs`
 **Doc notes (§4):** `tests/TOLERANCE_NOTES.md`
 **Parts:**
@@ -2202,7 +2202,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-06 — Witness the bus sequence/at-bus arms where the oracle declines and lock PdElementCap's field census
 <!-- RF-STEP {"step": "RF-D06-06", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D06-05"], "n_uids": 10} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-05.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-05.
 **Files:** `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/manifest.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `crates/dss-epri/src/capture.rs`
 **Doc notes (§4):** `TESTING.md`
 **Findings**
@@ -2227,7 +2227,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-07 — Pin both renders of the both-channel SKIP_PROPS rows and correct the SKIP_PROPS rationale comments
 <!-- RF-STEP {"step": "RF-D06-07", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D06-06"], "n_uids": 9} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-06.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-06.
 **Files:** `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `docs/phase-records/era-summaries.md`, `docs/phase-records/r4133-props-rp5.md`
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `STATUS.md`, `docs/phase-records/r4133-props-rp2.md`, `tests/TOLERANCE_NOTES.md`, `tests/corpus/props_r4133/README.md`
 **Findings**
@@ -2251,7 +2251,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-08 — Guard the PROPS_015X premises on the r4133 channel and name the large* property-compare exclusion
 <!-- RF-STEP {"step": "RF-D06-08", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D06-07", "RF-D08-05", "RF-D10-01"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-07, RF-D08-05, RF-D10-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-07, RF-D08-05, RF-D10-01.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/manifest.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** `TESTING.md`, `tests/TOLERANCE_NOTES.md`, `tests/corpus/props_r4133/README.md`
 **Findings**
@@ -2271,7 +2271,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-09 — Make the property display floor honest: inf cells, ArrayForm folding, FLOOR_HITS and the narrowed-row stale arm
 <!-- RF-STEP {"step": "RF-D06-09", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D06-08", "RF-D08-05", "RF-D09-01"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-08, RF-D08-05, RF-D09-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-08, RF-D08-05, RF-D09-01.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/harness/props_norm.rs`
 **Doc notes (§4):** `TESTING.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -2291,7 +2291,7 @@ The `NN-` prefixes are placeholders, never a number to guess: by the time this s
 
 ### RF-D06-10 — Sweep rotted citations and stale doc claims in the harness and extend the citation tripwire to .rs comments
 <!-- RF-STEP {"step": "RF-D06-10", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D02-14", "RF-D06-09", "RF-D07-02", "RF-D08-01"], "n_uids": 18} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-14, RF-D06-09, RF-D07-02, RF-D08-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-14, RF-D06-09, RF-D07-02, RF-D08-01.
 **Files:** `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/mod.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `crates/dss-epri/src/dss.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`, `docs/upgrade/DIVERGENCES.md`
 Runs last in the D06 chain so anchors are fixed after `harness/mod.rs` stopped moving. Rule for every citation below: intra-repo `file.rs:LINE` anchors become SYMBOL citations; vendored-Pascal line citations are verified against `.inputs` before editing (the source wins over the triage's numbers - record any disagreement). Locate each site by grepping the quoted old string.
@@ -2326,7 +2326,7 @@ Runs last in the D06 chain so anchors are fixed after `harness/mod.rs` stopped m
 
 ### RF-D07-01 — Harden the file:LINE citation walker (anchoring, comma form, floors)
 <!-- RF-STEP {"step": "RF-D07-01", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": [], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/TOLERANCE_NOTES.md`
 **Doc notes (§4):** `TESTING.md`, `tests/TOLERANCE_NOTES.md`
 
@@ -2440,7 +2440,7 @@ line, no prose; listed in the notes the same way). This step is not a doc-owner 
 
 ### RF-D07-02 — Extend the citation rail to the plan, TESTING.md modes/.py cites and retire stale cross-file line cites
 <!-- RF-STEP {"step": "RF-D07-02", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D07-01"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-01.
 **Files:** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 
@@ -2524,7 +2524,7 @@ if it joins the rail, of the plan, in-step.
 
 ### RF-D07-03 — Give the G2.0 teardown register teeth (attribute stack, empty bodies, lane helpers, rosters, exclusion sites)
 <!-- RF-STEP {"step": "RF-D07-03", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D07-02"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-02.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-02.
 **Files:** `crates/dss-core/tests/harness/lane.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `TESTING.md`
 
@@ -2606,7 +2606,7 @@ file - two agents)
 
 ### RF-D07-04 — Fix torn-down register rows: pin lists, comment-aware test_fn_body, survivor-table rail, false zero-footprint rationales
 <!-- RF-STEP {"step": "RF-D07-04", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D03-01", "RF-D07-03"], "n_uids": 10} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D03-01, RF-D07-03.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D03-01, RF-D07-03.
 **Files:** `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 
@@ -2712,7 +2712,7 @@ are re-measured at the step's HEAD (G1.10b widened the run-file content compare)
 
 ### RF-D07-05 — Make the lane-split pin walk per-test-fn and register the golden_reports Mask sites
 <!-- RF-STEP {"step": "RF-D07-05", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D07-04"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-04.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-04.
 **Files:** `crates/dss-core/tests/golden_reports.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`
 
@@ -2777,7 +2777,7 @@ finding: fix the pin, never relax the walk.
 
 ### RF-D07-06 — Tighten the G1.x pin registries: per-pin citation, missing pins, converse pinned-by rail
 <!-- RF-STEP {"step": "RF-D07-06", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D06-06", "RF-D07-05"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-06, RF-D07-05.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-06, RF-D07-05.
 **Files:** `TESTING.md`, `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/TOLERANCE_NOTES.md`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`
 
@@ -2897,7 +2897,7 @@ fixed here)
 
 ### RF-D07-07 — Pin and narrow the props_norm echo rows exposed on r4133-only cases
 <!-- RF-STEP {"step": "RF-D07-07", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 5} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp2.md`, `docs/phase-records/r4133-props-rp3.md`
 **Parts:**
@@ -2919,7 +2919,7 @@ fixed here)
 
 ### RF-D07-08 — Bind the RP3.x witness pins to their cases and census literals
 <!-- RF-STEP {"step": "RF-D07-08", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D07-07"], "n_uids": 5} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-07.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-07.
 **Files:** `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`
 **Parts:** (the two RP3.12 uids are exploratory engine replays with an open outcome; the other
@@ -2948,7 +2948,7 @@ three are rails/pins with count locks)
 
 ### RF-D07-09 — Close the census/deck-reader sweep holes (.txt includes, continuations, abbreviations, Edit lines)
 <!-- RF-STEP {"step": "RF-D07-09", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D07-08"], "n_uids": 10} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-08.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-08.
 **Files:** `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** -
 **Parts:** (split along the dependency: the sweeps of part 2 are rebuilt on the readers of
@@ -2983,7 +2983,7 @@ investigate, never a silent re-pin)
 
 ### RF-D07-10 — Add read-back and existence guards for the replay constants, dispositions and staged ledger drafts
 <!-- RF-STEP {"step": "RF-D07-10", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D07-09"], "n_uids": 10} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-09.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-09.
 **Files:** `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`, `tests/corpus/props_r4133/README.md`
 `harness/props_norm.rs` is in **Files** for one purpose: exposing `fold_bool` (private at `ab9f0f76`) to the `BOOL_SPELLINGS` read-back below with a `pub(crate)`/`pub` visibility change and nothing else; every other edit to that file belongs to its D06/D07-07/D07-11 owners. Read-only access to `crates/dss-core/src/exec/tests/line_fetch.rs` and `tests/golden_cim.rs` (`include_str!`) is not a scope violation.
@@ -3005,7 +3005,7 @@ investigate, never a silent re-pin)
 
 ### RF-D07-11 — Refresh stale comments, tenses and citations in the props_r4133 replay/pins/scheduler docs
 <!-- RF-STEP {"step": "RF-D07-11", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D07-10"], "n_uids": 14} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-10.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-10.
 **Files:** `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp2.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`, `docs/upgrade/DIVERGENCES.md`
 Comment/string-only step, run last so re-cited positions are final. Rule for every bullet: cite by SYMBOL (line numbers only as "at HEAD" hints); copies living in the shared documents are NOT edited here - leave the exact replacement text in the §4 notes. Several strings below are test DATA (`RP3_ROUTING` / `RP22_ROUTING` verdicts, assert messages): before editing, grep for tests asserting substrings of them and keep those green.
@@ -3032,7 +3032,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-01 — Drive the ledger envelope/rewrite rails and fix ledger.rs doc drift
 <!-- RF-STEP {"step": "RF-D08-01", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": [], "n_uids": 13} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/ledger.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`
 **Findings** (all in `corpus_gate/ledger.rs` unless said otherwise; line numbers drifted — locate by symbol)
@@ -3061,7 +3061,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-02 — Harden ledger.json load-time guards with negative drives
 <!-- RF-STEP {"step": "RF-D08-02", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-01"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-01.
 **Files:** `crates/dss-core/tests/corpus_gate/ledger.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`
 **Doc notes (§4):** `TESTING.md`
 **Findings** (all in `corpus_gate/ledger.rs`; the committed `tests/corpus/ledger.json` must load unchanged after every fix)
@@ -3080,7 +3080,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-03 — Give element exclusions and dead_channels exemptions a fail-on-stale liveness signal
 <!-- RF-STEP {"step": "RF-D08-03", "effort": "max", "parts": 3, "gate": "full", "oracle": true, "after": ["RF-D06-04", "RF-D06-05", "RF-D08-02"], "n_uids": 2} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-04, RF-D06-05, RF-D08-02.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-04, RF-D06-05, RF-D08-02.
 **Files:** `crates/dss-core/tests/corpus_gate/ledger.rs`, `tests/corpus/ledger.json`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -3099,7 +3099,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-04 — Fix corpus_gate.rs bus/SC capture rails, guards and stale docs
 <!-- RF-STEP {"step": "RF-D08-04", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-14", "RF-D06-04", "RF-D08-01"], "n_uids": 14} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-14, RF-D06-04, RF-D08-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-14, RF-D06-04, RF-D08-01.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`
 **Findings** (all in `corpus_gate.rs` unless said otherwise)
@@ -3125,7 +3125,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-05 — Make CorpusGuard survivor, capi clear fault and r4133 props-walk alarms fail the gate
 <!-- RF-STEP {"step": "RF-D08-05", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-02", "RF-D08-04"], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-02, RF-D08-04.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-02, RF-D08-04.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-core/tests/harness/props_norm.rs`, `docs/phase-records/r4133-props-rp4.md`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `STATUS.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
@@ -3141,7 +3141,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-06 — Re-anchor mis-registered golden.lock rows (capi015 payloads, controlsoff decks, schema_divergences, dump3)
 <!-- RF-STEP {"step": "RF-D08-06", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": [], "n_uids": 9} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/golden_lock.rs`, `crates/dss-core/tests/golden_reports.rs`, `tests/golden/golden.lock.json`, `tools/golden/README.md`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 **Common rule:** only anchors / reasons / register rows move. The lock is regenerated ONCE at the end with `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture`; no artifact digest may move and no golden is regenerated (R8). The three groups below are reported by several audits — one code change closes each group, but every uid is recorded.
@@ -3164,7 +3164,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-07 — Close golden_lock.rs rail gaps and stale lock comments/reasons
 <!-- RF-STEP {"step": "RF-D08-07", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-06"], "n_uids": 11} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-06.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-06.
 **Files:** `crates/dss-core/tests/golden_lock.rs`, `tests/golden/golden.lock.json`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`
 **Common rule:** one lock regen at the end (`DSS_UPDATE_GOLDEN_LOCK=1 ... -- --nocapture`); only the `comment`, `reason` and `produced_by`-derivation bytes may move, no digest.
@@ -3188,7 +3188,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-08 — Strengthen props_r4133_pins.rs discriminating readings and helpers
 <!-- RF-STEP {"step": "RF-D08-08", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D07-08"], "n_uids": 12} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-08.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-08.
 **Files:** `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp2.md`, `docs/phase-records/r4133-props-rp3.md`, `tests/TOLERANCE_NOTES.md`
 **Order hint:** harden `Deck::cmd` first (RP3.4 AC-1) — it may expose pins whose `edit` was silently a no-op; repair those before adding readings. Every expected value added below is the PORT's value, measured at HEAD in both lanes; r4133's number is named in the assertion message only. RF-D07-08 (`RP|RP3.9|AT2|AT2-1`, landed before this step) locks the RP3.9 pins' r4133 literals in a count-locked table `the_rp39_pins_quote_the_vendored_census_cells` in `props_r4133_replay.rs` (each literal verbatim in the pin bodies AND in `tests/corpus/props_r4133/examples_full.txt`): every r4133 literal the RP3.9 bullets below add to a pin body (`140.347851871698`, `37.5020834490805`, `50.0027779321073`, `10.2349`) is appended to that table and its count lock in the same commit — `props_r4133_replay.rs` is in `files` for exactly that edit, nothing else there moves.
@@ -3216,7 +3216,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-09 — Correct stale citations in props_r4133_pins.rs pin docs
 <!-- RF-STEP {"step": "RF-D08-09", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-08", "RF-D08-08"], "n_uids": 8} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-08, RF-D08-08.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-08, RF-D08-08.
 **Files:** `crates/dss-core/tests/props_r4133_pins.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`
 **Common rule:** comment-only. Prefer symbol / statement anchors over `file:line`; where a line number stays, verify it against HEAD (port) or the vendored `.inputs` source (Pascal) at edit time — the numbers below are the triage's readings and have drifted before.
@@ -3236,14 +3236,14 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D08-10 — Record or adopt the %pminnovars/%pminkvarmax default (0 vs r4133 -1)
 <!-- RF-STEP {"step": "RF-D08-10", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D08-09"], "n_uids": 1} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D08-09.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D08-09.
 **Files:** `crates/dss-core/tests/props_r4133_pins.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp2.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
 - `RP|RP2.3|AC2|AC2-3` (minor) - `props_r4133_pins.rs::pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits` and its doc: the four PVSystem/Storage `%pminnovars` / `%pminkvarmax` `LiveSemanticsDiffer` rows close an r4133-authority divergence in favour of the dss_capi 0.14.5 default (`0.0`) with no DIVERGENCES entry arguing it; r4133 `Create` sets `-1.0` (`PVsystem.pas:1037-1038`, `Storage.pas:1368-1369`). Fix (per R6, no engine change): leave a DIVERGENCES.md note with the full new row — r4133 Create `-1.0` vs port `0.0`; behaviour proven identical because both engines test `<= 0` (r4133 `PVsystem.pas:1395-1398`, port `pvsystem/nominal.rs` and the Storage twin — verify the Storage Pascal lines before citing); pin = the test above. Reword the pin doc so it cites that DIVERGENCES row and does not claim the port's spelling is "right"; make sure the assertion messages name r4133's `-1`. Note for the rp2 record: one sentence pointing at the row.
 **Ruling:** R6 — keep the port default `0.0` for `%pminnovars` / `%pminkvarmax`; behaviour is proven identical, so this is a DIVERGENCES.md entry plus a pin, not an engine change.
 **Coordinator conflict — resolved 2026-09-20 (review c1, `c1-2-1` / `c1-4-16`):** R6 stands. RF-D02-17 (part_07) is now the re-tag-only step that runs AFTER this one (its `after` lists RF-D08-10): it makes no engine change and only re-classifies the four `LiveSemanticsDiffer` rows in `props_norm.rs`, citing the DIVERGENCES row and the pin that THIS step owns. So this step owns both the DIVERGENCES.md note and the pin-doc rewrite exactly as written above; there is no launch gate. Write the DIVERGENCES note so RF-D02-17 can cite it by its row title (name the two properties and both classes in the title). If the user ever overrules R6, the coordinator re-plans both steps before launch — the executor never decides that.
-**Gate:** the diff edits a `.rs` test file (pin doc + assertion messages), so the full five-command gate applies (§2.2 reserves the docs gate for documentation-only diffs); the `cargo test -p dss-core --test props_r4133_pins` run in both lanes is an extra hint, not a substitute.
+**Gate:** the diff edits a `.rs` test file (pin doc + assertion messages), so the full gate (§2.2) applies (§2.2 reserves the docs gate for documentation-only diffs); the `cargo test -p dss-core --test props_r4133_pins` run in both lanes is an extra hint, not a substitute.
 **Acceptance:**
 - The pin `pvsystem_and_storage_pmin_sentinels_deactivate_the_var_limits` still passes in both lanes, names both defaults (port `0`, r4133 `-1`) and references the DIVERGENCES row.
 - The DIVERGENCES.md note carries r4133 source lines for both classes, verified in the vendored tree.
@@ -3251,7 +3251,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-01 — Give the props_norm liveness rails teeth (dormant rows, NORM_HITS, SeamTouches, Disposition drift, fault.bus2, N=15 slack)
 <!-- RF-STEP {"step": "RF-D09-01", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D07-07"], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-07.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-07.
 **Files:** `crates/dss-core/tests/corpus_gate/props_census.rs`, `crates/dss-core/tests/harness/props_norm.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/r4133-props-rp2.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -3269,7 +3269,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-02 — Correct props_norm.rs stale figures, citations and over-claims
 <!-- RF-STEP {"step": "RF-D09-02", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-16", "RF-D08-05", "RF-D09-01"], "n_uids": 8} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-16, RF-D08-05, RF-D09-01.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-16, RF-D08-05, RF-D09-01.
 **Files:** `crates/dss-core/tests/harness/props_norm.rs`, `crates/dss-core/tests/props_r4133_evidence_lock.rs`, `docs/phase-records/bug-wps.md`, `tests/corpus/props_r4133/examples_supplement.txt`
 **Doc notes (§4):** `STATUS.md`, `tests/TOLERANCE_NOTES.md`
 **Ordering:** RF-D08-05 (`RP|RP4.1|AT1|AT1-1`) rewrote the partial-re-mask guard doc in `props_norm.rs` and RF-D00-16 (`RP|RP0.1|AC1|AC1-1`, `RP|RP2.1|AT2|AT2-3/AT2-4`) rewrote the `examples_supplement.txt` header and put the file under a SHA-256 + length lock in `props_r4133_evidence_lock.rs`; both landed before this step — read their landed text first, the bullets below edit what is at HEAD, not the triage's reading.
@@ -3290,7 +3290,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-03 — Fix exec/view.rs citations and comments, harden node_voltage, pin BusScView row-major call sites
 <!-- RF-STEP {"step": "RF-D09-03", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D06-02", "RF-D06-06"], "n_uids": 12} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-02, RF-D06-06.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-02, RF-D06-06.
 **Files:** `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/corpus_gate.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings** (every Pascal line below: re-read it in `.inputs` before writing; locate the Rust site by the quoted phrase)
@@ -3314,7 +3314,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-04 — Run RelCalc in the props census walk and repair the props-surface stability test
 <!-- RF-STEP {"step": "RF-D09-04", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D06-01", "RF-D09-01"], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-01, RF-D09-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-01, RF-D09-01.
 **Files:** `crates/dss-core/tests/corpus_gate/props_census.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/r4133-props-rp0-rp1.md`, `tests/corpus/props_r4133/README.md`
 **Findings** (three audits report one defect; one code change closes the first three)
@@ -3331,7 +3331,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-05 — Scheduler rails: wired-flag refusal over force rules, census panic rows, census in_scope predicate, stale scheduler docs
 <!-- RF-STEP {"step": "RF-D09-05", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D06-08", "RF-D08-05", "RF-D09-04", "RF-D10-01"], "n_uids": 10} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D06-08, RF-D08-05, RF-D09-04, RF-D10-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D06-08, RF-D08-05, RF-D09-04, RF-D10-01.
 **Files:** `crates/dss-core/tests/corpus_gate/manifest.rs`, `crates/dss-core/tests/corpus_gate/props_census.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`, `tests/corpus/props_r4133/README.md`
 **Findings**
@@ -3353,7 +3353,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-06 — Add oracle-side flake diagnostics (oracle_server.py, dss-epri capture) and fix runner.rs rails, messages and cites
 <!-- RF-STEP {"step": "RF-D09-06", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D02-05", "RF-D09-03", "RF-D09-05", "RF-D10-03"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D02-05, RF-D09-03, RF-D09-05, RF-D10-03.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D02-05, RF-D09-03, RF-D09-05, RF-D10-03.
 **Files:** `crates/dss-core/src/exec/view.rs`, `crates/dss-core/tests/capture_order.rs` (pin moves only, see AC2-3), `crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`, `crates/dss-epri/src/capture.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `STATUS.md`, `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -3377,7 +3377,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-07 — lane.rs: complete the ElemChannels guard, inject cores for monitor-pad and reround liveness, pin the relay trace filter, fix docs
 <!-- RF-STEP {"step": "RF-D09-07", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-03"], "n_uids": 9} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-03.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-03.
 **Files:** `crates/dss-core/tests/harness/lane.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp2.md`
 **Findings** (two pairs are duplicates: one change closes each pair, both uids are recorded)
@@ -3398,7 +3398,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-08 — Make the 52902-abort reliability pin discriminate wrote-zeros from wrote-nothing
 <!-- RF-STEP {"step": "RF-D09-08", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/tests/reliability_pins.rs`
 **Doc notes (§4):** -
 **Findings**
@@ -3415,7 +3415,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-09 — reliability_pins.rs: tie step/abort literals to the manifest, widen the doc-name and large* scans, fix docs
 <!-- RF-STEP {"step": "RF-D09-09", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D07-06", "RF-D09-08"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-06, RF-D09-08.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-06, RF-D09-08.
 **Files:** `crates/dss-core/tests/reliability_pins.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (touched only in the AT1-4 fallback below)
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -3435,7 +3435,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-10 — Neutralise the registry READ leg (DataPath/LastFile) in the epri bridge and restate RegistryUpdate=No on clear
 <!-- RF-STEP {"step": "RF-D09-10", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 2} -->
-**Tier:** executor opus/max; audits, settler per §3. **Gate:** full five-command gate. **After:** -.
+**Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-epri/src/dss.rs`, `crates/dss-epri/tests/protocol.rs`, `tools/opendss/README.md`
 **Doc notes (§4):** `TESTING.md`
 **Findings**
@@ -3453,7 +3453,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-11 — dss.rs: reset Editor/AllowForms on clear, route pre-table accessors through check_callable, strict counts, fix read_mode docs and a vacuous protocol test
 <!-- RF-STEP {"step": "RF-D09-11", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-15", "RF-D09-10", "RF-D10-04"], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-15, RF-D09-10, RF-D10-04.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-15, RF-D09-10, RF-D10-04.
 **Files:** `crates/dss-epri/src/dss.rs`, `crates/dss-epri/tests/protocol.rs`
 **Doc notes (§4):** `TESTING.md`
 **Ordering:** three earlier steps changed the premises of the bullets below - RF-D01-15 (`bus_kvbase` through `read_mode_f`, S replies classified, errno polled per phase, `Circuit.Capacity` on `DO_NOT_CALL`; edits `dss.rs`/`modes.rs`/`capture.rs`/`protocol.rs`), RF-D09-10 (rewrote `Engine::clear`, worker-owned `DataPath`; read `tmp/retro_fix/state/RF-D09-10.md`) and RF-D10-04 (re-sited the init no-trace assertion in `protocol.rs` onto the worker-owned `DataPath`). Every count and every "at HEAD" claim below is re-measured at lane HEAD after those landings.
@@ -3473,7 +3473,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-12 — Correct the FireOffEditor census to 56 sites / 6 GUI-only
 <!-- RF-STEP {"step": "RF-D09-12", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D09-11"], "n_uids": 1} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D09-11.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D09-11.
 **Files:** `crates/dss-epri/src/dss.rs`, `investigations/to_opendss/73-dll-fires-editor-despite-noformsallowed.md`, `tools/opendss/README.md`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `STATUS.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 **Findings**
@@ -3487,7 +3487,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-13 — golden_reports.rs: assert the Iresidual excluded-cell count, non-zero I1, EXP_GEN_ prefix, a pf guard that can fail; fix comments
 <!-- RF-STEP {"step": "RF-D09-13", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-14", "RF-D03-01"], "n_uids": 8} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D00-14, RF-D03-01.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-14, RF-D03-01.
 **Files:** `crates/dss-core/tests/golden_reports.rs`
 **Doc notes (§4):** `docs/phase-records/golden-rebase.md`
 **Ordering:** RF-D03-01 (`G|G2.1c|AC1|AC-1`, the negative-rating SeqCurrents divergence: edits `report/export/seq_currents.rs`, `golden_reports.rs`, `ledger.json`) and RF-D00-14 (`RP|RP3.8|AT2|AT2-1`, the IndMach012 PF render pin and its `golden_reports.rs` twin) both landed before this step. For the three G2.1c bullets below re-derive EVERY number from the landed kernel and deck (the `6.104` / `4.069`, `24.4153 A` and `+/-2441.5 %` figures are the triage's readings at `ab9f0f76`); if RF-D03-01 changed the `rating > 0.0` guard or the test deck, rewrite the mutant sentence for the landed form.
@@ -3508,7 +3508,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D09-14 — SwtControl tests: re-pin micro-deck currents on DLL f64, add New-path quoted-state pin, fix vacuous recalc test and stale docs
 <!-- RF-STEP {"step": "RF-D09-14", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-01", "RF-D01-02", "RF-D01-09", "RF-D03-04"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-01, RF-D01-02, RF-D01-09, RF-D03-04.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-01, RF-D01-02, RF-D01-09, RF-D03-04.
 **Files:** `crates/dss-core/src/elements/control/swt_control/tests.rs`
 **Doc notes (§4):** -
 **Ordering:** four earlier steps edit this same test file and landed before this one - RF-D01-01 (`RP|RP3.7|AC3|AC3-1`, R3: the per-phase parse keeps the 6th token in both lanes and every "dropped 6th token" pin became an expected-value pin that it lands), RF-D01-02 (pin provenance re-pointing / renames), RF-D01-09 (JSON-import per-phase pin) and RF-D03-04 (real JSON-import seam pin). Re-locate every pin named below by its landed name at lane HEAD (AT2 / AT5 / AT7 name pins that RF-D01-01 / RF-D01-02 may have renamed or reshaped).
@@ -3529,7 +3529,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D10-01 — Harden the manifest.rs census guards and fix its stale docs
 <!-- RF-STEP {"step": "RF-D10-01", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D07-09"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D07-09.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D07-09.
 **Files:** `crates/dss-core/tests/corpus_gate/manifest.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md` (leave notes per §2.1; do not edit them here).
 **Findings**
@@ -3548,7 +3548,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D10-02 — Make the props census run-id/short-run guard real and repair its citations
 <!-- RF-STEP {"step": "RF-D10-02", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D09-04", "RF-D09-05"], "n_uids": 6} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D09-04, RF-D09-05.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D09-04, RF-D09-05.
 **Files:** `crates/dss-core/tests/corpus_gate/props_census.rs`, `docs/phase-records/r4133-props-rp4.md`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/r4133-props-rp0-rp1.md`.
 **Findings**
@@ -3570,7 +3570,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D10-03 — Restore the capture.rs error paths and fix capture/oracle_server citations
 <!-- RF-STEP {"step": "RF-D10-03", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-13", "RF-D01-14", "RF-D01-15"], "n_uids": 12} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-13, RF-D01-14, RF-D01-15.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-13, RF-D01-14, RF-D01-15.
 **Files:** `crates/dss-core/tests/capture_order.rs` (pin moves only, see the Findings header), `crates/dss-epri/src/capture.rs`, `crates/dss-epri/tests/protocol.rs`, `tools/oracle/oracle_server.py`
 **Doc notes (§4):** -
 **Findings** (before editing any comment/docstring, `rg` the old text in `crates/dss-core/tests` - `capture_order.rs` pins both files by source text (file-wide phrase pins and the marker lists); if a pinned literal moves because of THIS step's edit, update that pin in the same commit - `capture_order.rs` is in **Files** for exactly that and nothing else: never touch its rules, marker names or the tail/exec rails (RF-D01-13/-14/-17 own those); a pinned MARKER line (`# capture-order: ...`) is never edited - re-word around it. Three earlier steps landed on these files before this one: RF-D01-13 and RF-D01-14 tightened the `capture_order.rs` rules and citation spellings in `oracle_server.py` / `capture.rs` (e.g. `DSolution.pas:577` / `:580-582`), RF-D01-15 reworked `capture.rs` reads and `protocol.rs` - locate every site below by its phrase at lane HEAD and treat a citation one of them already corrected as "closed by <step> - verified")
@@ -3595,7 +3595,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D10-04 — Make the bridge D13 registry/init-trace tests in protocol.rs able to red
 <!-- RF-STEP {"step": "RF-D10-04", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D09-10", "RF-D10-03"], "n_uids": 4} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D09-10, RF-D10-03.
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D09-10, RF-D10-03.
 **Files:** `crates/dss-epri/tests/protocol.rs`
 **Doc notes (§4):** `TESTING.md`, `docs/phase-records/golden-rebase.md`.
 **Findings**
@@ -3612,7 +3612,7 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 
 ### RF-D10-05 — Correct the swtcontrol-per-phase-state-render ledger cause text
 <!-- RF-STEP {"step": "RF-D10-05", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-01"], "n_uids": 1} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full five-command gate. **After:** RF-D01-01.
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-01.
 **Files:** `tests/corpus/ledger.json`
 **Doc notes (§4):** -
 **Findings**

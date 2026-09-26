@@ -42,7 +42,11 @@ The mandatory gate that must be green before any commit:
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+cargo nextest run --workspace
+cargo nextest run --workspace --features dss-core/oracle-parity
+cargo test --workspace --doc
+cargo test --workspace --doc --features dss-core/oracle-parity
 ```
 
 `cargo test` includes the always-on unified live corpus gate

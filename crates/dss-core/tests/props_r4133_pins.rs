@@ -155,10 +155,10 @@ fn lock_registry() -> std::sync::MutexGuard<'static, DirSnapshots> {
     dir_registry().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Keeps the vendored deck directory exactly as it was found: files the run
-/// created are removed when the **last** guard on that directory drops, and a
-/// *modified* pre-existing file is a loud failure (the decks below only ever
-/// add).
+/// Keeps the copied deck folder (a scratch copy, RF-I00-01) as it was found:
+/// files the run created are removed when the **last** guard on that folder
+/// drops, and a *modified* copied file is a loud failure (the decks below only
+/// ever add).
 struct DeckDirGuard {
     dir: PathBuf,
     before: Arc<BTreeMap<PathBuf, u64>>,
@@ -218,8 +218,8 @@ impl Drop for DeckDirGuard {
         if !std::thread::panicking() {
             assert!(
                 changed.is_empty(),
-                "a pinned deck rewrote vendored corpus bytes (not merely added \
-                 output files), which this guard cannot restore: {changed:?}"
+                "a pinned deck rewrote corpus bytes copied into its scratch copy \
+                 (not merely added output files), which this guard cannot restore: {changed:?}"
             );
         }
     }
@@ -258,7 +258,9 @@ impl Deck {
             vendored.display()
         );
         let copy = scratch::ScratchCopy::new(&vendored.to_string_lossy(), scratch::PORT).loud();
+        // The path compiled below is refused when it is the vendored deck.
         let path = PathBuf::from(copy.deck());
+        scratch::not_vendored(&path, "props_r4133_pins::Deck::compile_inner");
         let guard = DeckDirGuard::new(path.parent().expect("a deck has a directory"));
         let mut dss = Dss::new();
         dss.command(&format!("compile \"{}\"", path.display()));

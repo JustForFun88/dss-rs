@@ -2190,10 +2190,10 @@ pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
 /// [`harness::record_seq_arm`] precedent): the `harness::run_file_contents`
 /// fixtures in THIS test binary call the comparator too — several of them on
 /// the very Storage-trace kind the read-back tail below is derived from — so
-/// under the mandatory `cargo test --workspace` shape a comparator-side census
-/// reads the gating population *plus* the fixtures. Counting at the call site
-/// makes the population gate-only by construction, which is what lets the
-/// constants below be pinned exactly instead of as a floor.
+/// under `cargo test` (one process per test binary, while the gate's `cargo
+/// nextest` runs one per test) a comparator-side census reads the gating population
+/// *plus* the fixtures. Counting at the call site makes the population gate-only
+/// under either runner, which lets the constants below be pinned exactly.
 #[cfg(windows)]
 #[derive(Clone, Debug)]
 pub(crate) struct RunFileContentsRow {
@@ -3132,12 +3132,12 @@ impl GateRun {
     /// Every manifest case produced an outcome (a worker thread that panicked
     /// outside `catch_unwind` drops one), and the vendored tree is exactly as
     /// the walk found it — RETRO_FIXES RF-I00-01 part 2's read-only-tree rail.
-    /// Every producer runs in its own scratch copy and every corpus guard
-    /// brackets that copy, so `tests/corpus/` has no writer during a gate: a
-    /// listing or mtime change is a producer writing into the vendored tree
-    /// again (or a tree writer in another test binary running beside this one).
-    /// It is printed and fails the gate with the failed cases listed next to
-    /// it, so neither hides the other.
+    /// Every gate producer runs in its own scratch copy and every corpus guard
+    /// brackets that copy, so a listing or mtime change during the walk is a
+    /// producer writing into the vendored tree again, or a tree writer in
+    /// another test process that happened to overlap the walk (a writer outside
+    /// the walk's window is not seen here). It is printed and fails the gate
+    /// with the failed cases listed next to it, so neither hides the other.
     pub(crate) fn assert_complete(&self) {
         assert_eq!(
             self.outcomes.len(),
@@ -3796,4 +3796,56 @@ fn census_one(
             CensusBlindSpots::default(),
         ),
     }
+}
+
+/// RETRO_FIXES RF-I00-01 settlement — the read-only-tree rail's DECISION:
+/// [`GateRun::assert_complete`] passes a complete run whose photographs agree,
+/// and fails one whose `tree_changes` is non-empty, naming every change and the
+/// cases that failed in the same run (and none that passed). The photograph
+/// itself is pinned by `scratch::tests::a_tree_photograph_sees_every_way_a_producer_touches_the_tree`;
+/// the wiring in [`run_gate`] was mutation-proved red once (part 2).
+#[test]
+fn a_changed_vendored_tree_fails_the_gate_naming_the_failed_cases() {
+    let run = |tree_changes: Vec<String>| GateRun {
+        outcomes: vec![
+            CaseOutcome {
+                order: 0,
+                label: "fixture:red.dss".to_string(),
+                ok: false,
+                reason: "a fixture failure".to_string(),
+                result: None,
+            },
+            CaseOutcome {
+                order: 1,
+                label: "fixture:green.dss".to_string(),
+                ok: true,
+                reason: String::new(),
+                result: None,
+            },
+        ],
+        elapsed: Duration::ZERO,
+        mode: "fixture".to_string(),
+        jobs: 1,
+        pool_size: 2,
+        total: 2,
+        ledger: Arc::new(LedgerRuntime::empty()),
+        tree_changes,
+    };
+    run(Vec::new()).assert_complete();
+    let caught = std::panic::catch_unwind(|| {
+        run(vec![
+            "~electricdss-tst/Test".to_string(),
+            "+electricdss-tst/Test/left.csv".to_string(),
+        ])
+        .assert_complete()
+    });
+    let msg = panic_msg(caught.expect_err("a changed vendored tree must fail the gate"));
+    assert!(
+        msg.contains("the vendored tree tests/corpus/ changed during the gate walk")
+            && msg.contains("~electricdss-tst/Test")
+            && msg.contains("+electricdss-tst/Test/left.csv")
+            && msg.contains("fixture:red.dss")
+            && !msg.contains("fixture:green.dss"),
+        "{msg}"
+    );
 }
