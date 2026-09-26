@@ -176,7 +176,12 @@ pub struct RunFileReport {
 
 impl RunFileProbe {
     /// Snapshot the case directory before the Rust engine touches it.
+    ///
+    /// RETRO_FIXES RF-I00-01 part 2: `case_path` is the deck of the port's own
+    /// scratch copy; a vendored deck is refused before anything is photographed
+    /// ([`super::scratch::not_vendored`]).
     pub fn start(case_path: &str) -> RunFileProbe {
+        super::scratch::not_vendored(std::path::Path::new(case_path), "RunFileProbe::start");
         RunFileProbe {
             guard: CorpusGuard::new(case_path),
         }
@@ -1303,5 +1308,15 @@ mod tests {
             }
         }
         out
+    }
+
+    /// RF-I00-01 part 2 — the port's run-file probe brackets a scratch copy,
+    /// never a vendored folder: it refuses a vendored deck up front.
+    #[test]
+    #[should_panic(expected = "RunFileProbe::start")]
+    fn the_probe_refuses_a_vendored_deck() {
+        let deck =
+            super::super::scratch::corpus_root().join("electricdss-tst/Test/PVSystemTest.dss");
+        let _ = RunFileProbe::start(&deck.to_string_lossy());
     }
 }

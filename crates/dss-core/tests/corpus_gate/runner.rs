@@ -28,8 +28,8 @@ use crate::harness::{
 use crate::manifest::{EngineChannel, SolvableCase};
 
 // ---------------------------------------------------------------------------
-// Corpus guard: no gate producer takes it since RF-I00-01 part 1 (every run
-// compiles a scratch copy, `crate::scratch`); only its rails, deleted in part 2.
+// Corpus guard: since RF-I00-01 part 2 it brackets the port's scratch copy
+// (`compare_with_result`, the two smoke arms), never a vendored folder.
 // ---------------------------------------------------------------------------
 
 /// Buffer small files up to this size for overwrite-restore. Mirrors the oracle
@@ -157,7 +157,7 @@ impl CorpusGuard {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
-        let key = dir_claim_key(&dir);
+        let key = dir_claim_key(crate::scratch::not_vendored(&dir, "runner::CorpusGuard"));
         let me = std::thread::current().id();
         let waiting = Instant::now();
         let (reg, cv) = dir_registry();
@@ -336,7 +336,7 @@ impl Drop for CorpusGuard {
                 // another panic aborts the process), so it says so on stderr,
                 // where a full-drive log keeps it greppable.
                 eprintln!(
-                    "corpus guard: leaked dropping(s) under {}: {} — the sweep                      could not remove them (a producer is still holding the file                      open). They stay in the vendored corpus and poison the next                      producer's pre-run snapshot of this directory.",
+                    "corpus guard: leaked dropping(s) under {}: {} - the sweep could not remove them (a producer still holds the file open). Since RF-I00-01 the folder is the port's scratch copy, whose bounded removal (`ScratchCopy::finish`) then fails the case naming the producer.",
                     self.dir.display(),
                     leaked.join(", "),
                 );
@@ -1742,12 +1742,21 @@ pub(crate) fn compare_capture(
 fn assert_swept_clean(label: &str, producer: &str, swept: Option<&[String]>) {
     let Some(swept) = swept else {
         panic!(
-            "{label}: the `{producer}` producer sent no `sweep_failed` report.              Every transport reports it on every case (it is the D32(2) leak              rail); a reply without the key can never be read as \"the sweep              was clean\"."
+            "{label}: the `{producer}` producer sent no `sweep_failed` report. \
+             Every transport reports it on every case (it is the D32(2) leak \
+             rail); a reply without the key can never be read as \"the sweep \
+             was clean\".",
         );
     };
     assert!(
         swept.is_empty(),
-        "{label}: the `{producer}` producer left {} leaked dropping(s) in the          case directory that its corpus guard classified as run-created and          could not remove: {}. A file still held open by that engine poisons          every later producer's pre-run snapshot (and pollutes the vendored          corpus). Fix the producer — release the circuit (`clear`) before the          guard sweeps, or close the file — never widen the surface around it.",
+        "{label}: the `{producer}` producer left {} leaked dropping(s) in its \
+         scratch copy that its corpus guard classified as run-created and could \
+         not remove: {}. The engine still holds the file open (the dss_capi \
+         Storage `DebugTrace` class); on the shared tree it poisoned the next \
+         producer's snapshot, and on a copy it is still an engine leak. Fix the \
+         producer - release the circuit (`clear`) before the guard sweeps, or \
+         close the file - never widen the surface around it.",
         swept.len(),
         swept.join(", "),
     );
@@ -1845,6 +1854,12 @@ pub(crate) fn compare_with_result(
     // removed at the end, or the case fails naming the `port` producer.
     let copy = crate::scratch::ScratchCopy::new(case_path, crate::scratch::PORT);
     let deck = copy.deck();
+    // RF-I00-01 part 2 (guard reuse on the copy): the port's corpus guard
+    // brackets the copy exactly as it bracketed the vendored folder before —
+    // snapshot, `classify_created`, sweep, restore, and the D32(2) leak report
+    // on stderr — and is dropped before `copy.finish()`, whose bounded removal
+    // then fails the case naming the `port` producer if anything survived.
+    let port_guard = CorpusGuard::new(deck);
     // G1.10a — the run-produced FILE SET. The port needs its OWN before/after
     // bracket (and must sweep what it classified) because the scheduler runs the
     // Rust engine once PER CHANNEL; since RF-I00-01 each of those runs also has
@@ -1985,6 +2000,7 @@ pub(crate) fn compare_with_result(
             crate::engines::remove_di_sidecar(case_path, tag);
         }
     }
+    drop(port_guard);
     copy.finish();
 }
 
@@ -2128,6 +2144,7 @@ pub(crate) fn run_and_compare_abort(
     );
 
     crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
+        let _port_guard = CorpusGuard::new(deck);
         let mut dss = Dss::new();
         dss.command("clear");
         dss.command(&format!("compile \"{deck}\""));
@@ -2166,6 +2183,7 @@ pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &Solva
 
 /// [`assert_deferred_rust_smoke`] on the port's scratch copy `deck`.
 fn deferred_smoke_in(label: &str, deck: &str, c: &SolvableCase) {
+    let _port_guard = CorpusGuard::new(deck);
     let (mut dss, baseline_errors) = run_rust_capture(label, deck, c);
     for i in 0..c.n_steps.max(1) {
         dss.command("solve");
@@ -2194,6 +2212,7 @@ pub(crate) fn assert_pending_errors_loudly(label: &str, case_path: &str, c: &Sol
 
 /// [`assert_pending_errors_loudly`] on the port's scratch copy `deck`.
 fn pending_errors_in(label: &str, deck: &str, c: &SolvableCase) {
+    let _port_guard = CorpusGuard::new(deck);
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command(&format!("compile \"{deck}\""));
@@ -2287,5 +2306,29 @@ mod tests {
                 "{escape:?} must be refused by name, not by luck: {msg}"
             );
         }
+    }
+
+    /// RF-I00-01 part 2 — the port's corpus guard brackets a scratch copy,
+    /// never the vendored tree: pointed at a vendored deck it refuses before it
+    /// claims or photographs anything, so no producer can run under it there.
+    #[test]
+    fn the_port_guard_refuses_a_vendored_case_directory() {
+        let deck =
+            crate::scratch::corpus_root().join("electricdss-tst/Test/AutoTrans/Auto1bus.dss");
+        let msg = std::panic::catch_unwind(|| CorpusGuard::new(&deck.to_string_lossy()))
+            .map(|_| panic!("a guard on the vendored {deck:?} was taken"))
+            .map_err(panic_msg)
+            .unwrap_err();
+        assert!(
+            msg.contains("runner::CorpusGuard") && msg.contains("lies inside the vendored corpus"),
+            "{msg}"
+        );
+        // Nothing was claimed: the registry holds no key for that folder.
+        let key = dir_claim_key(deck.parent().expect("a deck has a folder"));
+        let reg = dir_registry().0.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(
+            !reg.contains_key(&key),
+            "a refused guard left a claim on {key:?}"
+        );
     }
 }
