@@ -2466,7 +2466,7 @@ fn bus_int_duration_stays_in_the_meters_zone_on_the_live_population() {
 ///
 /// A static census across the four sides of this surface — the engine view
 /// (`crates/dss-core/src/exec/view.rs`), the harness's wire row
-/// (`crates/dss-core/tests/harness/mod.rs`), the capi capture
+/// (`crates/dss-test-harness/src/harness/mod.rs`), the capi capture
 /// (`tools/oracle/oracle_server.py`) and the r4133 capture
 /// (`crates/dss-epri/src/capture.rs`). The comparator's `rel_bus_fields!` macro
 /// already stops a field being renamed on one Rust side without the other; what

@@ -97,7 +97,7 @@ fails if the cfg string appears anywhere else.
 | **parity** | `--features dss-core/oracle-parity` | the bit-compat engine: byte goldens, checkpoint Y, corpus tier floors, **exact** iteration counts and discrete state, every upstream quirk reproduced. This lane is the permanent 1:1 record and **never re-baselines**. |
 | **default** | no features | the idiomatic product: the F.3 upstream-bug fixes are live, report text is rendered natively (F.4). Continuous quantities keep the **same** oracle floors, discrete state stays exact, iteration counts get a documented ±1 band, and each deliberate divergence is excluded field-by-field and pinned by its own expected-value test. |
 
-The whole lane policy lives in **one** file, `crates/dss-core/tests/harness/lane.rs`
+The whole lane policy lives in **one** file, `crates/dss-test-harness/src/harness/lane.rs`
 (`PARITY`, `ITER_SLACK`, `compare_report`, `expected_eventlog`, the
 field-scoped exclusion lists) — no golden driver reads the cfg directly, and
 the module's own unit tests assert the *split itself* (a rendering-only
@@ -243,9 +243,28 @@ path, never a wide `git clean`.
 | layer | what it checks | where | oracle |
 |---|---|---|---|
 | **unit tests** | per-module algorithms, Pascal-cited numerics | `crates/*/src/**` (`#[cfg(test)]`, `exec/tests/`) | pins inline in code |
-| **golden gate** | committed input→output pins, replayed offline | `tests/golden/` + `crates/dss-core/tests/golden_*.rs` + `tests/harness/` | pinned dss-python, **manual** regen only |
+| **golden gate** | committed input→output pins, replayed offline | `tests/golden/` + `crates/dss-core/tests/golden_*.rs` + the `dss-test-harness` crate (`crates/dss-test-harness/src/harness/`) | pinned dss-python, **manual** regen only |
 | **unified corpus gate** | full assembled model (Y / V / currents / powers / losses / YPrims / injection / discrete state / monitors / meters / probes / eventlog / …), per step, live, on the channel(s) each case's `engines` field names, partitioned by the divergence ledger | `corpus_gate.rs` + `tests/corpus_gate/` submodules + `tools/oracle/oracle_server.py` + `crates/dss-epri` | pinned dss-python (`capi_v0145`) **and** EPRI r4133 DLL (`r4133`) — both gating |
 | **corpus hygiene** | no silent omission: every `.dss` classified, every family a dir↔manifest bijection; no silent **shrink** of the gated population; the ledger structurally valid | `corpus_manifest.rs`, `population_lock.rs`, `*_manifest_is_complete`, `ledger_is_structurally_valid` | none (structural) |
+
+**Where the harness lives** (RETRO_FIXES RF-I00-04). The comparators, the tier
+floors, the lane policy, the scratch copies and the write rails are one test-only
+workspace crate, `dss-test-harness` (`publish = false`, `#![forbid(unsafe_code)]`,
+no `[features]`): the module `crates/dss-test-harness/src/harness/` (`mod.rs`,
+`lane.rs`, `scenario.rs`, `scratch.rs`, `regen.rs`, `props_norm.rs`, `di.rs`,
+`run_files.rs`, `run_file_contents.rs`, `topology.rs`, `inc_matrix.rs`,
+`aggregates.rs`, `capture_guard.rs`, `export_policies.rs`), moved line-neutrally
+from `crates/dss-core/tests/harness/`. `dss-core` takes it as a dev-dependency, 27
+drivers under `crates/dss-core/tests/` import it with
+`use dss_test_harness::harness;` (`props_r4133_pins.rs` imports only
+`harness::scratch`), so it compiles once per lane and its 408 self-tests run once
+per lane, in the `dss-test-harness` test binary (as a `mod harness;` in 27 drivers
+it was compiled 27 times and ran each self-test 27 times). The crate has no lane
+feature: `harness::lane::PARITY` is the `dss_core::compat::ORACLE_PARITY` of the
+one `dss-core` cargo builds per lane, pinned by
+`golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in`, and
+`[profile.dev.package.dss-test-harness]` keeps it at `opt-level = 3`, the level it
+ran at inside the `dss-core` test targets.
 
 The former opt-in EPRI report channel (AltDSS Oddie bridge, separate venv,
 r3723/r4088 binaries, `known_diffs.json`, `DSS_LIVE_OPENDSS*`) was retired by
@@ -314,7 +333,7 @@ citations at `crates/dss-core/src/elements/control/relay/tests.rs` and
 `tests/corpus/manifests/skipped_needs_investigation.json` are live again.
 
 The three `der_controls` / `line_constants` / `harmonics` gates share one
-replay engine, `tests/harness/scenario.rs::check_family`.
+replay engine, `crates/dss-test-harness/src/harness/scenario.rs::check_family`.
 
 **Which oracle ever sees a `Save`/`Dump` byte** (R4133_PROPS RP3.11,
 2026-09-03). Only one: the pinned dss-python capture behind the `reports/`
@@ -573,7 +592,7 @@ an_absent_capture_fails, the_message_names_the_flag_the_channel_the_context_and_
 `SeqCurrents`, `SeqVoltages` (012 magnitudes, A and V) and `SeqPowers`
 (complex kW/kvar) compare live on both channels through
 `harness::compare_element_seq`
-(`crates/dss-core/tests/harness/mod.rs:4925`), a **sibling** of
+(`crates/dss-test-harness/src/harness/mod.rs:4925`), a **sibling** of
 `compare_element_derived` rather than an edit of it, over the same
 `compare_derived` flag and the same 442 forced cases. The engine side is one new
 accessor inside `exec/view.rs::snapshot_elements` (never `report/export/seq_*`,
@@ -698,7 +717,7 @@ are not obvious from the field names:
 and V) and `TotalPowers` (per-terminal kW/kvar) compare live on both channels
 through two more siblings of `compare_element_derived` —
 `harness::compare_element_cplx_seq`
-(`crates/dss-core/tests/harness/mod.rs:5284`) and
+(`crates/dss-test-harness/src/harness/mod.rs:5284`) and
 `harness::compare_element_total_powers` (`mod.rs:5556`) — over the same
 `compare_derived` flag and the same 442 forced cases, completing the flag's
 thirteen fields. The engine side is again additive inside
@@ -779,7 +798,7 @@ Five things that are not obvious from the field names:
 
 **G1.3d(i) — the per-element discrete extras** (2026-09-04/05, lane `lane-e`).
 `harness::compare_element_extras`
-(`crates/dss-core/tests/harness/mod.rs:2875`) compares `NumTerminals`,
+(`crates/dss-test-harness/src/harness/mod.rs:2875`) compares `NumTerminals`,
 `NumConductors`, `NumPhases`, `NodeOrder` and `EnergyMeter` **exactly** — and,
 since G1.3d(ii), the five control-derived scalars `NumControls`, `OCPDevIndex`,
 `OCPDevType`, `HasVoltControl` and `HasSwitchControl` on the same terms: it takes
@@ -846,7 +865,7 @@ Five things about it that are not obvious from the field names:
 The five control scalars fold into `compare_element_extras` above (exact, no
 `Tolerances`, no sub-channel); `PhaseLosses` is numeric and therefore gets its
 own comparator, `harness::compare_element_phase_losses`
-(`crates/dss-core/tests/harness/mod.rs:3362`), precisely so that function's
+(`crates/dss-test-harness/src/harness/mod.rs:3362`), precisely so that function's
 "everything here is discrete" contract stays literally true. Six things worth
 knowing:
 
@@ -1010,7 +1029,7 @@ copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and c
 `crates/dss-epri/src/capture.rs:985` over `Engine::element_yprim`
 (`crates/dss-epri/src/dss.rs:879`), Rust side `compare_yprim` at
 `corpus_gate/runner.rs:980` → `harness::compare_yprim`
-(`crates/dss-core/tests/harness/mod.rs:1596`)), so a
+(`crates/dss-test-harness/src/harness/mod.rs:1596`)), so a
 second `Lines`-shaped capture would add no information. **The honest residual is
 coverage, not spelling:** YPrim is compared only for a case's
 `selected_elements`, and over the four manifests **238 of 526** cases declare a
@@ -1083,7 +1102,7 @@ the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
 `crates/dss-core/tests/corpus_gate/scheduler.rs:344`). The port side is
 `Dss::pd_elements` (`crates/dss-core/src/exec/view.rs:2561`), a `&self` read of
 `CktElementData`; the comparator is `harness::compare_pd_elements`
-(`crates/dss-core/tests/harness/mod.rs:11229`), which asserts the walk first
+(`crates/dss-test-harness/src/harness/mod.rs:11229`), which asserts the walk first
 (length, then the name sequence case-insensitively — the oracle's
 `PDElements.Count` is the raw `ListSize` and is deliberately **not** used) and
 then all fourteen fields **exactly**, `rel = abs = 0`: nothing on this surface is
@@ -1107,17 +1126,17 @@ come with it.
   `require_capture_opt` (presence, not count), and the capture is `null` when the
   flag is off and `[]` when it is on over a PD-less circuit. The hole that leaves
   is closed globally: `assert_pd_elements_compare_ran`
-  (`crates/dss-core/tests/harness/mod.rs:11309`) fails the run unless **each**
+  (`crates/dss-test-harness/src/harness/mod.rs:11309`) fails the run unless **each**
   gating channel compared at least one non-empty walk.
 * **`PD_SKIP_FIELDS` is fail-on-stale.** Both oracles read four cells out of
   uninitialized memory on in-zone shunt Capacitors/Reactors (`EnergyMeter.pas`
   assigns through `pPCelem: TPCElement`; nondeterministic across processes and, on
   r4133, within one), so those cells are excluded per (channel, class, field) in
-  `PD_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:11043`) — never
+  `PD_SKIP_FIELDS` (`crates/dss-test-harness/src/harness/mod.rs:11043`) — never
   enveloped, and never wider than measured. The scope is the element too, not the
   class: a row is consulted only where that write lands, on an in-zone **shunt**
   Capacitor/Reactor (`pd_skip_applies`,
-  `crates/dss-core/tests/harness/mod.rs:11167`, port state
+  `crates/dss-test-harness/src/harness/mod.rs:11167`, port state
   `PdElementView::in_meter_zone`), so a series member of either class and a shunt
   one outside every zone stay fully compared — the defect is measured on 22
   (capi) / 29 (r4133) of the 372 / 431 walked cases. `fault_rate`/`pct_permanent`
@@ -1126,7 +1145,7 @@ come with it.
   Every row carries its Pascal citation and the pin that holds its value, a
   register test refuses a silent add or drop, a second one refuses a `pin` no
   `#[test]` defines, and `assert_pd_skip_rows_are_live`
-  (`crates/dss-core/tests/harness/mod.rs:11362`) fails a row that excluded nothing
+  (`crates/dss-test-harness/src/harness/mod.rs:11362`) fails a row that excluded nothing
   in the whole run. The gate epilogue prints every row's visit/hit counts.
 
 **The bus voltage surface (`compare_bus`, live since G1.4a, 2026-09-04).** Per
@@ -1135,7 +1154,7 @@ bus, in the engine's own `BusList` order: `Nodes`, `kVBase`, `puVoltages`,
 quantities capi 0.14.5 and r4133 compute by byte-identical algorithms. The port
 side is `Dss::all_bus_voltages` / `Dss::all_bus_vmag_pu`
 (`crates/dss-core/src/exec/view.rs:2327`, `:2385`), the comparators are
-`harness::compare_bus` (`crates/dss-core/tests/harness/mod.rs:11954`) and
+`harness::compare_bus` (`crates/dss-test-harness/src/harness/mod.rs:11954`) and
 `compare_all_bus_vmag_pu` (`mod.rs:12063`). Four things about it are worth
 knowing:
 
@@ -1207,7 +1226,7 @@ two are witnessed. Port side: `Dss::all_bus_voltages`
 (`crates/dss-core/src/exec/view.rs:2327`), whose `bus_seq_voltages`
 (`view.rs:1095`) and `bus_line_to_line` (`view.rs:1124`) publish the port's own
 semantics; comparator: `harness::compare_bus_seq_and_vll`
-(`crates/dss-core/tests/harness/mod.rs:14595`). Five things about it:
+(`crates/dss-test-harness/src/harness/mod.rs:14595`). Five things about it:
 
 * **The port answers what the quantity means (S-SEQ, S-VLL).** Symmetrical
   components exist only with three phase voltages, so `SeqVoltages` /
@@ -1279,7 +1298,7 @@ the *same* per-bus walk `compare_bus` already runs — the flag implies
 and a loud refusal in each transport), never written as an `||`. The port side
 is `Dss::all_bus_short_circuit` (`crates/dss-core/src/exec/view.rs:2307`), the
 comparator is `harness::compare_bus_short_circuit`
-(`crates/dss-core/tests/harness/mod.rs:12910`). Five things about it are worth
+(`crates/dss-test-harness/src/harness/mod.rs:12910`). Five things about it are worth
 knowing:
 
 * **The gate reads what the deck's own solve populated; it never runs a study.**
@@ -1302,7 +1321,7 @@ knowing:
 * **The two channels publish different "no matrix" sentinels, normalized at the
   comparator.** capi returns **1** double (`CAPI_Utils.pas:212-221`'s
   `DefaultResult` under `DSS_CAPI_COM_DEFAULTS`, `CAPI_SC_SENTINEL_LEN`,
-  `crates/dss-core/tests/harness/mod.rs:12672`), r4133 **2** (the
+  `crates/dss-test-harness/src/harness/mod.rs:12672`), r4133 **2** (the
   `setlength(…,1); [0] := CZero` prelude at `DDLL/DBus.pas:433-434`,
   `R4133_SC_SENTINEL_LEN`, `mod.rs:12704`); at a **0-node** bus the same split
   hits `Isc`/`Voc` (capi 0 doubles, r4133 2 — `AllocMem`'s non-nil 0-byte block
@@ -1864,7 +1883,7 @@ on the last checkpoint only, and the runner asserts exactly that before it compa
 anything. Port side: `Dss::meter_reliability` / `Dss::meter_totals`
 (`crates/dss-core/src/exec/view.rs:3436` / `:3565`) — `&self` reads of solved state,
 the reliability math itself untouched. Comparator: `harness::compare_reliability`
-(`crates/dss-core/tests/harness/mod.rs:18042`). The flag is **manifest-set, never
+(`crates/dss-test-harness/src/harness/mod.rs:18042`). The flag is **manifest-set, never
 forced** (six cases): "has an EnergyMeter" is not a manifest field, and forcing it
 circuit-wide would fire `28724 No EnergyMeter Objects Defined` on ~340 meterless
 decks — so there is no `FORCED_RELIABILITY_POPULATION` lock, deliberately. `large*`
@@ -1954,7 +1973,7 @@ Seven rules come with the surface.
   `CalcAllocationFactors` `:54-72` writes them, and its sole driver is
   `TExecHelper.DoAllocateLoadsCmd`, `Executive/ExecHelper.pas:2624-2683`) — measured
   denormal garbage that changes across processes, hence excluded per (channel, case,
-  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-core/tests/harness/mod.rs:17778`),
+  field) in `RELIABILITY_SKIP_FIELDS` (`crates/dss-test-harness/src/harness/mod.rs:17778`),
   never enveloped, each row carrying its citation and a pin that a register test
   requires to name a real `#[test]`. The corpus's only `AllocateLoads` deck,
   `tests/corpus/controls/energymeter/midi_relcalc.dss` (`both`, three sections), is
@@ -2465,7 +2484,7 @@ reliability math untouched; transports
 `capture_bus_reliability` on both arms
 (`tools/oracle/oracle_server.py:664`, `crates/dss-epri/src/capture.rs:1897`); comparator
 `harness::compare_bus_reliability`
-(`crates/dss-core/tests/harness/mod.rs:18395`), called from inside
+(`crates/dss-test-harness/src/harness/mod.rs:18395`), called from inside
 `compare_reliability` so the payload keeps one entry point. Six rules come with
 the arm.
 
@@ -2551,7 +2570,7 @@ The gating successor of the report-only `known_diffs.json`. Every entry pins
 **where** and **how much** one case may diverge from one channel's oracle, with
 a mandatory documented cause — and **fails the gate when stale**, so the ledger
 can never rot into a soft-tolerance backdoor. Tier floors in
-`tests/harness` (`Tolerances`/`tol_for`, `tests/TOLERANCE_NOTES.md`) are
+`crates/dss-test-harness/src/harness` (`Tolerances`/`tol_for`, `tests/TOLERANCE_NOTES.md`) are
 structurally unreachable from ledger code and never change here.
 
 **Oracle floats are parsed exactly since G1.4a.** The workspace `Cargo.toml`
@@ -3103,7 +3122,7 @@ lock's scope and named with its reason in the test (`EXCLUDED_TREES`):
 `crates/dss-metis/tests/golden`, the vendored METIS 5.2.1 partitioner fixtures,
 which witness a third-party C algorithm rather than any DSS oracle.
 
-**The write rails** (`crates/dss-core/tests/harness/regen.rs`).
+**The write rails** (`crates/dss-test-harness/src/harness/regen.rs`).
 `harness::regen()` arms `harness::snapshot_text()` / `snapshot_bytes()` when
 `DSS_UPDATE_GOLDENS` is set; without the knob they are inert, so a driver can
 never bless the output it is about to compare. Armed, every write passes two
@@ -3288,9 +3307,10 @@ be compared against the recorded numbers.
 corpus deck the claims census flagged for that pair, reads the port's live render
 with `? Class.Name.Prop` — the same getter the gate's property walk reads — and
 asserts it literally, plus a discriminating second reading so the assertion is
-about the value and not about a constant. They live in their own binary on
-purpose: a pin in `tests/harness/` would recompile and re-solve every deck in
-each of the 22 binaries that include the harness.
+about the value and not about a constant. They were put in their own binary
+because a pin in the harness (then `crates/dss-core/tests/harness/`, a `mod` of
+22 binaries) would have recompiled and re-solved every deck in each of them;
+since RETRO_FIXES RF-I00-04 the harness is its own crate, compiled once per lane.
 `props_r4133_replay::every_echo_row_pin_is_a_test_that_exists` reads the names
 back both ways, so a renamed or orphaned pin fails rather than leaving a row
 citing a witness that is not there (its `NOT_A_PIN` exemption list is pinned
@@ -3358,7 +3378,7 @@ oracle's own name list, so it is kept by `filter_015x` and compares in full.)
 The pinned oracle is dss_capi
 **0.14.5**, so a deliberately ported 0.15.x property (which cannot appear in a
 0.14.5 capture) is declared in the named per-class allowlist `PROPS_015X`
-(`tests/harness/mod.rs`): a Rust-side prop in the allowlist and absent from the
+(`crates/dss-test-harness/src/harness/mod.rs`): a Rust-side prop in the allowlist and absent from the
 capture is excluded from the shape walk (handles inserted props, not just
 trailing). Present-in-capture props are NOT excluded — full name+value compare
 still applies. It relaxes shape only, never a value tolerance, and a
@@ -3378,7 +3398,7 @@ property cell of a live non-`large` case is asserted on **both** channels. The
 two channels do not spell values identically, so the r4133 side runs a
 **channel-scoped claim chain** whose links are consulted in one fixed order and
 never on `capi_v0145`. One function holds the whole order —
-`harness::compare_prop_lists` (`crates/dss-core/tests/harness/mod.rs:9460`) —
+`harness::compare_prop_lists` (`crates/dss-test-harness/src/harness/mod.rs:9460`) —
 and links 2-4 are `PropsPolicy` methods gated on `is_r4133` (`mod.rs:9740`,
 `:9778`; the channel type is `PropsChannel`, `mod.rs:9630`). Link 1 is the
 deliberate exception: `skip_prop` is a free function taking the channel, so its
@@ -4409,7 +4429,7 @@ gate instead of leaving a documented claim with no prover.
   `CKT7_KVARH_TRIPLE`, `MIN_LV_BUS_COUNTS`, `TIE_MAGNITUDES_HEX`, and the live inventory
   `DI_SHAPES_LIVE` / `DI_LIVE_FILES` / `DI_LIVE_COLUMNS` / `DI_LIVE_CELLS` (36 files, 1 454
   classified columns, 4 922 812 classified cells over the five decks).
-* **The comparator, its class table and its census** (`crates/dss-core/tests/harness/di.rs`):
+* **The comparator, its class table and its census** (`crates/dss-test-harness/src/harness/di.rs`):
   `compare_di`, `classify_member`, `di_census`, `di_account`; the class tables `FIXED_REGISTERS`,
   `SYSTEM_METER_COLUMNS`, `OVERLOAD_COLUMNS`, `VOLT_EXCEPTION_COLUMNS`, `VBASE_SUFFIXES`; the
   drives `an_identical_tree_compares_equal`, `the_two_line_endings_are_the_same_file`,
@@ -4428,7 +4448,7 @@ gate instead of leaving a documented claim with no prover.
   `the_shape_census_records_every_file_kind_it_met`.
 * **The selection and the two transports' sidecar** (`crates/dss-epri/src/guard.rs` and
   `capture.rs`, `crates/dss-core/tests/corpus_gate/engines.rs`,
-  `crates/dss-core/tests/harness/run_files.rs`): `is_di_member`, `copy_di_tree`,
+  `crates/dss-test-harness/src/harness/run_files.rs`): `is_di_member`, `copy_di_tree`,
   `created_di_files`, `capture_di`, `di_tree`, the shared fixture list `DI_FILES` (its fifth list
   `SELF_TEST_DI_FILES` lives in the Python twin `tools/oracle/corpus_guard.py`), and the drives
   `the_di_members_of_the_shared_fixture_are_selected_and_copied`,

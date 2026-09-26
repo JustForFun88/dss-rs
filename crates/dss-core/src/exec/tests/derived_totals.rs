@@ -44,8 +44,8 @@ use crate::exec::{Dss, ElementSnapshot, SeqArm};
 use crate::support::mathutil::SymComp;
 use num_complex::Complex64;
 
-/// The `feeder` tolerance tier — `tests/harness/mod.rs::tol_for` (`"feeder"`),
-/// the tier IEEE13 is gated at, restated here because a `src` unit test cannot
+/// The `feeder` tolerance tier — `crates/dss-test-harness/src/harness/mod.rs::tol_for`
+/// (`"feeder"`), the tier IEEE13 is gated at, restated here because a `src` unit test cannot
 /// reach the integration harness. Every band below is that tier's *derived*
 /// image (`tests/TOLERANCE_NOTES.md`), never a fresh number.
 const FEEDER_I_ABS: f64 = 1e-5;
@@ -95,7 +95,7 @@ fn seq_slot_band(abs: f64, rel: f64, mean_phase_mag: f64) -> f64 {
 }
 
 /// `TotalPowers`' per-terminal band: `assert_power_close`'s per-conductor floor
-/// (`tests/harness/mod.rs:1550` — `i_abs·max(1, |V_kV|) + i_rel·|S|`, with
+/// (`crates/dss-test-harness/src/harness/mod.rs:1550` — `i_abs·max(1, |V_kV|) + i_rel·|S|`, with
 /// `|V_kV| = |S_kW| / |I_A|`) summed over exactly the conductors the terminal
 /// sums. A derivation of the gated power floor, not a new class.
 fn total_power_band(e: &ElementSnapshot, t: usize, i_abs: f64, i_rel: f64) -> f64 {

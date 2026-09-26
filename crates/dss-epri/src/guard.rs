@@ -539,7 +539,7 @@ pub fn decode_run_file(bytes: &[u8], what: &str) -> Result<String, String> {
 /// The sidecar is WIPED and recreated here, so a file left by an earlier case or
 /// by the other channel can never be read as this run's output; the gate then
 /// asserts the directory holds exactly the returned names and deletes it
-/// (`crates/dss-core/tests/harness/run_files.rs::read_sidecar`).
+/// (`crates/dss-test-harness/src/harness/run_files.rs::read_sidecar`).
 ///
 /// `patterns` empty ⇒ the gate did not ask: no directory is touched and `None`
 /// comes back, which keeps an off-flag reply identical to a pre-G1.10b one and
@@ -608,7 +608,7 @@ pub fn copy_selected_contents<S: AsRef<str>>(
 /// Read the selected members' contents straight out of the case directory — the
 /// PORT's half of the same surface, where no sidecar is needed because the gate
 /// and the producer are one process
-/// (`crates/dss-core/tests/harness/run_files.rs::RunFileProbe::finish_and_clean`).
+/// (`crates/dss-test-harness/src/harness/run_files.rs::RunFileProbe::finish_and_clean`).
 ///
 /// Same selection and the same decode ([`decode_run_file`]) as the two
 /// transports, so a difference between the sides can only be the files' contents.
@@ -1076,7 +1076,7 @@ impl Drop for CorpusGuard {
 /// that exits right after its reply) is waited out; a handle held for the
 /// producer's lifetime outlasts it and fails the case naming the producer.
 /// The one budget of every copy: the corpus gate's and the dss-core pin
-/// binaries' (`crates/dss-core/tests/harness/scratch.rs`) and this crate's
+/// binaries' (`crates/dss-test-harness/src/harness/scratch.rs`) and this crate's
 /// IEEE13 copies (`dss_epri::smoke::Ieee13Copy`).
 pub const COPY_REMOVE_ATTEMPTS: u32 = 25;
 /// See [`COPY_REMOVE_ATTEMPTS`].
