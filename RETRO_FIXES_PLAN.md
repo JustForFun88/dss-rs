@@ -3646,9 +3646,11 @@ its own flake rate; wall times per lane and per corpus_gate into the part file).
 `crates/dss-epri/src/capture.rs`, `crates/dss-epri/src/bin/epri-worker.rs`,
 `tools/oracle/corpus_guard.py`, `tools/oracle/oracle_server.py`, `.config/nextest.toml`,
 `.github/workflows/ci.yml`, `CLAUDE.md`, `TESTING.md`, `RETRO_FIXES_PLAN.md`,
-`docs/phase-records/retro-fixes.md` (any other file the guard re-pointing forces is reported, not
-edited - plan section 0; EXCEPT a test in any crate that WRITES under `tests/corpus/`: that is a
-part-1 gap, converted in part 1 and listed in `part_1.md`, the coordinator adds it here at land).
+`docs/phase-records/retro-fixes.md`, `README.md` and `SPLITTING_RULES.md` (their gate command lists
+only - coordinator ruling 2026-09-26 18:20, applied by the settler) (any other file the guard
+re-pointing forces is reported, not edited - plan section 0; EXCEPT a test in any crate that WRITES
+under `tests/corpus/`: that is a part-1 gap, converted in part 1 and listed in `part_1.md`, the
+coordinator adds it here at land).
 **Doc notes (§4):** `TESTING.md` is edited in-step (R9: the gate definition, the guard/D13 and
 D32/D33 paragraphs move with the code that changes them; the forced lines only), a notes entry
 is still appended for its owner.
@@ -3700,7 +3702,8 @@ changes are superseded by the copies).
    D32(3) sibling-case deletion hazard, the parent/child two-claim-key concurrency rule, the
    "survivor reads as pre-existing next run" order-coupling. New rails: the copy is fresh; the
    copy is removed after the run; a surviving copy fails the case naming the producer; the
-   vendored tree's listing + mtimes are unchanged after a full gate (`corpus_manifest.rs`); the
+   vendored tree's listing + mtimes are unchanged after a full gate (the corpus gate's `run_gate`
+   bracket + `GateRun::assert_complete`, coordinator ruling 2026-09-26 16:40 - not `corpus_manifest.rs`); the
    census `no_corpus_energymeter_is_named_zero` no longer depends on `cargo`'s sequencing (the
    D13 premise paragraph rewritten to say why). Nothing is deleted unless it is unreachable after
    the re-pointing, with the compile-level proof in `part_2.md`. Gate with the OLD commands, three
@@ -3755,3 +3758,51 @@ part 1 is the path-embedding probe.
 - Twelve consecutive gate runs recorded with wall times (3 after each part): zero infra-class reds
   after part 1, or each red explained as a real finding.
 - Record block written; every uid closed or recorded with a reason.
+
+### RF-I00-02 — The capi one-shot's native death on `controls:espvlcontrol` (R12 follow-up of RF-I00-01)
+<!-- RF-STEP {"step": "RF-I00-02", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-I00-01", "RF-D09-06"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full (the seven commands). **After:**
+RF-I00-01, RF-D09-06 (its SA-0 ships the transport-side named error with the one-shot's exit status
+and faulthandler output - the evidence this step reads). Scheduled by hand like every §6 step (not in
+`wp_index.json`). **Brief:** `tmp/retro_fix/state/RF-I00-01.md` (ruling Q4-1) and
+`tmp/retro_fix/state/RF-I00-01/part_4.md`.
+**Files:** `crates/dss-core/tests/corpus_gate/engines.rs`, `tools/oracle/oracle_server.py`,
+`tests/corpus/ledger.json`, `tests/corpus/controls/manifest.json`, `TESTING.md` (notes),
+`docs/phase-records/retro-fixes.md`, `RETRO_FIXES_PLAN.md`.
+**Findings**
+- `INFRA|4` (major) - `controls:espvlcontrol/espvlcontrol.dss` on `capi_v0145`: the `isolate`
+  one-shot dies natively before replying ("oracle produced no JSON response",
+  `corpus_gate/engines.rs:536`; stdout empty, stderr = the ready line only, no Python traceback).
+  Seen 2026-09-03 (`tmp/rp41/p5_ws_parity.log`, before scratch copies and nextest) and in
+  RF-I00-01 part 4 run 3 (1 of the step's 12 nextest `corpus_gate` runs); 0 of 200 when the case
+  runs alone with `PYTHONFAULTHANDLER=1`. The gate machinery is not the cause (copy removed, tree
+  unchanged): the dss_capi 0.14.5 process itself dies. Fix: with SA-0's exit status + fault site in
+  hand, measure the rate under nextest load (at least 20 full-lane runs, or an equivalent
+  concurrent probe of the case), read the native exit code / fault, and rule ONE of: (a) a
+  capi-side crash pinned as a `kind: "skip"` row of `ledger.json` on `capi_v0145` for this case
+  (the r4133 twin is `r4133-espvlcontrol-uninstantiable`) with the evidence in the manifest note;
+  (b) a transport bug, fixed in `oracle_server.py` with its rail. Never a retry into green, never
+  a filter without the ruling. Until this step lands, the row is the oracle-side gate class of the
+  RF-I00-01 ruling Q4-1: one unmodified re-run, every occurrence recorded with evidence.
+**Acceptance:** the death has a named cause with evidence (exit code / fault site, rate under load)
+and a disposition (ledger row or fix + rail); a recurrence names its cause in the gate output;
+record block written.
+
+### RF-I00-03 — `di_pins::PORT` per-deck memos under nextest (R12 follow-up of RF-I00-01)
+<!-- RF-STEP {"step": "RF-I00-03", "effort": "high", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-I00-01"], "n_uids": 1} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full (the seven commands).
+**After:** RF-I00-01. Scheduled by hand (§6). **Brief:** `tmp/retro_fix/state/RF-I00-01/part_3.md`
+(Q3-1) and the ruling in `tmp/retro_fix/state/RF-I00-01.md`.
+**Files:** `crates/dss-core/tests/di_pins.rs`, `docs/phase-records/retro-fixes.md`,
+`RETRO_FIXES_PLAN.md`.
+**Findings**
+- `INFRA|5` (minor) - `di_pins::PORT` compiles the five DI decks once per test BINARY through a
+  `OnceLock`; nextest runs every test in its own process, so each of the six tests that read it
+  recomputes it (~155 s each, ~930 core-s), measured ~35 s (~16 %) of lane wall (lane 184 s without
+  `di_pins` vs 215-223 s with it, RF-I00-01 part_3.md). The six test names are pinned by
+  `ledger.json`, TESTING.md, `tests/TOLERANCE_NOTES.md`, `golden-rebase.md` and the cfg-gate
+  registries: no rename. Fix: split `PORT` into per-deck memos so each test compiles only the decks
+  it reads (or one process-local memo per deck behind the same six names); measure the lane wall
+  before/after on an idle machine, three runs each.
+**Acceptance:** the six names unchanged, every pin unchanged in bytes, the lane wall reduction
+measured and recorded (record block).
