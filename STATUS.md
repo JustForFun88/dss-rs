@@ -192,7 +192,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 
 **RETRO_FIXES (settle the live findings of the 2026-09 retro audits) — OPEN**, run in waves of up to three lanes per
 [`RETRO_FIXES_PLAN.md`](RETRO_FIXES_PLAN.md), one record block per step in
-[`retro-fixes.md`](docs/phase-records/retro-fixes.md). Landed: RF-I00-01 `934ccb09`. Next: wave 101.
+[`retro-fixes.md`](docs/phase-records/retro-fixes.md). Landed: RF-I00-01 `934ccb09`, RF-I00-03 `5a17629d`. Next: wave 102.
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
