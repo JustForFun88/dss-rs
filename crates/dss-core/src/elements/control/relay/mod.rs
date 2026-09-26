@@ -788,6 +788,10 @@ impl Relay {
         let mut i = 1usize;
         // `:1286` `While (Length(DataStr2)>0) and (i<RELAYCONTROLMAXDIM)` — a
         // sixth token is silently dropped (measured, `out_b1b.txt` B1(3b)).
+        // That bound is an r4133 off-by-one (upstream report 75: the ganged arm
+        // `:1260` and the type `:62` span six slots), still reproduced here and
+        // in the ordinal twin `set_enum_array` until RETRO_FIXES RF-D01-01 AC3-1
+        // fixes both together.
         while !token.is_empty() && i < RCMAX {
             if let Some(state) = match_state_token(&token) {
                 match prop {

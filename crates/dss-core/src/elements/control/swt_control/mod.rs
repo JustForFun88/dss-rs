@@ -450,7 +450,12 @@ impl SwtControl {
                     let mut token = parser.make_string(&vars);
                     let mut i = 1usize;
                     // `:461` `While (Length(DataStr2)>0) and (i<SWTCONTROLMAXDIM)`
-                    // — a 6th token is silently dropped (probe §11.2).
+                    // — a 6th token is silently dropped (probe §11.2). That
+                    // bound is an r4133 off-by-one (upstream report 75: the
+                    // ganged arm `:435` and the type `:19` span six slots),
+                    // still reproduced here and in the ordinal twin
+                    // `set_enum_array` until RETRO_FIXES RF-D01-01 AC3-1 fixes
+                    // both together.
                     while !token.is_empty() && i < SW_MAX {
                         if let Some(state) = match_state_token(&token) {
                             if prop == SwtStateProp::State {

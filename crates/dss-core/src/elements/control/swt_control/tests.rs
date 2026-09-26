@@ -241,7 +241,10 @@ fn interpreter_per_phase_caps_at_five_tokens() {
     // r4133 loop bound `i < SWTCONTROLMAXDIM` (:461): at most FIVE tokens are
     // honored, a 6th is silently dropped (probe §11.2 — the plan's reading of
     // :453-480 did not call this out). Reverting the bound to `<=` writes the
-    // 6th slot and fails the final assert.
+    // 6th slot and fails the final assert. That bound is a reproduced r4133
+    // off-by-one (upstream report 75): RETRO_FIXES RF-D01-01 AC3-1 flips this
+    // pin to the 6th slot written (see
+    // `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
     let mut sw = SwtControl::new("sw1");
     sw.interpret_switch_state(
         SwtStateProp::State,
@@ -280,7 +283,10 @@ fn interpreter_tokens_match_first_char_only() {
         ControlAction::Close,
         "'bogus' leaves the slot"
     );
-    // 6th token ('closed') dropped by the 5-token cap — slot 6 untouched.
+    // 6th token ('closed') dropped by the 5-token cap — slot 6 untouched. It
+    // equals `Create`'s slot 6, so this line holds with or without the cap
+    // (the cap's pin is `interpreter_per_phase_caps_at_five_tokens`).
+    // RETRO_FIXES RF-D01-01 AC3-1 turns the token to `open` with the fix.
     assert_eq!(sw.present_state[6], ControlAction::Close);
 }
 
@@ -927,6 +933,13 @@ fn render_is_one_token_per_controlled_element_phase() {
 /// (`:334`); the port's missing warning is `ORPHANED_GAPS.md` §1.15 and is
 /// deliberately not asserted here either way. The port answers six tokens at
 /// every step, each assert naming the r4133 bytes.
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus the deck's
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=1`,
+/// `set voltagebases=[115]` and `calcvoltagebases` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
 #[test]
 fn a_seven_phase_controlled_element_renders_six_tokens() {
     let mut dss = Dss::new();
@@ -1064,6 +1077,17 @@ fn per_phase_write_renders_the_r4133_bytes_through_both_seams() {
 /// Driven through the property seam (`was_quoted = true`), so a regression that
 /// re-routed the write to the generic `array_size`-bounded tokenizer would let
 /// the sixth token through.
+///
+/// **A reproduced upstream bug, pending its fix.** The five-token bound is an
+/// r4133 off-by-one — the ganged arm (`:435`) and `StateArray` (`:19`) span
+/// six slots — reported upstream in
+/// `investigations/to_opendss/75-per-phase-state-list-drops-the-sixth-phase.md`
+/// (local-only), and the 2026-08-02 policy says it is not reproduced. The port
+/// still reproduces it in `interpret_switch_state` and in the ordinal twin
+/// `set_enum_array`, which must move together
+/// (`the_ordinal_array_setter_matches_the_interpreter` asserts they agree):
+/// RETRO_FIXES RF-D01-01 AC3-1 flips this pin, that test's row 2 and
+/// `interpreter_per_phase_caps_at_five_tokens` to the sixth token landing.
 #[test]
 fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     let mut sw = sw_with_snap(6);
@@ -1177,7 +1201,10 @@ fn the_ordinal_array_setter_matches_the_interpreter() {
             "open, keep, open",
             "[open, closed, open, ]",
         ),
-        // The five-slot cap on both paths (`take(SW_MAX - 1)` vs `:461`).
+        // The five-slot cap on both paths (`take(SW_MAX - 1)` vs `:461`): a
+        // reproduced r4133 off-by-one (upstream report 75) that RETRO_FIXES
+        // RF-D01-01 AC3-1 flips (see
+        // `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
         (
             6,
             false,
