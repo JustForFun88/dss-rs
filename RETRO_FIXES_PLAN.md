@@ -3620,95 +3620,126 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 - Corpus gate green in both lanes with no stale or unhit ledger entry; no lock or golden byte moves.
 - The uid above is closed or recorded with a reason.
 
-## 6. Infrastructure steps (gate economy, user decision 2026-09-26)
+## 6. Infrastructure steps (gate economy, user decisions 2026-09-26)
 
 Not retro-audit findings: these steps change the gate machinery itself, so they run through the
-same per-step ritual (§2, §3) and land through §2.7, but their uids are `INFRA|<n>` and they are
-scheduled by hand, one lane, before the wave that first needs them. §2.2 names the gate commands;
+same per-step ritual (§2, §3) and land through §2.7, but their uids are `INFRA|<n>`, they are
+scheduled by hand on one lane with NO other workflow running (the user stopped waves 1-2 for it:
+a gate under six-lane contention costs 3x its quiet wall time AND the waiting agents' prompt
+cache), and the waves resume only after the step has landed. §2.2 names the gate commands;
 RF-I00-01 replaces them and updates §2.2 in the same commit.
 
-### RF-I00-01 — Sweep retry for transient sharing violations; cargo-nextest as the gate's test runner
-<!-- RF-STEP {"step": "RF-I00-01", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 2} -->
+### RF-I00-01 — Per-run scratch copies for the corpus gate, cargo-nextest as the gate's test runner
+<!-- RF-STEP {"step": "RF-I00-01", "effort": "max", "parts": 4, "gate": "full", "oracle": true, "after": [], "n_uids": 3} -->
 **Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate - the OLD five commands
-for part 1, the NEW command set (below) for part 2 and every later stage, each run to completion
-THREE times in a row (a flake-hunting step must measure its own flake rate). **After:** -.
-**Files:** `crates/dss-epri/src/guard.rs`, `crates/dss-core/tests/corpus_gate/runner.rs`,
-`crates/dss-core/tests/harness/run_files.rs`, `tools/oracle/corpus_guard.py`,
-`.config/nextest.toml`, `.github/workflows/ci.yml`, `CLAUDE.md`, `TESTING.md`,
-`docs/phase-records/retro-fixes.md`
-**Doc notes (§4):** `TESTING.md` is edited in-step (R9: the gate definition and the D13 premise
-paragraph move with the code that changes them; the forced lines only) and a notes entry is still
-appended for its owner.
+(§2.2 as of c67782d2) after parts 1 and 2, the NEW command set (part 3) after parts 3 and 4 and in
+every later stage; each gate run to completion THREE times in a row (a flake-hunting step measures
+its own flake rate; wall times per lane and per corpus_gate into the part file). **After:** -.
+**Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/*.rs`,
+`crates/dss-core/tests/harness/run_files.rs`, `crates/dss-core/tests/harness/capture_guard.rs`,
+`crates/dss-core/tests/corpus_manifest.rs`, `crates/dss-epri/src/guard.rs`,
+`crates/dss-epri/src/capture.rs`, `crates/dss-epri/src/bin/epri-worker.rs`,
+`tools/oracle/corpus_guard.py`, `tools/oracle/oracle_server.py`, `.config/nextest.toml`,
+`.github/workflows/ci.yml`, `CLAUDE.md`, `TESTING.md`, `RETRO_FIXES_PLAN.md`,
+`docs/phase-records/retro-fixes.md` (any other file the guard teardown forces is reported, not
+edited - plan section 0).
+**Doc notes (§4):** `TESTING.md` is edited in-step (R9: the gate definition, the guard/D13 and
+D32/D33 paragraphs move with the code that changes them; the forced lines only), a notes entry
+is still appended for its owner.
+**Measured (2026-09-26, the reason for this step):** over the six steps of waves 1-2
+(`tmp/retro_fix/state/*/*.log`) 41 red `corpus_gate` runs in both lanes; 28 carried at least one
+"leaked dropping" row - every one a `Test/AutoTrans/*` case, any of its `export` files (not only
+the last), reported by the `r4133` producer AND by the PORT alike, so no engine holds the handle:
+the 36 `Test/` parent cases run concurrently with the five `Test/AutoTrans/` child cases by design
+and their recursive snapshot reads every small file without `FILE_SHARE_DELETE` (plus Defender
+real-time scanning, ON on this machine); about 20 runs carried a capi oracle 120 s timeout. Each
+red = a 10-20 min lane re-run. Corpus tree: 124 MB / 1544 files, `Test/` 1 MB, 26 decks with
+`../` references, 7 with absolute or drive-letter references. The interrupted first executor's
+partial sweep-retry diff is kept at `tmp/retro_fix/state/RF-I00-01/exec1_partial_retry.patch`
+(reference only - the retry survives in part 1 as the copy-removal retry; the snapshot-side
+changes are superseded by the copies).
 **Parts:**
-1. `INFRA|1` - the sweep retry. Measured 2026-09-26 (RF-D07-07 `settle_gate_5_*.log`, RF-D00-05
-   and RF-D01-04 gate logs): every "leaked dropping" red of the last six steps (28 of 41 red
-   `corpus_gate` runs, both lanes) is a `Test/AutoTrans/*` case, any of its `export` files (not only the last one), reported by the
-   `r4133` producer AND by the PORT alike - so it is not an engine that holds the handle. Two
-   transient holders are in the tree: (a) the 36 `Test/` parent cases run concurrently with the
-   five `Test/AutoTrans/` child cases by design (two claim keys, TESTING.md "A guard restores what
-   was overwritten") and their recursive snapshot reads every small file with `std::fs::read` /
-   Python `open(rb)` - `FILE_SHARE_READ|WRITE`, no `FILE_SHARE_DELETE`, so a child's `remove_file`
-   that lands inside that read fails with a sharing violation; (b) Windows Defender real-time
-   protection is ON on this machine and scans freshly written files. Fix, in all THREE sweepers
-   (`guard.rs::CorpusGuard::sweep_created`, `corpus_gate/runner.rs::CorpusGuard::sweep_created`,
-   `corpus_guard.py::_sweep_created`; the port probe's `finish_and_clean` calls the first): a
-   removal that leaves the entry listed is retried with a bounded backoff (25 x 200 ms, a named
-   constant, the same value in Rust and Python) before it is reported as `sweep_failed`; the
-   presence test stays the fresh `read_dir` listing (a delete-pending entry counts as present until
-   it is gone). Nothing else changes: a handle held for the producer's lifetime (the dss_capi
-   Storage `DebugTrace` class, the `share_mode(FILE_SHARE_READ)` fixtures of the existing rails)
-   still comes back as leaked after the budget - the existing rail tests keep passing, and each
-   gets a sibling proving a handle released DURING the budget is swept clean (Rust: a thread that
-   drops the `FILE_SHARE_READ` handle after ~500 ms; a Python self-test twin). Also open the
-   snapshot readers with `FILE_SHARE_DELETE` where the platform allows it (Rust
-   `OpenOptionsExt::share_mode`, `#[cfg(windows)]`) so holder (a) cannot block a delete at all;
-   Python keeps the retry only. Old five-command gate, three consecutive runs, the corpus_gate wall
-   time and every red row of each run into `part_1.md`. Commit.
-2. `INFRA|2` - cargo-nextest as the gate's test runner. Install `cargo-nextest` (`cargo install
+1. `INFRA|1` - per-run scratch copies. The corpus gate never runs a producer inside
+   `tests/corpus/` again: for every (case, producer) run the scheduler creates a FRESH directory
+   under `target/corpus-scratch/<case key>/<producer>/<run nonce>/` (must not pre-exist - create
+   fails otherwise; the nonce makes a retry a new directory), copies the case's directory closure
+   into it (the case directory recursively; for the 26 `../` decks and the 7 absolute-reference
+   decks measure what they reach and copy the nearest common ancestor that contains every
+   referenced file - list every such deck with its closure root in `part_1.md`; a reference that
+   leaves the corpus tree stays as it is and is listed), hands the copy's deck path to the producer
+   (`build_run_request` `case_path`, the port's `Deck::compile` path, the DI sidecar and
+   `run_file_contents_dir` read from the copy), takes the created-file set as the listing diff
+   against the copy's initial listing (the same `classify_created` names as today), copies the
+   CONTENTS surface out, and removes the copy with a bounded retry (25 x 200 ms, one named
+   constant shared by Rust and Python). A copy that survives the budget fails the case naming the
+   producer - this is the D32(2) engine-leak rail on its new footing (a handle held for the
+   producer's lifetime, the dss_capi Storage `DebugTrace` class, still blocks the removal; the
+   existing `share_mode(FILE_SHARE_READ)` rails are re-pointed at the copy). The three producers
+   of a case get three copies, so an engine leak can no longer poison the next producer and no
+   order-coupling can hide a gap. Compared surfaces must not embed the scratch path: probe one case
+   in two different copies on every producer and diff every surface (part_1.md records the
+   result; a path-embedding surface is normalized at the seam, never excluded). Scheduler: a task
+   is now a CASE, not a case-directory group (§3.3 simplification withdrawn), still longest-first;
+   `DSS_GATE_JOBS` unchanged. Gate with the OLD commands, three runs; commit.
+2. `INFRA|2` - guard teardown. The vendored tree is read-only during the gate, so the
+   photograph / restore / sweep machinery of `dss_epri::guard::CorpusGuard`,
+   `corpus_gate/runner.rs::CorpusGuard`, `corpus_guard.py::CorpusGuard`, the `capture_guard` and
+   the `RunFileProbe` restore paths, and every rail that pins restoring/resurrecting/sweeping the
+   vendored tree (G1.10a "restores what was overwritten", D32(3) sibling-case deletion, D33(1)'s
+   teardown `clear` guard stays - it is about the capi worker, not the tree) are deleted, each
+   replaced by the rail that now carries the claim on the copy mechanism (copy is fresh; copy is
+   removed; a surviving copy names the producer; the vendored tree's listing + mtimes are
+   unchanged after a full gate - a new rail in `corpus_manifest.rs`; the census
+   `no_corpus_energymeter_is_named_zero` no longer depends on `cargo`'s sequencing - the D13
+   premise paragraph of TESTING.md is rewritten to say why). `classify_created`,
+   `normalize_created_name`, `is_engine_scratch_file` and the shared synthetic fixture stay (the
+   created-name surface is unchanged). Gate with the OLD commands, three runs; commit.
+3. `INFRA|3` - cargo-nextest as the gate's test runner. Install `cargo-nextest` (`cargo install
    cargo-nextest --locked`, or the prebuilt from get.nexte.st into `~/.cargo/bin`; pin the version
    in the header comment of `.config/nextest.toml` and in TESTING.md). `.config/nextest.toml`:
    `[profile.default]` with `retries = 0`, `fail-fast = false`, `slow-timeout = { period = "600s" }`
-   (report only, never terminate), and a test group `corpus-tree` with `max-threads = 1` holding
-   EVERY test that walks or writes under `tests/corpus/` - the whole `corpus_gate` binary, the
-   `corpus_manifest` census (`no_corpus_energymeter_is_named_zero` and its module), the AD sweep,
-   and whatever `rg -l "tests/corpus|corpus_root|CorpusGuard|electricdss-tst" crates/*/tests
-   crates/*/src` turns up (list them all in `part_2.md`, each with the reason it is in or out).
-   This keeps coordinator decision D13's premise (TESTING.md "The corpus meter-name census lives in
-   the oracle-free binary, on purpose"): no two corpus-tree walkers ever run at once, while every
-   other test binary runs in parallel. Doctests: nextest does not run them, so the gate gains
-   `cargo test --workspace --doc` per lane. The NEW gate (both lanes): (1) `cargo fmt --all
-   --check`; (2)/(3) the two clippy runs unchanged; (4) `cargo nextest run --workspace`;
-   (5) `cargo nextest run --workspace --features dss-core/oracle-parity`; (6) `cargo test
-   --workspace --doc`; (7) the same with `--features dss-core/oracle-parity`; commands 4/5 with
-   `DSS_ORACLE_TIMEOUT_SECS=600`. Update: the CLAUDE.md "## Gate" block, TESTING.md (the gate map,
-   the D13 premise paragraph - now guaranteed by the nextest group, not by `cargo`'s sequencing -
-   and the env-var table), `.github/workflows/ci.yml` (nextest via
-   `taiki-e/install-action@nextest`; `--test-threads=1` is no longer needed), this plan's §2.2
-   command list. The `GATE_TEXT` of the coordinator's `rf_exec.js` is the coordinator's, not the
-   executor's. Run the NEW gate three consecutive times; `part_2.md` records per run: nextest wall
-   time per lane against the old `cargo test` wall time of part 1, corpus_gate wall time, every red
-   row. Commit.
+   (report only, never terminate); no test group is needed once parts 1-2 have made
+   `tests/corpus/` read-only - if `rg -l "tests/corpus|corpus_root|electricdss-tst" crates/*/tests
+   crates/*/src` still finds a test that WRITES under the tree, that is a part-1 gap: fix it there,
+   never a group. Doctests: nextest does not run them, so the gate gains `cargo test --workspace
+   --doc` per lane. The NEW gate (both lanes): (1) `cargo fmt --all --check`; (2)/(3) the two clippy
+   runs unchanged; (4) `cargo nextest run --workspace`; (5) `cargo nextest run --workspace
+   --features dss-core/oracle-parity`; (6) `cargo test --workspace --doc`; (7) the same with
+   `--features dss-core/oracle-parity`; commands 4/5 with `DSS_ORACLE_TIMEOUT_SECS=600`. Gate with
+   the NEW commands, three runs, nextest wall time per lane against part 2's `cargo test` wall
+   time; commit.
+4. `INFRA|3` - documents: the CLAUDE.md "## Gate" block and the worktree/lane paragraphs that
+   mention `cargo test`, TESTING.md (gate map, env-var table, the guard sections, the D13 / D32 /
+   G1.10a paragraphs), `.github/workflows/ci.yml` (nextest via `taiki-e/install-action@nextest`,
+   `--test-threads=1` dropped, the `--doc` commands added), this plan's §2.2 command list, the
+   record block in `docs/phase-records/retro-fixes.md` (5-10 lines: measured before/after wall
+   times of the nine gate runs, the holder analysis, the commits). The coordinator's `rf_exec.js`
+   `GATE_TEXT` is the coordinator's job. Gate with the NEW commands, three runs; commit.
 **Findings**
-- `INFRA|1` (major) - `guard.rs:958-995`, `runner.rs:273-300`, `corpus_guard.py:612-640`: a
-  single `remove_file` attempt on Windows turns any transient reader (parent-case snapshot, AV
-  scan) into a "leaked dropping" red of the whole corpus gate. Measured over the six steps of
-  waves 1-2 (2026-09-25/26, `tmp/retro_fix/state/*/*.log`): 41 red `corpus_gate` runs in both
-  lanes, 28 of them with at least one leaked-dropping row (every one on `Test/AutoTrans/*`), about
-  20 with an oracle-timeout row (some carry both).
-- `INFRA|2` (major) - CLAUDE.md "## Gate", TESTING.md:916: `cargo test --workspace` runs the 77
+- `INFRA|1` (major) - `corpus_gate/scheduler.rs` (task = case-dir group), `runner.rs::CorpusGuard`,
+  `dss-epri/src/guard.rs`, `corpus_guard.py`: producers write exports into the vendored tree and
+  a photograph/restore/sweep guard tries to undo it; concurrent parent/child directory cases turn
+  a transient reader into a "leaked dropping" red of the whole gate (28 of 41 red runs).
+- `INFRA|2` (major) - the same guard: ~2 000 lines of restore/resurrect/sweep logic and rails exist
+  only because the tree is shared; with per-run copies every one of them is dead weight that can
+  still red the gate.
+- `INFRA|3` (major) - CLAUDE.md "## Gate", TESTING.md:916: `cargo test --workspace` runs the 77
   test binaries strictly one after another; the non-corpus part of a lane is 4-6 min under load,
-  and the corpus census's separation premise (D13) is documented as depending on that sequencing.
-**Probes:** the three consecutive full-gate runs of each part ARE the probes; a `Test/AutoTrans`
-red in any of the six runs after part 1 is a real finding (the retry did not cover the holder -
-measure who holds it: `handle.exe`, or a `FILE_SHARE_DELETE` probe).
+  and the census separation premise (D13) is documented as depending on that sequencing.
+**Probes:** the three consecutive gate runs after each part ARE the probes; any `Test/AutoTrans`
+or `leaked dropping` red after part 1 is a real finding, not infra (measure the holder with
+`handle.exe` or a `FILE_SHARE_DELETE` probe before touching the budget). The two-copies diff of
+part 1 is the path-embedding probe.
 **Acceptance:**
-- All three sweepers retry with the same bounded budget and still report a lifetime-held handle;
-  the existing leak rails pass unchanged and each has a released-during-budget sibling; the Python
-  self-test covers the twin.
-- `.config/nextest.toml` exists with `retries = 0`, `fail-fast = false` and the `corpus-tree`
-  group; every corpus-tree walker is in it (the `part_2.md` list names each test binary with its
-  in/out reason); doctests run through commands 6/7.
-- CLAUDE.md, TESTING.md, ci.yml and §2.2 agree on the seven commands; six consecutive gate runs
-  (three old, three new) recorded with wall times; no golden byte moves, `ledger.json` unchanged.
-- Record block in `docs/phase-records/retro-fixes.md` (5-10 lines): the measured before/after wall
-  times, the holder analysis, the commits.
+- No producer ever runs inside `tests/corpus/`: the tree's listing and mtimes are pinned unchanged
+  across a full gate; every (case, producer) run has its own fresh copy, removed with the shared
+  retry budget; a surviving copy fails the case naming the producer; the created-name surface,
+  the CONTENTS surface and the DI sidecar are unchanged in bytes (no golden byte moves,
+  `ledger.json` unchanged, the population locks unchanged).
+- The photograph/restore/sweep machinery and its tree rails are gone; each claim has its
+  copy-side rail; `classify_created` + the shared Rust/Python fixture survive with their self-test.
+- `.config/nextest.toml` exists with `retries = 0`, `fail-fast = false`, no test groups; doctests
+  run through commands 6/7; CLAUDE.md, TESTING.md, ci.yml and §2.2 agree on the seven commands.
+- Twelve consecutive gate runs recorded with wall times (3 after each part): zero infra-class reds
+  after part 1, or each red explained as a real finding.
+- Record block written; every uid closed or recorded with a reason.
