@@ -1357,17 +1357,11 @@ fn case_key(case_path: &str) -> String {
     format!("{name}{hash:016x}")
 }
 
-/// FNV-1a 64 of a (folded) case path, spelled out: the key must be stable
-/// across processes, which `DefaultHasher` does not promise. Shared by
-/// [`case_key`] and the scratch copies' directory key
-/// (`scratch::ScratchCopy::new`).
+/// FNV-1a 64 of a (folded) case path — the one implementation is
+/// `harness::scratch::case_digest`, shared by [`case_key`] and the scratch
+/// copies' directory key (`scratch::ScratchCopy::new`).
 pub(crate) fn case_digest(folded: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in folded.as_bytes() {
-        hash ^= u64::from(*b);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
+    crate::harness::scratch::case_digest(folded)
 }
 
 /// Where one (case, channel) DI capture is copied to:
@@ -1653,5 +1647,64 @@ mod di_sidecar_tests {
             );
             remove_di_sidecar("/corpus/x/master.dss", channel);
         }
+    }
+}
+
+/// RF-I00-01 (coordinator ruling 2026-09-26 14:30, answer 2): the one duty the
+/// two persistent transports keep in the copy protocol — step back to their
+/// startup directory before they reply — each with its own rail.
+#[cfg(all(test, windows))]
+mod transport_cwd_tests {
+    use super::*;
+    use crate::scratch::ScratchCopy;
+
+    /// A light `both` case with no `post` block and one step.
+    const CASE: &str = "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS";
+
+    /// Run [`CASE`] on a live, persistent `worker` in a fresh copy, then remove
+    /// the copy WHILE the worker still runs, then ping it. Both engines leave
+    /// the process working directory in the compiled deck's folder (r4133
+    /// `Executive/ExecHelper.pas:752-754`, dss_capi `SetCurrentDSSDir`), and
+    /// Windows refuses to remove a directory that is a live process's working
+    /// directory, so a transport that replied from inside the copy fails the
+    /// removal here. The gate itself cannot see it: its pooled workers are
+    /// recycled after every case by default ([`recycle_after`]) and its one-shot
+    /// transports exit, and either way the process is gone before the removal.
+    fn steps_out(mut worker: Worker, tag: &'static str) {
+        let abs = crate::manifest::corpus_file(CASE);
+        let case = crate::manifest::load_solvable()
+            .into_iter()
+            .find(|c| c.path == CASE)
+            .unwrap_or_else(|| panic!("{CASE} is no longer a solvable_now case"));
+        let copy = ScratchCopy::new(&abs, tag);
+        let req = build_run_request(copy.deck(), &abs, &case);
+        let r = worker
+            .request(&req, oracle_timeout())
+            .unwrap_or_else(|| panic!("[{tag}] {CASE}: no reply from the worker"));
+        assert!(r.ok, "[{tag}] {CASE}: {:?}", r.error);
+        let removed = copy.remove();
+        let ping = worker.request(&json!({"cmd": "ping"}), oracle_timeout());
+        worker.close();
+        if let Err(e) = removed {
+            panic!(
+                "[{tag}] {CASE}: the worker replied from inside its copy (it must \
+                 step back to its startup directory first): {e}"
+            );
+        }
+        assert!(
+            ping.is_some_and(|p| p.ok),
+            "[{tag}] the worker died after its reply, so the removal proves nothing"
+        );
+    }
+
+    #[test]
+    fn the_capi_transport_steps_out_of_the_copy_before_replying() {
+        let python = std::env::var("DSS_ORACLE_PYTHON").unwrap_or_else(|_| "python".to_string());
+        steps_out(spawn_worker(&python, &oracle_server_path()), CAPI_TAG);
+    }
+
+    #[test]
+    fn the_r4133_transport_steps_out_of_the_copy_before_replying() {
+        steps_out(spawn_epri_worker(&epri_worker_bin()), "r4133");
     }
 }
