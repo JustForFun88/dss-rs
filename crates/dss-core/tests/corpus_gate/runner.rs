@@ -1838,15 +1838,18 @@ pub(crate) fn compare_with_result(
     // here instead of hiding — the order-coupling can never come back silently.
     assert_swept_clean(label, channel_tag(channel), oc.sweep_failed.as_deref());
     let tol = tol_for(&c.kind);
+    // RETRO_FIXES RF-I00-01: the port compiles its OWN fresh scratch copy of the
+    // case — never the vendored deck, and never the copy the oracle ran in — so
+    // `deck` is what the engine and the probe see, while `case_path` (the
+    // vendored deck) keeps keying the oracle's sidecars below. The copy is
+    // removed at the end, or the case fails naming the `port` producer.
+    let copy = crate::scratch::ScratchCopy::new(case_path, crate::scratch::PORT);
+    let deck = copy.deck();
     // G1.10a — the run-produced FILE SET. The port needs its OWN before/after
     // bracket (and must sweep what it classified) because the scheduler runs the
-    // Rust engine once PER CHANNEL: on an `engines: "both"` case the second run
-    // would otherwise find channel 1's files already on disk and report an empty
-    // created set. The outer `CorpusGuard` (`scheduler::run_one_case`) stays the
-    // safety net and is never bypassed. Started here, before the engine touches
-    // the directory and after the oracle result is already in hand, so anything
-    // the ORACLE's own guard failed to sweep sits in the probe's "before"
-    // snapshot and can never be mis-attributed to the port.
+    // Rust engine once PER CHANNEL; since RF-I00-01 each of those runs also has
+    // its own scratch copy, so the "before" snapshot is the copy's initial
+    // listing and no other producer's file can be in it.
     //
     // G1.10c: the probe is also the port-side producer of the demand-interval
     // tree's CONTENTS, and three of the five DI cases are `kind = large` (so not
@@ -1862,7 +1865,7 @@ pub(crate) fn compare_with_result(
     // SET differs by one member there and would red instantly.
     #[cfg(windows)]
     let run_file_probe = (c.compare_run_files || c.compare_di)
-        .then(|| harness::run_files::RunFileProbe::start(case_path));
+        .then(|| harness::run_files::RunFileProbe::start(deck));
     // The classification itself is portable since D33(3) (`dss_epri::guard` is
     // ungated, and `CorpusGuard::sweep_created` above runs it on every
     // platform), but the SURFACE is compared only against the gate's two oracle
@@ -1878,9 +1881,9 @@ pub(crate) fn compare_with_result(
          `harness::run_files` and `harness::di` are declared under \
          `#[cfg(windows)]`"
     );
-    let (mut dss, baseline) = run_rust_capture(label, case_path, c);
+    let (mut dss, baseline) = run_rust_capture(label, deck, c);
     compare_capture(
-        &mut dss, baseline, oc, label, case_path, c, &tol, channel, ledger,
+        &mut dss, baseline, oc, label, deck, c, &tol, channel, ledger,
     );
     // The port's run is over: drop the engine BEFORE the probe reads, so a file
     // the engine still holds open is closed (and flushed) first — a removal that
@@ -1982,6 +1985,7 @@ pub(crate) fn compare_with_result(
             crate::engines::remove_di_sidecar(case_path, tag);
         }
     }
+    copy.finish();
 }
 
 /// `GOLDEN_REBASE_PLAN.md` G1.10c — read one oracle channel's
@@ -2070,7 +2074,8 @@ fn sidecar_member_path(dir: &Path, name: &str, rel: &str, channel: &str, label: 
 /// fetch the pinned oracle model once, compare against the `capi_v0145` channel
 /// (no ledger — the report tests predate it).
 pub(crate) fn run_and_compare(oracle: &Oracle, label: &str, case_path: &str, c: &SolvableCase) {
-    let _guard = CorpusGuard::new(case_path);
+    // Each producer runs in its own scratch copy (RF-I00-01): the oracle's is
+    // made and removed inside `run_case`, the port's inside the compare.
     let oc = oracle.run_case(case_path, c);
     compare_with_result(&oc, label, case_path, c, EngineChannel::CapiV0145, None);
 }
@@ -2095,9 +2100,11 @@ pub(crate) fn run_and_compare_abort(
 
     // The abort request drives `Compile` (which executes the deck's own `Solve`);
     // the oracle raises on the aborting solve → `ok:false` carrying the message.
+    // RF-I00-01: the oracle and the port each abort in their own fresh copy.
+    let copy = crate::scratch::ScratchCopy::new(case_path, channel.tag());
     let req = json!({
         "cmd": "run",
-        "case_path": case_path,
+        "case_path": copy.deck(),
         "post": c.post,
         "n_steps": c.n_steps,
         "selected_elements": c.selected_elements,
@@ -2109,6 +2116,7 @@ pub(crate) fn run_and_compare_abort(
         "ctrlqueue": false,
     });
     let resp = channel.call(&req);
+    copy.finish();
     assert!(
         !resp.ok,
         "{label}: oracle did NOT abort the solve (expected an abort containing {expected:?})"
@@ -2119,22 +2127,24 @@ pub(crate) fn run_and_compare_abort(
         "{label}: oracle abort message {oracle_err:?} does not contain {expected:?}"
     );
 
-    let mut dss = Dss::new();
-    dss.command("clear");
-    dss.command(&format!("compile \"{case_path}\""));
-    for cmd in &c.post {
-        dss.command(cmd);
-    }
-    assert!(
-        dss.circuit().is_some_and(|ckt| ckt.solution.solution_abort),
-        "{label}: Rust engine did NOT set solution_abort — the malformed input must abort \
-         the solve like the oracle (message: {expected:?})"
-    );
-    assert!(
-        dss.errors().iter().any(|e| e.contains(expected)),
-        "{label}: Rust engine did not surface {expected:?}: {:?}",
-        dss.errors()
-    );
+    crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command(&format!("compile \"{deck}\""));
+        for cmd in &c.post {
+            dss.command(cmd);
+        }
+        assert!(
+            dss.circuit().is_some_and(|ckt| ckt.solution.solution_abort),
+            "{label}: Rust engine did NOT set solution_abort — the malformed input must abort \
+             the solve like the oracle (message: {expected:?})"
+        );
+        assert!(
+            dss.errors().iter().any(|e| e.contains(expected)),
+            "{label}: Rust engine did not surface {expected:?}: {:?}",
+            dss.errors()
+        );
+    });
 }
 
 /// Schema v2 (§4 Phase C step c): a `defer_ledger` case is parked from live
@@ -2149,7 +2159,14 @@ pub(crate) fn run_and_compare_abort(
 /// the plan's `pending` fallback (which asserts an error) and membership is
 /// preserved, but it is a bounded, temporary reduction in verification depth.
 pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &SolvableCase) {
-    let (mut dss, baseline_errors) = run_rust_capture(label, case_path, c);
+    crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
+        deferred_smoke_in(label, deck, c)
+    });
+}
+
+/// [`assert_deferred_rust_smoke`] on the port's scratch copy `deck`.
+fn deferred_smoke_in(label: &str, deck: &str, c: &SolvableCase) {
+    let (mut dss, baseline_errors) = run_rust_capture(label, deck, c);
     for i in 0..c.n_steps.max(1) {
         dss.command("solve");
         assert_eq!(
@@ -2170,9 +2187,16 @@ pub(crate) fn assert_deferred_rust_smoke(label: &str, case_path: &str, c: &Solva
 /// GAPS_PLAN.md §2.3 pending discipline: the unported feature must surface as an
 /// engine error (a clean run means a silent fallback masks the gap).
 pub(crate) fn assert_pending_errors_loudly(label: &str, case_path: &str, c: &SolvableCase) {
+    crate::scratch::in_copy(case_path, crate::scratch::PORT, |deck| {
+        pending_errors_in(label, deck, c)
+    });
+}
+
+/// [`assert_pending_errors_loudly`] on the port's scratch copy `deck`.
+fn pending_errors_in(label: &str, deck: &str, c: &SolvableCase) {
     let mut dss = Dss::new();
     dss.command("clear");
-    dss.command(&format!("compile \"{case_path}\""));
+    dss.command(&format!("compile \"{deck}\""));
     for cmd in &c.post {
         dss.command(cmd);
     }
