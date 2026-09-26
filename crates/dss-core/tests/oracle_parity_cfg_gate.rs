@@ -6253,137 +6253,126 @@ const NEXTEST_PINNED: &str = "0.9.146";
 /// Every broken promise of the nextest config text `toml` (empty = all kept).
 ///
 /// The gate's test commands run under `.config/nextest.toml`, so the config is
-/// part of the gate. Each rule closes one way a red could turn green or be
-/// hidden without a fix. A key is judged by its FULL path, the table header
-/// plus a dotted key (`[profile.default.overrides.retries]` + `count = 2` is
-/// `profile.default.overrides.retries.count`): TOML spells one setting inline,
-/// as a sub-table or with dotted keys, and nextest honours all three
-/// (RF-I00-01 settlement, probe-proved on the pinned runner):
-/// - `retries` other than a plain `retries = 0`, in any profile or override
-///   (an inline table, a `retries` sub-table and a dotted `retries.*` key
-///   included): a retried red is a green nobody fixed (RETRO_FIXES R11: never
-///   retried into green);
-/// - `fail-fast` other than a plain `false`: the first red would hide the rest
-///   of the lane;
-/// - a `terminate-after` anywhere (a value, a key or a table): nextest would
-///   kill the corpus gate mid-walk; the gate's own per-request deadline is
-///   `DSS_ORACLE_TIMEOUT_SECS`;
-/// - a `default-filter` anywhere: it drops tests from `cargo nextest run
-///   --workspace`, whole binaries included, and the run still exits 0
-///   (RETRO_FIXES §0: no filter that greens);
-/// - a setup `script`/`scripts` table or key, or an `experimental` list: a
-///   setup script can export environment (a `DSS_GATE_ONLY`) into every test;
-/// - a `[test-groups]` table, a `test-group` or a `threads-required` key: they
-///   serialize tests, and nothing needs that, because no test writes under
-///   `tests/corpus/` (measured per binary in RF-I00-01 part 1: every former
-///   writer and every corpus-gate producer runs a scratch copy,
-///   `harness/scratch.rs`, and the corpus gate fails on a change of the
-///   vendored tree during its own walk, `scheduler::GateRun::assert_complete`):
-///   a test that needed one would be a tree writer to convert, never a group
-///   to add;
-/// - `[profile.default]` must spell `retries = 0`, `fail-fast = false` and
-///   `slow-timeout = { period = "600s" }` (report only) itself, and the file
-///   must require [`NEXTEST_PINNED`] at top level.
+/// part of the gate, and it is judged as an ALLOWLIST (RF-I00-01 settlement
+/// round 2): every line that is neither blank nor a comment is one of these
+/// five (key and value compared trimmed), and all four settings are there:
+/// - at top level, `nextest-version = { required = "<NEXTEST_PINNED>" }`: an
+///   older runner is refused;
+/// - the header `[profile.default]`, and under it
+/// - `retries = 0`: a retried red is a green nobody fixed (RETRO_FIXES R11:
+///   never retried into green);
+/// - `fail-fast = false`: the first red would hide the rest of the lane;
+/// - `slow-timeout = { period = "600s" }`: report only, because a
+///   `terminate-after` would kill the corpus gate mid-walk (the gate's own
+///   per-request deadline is `DSS_ORACLE_TIMEOUT_SECS`).
+///
+/// Any other line is refused, whatever it sets and however TOML spells it: a
+/// table or array-of-tables header, a dotted or quoted key, an inline table or
+/// array, a value continued on the next line. A denylist of nextest's keys and
+/// spellings could not keep up, each gap probe-proved on the pinned runner:
+/// after the first settlement closed the sub-table and dotted-key spellings,
+/// one inline array under `[profile.default]`, `overrides = [{ filter =
+/// 'binary(corpus_gate)', retries = 2 }]`, still retried a red into green
+/// (settlement audit SA-1), and `run-extra-args = ["--skip", "<test>"]`, a key
+/// the list never named, reports a red test as PASS without running it
+/// (settlement round 2). Refused with them: a `default-filter` (it drops
+/// tests, whole binaries included, and the run still exits 0 - RETRO_FIXES §0:
+/// no filter that greens), setup or wrapper `scripts` and an `experimental`
+/// list (a script can export environment, a `DSS_GATE_ONLY`, into every test),
+/// and `[test-groups]`, `test-group` or `threads-required`. Those serialize
+/// tests, and nothing needs that, because no test writes under `tests/corpus/`
+/// (measured per binary in RF-I00-01 part 1: every former writer and every
+/// corpus-gate producer runs a scratch copy, `harness/scratch.rs`, and the
+/// corpus gate fails on a change of the vendored tree during its own walk,
+/// `scheduler::GateRun::assert_complete`): a test that needed one would be a
+/// tree writer to convert, never a group to add. A harmless setting (JUnit
+/// output, status levels) is refused as well until this rail lists it: the
+/// gate's runner config changes only together with its rail.
 ///
 /// What no config text shows (`NEXTEST_RETRIES`, `--retries`, a profile picked
 /// on the command line) is checked at run time by
 /// [`this_run_gives_every_test_one_attempt_and_no_test_group`].
 fn nextest_profile_violations(toml: &str) -> Vec<String> {
-    fn segments(s: &str) -> Vec<String> {
-        s.split('.')
-            .map(|p| p.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
-            .collect()
+    // Why a refused line matters when it names a setting known to turn a red
+    // green or to hide it; every message also quotes the line itself.
+    fn why(line: &str) -> &'static str {
+        const KNOWN: [(&str, &str); 10] = [
+            ("retries", " - it retries a red into green"),
+            ("fail-fast", " - a red stops the rest of the lane"),
+            ("terminate-after", " - it kills a slow test mid-run"),
+            (
+                "default-filter",
+                " - it drops tests and the run still exits 0",
+            ),
+            (
+                "run-extra-args",
+                " - it hands the test binaries extra arguments",
+            ),
+            ("test-group", " - it serializes tests"),
+            ("threads-required", " - it serializes tests"),
+            ("script", " - a script runs before or around the tests"),
+            ("experimental", " - it enables setup scripts"),
+            ("overrides", " - it changes the settings of chosen tests"),
+        ];
+        KNOWN
+            .iter()
+            .find(|&&(name, _)| line.contains(name))
+            .map_or("", |&(_, reason)| reason)
     }
+    let pinned = format!("{{ required = \"{NEXTEST_PINNED}\" }}");
+    // (table header, key, the one value); "" is the top level.
+    let allowed = [
+        ("", "nextest-version", pinned.as_str()),
+        ("[profile.default]", "retries", "0"),
+        ("[profile.default]", "fail-fast", "false"),
+        ("[profile.default]", "slow-timeout", "{ period = \"600s\" }"),
+    ];
+    let mut present = vec![false; allowed.len()];
     let mut out = Vec::new();
-    let mut section = String::new();
-    let mut default_profile: BTreeMap<String, String> = BTreeMap::new();
-    let mut version = None;
+    let mut table = String::new();
     for raw in toml.lines() {
         let line = raw.split('#').next().unwrap_or("").trim();
         if line.is_empty() {
             continue;
         }
         if line.starts_with('[') {
-            section = line
-                .trim_matches(|c| c == '[' || c == ']')
-                .trim()
-                .to_string();
-            let section_path = segments(&section);
-            for seg in &section_path {
-                match seg.as_str() {
-                    "test-groups" | "test-group" | "threads-required" => {
-                        out.push(format!("a test group table: {raw}"))
-                    }
-                    "retries" | "fail-fast" => {
-                        out.push(format!("`{seg}` spelled as a table: {raw}"))
-                    }
-                    "terminate-after" => out.push(format!("terminates slow tests: {raw}")),
-                    "default-filter" => out.push(format!("filters tests out: {raw}")),
-                    "script" | "scripts" | "experimental" => {
-                        out.push(format!("a setup script table: {raw}"))
-                    }
-                    _ => {}
-                }
+            if line != "[profile.default]" {
+                out.push(format!(
+                    "not a table the gate runs with{}: {raw}",
+                    why(line)
+                ));
             }
+            table = line.to_string();
             continue;
         }
         let Some((key, value)) = line.split_once('=') else {
-            out.push(format!("a line that is not `key = value`: {raw}"));
+            out.push(format!("not a `key = value` line{}: {raw}", why(line)));
             continue;
         };
         let (key, value) = (key.trim(), value.trim());
-        let key_path = segments(key);
-        let last = key_path.len() - 1;
-        for (i, seg) in key_path.iter().enumerate() {
-            match seg.as_str() {
-                "retries" if i < last => {
-                    out.push(format!("[{section}] retries as a dotted key: {raw}"))
+        match allowed.iter().position(|&(t, k, _)| t == table && k == key) {
+            None => out.push(format!(
+                "not a setting the gate runs with{}: {raw}",
+                why(line)
+            )),
+            Some(i) => {
+                present[i] = true;
+                let want = allowed[i].2;
+                if value != want {
+                    out.push(format!("`{key}` must be `{want}`{}: {raw}", why(line)));
                 }
-                "retries" if value != "0" => out.push(format!("[{section}] retries: {raw}")),
-                "fail-fast" if i < last => {
-                    out.push(format!("[{section}] fail-fast as a dotted key: {raw}"))
-                }
-                "fail-fast" if value != "false" => {
-                    out.push(format!("[{section}] fail-fast: {raw}"))
-                }
-                "test-group" | "test-groups" | "threads-required" => {
-                    out.push(format!("[{section}] serializes tests: {raw}"))
-                }
-                "terminate-after" => out.push(format!("[{section}] terminates slow tests: {raw}")),
-                "default-filter" => out.push(format!("[{section}] filters tests out: {raw}")),
-                "script" | "scripts" | "experimental" => {
-                    out.push(format!("[{section}] a setup script: {raw}"))
-                }
-                _ => {}
             }
         }
-        if value.contains("terminate-after") {
-            out.push(format!("[{section}] terminates slow tests: {raw}"));
-        }
-        if section.is_empty() && key == "nextest-version" {
-            version = Some(value.to_string());
-        }
-        if section == "profile.default" {
-            default_profile.insert(key.to_string(), value.to_string());
-        }
     }
-    for (key, want) in [
-        ("retries", "0"),
-        ("fail-fast", "false"),
-        ("slow-timeout", "{ period = \"600s\" }"),
-    ] {
-        if default_profile.get(key).map(String::as_str) != Some(want) {
-            out.push(format!(
-                "[profile.default] must set `{key} = {want}`, has {:?}",
-                default_profile.get(key)
-            ));
+    for (&(table, key, want), seen) in allowed.iter().zip(present) {
+        if !seen {
+            let place = if table.is_empty() {
+                "at top level"
+            } else {
+                table
+            };
+            out.push(format!("`{key} = {want}` is missing ({place})"));
         }
-    }
-    let pinned = format!("{{ required = \"{NEXTEST_PINNED}\" }}");
-    if version.as_deref() != Some(pinned.as_str()) {
-        out.push(format!(
-            "top-level `nextest-version = {pinned}` expected, found {version:?}"
-        ));
     }
     out
 }
@@ -6463,6 +6452,22 @@ fn the_nextest_profile_never_retries_and_serializes_nothing() {
         "\n[scripts.setup.env]\ncommand = 'echo'\n",
         "\n[[profile.default.scripts]]\nfilter = 'all()'\nsetup = 'env'\n",
         "\nexperimental = [\"setup-scripts\"]\n",
+        // Settlement round 2 (audit SA-1): the rail is an allowlist, so a
+        // line under `[profile.default]` is refused whatever it spells. The
+        // inline overrides the first denylist missed (the audit's probe on
+        // the pinned runner: one retried a red into green, one dropped a red
+        // test), the same array continued over lines, a quoted and a
+        // unicode-escaped key, a key that list never named (`run-extra-args`
+        // with a `--skip` reports the skipped red test as PASS, probe-proved)
+        // and a harmless unlisted table.
+        "\noverrides = [{ filter = 'binary(corpus_gate)', retries = 2 }]\n",
+        "\noverrides = [{ platform = 'cfg(windows)', default-filter = 'not binary(corpus_gate)' }]\n",
+        "\noverrides = [{ filter = 'all()', threads-required = 4 }]\n",
+        "\noverrides = [\n  { filter = 'all()', retries = 2 },\n]\n",
+        "\n\"default-filter\" = 'none()'\n",
+        "\n\"default\\u002dfilter\" = 'none()'\n",
+        "\nrun-extra-args = [\"--skip\", \"tests::always_red\"]\n",
+        "\n[profile.default.junit]\npath = 'junit.xml'\n",
     ] {
         let mutated = format!("{toml}{extra}");
         assert!(
