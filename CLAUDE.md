@@ -355,6 +355,19 @@ branch deletion never touches `.inputs`.
   reports) instead of restating it; no before/after tables, no narrative.
 
 <!-- code-review-graph MCP tools -->
+- **Never cite a gitignored or scratch file as provenance in committed text.**
+  `tmp/`, `tmp/retro_fix/state/...`, the session scratchpad, a worktree-local
+  transcript or probe script exist on one machine only and vanish, so a reader
+  of the pin, doc comment or record cannot follow the path (`tmp/rp37/`,
+  `tmp/g110c/` and two retro-fix probes already went that way — RF-D01-02).
+  Committed provenance is a dated sentence naming the tool and the recipe that
+  re-derives the numbers (epri-worker on the r4133 DLL, the pinned dss-python,
+  the corpus gate's own capture) and, when it is small, the tracked evidence
+  itself (a pin literal, a golden, a `tests/corpus` file). Local transcripts
+  stay local and are never copied into `docs/` as evidence directories
+  (RETRO_FIXES ruling R5). Keep the local path in your report to the
+  coordinator, not in the tree.
+
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the
