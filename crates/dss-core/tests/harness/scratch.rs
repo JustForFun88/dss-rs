@@ -555,3 +555,110 @@ pub fn in_copy<T>(case_path: &str, producer: &'static str, f: impl FnOnce(&str) 
     copy.finish();
     out
 }
+
+/// `p` itself when it lies OUTSIDE the vendored corpus ([`corpus_root`]);
+/// panics naming `who` when it lies inside it.
+///
+/// RETRO_FIXES RF-I00-01 part 2 (`INFRA|2`, guard reuse on the copy): the three
+/// corpus guards, the port's `RunFileProbe` and the two oracle transports keep
+/// their snapshot / classify / sweep / `sweep_failed` jobs, but only ever on a
+/// scratch copy. The gate-side entry points that hand a directory to one of
+/// them call this (`runner::CorpusGuard::new`, `run_files::RunFileProbe::start`,
+/// `engines::build_run_request`, which names the transports' guard directory),
+/// so a vendored path reaching a guard is refused before anything is
+/// photographed, run or swept — the structural half of "no producer runs inside
+/// `tests/corpus/`"; [`TreePhoto`] around the whole gate walk is the measured
+/// half.
+#[track_caller]
+pub fn not_vendored<'a>(p: &'a Path, who: &str) -> &'a Path {
+    let abs = lexical(&std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()));
+    assert!(
+        !is_under(&abs, &corpus_root()),
+        "{who}: {} lies inside the vendored corpus {}. Since RETRO_FIXES RF-I00-01 \
+         every producer runs in a fresh scratch copy (`harness::scratch::ScratchCopy`) \
+         and every corpus guard brackets that copy, never the vendored tree — run \
+         the deck through a copy instead of pointing the guard at `tests/corpus/`.",
+        p.display(),
+        corpus_root().display(),
+    );
+    p
+}
+
+/// A photograph of a directory tree: the root itself (`"."`) and every entry
+/// below it (relative, forward-slashed), each with its kind, length and
+/// modification time.
+///
+/// The read-only-tree rail of RETRO_FIXES RF-I00-01 (`INFRA|2`):
+/// `scheduler::run_gate` photographs `tests/corpus/` before its first case and
+/// after its last, and `GateRun::assert_complete` fails the gate on any
+/// difference. A producer that swept what it wrote still moves its folder's
+/// mtime, and a vendored file rewritten with its own bytes still moves its own,
+/// so a writer that cleaned up after itself is caught as surely as one that
+/// left a dropping. Each entry is read through its OWN handle
+/// (`symlink_metadata`): a `DirEntry`'s metadata on Windows is the parent
+/// index's copy of the times, which NTFS updates lazily, so two photographs of
+/// an untouched fixture differed that way. A link is photographed as itself and
+/// never followed out of the tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreePhoto(BTreeMap<String, (bool, u64, Option<std::time::SystemTime>)>);
+
+impl TreePhoto {
+    /// Walk `root`. A listing or metadata failure panics: a photograph with a
+    /// hole in it cannot prove "unchanged".
+    pub fn take(root: &Path) -> TreePhoto {
+        let md = std::fs::metadata(root)
+            .unwrap_or_else(|e| panic!("tree photograph: cannot stat {root:?}: {e}"));
+        let mut map = BTreeMap::new();
+        map.insert(".".to_string(), (true, 0, md.modified().ok()));
+        let mut stack = vec![(root.to_path_buf(), String::new())];
+        while let Some((dir, prefix)) = stack.pop() {
+            let rd = std::fs::read_dir(&dir)
+                .unwrap_or_else(|e| panic!("tree photograph: cannot list {dir:?}: {e}"));
+            for entry in rd {
+                let entry = entry.unwrap_or_else(|e| panic!("tree photograph: {dir:?}: {e}"));
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let rel = if prefix.is_empty() {
+                    name
+                } else {
+                    format!("{prefix}/{name}")
+                };
+                let md = std::fs::symlink_metadata(entry.path())
+                    .unwrap_or_else(|e| panic!("tree photograph: cannot stat {rel}: {e}"));
+                let is_dir = md.is_dir();
+                let len = if is_dir { 0 } else { md.len() };
+                map.insert(rel.clone(), (is_dir, len, md.modified().ok()));
+                if is_dir {
+                    stack.push((entry.path(), rel));
+                }
+            }
+        }
+        TreePhoto(map)
+    }
+
+    /// How many entries (the root included) the photograph holds.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Every entry whose presence, kind, length or mtime differs between this
+    /// photograph and `after`, in path order: `+path` appeared, `-path`
+    /// vanished, `~path` changed (a folder's `~` = an entry was created or
+    /// removed in it).
+    pub fn changes(&self, after: &TreePhoto) -> Vec<String> {
+        let mut out = Vec::new();
+        for (path, was) in &self.0 {
+            match after.0.get(path) {
+                None => out.push(format!("-{path}")),
+                Some(now) if now != was => out.push(format!("~{path}")),
+                Some(_) => {}
+            }
+        }
+        for path in after.0.keys() {
+            if !self.0.contains_key(path) {
+                out.push(format!("+{path}"));
+            }
+        }
+        out.sort_by(|a, b| a[1..].cmp(&b[1..]));
+        out
+    }
+}

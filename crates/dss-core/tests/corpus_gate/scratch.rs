@@ -205,4 +205,83 @@ mod tests {
         ("electricdss-tst/version8/distrib/ieeetestcases", 14),
     ];
     const OUTSIDE_REFERENCES: &[&str] = &["C:\\Users\\prdu001\\OpenDSS\\Source\\DESS1\\Dess1.DLL"];
+    /// RF-I00-01 part 2 — the read-only-tree rail's photograph cannot be
+    /// vacuous: an untouched tree photographs equal, and every way a producer
+    /// can touch a tree shows up — a file created and swept again (its
+    /// folder's mtime), a file rewritten with its own bytes (its mtime), a
+    /// dropping left behind (`+`), a vendored file removed (`-`).
+    #[test]
+    fn a_tree_photograph_sees_every_way_a_producer_touches_the_tree() {
+        let root = fixture_root("photo");
+        std::fs::create_dir_all(root.join("case/sub")).unwrap();
+        std::fs::write(root.join("case/deck.dss"), b"! deck").unwrap();
+        std::fs::write(root.join("case/sub/keep.txt"), b"vendored").unwrap();
+        // NTFS stamps times from a coarse (~16 ms) clock: step past the tick
+        // the fixture was written in, or a rewrite could keep its old mtime.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let before = TreePhoto::take(&root);
+        assert_eq!(before.len(), 5, "root + case + sub + two files");
+        assert_eq!(
+            before.changes(&TreePhoto::take(&root)),
+            Vec::<String>::new()
+        );
+
+        // Created and swept again: nothing left, but the folder moved.
+        std::fs::write(root.join("case/sub/export.csv"), b"run output").unwrap();
+        std::fs::remove_file(root.join("case/sub/export.csv")).unwrap();
+        assert_eq!(before.changes(&TreePhoto::take(&root)), ["~case/sub"]);
+
+        // Rewritten with its own bytes: same length, new mtime.
+        std::fs::write(root.join("case/deck.dss"), b"! deck").unwrap();
+        // A dropping left behind, and a vendored file gone.
+        std::fs::write(root.join("case/left.csv"), b"dropping").unwrap();
+        std::fs::remove_file(root.join("case/sub/keep.txt")).unwrap();
+        assert_eq!(
+            before.changes(&TreePhoto::take(&root)),
+            [
+                "~case",
+                "~case/deck.dss",
+                "+case/left.csv",
+                "~case/sub",
+                "-case/sub/keep.txt"
+            ]
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// RF-I00-01 part 2 — the gate-side entry points refuse the vendored tree
+    /// in every spelling (case, the platform separator, `..`) and pass a
+    /// scratch copy or a fixture outside it.
+    #[test]
+    fn a_vendored_path_is_refused_and_a_copy_passes() {
+        let refused = |p: PathBuf| {
+            let caught = std::panic::catch_unwind(|| {
+                not_vendored(&p, "fixture");
+            });
+            let msg =
+                crate::runner::panic_msg(caught.expect_err("a vendored path must be refused"));
+            assert!(
+                msg.contains("lies inside the vendored corpus") && msg.contains("fixture"),
+                "{msg}"
+            );
+        };
+        let corpus = corpus_root();
+        refused(corpus.join("electricdss-tst/Test/AutoTrans/Auto1bus.dss"));
+        let sep = std::path::MAIN_SEPARATOR.to_string();
+        refused(PathBuf::from(
+            format!("{}/ELECTRICDSS-TST/test/Auto.dss", corpus.display())
+                .to_uppercase()
+                .replace('/', &sep),
+        ));
+        refused(corpus.join("modes/../electricdss-tst/Test"));
+        refused(corpus.clone());
+        let copy = scratch_root().join("0123456789abcdef/port/run/Test/deck.dss");
+        assert_eq!(not_vendored(&copy, "fixture"), copy.as_path());
+        let fixture = fixture_root("not_vendored");
+        assert_eq!(not_vendored(&fixture, "fixture"), fixture.as_path());
+        // A sibling whose name merely STARTS like the corpus root is outside it.
+        let sibling = PathBuf::from(format!("{}-sibling/deck.dss", corpus.display()));
+        assert_eq!(not_vendored(&sibling, "fixture"), sibling.as_path());
+        std::fs::remove_dir_all(&fixture).ok();
+    }
 }

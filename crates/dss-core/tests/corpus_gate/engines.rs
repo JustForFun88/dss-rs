@@ -280,7 +280,13 @@ pub(crate) fn oracle_timeout() -> Duration {
 /// VENDORED deck, keys the gate's sidecars (`run_file_contents_dir`, and the
 /// DI sidecar through the gate-side `sidecar_key` field the transports never
 /// read), so a sidecar's location is the same for every copy of one case.
+///
+/// RF-I00-01 part 2: `deck`'s folder is what each transport's corpus guard
+/// (`dss_epri::guard::CorpusGuard`, `corpus_guard.py::CorpusGuard`) brackets,
+/// so a vendored `deck` is refused here, before any transport sees it
+/// ([`crate::scratch::not_vendored`]).
 pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -> Value {
+    crate::scratch::not_vendored(std::path::Path::new(deck), "engines::build_run_request");
     // G1.5: the six short-circuit arms are appended to the ONE per-bus walk
     // `buses` drives on BOTH transports, so `zsc` alone would ship an empty
     // surface that `require_capture` — not the comparator — would have to
@@ -1706,5 +1712,23 @@ mod transport_cwd_tests {
     #[test]
     fn the_r4133_transport_steps_out_of_the_copy_before_replying() {
         steps_out(spawn_epri_worker(&epri_worker_bin()), "r4133");
+    }
+
+    /// RF-I00-01 part 2 — the request builder never hands a transport's corpus
+    /// guard a vendored deck: the request for [`CASE`] names its copy, and the
+    /// vendored deck itself is refused before any transport could see it.
+    #[test]
+    #[should_panic(expected = "engines::build_run_request")]
+    fn a_request_for_a_vendored_deck_is_refused() {
+        let abs = crate::manifest::corpus_file(CASE);
+        let case = crate::manifest::load_solvable()
+            .into_iter()
+            .find(|c| c.path == CASE)
+            .unwrap_or_else(|| panic!("{CASE} is no longer a solvable_now case"));
+        let copy = ScratchCopy::new(&abs, crate::scratch::PORT);
+        let req = build_run_request(copy.deck(), &abs, &case);
+        assert_eq!(req["case_path"], copy.deck(), "the request names the copy");
+        copy.finish();
+        let _ = build_run_request(&abs, &abs, &case);
     }
 }

@@ -136,14 +136,14 @@ fn corpus_gate_all_cases_match_engines() {
             eprintln!("  {case} [{ch:?}]: by ledger entry `{id}`");
         }
     }
-    assert_eq!(
-        run.outcomes.len(),
-        run.total,
-        "scheduler dropped case outcomes ({} of {} collected) — a worker thread \
-         panicked outside catch_unwind",
-        run.outcomes.len(),
-        run.total
-    );
+    // Every manifest case produced an outcome (a worker thread that panicked
+    // outside `catch_unwind` drops one) AND the vendored tree is exactly as the
+    // walk found it: RETRO_FIXES RF-I00-01 part 2's read-only-tree rail. Both
+    // live in `scheduler::GateRun::assert_complete`, which prints a tree change
+    // and fails the gate on it with the failed cases named next to it, so
+    // neither hides the other; the per-case failure list follows below for a
+    // run whose tree stayed untouched.
+    run.assert_complete();
     if !failures.is_empty() {
         let mut msg = format!(
             "corpus_gate [{}]: {} of {} case(s) failed:\n",

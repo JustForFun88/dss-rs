@@ -3122,6 +3122,66 @@ pub(crate) struct GateRun {
     /// The loaded ledger, kept for the `#[test]` to assert fail-on-stale and print
     /// per-entry hit accounting (§1.3 runtime rule).
     pub(crate) ledger: Arc<LedgerRuntime>,
+    /// What changed under `tests/corpus/` between the photograph [`run_gate`]
+    /// takes before its first case and the one it takes after its last
+    /// ([`crate::scratch::TreePhoto::changes`]); empty on a healthy run.
+    pub(crate) tree_changes: Vec<String>,
+}
+
+impl GateRun {
+    /// Every manifest case produced an outcome (a worker thread that panicked
+    /// outside `catch_unwind` drops one), and the vendored tree is exactly as
+    /// the walk found it — RETRO_FIXES RF-I00-01 part 2's read-only-tree rail.
+    /// Every producer runs in its own scratch copy and every corpus guard
+    /// brackets that copy, so `tests/corpus/` has no writer during a gate: a
+    /// listing or mtime change is a producer writing into the vendored tree
+    /// again (or a tree writer in another test binary running beside this one).
+    /// It is printed and fails the gate with the failed cases listed next to
+    /// it, so neither hides the other.
+    pub(crate) fn assert_complete(&self) {
+        assert_eq!(
+            self.outcomes.len(),
+            self.total,
+            "scheduler dropped case outcomes ({} of {} collected) — a worker thread \
+             panicked outside catch_unwind",
+            self.outcomes.len(),
+            self.total
+        );
+        if self.tree_changes.is_empty() {
+            return;
+        }
+        let failed: Vec<&str> = self
+            .outcomes
+            .iter()
+            .filter(|o| !o.ok)
+            .map(|o| o.label.as_str())
+            .collect();
+        let shown: Vec<&str> = self
+            .tree_changes
+            .iter()
+            .take(40)
+            .map(String::as_str)
+            .collect();
+        let msg = format!(
+            "corpus_gate: the vendored tree tests/corpus/ changed during the gate walk \
+             ({} entr(ies); `+` appeared, `-` vanished, `~` changed, and a folder's `~` \
+             is an entry created or removed in it): {}{}. Every producer runs in a \
+             scratch copy (RETRO_FIXES RF-I00-01), so this is a producer writing into \
+             the vendored tree: run it through `harness::scratch::ScratchCopy`, never \
+             exclude the entry. {} case(s) failed in the same run: [{}]",
+            self.tree_changes.len(),
+            shown.join(", "),
+            if self.tree_changes.len() > shown.len() {
+                ", ..."
+            } else {
+                ""
+            },
+            failed.len(),
+            failed.join(", "),
+        );
+        eprintln!("{msg}");
+        panic!("{msg}");
+    }
 }
 
 /// Run the whole unified gate once (mode from env). Pure execution — the
@@ -3149,6 +3209,10 @@ pub(crate) fn run_gate() -> GateRun {
     };
     let pool_size = (jobs / 2).max(2);
 
+    // RF-I00-01 part 2: photograph the vendored tree before the first case;
+    // `GateRun::assert_complete` compares it with the one taken after the last.
+    let corpus = crate::scratch::corpus_root();
+    let tree_before = crate::scratch::TreePhoto::take(&corpus);
     let start = Instant::now();
     let mut cases = build_unified_cases();
     // Optional case filter (`DSS_GATE_ONLY=<substr>[,<substr>...]`) for cheap
@@ -3255,6 +3319,7 @@ pub(crate) fn run_gate() -> GateRun {
     let mut outcomes = results.into_inner().unwrap();
     outcomes.sort_by_key(|o| o.order);
     let elapsed = start.elapsed();
+    let tree_changes = tree_before.changes(&crate::scratch::TreePhoto::take(&corpus));
 
     let mode = if serial {
         "serial-oneshot".to_string()
@@ -3272,6 +3337,7 @@ pub(crate) fn run_gate() -> GateRun {
         pool_size,
         total,
         ledger: ledger_result,
+        tree_changes,
     }
 }
 
