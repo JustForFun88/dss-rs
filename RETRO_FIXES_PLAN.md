@@ -3901,16 +3901,22 @@ by construction), never a re-run into green.
 - Record block written, the uid closed or recorded with a reason.
 
 ### RF-I00-05 — `gate-kind`: a syn-based classifier picks the gate for comment-only and doc-comment-only diffs (user decision 2026-09-27)
-<!-- RF-STEP {"step": "RF-I00-05", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-I00-04"], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full for this step itself (it adds a
-crate). **After:** RF-I00-04 (the harness move re-points the rails this step enumerates). Scheduled
-by hand (§6) on one lane, landed before waves 1-2 resume, because part 2 rewrites the ritual text
-of §2.2/§2.5/§2.6 that every running stage reads.
-**Files:** `Cargo.toml` (workspace members), `tools/gate-kind/Cargo.toml`, `tools/gate-kind/src/main.rs`,
+<!-- RF-STEP {"step": "RF-I00-05", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": true, "inline_shared": true, "after": ["RF-I00-04"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** stage 2 runs the full gate over the
+three parts (the step adds a crate), the parts run scoped checks, part 3 probes the `Docs` and
+`Comments` gates once each, stages 5/6 still gate by the pre-landing extension rule. **After:**
+RF-I00-04 (after the harness move the self-tests that read `tests/TOLERANCE_NOTES.md` and
+`pd_elements_pins.rs` run only in `-p dss-test-harness --lib`). Scheduled by hand (§6) on one lane,
+landed before waves 1-2 resume, because part 3 rewrites the ritual text of §2.2/§2.5/§2.6 that
+every running stage reads.
+**Files:** `Cargo.toml` (workspace members), `Cargo.lock` (the new `gate-kind` entry only, its
+dependencies are locked already), `tools/gate-kind/Cargo.toml`, `tools/gate-kind/src/main.rs`,
 `tools/gate-kind/src/lib.rs`, `tools/gate-kind/tests/*.rs` and `tools/gate-kind/tests/fixtures/**`
-(new), `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (the `GATE_RAILS` registry pin),
+(new), `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (the `GATE_RAILS` register and its rail),
 `TESTING.md` (in-step, R9: the gate-kind section), `RETRO_FIXES_PLAN.md` §2.2/§2.5/§2.6,
 `docs/phase-records/retro-fixes.md`.
+**Doc notes (§4):** `TESTING.md` is edited in-step (R9: the gate definition moves with the tool, as
+in RF-I00-01), a notes entry is still appended for its owner.
 **Decision (user, 2026-09-27):** the gate kind is chosen by what the diff can change at compile
 time, not by file extension alone. `.md` keeps the docs gate (tests read the documents at run
 time: the citation rail, `reliability_pins`, `props_r4133_replay`, `corpus_gate/scratch.rs`).
@@ -3922,78 +3928,155 @@ one 20+ min, and it runs up to three times per step (gate, settle, settle 2). A 
 the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
 **Parts:**
 1. `INFRA|7` - the classifier. New workspace member `tools/gate-kind` (`publish = false`,
-   `#![forbid(unsafe_code)]`, edition 2024, deps `syn` 2 with `full` + `extra-traits`,
-   `proc-macro2`, `quote`; nothing else, no engine crate). Library API
-   `classify_rs(base: &str, head: &str) -> RsKind` with `RsKind::{Same, Comments, Code}`,
-   and `classify_diff(repo, base_rev, head_rev_or_worktree) -> GateKind` over `git diff
-   --name-status -M100% <base>..<head>` (or `<base>` vs the working tree). Rules, in this order:
-   - `.md` only → `GateKind::Docs`. Nothing changed → `GateKind::None`.
-   - A `.rs` file added, deleted, renamed, mode-changed, binary, or one whose base or head
-     `syn::parse_file` FAILS → `Code`. syn is the parser because it lexes strings, raw strings,
+   `#![forbid(unsafe_code)]`, edition 2024, deps `syn` 2 with `full` + `visit-mut`, `proc-macro2`,
+   `quote`, nothing else, no engine crate). Library API `classify_rs(base: &str, head: &str) ->
+   RsKind` with `RsKind::{Same, Comments, Code}` and `classify_diff(repo, base_rev, head_rev:
+   Option<&str>) -> GateKind`. CLI `gate-kind --base <rev> [--head <rev>]`: with `--head` the
+   committed range, without it `<base>` against the working tree, i.e. `git diff --raw -z -M100%
+   <base>` plus every path of `git ls-files --others --exclude-standard -z` as added (a stage gate
+   runs before its Commit stage, so uncommitted and untracked work is graded too). `--raw -z` gives
+   both modes and both paths of a rename, unquoted. Rules, in this order:
+   - A path under `tools/gate-kind/` → `Code` (the tool never grades its own change). Nothing
+     changed → `None`. `.md` only → `Docs`, a rename counting on both paths (either side `.rs` →
+     `Code`, `Docs` needs both sides `.md`).
+   - A `.rs` file added, deleted, renamed, with a mode or type change, with a side that is not
+     UTF-8, or whose base or head `syn::parse_file` FAILS → `Code`. syn lexes strings, raw strings,
      byte strings, lifetimes and nested block comments correctly, which a regex stripper does not
-     (`"http://x"` is the classic trap); a parse failure is never "comments".
-   - Both sides parse: render each `syn::File` back to tokens (`quote::ToTokens`), walk the
-     token trees and drop every attribute whose path is `doc` (`#[doc = ...]`, `#![doc = ...]`,
-     `#[doc(hidden)]`, `#[doc = include_str!(...)]`) and every `cfg_attr(..., doc ...)`; compare
-     the two remaining streams by `to_string()` (spans ignored). Different → `Code`. Equal →
-     `Comments`: only doc comments, plain `//` / `/* */` comments or whitespace moved. (Doc and
-     plain comments are one kind on purpose: clippy under `-D warnings` reads both -
-     `four_forward_slashes`, `empty_line_after_doc_comments`, `empty_line_after_outer_attr`,
-     `doc_lazy_continuation`, `too_long_first_doc_paragraph` - and doctests live in doc
-     comments, so the same commands are needed either way. The tool still prints which of the
-     two it saw, for the report.) Doc attributes inside macro invocations are compared as part
-     of the macro's tokens, so a doc-comment edit inside a macro body is `Code` (conservative,
-     documented).
-   - Any other path → `Code`. The overall kind is the maximum over files:
-     `None < Docs < Comments < Code` (a diff mixing `.md` and comment-only `.rs` is
-     `Comments`, which includes the docs gate, see the table).
-   The binary prints one line per file (`<kind>\t<path>`), a final `GATE_KIND=<kind>` line,
-   and exits 0; it never decides by itself what to run. Tests (`tools/gate-kind/tests/`): fixture
-   pairs for each rule - a `//` edit, a `/* */` edit, a doc-comment edit, a `////` line (still
-   `Comments`, clippy's job), a doc edit inside a macro body, a string literal containing `//`, a
-   raw string containing `*/`, an added line (shift only), a base that does not parse, a renamed
-   file, an `.md`-plus-comments diff, a `Cargo.lock` diff - each asserting the exact kind; plus one test over the repo itself: the
-   working tree vs HEAD of the step's own base is `None`.
-   The gate table (also written into §2.2 by part 2; RAILS = every test binary that opens a
-   `.md` file or a `crates/**/*.rs` source at run time, measured by the step - expected
-   `oracle_parity_cfg_gate`, `reliability_pins`, `props_r4133_replay`,
-   `props_r4133_evidence_lock`, `capture_order`, `depascalize_metrics_gate`, `pd_elements_pins`,
-   `golden_lock` and the `scratch::` tests of `corpus_gate` by name filter; verify, the list is
-   the measurement, not this sentence):
+     (`"http://x"` is the classic trap). A parse failure is never "comments".
+   - Both sides parse: first `\r\n` → `\n` and a leading BOM dropped, as rustc does before lexing
+     (this checkout holds LF blobs against CRLF working files), then byte-identical → `Same`
+     (= `None`). Otherwise strip on the AST: a `syn::visit_mut::VisitMut` pass removes every `doc`
+     attribute it reaches (`#[doc = ...]`, `#![doc = ...]`, `#[doc(hidden)]`,
+     `#[doc = include_str!(...)]`, a sentinel dropped from the printed stream is fine) and, inside
+     `cfg_attr(<pred>, a1, a2, ...)`, only the `doc` entries, the attribute going when none is left.
+     Macro-invocation tokens, `macro_rules!` bodies and `Verbatim` nodes are never visited, so a doc
+     edit inside them is compared (`Code`, conservative: a macro may use docs as data). Render both
+     (`quote::ToTokens`) and compare by `to_string()`. Different → `Code`. Equal → `Comments`: only
+     doc comments, plain `//` / `/* */` comments or whitespace moved. (Doc and plain comments are one
+     kind on purpose: clippy under `-D warnings` reads both - `four_forward_slashes`,
+     `empty_line_after_doc_comments`, `empty_line_after_outer_attr`, `doc_lazy_continuation` and
+     rustc's `unused_doc_comments` - and doctests live in doc comments, so the same commands are
+     needed either way. The tool still prints which of the two it saw.)
+   - Equal streams mean equal behaviour only while nothing reads docs or line numbers, so both
+     premises are rules (latent today): a doc change in a file whose items carry a derive outside
+     {Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+     Error} or an attribute macro (neither a rustc built-in, a `clippy::`/`rustfmt::` attribute nor
+     a helper of those derives) is `Code`, and so is any change to a file whose tokens hold
+     `line!`, `column!` or `Location::caller` (today `crates/dss-epri/src/guard.rs`, a test nonce).
+   - A `.rs` that a lib unit test outside RAILS reads as text is `Code` (a path list pinned in the
+     tool, railed by part 2, today `crates/dss-core/src/exec/report.rs`, read by dss-core's
+     `exec::tests::in_show_results::the_export_bracket_has_no_early_exit_between_its_two_statements`).
+   - Any other path → `Code`. The overall kind is the maximum over files: `None < Docs < Comments <
+     Code` (a diff mixing `.md` and comment-only `.rs` is `Comments`, which includes the docs gate).
+   The binary prints one line per file (`<kind>\t<path>`, `Comments` naming doc or plain) and a
+   final `GATE_KIND=<kind>` line, and exits 0. Any error (git fails, an unknown rev, an unreadable
+   side) prints the reason and `GATE_KIND=Code`. It never decides by itself what to run. Tests
+   (`tools/gate-kind/tests/`, fixture pairs stored as `<case>/base.rs.txt` + `head.rs.txt`, so no
+   cfg-gate walk or cargo target discovery sees them), each asserting the exact kind: `//`, `/* */`,
+   doc and `////` edits, an added line, and an LF base against a CRLF head of a file with a
+   multi-line literal plus one comment (`Comments`), a doc edit inside a macro invocation, a
+   `macro_rules!` body, a `#[doc = $d:literal]`-capturing macro and `stringify!`,
+   `cfg_attr(test, doc = "x", derive(Debug))` → `derive(Clone)`, a doc edit under
+   `#[derive(Parser)]`, a `line!()` file, a string with `//`, a raw string with `*/` and a base that
+   does not parse (`Code`). Git-level rules run in temporary repositories the tests create (`git
+   -c user.name=gk -c user.email=gk@invalid -c core.autocrlf=false`): a committed range, the
+   working-tree form, an untracked `.rs` beside a comment-only edit, a rename `.rs` → `.md`, a mode
+   change, a `Cargo.lock` diff and a `tools/gate-kind/` path (`Code`), `.md` plus comments
+   (`Comments`). No test reads the real working tree or a commit other than HEAD: over the real
+   repository only `classify_diff(repo, "HEAD", Some("HEAD")) == None`, true in any checkout and
+   clone depth (CI clones at depth 1). The probes (below) go to `part_1.md`. Scoped checks, commit.
+2. `INFRA|7` - the RAILS register. RAILS = every test whose code reads at run time, or includes at
+   compile time, a `.md` or `.rs` file of the repository, measured over every `.rs` compiled into a
+   test target of a workspace member: `crates/*/tests/**` with their `#[path]`/`mod` children, the
+   `#[cfg(test)]` code of `crates/*/src/**`, `crates/dss-test-harness/src/**` (after RF-I00-04) and
+   `tools/gate-kind/**`. A file reads when its code (not a comment, a `#[path]` or an `include!` of
+   compiled code) holds a whitespace-free string literal ending in `.md`/`.rs` (a path, a `join`
+   part, a `format!` template), an extension comparison with `"md"`/`"rs"`, or an
+   `include_str!`/`include_bytes!` of such a path, and a walk that hashes, compares or parses
+   contents unfiltered counts when its root holds a `.md` or `.rs`. A needle in non-test library
+   code counts for every test binary whose tests reach it (today the harness's own lib tests). A
+   binary with a reader joins RAILS whole, with two exceptions: `corpus_gate` joins with an exact
+   filterset naming its reading tests (its corpus walks `corpus_gate_all_cases_match_engines`
+   ~206 s and `corpus_ad_matches_normal_mode` ~108 s read neither), and a lib test binary other
+   than those of `dss-test-harness` and `gate-kind` stays out (the reduced gates never build
+   dss-core's): the `.rs` files its tests read go to the tool's always-`Code` list, and one that
+   reads a `.md` joins with an exact filterset (today none). Expected at the base after RF-I00-04
+   (verify, the list is the measurement): `-p dss-core --test` `oracle_parity_cfg_gate`,
+   `reliability_pins`, `props_r4133_replay`, `props_r4133_evidence_lock` (hashes `triage.md`),
+   `capture_order`, `depascalize_metrics_gate`, `pd_elements_pins`, `population_lock` (scans
+   `corpus_gate/manifest.rs` and its own source, comments included), `golden_json`
+   (`include_str!` of its own source), `corpus_gate` filtered to
+   `scratch::tests::the_copy_removal_budget_is_25_attempts_200_ms_apart` and the four
+   `the_*_capture_reads_*_on_both_transports` tests (exactly-once markers over the raw text of
+   `crates/dss-epri/src/capture.rs`), `-p dss-test-harness --lib`, and `-p gate-kind` if its
+   temporary-repository tests carry a needle. `golden_lock` is not a rail (it reads the golden
+   trees, `.gitattributes` and its lock). `GATE_RAILS` in `oracle_parity_cfg_gate.rs` holds one
+   entry per rail (package, target, optional exact nextest filterset), and its rail asserts: the
+   entries equal the measured set; every filterset term names a `#[test] fn` of its target (none
+   greens on zero matches, §0) and every reading `#[test] fn` of a filtered binary is selected (a
+   needle in a helper counts for each test that calls it); the tool's always-`Code` list equals
+   the `.rs` files the lib tests outside RAILS read; no `include_str!`, `include_bytes!` or
+   `#[doc = include_str!]` of a `.md` sits outside test code (the premise of `.md` → `Docs`, today
+   none).
+   An entry whose package does not depend on `dss-core` runs once (the lane feature does not reach
+   it). RAILS run alone in both lanes, wall into `part_2.md`. Scoped checks, commit.
+3. `INFRA|7` - the ritual. §2.2: the table below replaces the "docs gate" paragraph (the `Docs`
+   row is a superset of today's three binaries), with the sentence "RAILS is the `GATE_RAILS`
+   register of `oracle_parity_cfg_gate.rs` as it stands in the tree under test, each entry run in
+   both lanes under `cargo nextest run` with exactly the package, target and filterset it names
+   (entries of one package may share one run whose `-E` is their union), the stage report giving
+   each entry's executed count. No document or script keeps a copy of the list or adds a filter."
+   `lane_diff` belongs to the `Code` row only.
    | kind | commands |
    | `None` | nothing, the stage says so |
    | `Docs` | `cargo fmt --all --check`, RAILS in both lanes |
    | `Comments` | `Docs` + clippy both lanes + doctests both lanes (commands 2, 3, 6, 7): a comment moves lines and may contain a rail's needle, clippy lints comments, doctests live in them |
-   | `Code` | the full seven commands |
-   New rail in `oracle_parity_cfg_gate.rs`: `GATE_RAILS` (the list above) equals the measured
-   set of test binaries under `crates/*/tests/` whose source opens a `.md` or a `crates/` `.rs`
-   path at run time (the same text walk the other registries use), so a new document-reading
-   test cannot silently stay outside the reduced gates. Gate (full), commit.
-2. `INFRA|7` - the ritual. §2.2: the table above replaces the "docs gate" paragraph (the docs
-   gate becomes the `Docs` row, a superset of today's three binaries). §2.5/§2.6: "the gate whose
-   kind matches the diff" is now "the kind `cargo run -p gate-kind -- --base <sha>` prints";
-   stage 2 (the step gate) uses the same call over `<base>..HEAD`, so the plan's per-step `gate`
-   flag is only the scheduling estimate. Landing stays the full gate. TESTING.md gets a short
-   "Which gate to run" section pointing at the tool and the table. Record block (5-10 lines:
-   the rule, the RAILS list, the measured wall of each kind on the step's own diffs, the commits).
-   Gate by the tool's own verdict on part 2's diff (expected `Docs`, since it touches only
-   `.md`), commit. The coordinator re-points `GATE_BY_DIFF` / `GATE_TEXT` in the execution
-   script (`rf_exec.js`, outside the tree) after the step lands, before waves 1-2 resume.
+   | `Code` | the full seven commands, plus `lane_diff` when §2.2 asks for it |
+   §2.5/§2.6: "the gate whose kind matches the diff" is now the kind `cargo run -p gate-kind --
+   --base <since>` prints after the stage's commit, in the working-tree form (leftovers and
+   untracked files can only raise it), with its per-file lines and the `GATE_KIND` line quoted in
+   `settle.md`. Stage 2 runs the same call with `--base <step base>` before the Commit stage. A
+   tree without `tools/gate-kind/`, a tool that does not build or prints no `GATE_KIND=` line, and
+   a diff that touches `tools/gate-kind/` run the full gate, and in doubt the gate is full. The
+   per-step `gate` flag then decides no gate (the driver only prints it). Landing stays the full
+   gate. TESTING.md gets a short "Which gate to run" section, scoped to the per-stage gates of the
+   RETRO_FIXES ritual (every merge into `update` runs the CLAUDE.md seven commands), pointing at
+   the tool, the table and `GATE_RAILS`. Probes, walls measured: the tool on part 3's own diff
+   (expected `Docs`) with the `Docs` gate run once, and a throwaway one-line comment in a
+   `crates/dss-core/src` file outside the always-`Code` list (expected `Comments`) with the
+   `Comments` gate run once, then reverted, never committed. Part 3 hands its measurements to the
+   settler in `part_3.md`. The settler's record block (5-10 lines) states the rule, points at
+   `GATE_RAILS` for the list, gives the walls measured, the commits and the gate result. Commit.
+   After the step lands, before waves 1-2 resume, the coordinator re-points every gate site of its
+   execution script: stage 2, gate 2, settle, settle 2 and the clean-audits branch, whose record
+   commit then runs the kind the tool prints.
 **Findings**
-- `INFRA|7` (major) - RETRO_FIXES_PLAN.md §2.2/§2.5/§2.6, `rf_exec.js` `GATE_BY_DIFF`: the gate
-  kind is decided by file extension, so a `.rs` diff that changes only comments or doc comments
-  runs the full seven-command gate (~7 min warm, 20+ min cold) up to three times per step, while
-  the only compiler-side consumers of the change are rustfmt, clippy's comment lints and the
-  doctests (seconds each on a warm `target/`). No tool can tell a comment-only `.rs` diff from a code diff
-  today, which is why the extension rule exists.
-**Probes:** the fixture pairs of part 1 and the tool's verdict on three landed commits: RF-I00-03
-part 1 (85bef901, `di_pins.rs` doc comments + code → `Code`), the STATUS sync 046060b3 (`.md` →
-`Docs`), and 5a303f6c (CLAUDE.md + the plan → `Docs`); recorded in `part_1.md`.
+- `INFRA|7` (major) - RETRO_FIXES_PLAN.md §2.2/§2.5/§2.6 and the coordinator's execution script
+  that applies them: the gate kind is decided by file extension, so a `.rs` diff that changes only
+  comments or doc comments runs the full seven-command gate (~7 min warm, 20+ min cold) up to three
+  times per step. A comment-only diff needs only rustfmt, clippy (its comment lints), the doctests
+  and the source-text rails: the reduced gate still recompiles the edited crate and its dependents
+  in both lanes, but drops the two nextest runs (~205 s each) and the build of the non-rail test
+  binaries. No tool can tell a comment-only `.rs` diff from a code diff today, which is why the
+  extension rule exists.
+**Probes:** part 1's fixture pairs and temporary repositories, and the tool's verdict
+(`--base <sha>^ --head <sha>`) on seven landed commits, recorded in `part_1.md`: RF-I00-03 part 1
+85bef901 (`di_pins.rs` doc comments + code → `Code`), the STATUS sync 046060b3 (`.md` → `Docs`),
+5a303f6c (CLAUDE.md + the plan → `Docs`), 4205e24d (a `TODO(compat)` doc paragraph plus STATUS.md
+→ `Comments`, a needle the cfg-gate marker registries count, which is why `Comments` runs RAILS),
+28caed12 (a comment moved to its own line for rustfmt → `Comments`), a6a3d444 (comments in five
+`src` files → `Comments`) and bc5e1304 (comments in `compat.rs`, the cfg gate and
+`props_roundtrip.rs` plus STATUS.md → `Comments`). Part 3's two gate probes.
 **Acceptance:**
-- `cargo run -p gate-kind -- --base <sha>` classifies every fixture pair as specified, never
-  returns `Comments` for a file that fails to parse, and reports `Code` for every non-`.rs`,
-  non-`.md` path.
-- `GATE_RAILS` equals the measured document-/source-reading binaries, pinned by the rail.
-- §2.2 carries the table, §2.5/§2.6 the tool call, TESTING.md the section; the seven commands
-  themselves are unchanged in text and the landing gate stays full.
-- Record block written, the uid closed or recorded with a reason.
+- `cargo nextest run -p gate-kind` green: every fixture pair and temporary-repository case asserts
+  its exact kind, the probe commits print their recorded kinds, a file that fails to parse is never
+  `Comments`, and every non-`.rs` non-`.md` path, every `tools/gate-kind/` path and every error is
+  `Code`.
+- `GATE_RAILS` equals the measured readers, pinned by its rail with the filterset, lib-test-source
+  and `.md`-include checks, and an independent `rg` with the same needles over the same roots
+  lists the same files.
+- §2.2 carries the table and the `GATE_RAILS` sentence (no copy of the list), §2.5/§2.6 the tool
+  call with its fallbacks, TESTING.md the scoped section. The seven commands are unchanged in text
+  and the landing gate stays full.
+- The `Docs` and `Comments` probes ran green with their walls in `part_3.md`, the record block is
+  written, the uid closed or recorded with a reason.
