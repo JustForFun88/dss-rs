@@ -3641,8 +3641,9 @@ its own flake rate; wall times per lane and per corpus_gate into the part file).
 `crates/dss-epri/src/capture.rs`, `crates/dss-epri/src/bin/epri-worker.rs`,
 `tools/oracle/corpus_guard.py`, `tools/oracle/oracle_server.py`, `.config/nextest.toml`,
 `.github/workflows/ci.yml`, `CLAUDE.md`, `TESTING.md`, `RETRO_FIXES_PLAN.md`,
-`docs/phase-records/retro-fixes.md` (any other file the guard teardown forces is reported, not
-edited - plan section 0).
+`docs/phase-records/retro-fixes.md` (any other file the guard re-pointing forces is reported, not
+edited - plan section 0; EXCEPT a test in any crate that WRITES under `tests/corpus/`: that is a
+part-1 gap, converted in part 1 and listed in `part_1.md`, the coordinator adds it here at land).
 **Doc notes (§4):** `TESTING.md` is edited in-step (R9: the gate definition, the guard/D13 and
 D32/D33 paragraphs move with the code that changes them; the forced lines only), a notes entry
 is still appended for its owner.
@@ -3671,7 +3672,8 @@ changes are superseded by the copies).
    `run_file_contents_dir` read from the copy), takes the created-file set as the listing diff
    against the copy's initial listing (the same `classify_created` names as today), copies the
    CONTENTS surface out, and removes the copy with a bounded retry (25 x 200 ms, one named
-   constant shared by Rust and Python). A copy that survives the budget fails the case naming the
+   constant in Rust - the gate removes all three producers' copies, the Python transport never
+   removes one, its only duty is to chdir back to its startup cwd before replying). A copy that survives the budget fails the case naming the
    producer - this is the D32(2) engine-leak rail on its new footing (a handle held for the
    producer's lifetime, the dss_capi Storage `DebugTrace` class, still blocks the removal; the
    existing `share_mode(FILE_SHARE_READ)` rails are re-pointed at the copy). The three producers
