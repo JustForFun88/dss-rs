@@ -6241,3 +6241,165 @@ fn the_g1_4d_pins_the_docs_cite_exist_exactly_once() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// The gate's test runner (RETRO_FIXES_PLAN.md RF-I00-01 INFRA|3).
+// ---------------------------------------------------------------------------
+
+/// The `cargo-nextest` release the gate pins: `.config/nextest.toml`'s
+/// `nextest-version` and the gate section of `TESTING.md` both name it.
+const NEXTEST_PINNED: &str = "0.9.146";
+
+/// Every broken promise of the nextest config text `toml` (empty = all kept).
+///
+/// The gate's test commands run under `.config/nextest.toml`, so the config is
+/// part of the gate. Each rule closes one way a red could turn green or be
+/// hidden without a fix:
+/// - `retries` other than `0`, in any profile or override: a retried red is a
+///   green nobody fixed (RETRO_FIXES R11: never retried into green);
+/// - `fail-fast` other than `false`: the first red would hide the rest of the
+///   lane;
+/// - a `terminate-after`: nextest would kill the corpus gate mid-walk; the
+///   gate's own per-request deadline is `DSS_ORACLE_TIMEOUT_SECS`;
+/// - a `[test-groups]` table, a `test-group` or a `threads-required` key: they
+///   serialize tests, and nothing needs that, because no test writes under
+///   `tests/corpus/` (every producer runs a scratch copy, `harness/scratch.rs`,
+///   and the corpus gate fails on any change of the vendored tree,
+///   `scheduler::GateRun::assert_complete`) - a test that needed one would be
+///   a tree writer to convert, never a group to add;
+/// - `[profile.default]` must spell `retries = 0`, `fail-fast = false` and
+///   `slow-timeout = { period = "600s" }` (report only) itself, and the file
+///   must require [`NEXTEST_PINNED`] at top level.
+fn nextest_profile_violations(toml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut section = String::new();
+    let mut default_profile: BTreeMap<String, String> = BTreeMap::new();
+    let mut version = None;
+    for raw in toml.lines() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') {
+            section = line
+                .trim_matches(|c| c == '[' || c == ']')
+                .trim()
+                .to_string();
+            if section.starts_with("test-groups") {
+                out.push(format!("a test group table: {raw}"));
+            }
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            out.push(format!("a line that is not `key = value`: {raw}"));
+            continue;
+        };
+        let (key, value) = (key.trim(), value.trim());
+        match key {
+            "retries" if value != "0" => out.push(format!("[{section}] retries: {raw}")),
+            "fail-fast" if value != "false" => out.push(format!("[{section}] fail-fast: {raw}")),
+            "test-group" | "threads-required" => {
+                out.push(format!("[{section}] serializes tests: {raw}"))
+            }
+            _ => {}
+        }
+        if value.contains("terminate-after") {
+            out.push(format!("[{section}] terminates slow tests: {raw}"));
+        }
+        if section.is_empty() && key == "nextest-version" {
+            version = Some(value.to_string());
+        }
+        if section == "profile.default" {
+            default_profile.insert(key.to_string(), value.to_string());
+        }
+    }
+    for (key, want) in [
+        ("retries", "0"),
+        ("fail-fast", "false"),
+        ("slow-timeout", "{ period = \"600s\" }"),
+    ] {
+        if default_profile.get(key).map(String::as_str) != Some(want) {
+            out.push(format!(
+                "[profile.default] must set `{key} = {want}`, has {:?}",
+                default_profile.get(key)
+            ));
+        }
+    }
+    let pinned = format!("{{ required = \"{NEXTEST_PINNED}\" }}");
+    if version.as_deref() != Some(pinned.as_str()) {
+        out.push(format!(
+            "top-level `nextest-version = {pinned}` expected, found {version:?}"
+        ));
+    }
+    out
+}
+
+/// RETRO_FIXES RF-I00-01 INFRA|3: the gate's test runner config keeps every
+/// promise of [`nextest_profile_violations`], `TESTING.md` names the same
+/// pinned runner, and each rule is proved live by breaking it alone.
+#[test]
+fn the_nextest_profile_never_retries_and_serializes_nothing() {
+    let root = repo_root();
+    let path = root.join(".config").join("nextest.toml");
+    let toml = fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "{}: {e} - the gate's test runner config is missing",
+            path.display()
+        )
+    });
+    let broken = nextest_profile_violations(&toml);
+    assert!(
+        broken.is_empty(),
+        "{} breaks the gate's runner promises: {broken:#?}",
+        path.display()
+    );
+    let testing = fs::read_to_string(root.join("TESTING.md")).expect("TESTING.md");
+    assert!(
+        testing
+            .lines()
+            .any(|l| l.contains("cargo-nextest") && l.contains(NEXTEST_PINNED)),
+        "TESTING.md's gate section must name the pinned runner `cargo-nextest` {NEXTEST_PINNED}"
+    );
+    for (from, to) in [
+        ("retries = 0", "retries = 1"),
+        ("fail-fast = false", "fail-fast = true"),
+        (
+            "{ period = \"600s\" }",
+            "{ period = \"600s\", terminate-after = 2 }",
+        ),
+        ("{ period = \"600s\" }", "{ period = \"60s\" }"),
+        ("required = \"0.9.146\"", "required = \"0.9.100\""),
+    ] {
+        assert!(
+            toml.contains(from),
+            "mutation anchor {from:?} not in the config"
+        );
+        let mutated = toml.replacen(from, to, 1);
+        assert!(
+            !nextest_profile_violations(&mutated).is_empty(),
+            "`{from}` -> `{to}` must be caught"
+        );
+    }
+    for extra in [
+        "\n[test-groups]\ncorpus = { max-threads = 1 }\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\ntest-group = 'corpus'\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\nthreads-required = 4\n",
+        "\n[[profile.default.overrides]]\nfilter = 'all()'\nretries = 2\n",
+        "\n[profile.ci]\nretries = { backoff = \"fixed\", count = 2 }\n",
+    ] {
+        let mutated = format!("{toml}{extra}");
+        assert!(
+            !nextest_profile_violations(&mutated).is_empty(),
+            "an appended {extra:?} must be caught"
+        );
+    }
+    let without_retries: String = toml
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("retries"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert!(
+        !nextest_profile_violations(&without_retries).is_empty(),
+        "a profile that stops spelling `retries = 0` must be caught"
+    );
+}

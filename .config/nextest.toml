@@ -1,0 +1,30 @@
+# cargo-nextest: the gate's test runner (RETRO_FIXES_PLAN.md RF-I00-01 INFRA|3;
+# the command list is CLAUDE.md "## Gate" and TESTING.md).
+#
+# Pinned runner: cargo-nextest 0.9.146. Install either
+#   cargo install cargo-nextest --version 0.9.146 --locked
+# or the prebuilt https://get.nexte.st/0.9.146/windows (the same zip as the
+# GitHub release asset cargo-nextest-0.9.146-x86_64-pc-windows-msvc.zip,
+# SHA-256 0FA689815C8157E4633225B6B173184B3D546EB6FFB754C3D0E6EA5973284A20)
+# unpacked into ~/.cargo/bin. `nextest-version` below refuses an older one.
+#
+# nextest runs every test in its own process and does not run doctests: the
+# gate adds `cargo test --workspace --doc` per lane for those.
+#
+# No test groups and no serialization: no test writes under tests/corpus/
+# (every producer runs a scratch copy, harness/scratch.rs, and the corpus gate
+# fails on any change of the vendored tree - scheduler::GateRun::assert_complete).
+# A test that needed a group would be a part-1 gap of RF-I00-01, fixed at the
+# writer, never here.
+
+nextest-version = { required = "0.9.146" }
+
+[profile.default]
+# A failure is a failure: never retried into green.
+retries = 0
+# Run every test: one red never hides the rest of the lane.
+fail-fast = false
+# Report a test still running after each 600 s period; never terminate it
+# (no `terminate-after`): the corpus gate's own per-request deadline is
+# DSS_ORACLE_TIMEOUT_SECS.
+slow-timeout = { period = "600s" }
