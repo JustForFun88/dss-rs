@@ -3,7 +3,7 @@
 //! `<OutputDirectory><CaseName>/DI_yr_<year>/`, compared as a file set, header
 //! verbatim, row and field counts exact, and every cell at the calibrated tier
 //! of the physical quantity its column carries — coordinator decision
-//! **D42(1)**, the class table in `crates/dss-core/tests/harness/di.rs`).
+//! **D42(1)**, the class table in `crates/dss-test-harness/src/harness/di.rs`).
 //!
 //! Four facts about that surface are settled by something other than "the two
 //! sides matched", and CLAUDE.md wants each of them pinned by an expected-value

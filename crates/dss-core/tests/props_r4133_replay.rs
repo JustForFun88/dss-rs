@@ -2244,7 +2244,7 @@ const RP22_ROUTING: &[(&str, Owner, &str)] = &[
     // supplemental runs after a refused or unmatched write, and the five-token
     // `RELAYCONTROLMAXDIM` cap), none with corpus exposure. No capi entry is due
     // either: `Relay` and `Recloser` are whole-element-skipped on that channel
-    // (`tests/harness/mod.rs::skip_whole_element`), measured again on
+    // (`crates/dss-test-harness/src/harness/mod.rs::skip_whole_element`), measured again on
     // `makeposseq_ctrl` (2 elements / 80 cells skipped).
     (
         "relay.normal",

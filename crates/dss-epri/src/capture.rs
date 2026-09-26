@@ -237,7 +237,7 @@ pub struct CaseResult {
     /// presence rail tell "not requested" from `Some([])`, "requested, and this
     /// deck wrote none of the selected reports". The gate asserts the sidecar
     /// holds exactly these names, so a copy that silently lost one fails the
-    /// case (`crates/dss-core/tests/harness/run_files.rs::read_sidecar`).
+    /// case (`crates/dss-test-harness/src/harness/run_files.rs::read_sidecar`).
     run_file_contents: Option<Vec<String>>,
 }
 

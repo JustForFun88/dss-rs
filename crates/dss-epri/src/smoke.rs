@@ -59,7 +59,7 @@ const IEEE13_REL: &str =
 /// The closure is the `13Bus` folder plus the files directly in
 /// `IEEETestCases/` (the folder's own `IEEELineCodes.DSS` redirects
 /// `../IEEELineCodes.DSS`) — what `closure_of` in
-/// `crates/dss-core/tests/harness/scratch.rs` computes for this deck. The
+/// `crates/dss-test-harness/src/harness/scratch.rs` computes for this deck. The
 /// engine leaves the process working directory in the copy's deck folder after
 /// a compile (r4133 `Executive/ExecHelper.pas:752-754`), and Windows refuses to
 /// remove a process's working directory, so the removal first steps back to
