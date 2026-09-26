@@ -1911,6 +1911,60 @@ fn a_seven_phase_controlled_element_renders_six_tokens() {
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 
+/// RF-D01-01 settlement round 2 (SA-1) — the Relay twin of
+/// `swt_control::tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write`.
+/// `Relay.pas:1278-1305` carries the same `Else`-without-`Begin` fall-through
+/// (only `:1280` sits under the `Else`; the reads `:1282-1283` and the
+/// per-phase `While` `:1286` run on the unquoted path too), not reproduced
+/// ([`Relay::interpret_relay_state`]'s doc).
+///
+/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 part 2 residue probe, a
+/// 3-phase line): from the ganged `state=closed` baseline,
+/// `state=(closed, closed, closed, closed, closed, closed, open)` reads
+/// `[closed, closed, closed, ]`, the next `state=closed` reads
+/// `[open, closed, closed, ]` and a second one `[closed, closed, closed, ]`.
+/// The port reads `[closed, closed, closed, ]` at every step; the assert on
+/// the divergent step names r4133's bytes. Like its twin, the pin holds across
+/// the pending sixth-token fix (AC3-1).
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=2`,
+/// `set voltagebases=[115]`, `calcvoltagebases` and `solve` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
+#[test]
+fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l3 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new relay.r monitoredobj=line.l3 monitoredterm=1 type=current phasetrip=800",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    let get = |dss: &mut Dss| {
+        dss.command("? relay.r.state");
+        dss.result().to_string()
+    };
+    let closed3 = "[closed, closed, closed, ]";
+    dss.command("edit relay.r state=closed");
+    assert_eq!(get(&mut dss), closed3);
+    dss.command("edit relay.r state=(closed, closed, closed, closed, closed, closed, open)");
+    assert_eq!(get(&mut dss), closed3);
+    dss.command("edit relay.r state=closed");
+    assert_eq!(
+        get(&mut dss),
+        closed3,
+        "r4133: [open, closed, closed, ] (the residual 7th token lands in slot 1)"
+    );
+    dss.command("edit relay.r state=closed");
+    assert_eq!(get(&mut dss), closed3);
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+}
+
 /// RP3.7(b) — the Edit supplemental (`Relay.pas:616-619`, `CASE PropertyIdxMap
 /// OF 19, 40:`) sits OUTSIDE `InterpretRelayState`, so a `State`/`Action` write
 /// latches `NormalStateSet` (copying Present into Normal) even when the

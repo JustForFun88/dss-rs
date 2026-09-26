@@ -41,9 +41,12 @@
 //! absorbed by FastMM (measured live on a 4-phase controlled element, probe
 //! P2(iv-b)). The port keeps all six slots in-bounds and initialized all-CLOSED
 //! like `Create`'s initialized slots: observables (render token count = the
-//! controlled element's `NPhases`, per-phase drive of each conductor, the
-//! 5-token per-phase parse cap, ganged drive) stay r4133-exact, the OOB is not
-//! reproduced. The render count holds up to six phases only: past six,
+//! controlled element's `NPhases`, per-phase drive of each conductor, ganged
+//! drive) stay r4133-exact, the OOB is not reproduced. The 5-token per-phase
+//! parse cap matches r4133 too, but it is r4133's `:461` off-by-one (upstream
+//! report 75), still reproduced until RETRO_FIXES RF-D01-01 AC3-1 fixes it
+//! with the ordinal twin `set_enum_array`. The render count holds up to six
+//! phases only: past six,
 //! r4133's uncapped getters read beyond the six-slot `StateArray` itself, which
 //! is not reproduced either ([`SwtControl::state_size`] clips at six).
 //!
@@ -146,12 +149,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("Lock"),
         PropDef::double("Delay").flags(PropFlags::UNITS_S),
         // Normal/State: the r4133 per-phase state arrays (RP3.7). The render
-        // loops the LIVE controlled-element phase count exactly as r4133
-        // (`GetPropertyValue` `:589-599/:600-610`) up to six phases (the
+        // loops the controlled-element phase count as r4133 does
+        // (`GetPropertyValue` `:589-599/:600-610`), read off the `ctrl_snap`
+        // snapshot (staleness: `ORPHANED_GAPS.md` §1.13), up to six phases (the
         // `state_size` clip past six); the write takes the raw
         // value through `set_enum_array_raw` → `interpret_switch_state`
         // (ganged-vs-per-phase keyed on WasQuoted, first-char token match,
-        // 5-token per-phase cap — `:410-482`).
+        // 5-token per-phase cap — `:410-482`; the cap is r4133's `:461`
+        // off-by-one, upstream report 75, still reproduced until RETRO_FIXES
+        // RF-D01-01 AC3-1).
         PropDef::mapped_string_enum_array("Normal", enums.swt_control_state)
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum_array("State", enums.swt_control_state)
@@ -375,7 +381,9 @@ impl SwtControl {
     /// - `State`/`Normal`: ganged when the value was NOT quoted (`:433-451`,
     ///   slots 1..6); quoted values go phase-by-phase through the AuxParser
     ///   (`:453-480`) — at most FIVE tokens honored (loop bound
-    ///   `i < SWTCONTROLMAXDIM`, `:461`), unlisted slots unchanged.
+    ///   `i < SWTCONTROLMAXDIM`, `:461`: an r4133 off-by-one, upstream report
+    ///   75, still reproduced until RETRO_FIXES RF-D01-01 AC3-1), unlisted
+    ///   slots unchanged.
     /// - tokens match on the first character only via [`match_state_token`];
     ///   a non-matching token leaves its slot unchanged (no else arm).
     ///
@@ -396,7 +404,8 @@ impl SwtControl {
     ///    two are missing, which is what makes this an upstream slip rather
     ///    than a design. The port scopes the per-phase loop to the quoted
     ///    branch and keeps a FRESH parser per call, so no state can leak
-    ///    between writes.
+    ///    between writes (pinned against the measured r4133 bytes by
+    ///    `tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write`).
     /// 2. *The empty-`ParamName` guard read* (`:417`). The guard keys on
     ///    `LowerCase(property_name[1])` where `property_name = ParamName`,
     ///    which `Edit` leaves EMPTY for a POSITIONAL token
