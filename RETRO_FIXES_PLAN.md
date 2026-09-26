@@ -3923,7 +3923,7 @@ the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
 1. `INFRA|7` - the classifier. New workspace member `tools/gate-kind` (`publish = false`,
    `#![forbid(unsafe_code)]`, edition 2024, deps `syn` 2 with `full` + `extra-traits`,
    `proc-macro2`, `quote`; nothing else, no engine crate). Library API
-   `classify_rs(base: &str, head: &str) -> RsKind` with `RsKind::{Same, Comments, Doc, Code}`,
+   `classify_rs(base: &str, head: &str) -> RsKind` with `RsKind::{Same, Comments, Code}`,
    and `classify_diff(repo, base_rev, head_rev_or_worktree) -> GateKind` over `git diff
    --name-status -M100% <base>..<head>` (or `<base>` vs the working tree). Rules, in this order:
    - `.md` only → `GateKind::Docs`. Nothing changed → `GateKind::None`.
@@ -3934,20 +3934,24 @@ the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
    - Both sides parse: render each `syn::File` back to tokens (`quote::ToTokens`), walk the
      token trees and drop every attribute whose path is `doc` (`#[doc = ...]`, `#![doc = ...]`,
      `#[doc(hidden)]`, `#[doc = include_str!(...)]`) and every `cfg_attr(..., doc ...)`; compare
-     the two remaining streams by `to_string()` (spans ignored). Different → `Code`. Equal, but
-     the streams WITH doc attributes differ → `Doc`. Equal both ways → `Comments` (only plain
-     `//` / `/* */` comments or whitespace moved; rustfmt is the only compiler-side consumer).
-     Doc attributes inside macro invocations are compared as part of the macro's tokens, so a
-     doc-comment edit inside a macro body is `Code` (conservative, documented).
+     the two remaining streams by `to_string()` (spans ignored). Different → `Code`. Equal →
+     `Comments`: only doc comments, plain `//` / `/* */` comments or whitespace moved. (Doc and
+     plain comments are one kind on purpose: clippy under `-D warnings` reads both -
+     `four_forward_slashes`, `empty_line_after_doc_comments`, `empty_line_after_outer_attr`,
+     `doc_lazy_continuation`, `too_long_first_doc_paragraph` - and doctests live in doc
+     comments, so the same commands are needed either way. The tool still prints which of the
+     two it saw, for the report.) Doc attributes inside macro invocations are compared as part
+     of the macro's tokens, so a doc-comment edit inside a macro body is `Code` (conservative,
+     documented).
    - Any other path → `Code`. The overall kind is the maximum over files:
-     `None < Docs < Comments < Doc < Code` (a diff mixing `.md` and comment-only `.rs` is
+     `None < Docs < Comments < Code` (a diff mixing `.md` and comment-only `.rs` is
      `Comments`, which includes the docs gate, see the table).
    The binary prints one line per file (`<kind>\t<path>`), a final `GATE_KIND=<kind>` line,
    and exits 0; it never decides by itself what to run. Tests (`tools/gate-kind/tests/`): fixture
-   pairs for each rule - a `//` edit, a `/* */` edit, a doc-comment edit, a doc edit inside a
-   macro body, a string literal containing `//`, a raw string containing `*/`, an added line
-   (shift only), a base that does not parse, a renamed file, an `.md`-plus-comments diff, a
-   `Cargo.lock` diff - each asserting the exact kind; plus one test over the repo itself: the
+   pairs for each rule - a `//` edit, a `/* */` edit, a doc-comment edit, a `////` line (still
+   `Comments`, clippy's job), a doc edit inside a macro body, a string literal containing `//`, a
+   raw string containing `*/`, an added line (shift only), a base that does not parse, a renamed
+   file, an `.md`-plus-comments diff, a `Cargo.lock` diff - each asserting the exact kind; plus one test over the repo itself: the
    working tree vs HEAD of the step's own base is `None`.
    The gate table (also written into §2.2 by part 2; RAILS = every test binary that opens a
    `.md` file or a `crates/**/*.rs` source at run time, measured by the step - expected
@@ -3958,8 +3962,7 @@ the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
    | kind | commands |
    | `None` | nothing, the stage says so |
    | `Docs` | `cargo fmt --all --check`, RAILS in both lanes |
-   | `Comments` | same as `Docs` (a comment moves lines and may contain a rail's needle) |
-   | `Doc` | `Docs` + clippy both lanes + doctests both lanes (commands 2, 3, 6, 7) |
+   | `Comments` | `Docs` + clippy both lanes + doctests both lanes (commands 2, 3, 6, 7): a comment moves lines and may contain a rail's needle, clippy lints comments, doctests live in them |
    | `Code` | the full seven commands |
    New rail in `oracle_parity_cfg_gate.rs`: `GATE_RAILS` (the list above) equals the measured
    set of test binaries under `crates/*/tests/` whose source opens a `.md` or a `crates/` `.rs`
@@ -3979,14 +3982,15 @@ the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
 - `INFRA|7` (major) - RETRO_FIXES_PLAN.md §2.2/§2.5/§2.6, `rf_exec.js` `GATE_BY_DIFF`: the gate
   kind is decided by file extension, so a `.rs` diff that changes only comments or doc comments
   runs the full seven-command gate (~7 min warm, 20+ min cold) up to three times per step, while
-  nothing it compiles has changed. No tool can tell a comment-only `.rs` diff from a code diff
+  the only compiler-side consumers of the change are rustfmt, clippy's comment lints and the
+  doctests (seconds each on a warm `target/`). No tool can tell a comment-only `.rs` diff from a code diff
   today, which is why the extension rule exists.
 **Probes:** the fixture pairs of part 1 and the tool's verdict on three landed commits: RF-I00-03
 part 1 (85bef901, `di_pins.rs` doc comments + code → `Code`), the STATUS sync 046060b3 (`.md` →
 `Docs`), and 5a303f6c (CLAUDE.md + the plan → `Docs`); recorded in `part_1.md`.
 **Acceptance:**
 - `cargo run -p gate-kind -- --base <sha>` classifies every fixture pair as specified, never
-  returns `Comments`/`Doc` for a file that fails to parse, and reports `Code` for every non-`.rs`,
+  returns `Comments` for a file that fails to parse, and reports `Code` for every non-`.rs`,
   non-`.md` path.
 - `GATE_RAILS` equals the measured document-/source-reading binaries, pinned by the rail.
 - §2.2 carries the table, §2.5/§2.6 the tool call, TESTING.md the section; the seven commands
