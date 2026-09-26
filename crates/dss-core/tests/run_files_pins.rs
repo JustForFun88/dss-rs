@@ -33,7 +33,7 @@
 //! `#[cfg(windows)]` (the vendored EPRI binary is a Win64 DLL).
 #![cfg(windows)]
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

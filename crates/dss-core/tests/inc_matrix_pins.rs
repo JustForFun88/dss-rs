@@ -30,7 +30,7 @@
 //! in this file**, so each pin carries one literal and names a channel only
 //! where they genuinely differ (the raw lengths).
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;

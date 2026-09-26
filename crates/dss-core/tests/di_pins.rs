@@ -57,7 +57,7 @@
 //! `harness::di` and `harness::run_files` are declared under `#[cfg(windows)]`.
 #![cfg(windows)]
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;

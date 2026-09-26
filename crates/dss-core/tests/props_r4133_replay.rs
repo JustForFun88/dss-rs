@@ -88,7 +88,7 @@
 //! The whole test is a walk over vendored text plus the shipped tables, so it is
 //! green in both lanes and needs neither dss-python nor the r4133 DLL.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;

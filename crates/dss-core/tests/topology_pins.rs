@@ -23,7 +23,7 @@
 //! dss-python 0.15.7 (`tmp/g17/capi_topo_merged.json`), both read after a forced
 //! `FreeTopology` where a fresh tree was wanted.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
