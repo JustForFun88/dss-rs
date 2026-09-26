@@ -274,7 +274,13 @@ pub(crate) fn oracle_timeout() -> Duration {
 
 /// The `oracle_server.py` `run` request for a case — the single builder both
 /// transports share (byte-compatible with the pre-Phase-B request).
-pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
+///
+/// `deck` is what the producer compiles — its own scratch copy of the case
+/// (`scratch::ScratchCopy`, RETRO_FIXES RF-I00-01) — while `case_path`, the
+/// VENDORED deck, keys the gate's sidecars (`run_file_contents_dir`, and the
+/// DI sidecar through the gate-side `sidecar_key` field the transports never
+/// read), so a sidecar's location is the same for every copy of one case.
+pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -> Value {
     // G1.5: the six short-circuit arms are appended to the ONE per-bus walk
     // `buses` drives on BOTH transports, so `zsc` alone would ship an empty
     // surface that `require_capture` — not the comparator — would have to
@@ -292,7 +298,8 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         .collect();
     json!({
         "cmd": "run",
-        "case_path": case_path,
+        "case_path": deck,
+        "sidecar_key": case_path,
         "post": c.post,
         "n_steps": c.n_steps,
         "selected_elements": c.selected_elements,
@@ -559,11 +566,15 @@ impl Oracle {
 
     /// Run one case and return the oracle's per-step model.
     pub(crate) fn run_case(&self, case_path: &str, c: &SolvableCase) -> CaseResult {
+        // RF-I00-01: the oracle compiles its own fresh scratch copy of the case,
+        // removed (or the case failed naming the producer) before this returns.
+        let copy = crate::scratch::ScratchCopy::new(case_path, CAPI_TAG);
         // This one-shot is the `capi_v0145` transport, so the DI sidecar is the
         // capi one — the same attachment [`Channel::call`] performs for the
         // scheduler's four transports.
-        let req = attach_di_sidecar(&build_run_request(case_path, c), CAPI_TAG);
+        let req = attach_di_sidecar(&build_run_request(copy.deck(), case_path, c), CAPI_TAG);
         let r = self.call(&req);
+        copy.finish();
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
         let v = r.result.expect("ok response missing result");
         serde_json::from_value(v)
@@ -1327,13 +1338,7 @@ fn gate_scratch_root() -> PathBuf {
 /// directories happen to share a name never share a sidecar.
 fn case_key(case_path: &str) -> String {
     let folded = case_path.replace('\\', "/").to_ascii_lowercase();
-    // FNV-1a 64, spelled out: the key must be stable across processes, which
-    // `DefaultHasher` does not promise.
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in folded.as_bytes() {
-        hash ^= u64::from(*b);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
+    let hash = case_digest(&folded);
     let mut name = String::new();
     let path = std::path::Path::new(&folded);
     for part in [path.parent().and_then(|d| d.file_name()), path.file_stem()]
@@ -1350,6 +1355,19 @@ fn case_key(case_path: &str) -> String {
         name.push('_');
     }
     format!("{name}{hash:016x}")
+}
+
+/// FNV-1a 64 of a (folded) case path, spelled out: the key must be stable
+/// across processes, which `DefaultHasher` does not promise. Shared by
+/// [`case_key`] and the scratch copies' directory key
+/// (`scratch::ScratchCopy::new`).
+pub(crate) fn case_digest(folded: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in folded.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 /// Where one (case, channel) DI capture is copied to:
@@ -1413,8 +1431,12 @@ fn attach_di_sidecar(req: &Value, channel: &str) -> Value {
     if req.get("di").and_then(Value::as_bool) != Some(true) || req.get("di_dir").is_some() {
         return req.clone();
     }
+    // Keyed by the VENDORED deck (`sidecar_key`, set by `build_run_request`),
+    // not by the scratch copy the producer compiles (RF-I00-01); a request
+    // built by hand without it keys by its `case_path`, as before.
     let case_path = req
-        .get("case_path")
+        .get("sidecar_key")
+        .or_else(|| req.get("case_path"))
         .and_then(Value::as_str)
         .expect("a run request that asks for the DI tree carries its case_path");
     let dir = prepare_di_sidecar(case_path, channel);

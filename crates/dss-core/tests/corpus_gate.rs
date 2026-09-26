@@ -41,6 +41,8 @@ mod props_census;
 mod runner;
 #[path = "corpus_gate/scheduler.rs"]
 mod scheduler;
+#[path = "corpus_gate/scratch.rs"]
+mod scratch;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -1253,7 +1255,6 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
     );
     case.compare_bus = true; // scheduler::force_bus
     let abs = family_file("asymmetric", &case.path);
-    let req = engines::build_run_request(&abs, &case);
 
     // Coordinator decision D35(3): this test drives BOTH oracle transports on a
     // corpus deck, so it is a producer in that case directory exactly like the
@@ -1265,7 +1266,10 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
     let _guard = runner::CorpusGuard::new(&abs);
 
     let capi = Oracle::for_spec(None).run_case(&abs, &case);
-    let resp = engines::EpriOneShot::new().call(&req);
+    // RF-I00-01: each transport compiles its own fresh scratch copy.
+    let resp = scratch::in_copy(&abs, "r4133", |deck| {
+        engines::EpriOneShot::new().call(&engines::build_run_request(deck, &abs, &case))
+    });
     assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
     let epri: engines::CaseResult =
         serde_json::from_value(resp.result.expect("r4133 ok response missing result"))
@@ -1433,10 +1437,12 @@ fn the_two_transports_agree_on_the_bus_distances_of_a_metered_both_case() {
     );
     case.compare_bus = true; // scheduler::force_bus
     let abs = family_file("controls", &case.path);
-    let req = engines::build_run_request(&abs, &case);
 
     let capi = Oracle::for_spec(None).run_case(&abs, &case);
-    let resp = engines::EpriOneShot::new().call(&req);
+    // RF-I00-01: each transport compiles its own fresh scratch copy.
+    let resp = scratch::in_copy(&abs, "r4133", |deck| {
+        engines::EpriOneShot::new().call(&engines::build_run_request(deck, &abs, &case))
+    });
     assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
     let epri: engines::CaseResult =
         serde_json::from_value(resp.result.expect("r4133 ok response missing result"))
@@ -1557,7 +1563,6 @@ fn the_two_transports_agree_on_the_short_circuit_capture_of_a_gated_both_case() 
     );
     case.compare_bus = true; // scheduler::force_bus; `compare_zsc` implies it
     let abs = family_file("modes", &case.path);
-    let req = engines::build_run_request(&abs, &case);
 
     // The same D35(3) claim its bus-surface sibling takes: a two-transport
     // producer in a corpus case directory holds the directory for the whole
@@ -1565,7 +1570,10 @@ fn the_two_transports_agree_on_the_short_circuit_capture_of_a_gated_both_case() 
     let _guard = runner::CorpusGuard::new(&abs);
 
     let capi = Oracle::for_spec(None).run_case(&abs, &case);
-    let resp = engines::EpriOneShot::new().call(&req);
+    // RF-I00-01: each transport compiles its own fresh scratch copy.
+    let resp = scratch::in_copy(&abs, "r4133", |deck| {
+        engines::EpriOneShot::new().call(&engines::build_run_request(deck, &abs, &case))
+    });
     assert!(resp.ok, "r4133 one-shot failed: {:?}", resp.error);
     let epri: engines::CaseResult =
         serde_json::from_value(resp.result.expect("r4133 ok response missing result"))

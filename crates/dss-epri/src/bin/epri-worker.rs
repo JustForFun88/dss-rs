@@ -76,6 +76,8 @@ fn main() {
         }
     };
     let version = engine.version().trim().to_string();
+    // Where every `run` reply is sent from (RF-I00-01, the `run` arm below).
+    let startup_cwd = std::env::current_dir().ok();
     if !version.contains(&expect) {
         eprintln!(
             "epri-worker: engine {version:?} does not contain pinned {expect:?} (no silent pass)"
@@ -253,29 +255,32 @@ fn main() {
                 reply(serde_json::json!({"ok": ok, "result": {"cleared": ok}}));
             }
             Some("run") => {
-                let run_req: RunRequest = match serde_json::from_value(req) {
-                    Ok(r) => r,
+                let out = match serde_json::from_value::<RunRequest>(req) {
                     Err(e) => {
-                        reply(
-                            serde_json::json!({"ok": false, "error": format!("bad run request: {e}")}),
-                        );
-                        continue;
+                        serde_json::json!({"ok": false, "error": format!("bad run request: {e}")})
                     }
-                };
-                match run_case(&engine, &run_req) {
-                    Ok(cr) => match serde_json::to_value(&cr) {
-                        Ok(v) => reply(serde_json::json!({"ok": true, "result": v})),
+                    Ok(run_req) => match run_case(&engine, &run_req) {
+                        Ok(cr) => match serde_json::to_value(&cr) {
+                            Ok(v) => serde_json::json!({"ok": true, "result": v}),
+                            Err(e) => serde_json::json!(
+                                {"ok": false, "error": format!("serialize result: {e}")}
+                            ),
+                        },
                         Err(e) => {
-                            reply(
-                                serde_json::json!({"ok": false, "error": format!("serialize result: {e}")}),
-                            );
+                            eprintln!("epri-worker: case failed: {e}");
+                            serde_json::json!({"ok": false, "error": e.to_string()})
                         }
                     },
-                    Err(e) => {
-                        eprintln!("epri-worker: case failed: {e}");
-                        reply(serde_json::json!({"ok": false, "error": e.to_string()}));
-                    }
+                };
+                // RETRO_FIXES RF-I00-01: the gate compiles every case in its own
+                // scratch copy and removes it after the reply, but a compile
+                // leaves this process's working directory inside the copy
+                // (r4133 `Executive/ExecHelper.pas:752-754`) and Windows refuses
+                // to remove a process's working directory: step back first.
+                if let Some(dir) = &startup_cwd {
+                    let _ = std::env::set_current_dir(dir);
                 }
+                reply(out);
             }
             other => {
                 reply(serde_json::json!({"ok": false, "error": format!("unknown cmd {other:?}")}));

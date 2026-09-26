@@ -1,27 +1,21 @@
 //! Hand-rolled scheduler for the unified corpus gate (UNIFIED_GATE_PLAN §3, D7a).
 //!
-//! One `#[test]` runs the UNION of all four manifests. The task list is grouped
-//! by case directory (§3.3 simplification: task = case-dir group, its cases run
-//! sequentially inside the task, so THIS test never schedules two cases of one
-//! folder at once), pre-sorted longest-first by a static weight, and drained by
-//! `available_parallelism()` (or `DSS_GATE_JOBS`) threads via an `AtomicUsize`
-//! cursor + `std::thread::scope` — NOT rayon/tokio (tasks block on oracle
-//! subprocess I/O; the global rayon pool belongs to faer inside the solves).
+//! One `#[test]` runs the UNION of all four manifests. Every CASE is one task
+//! (RETRO_FIXES RF-I00-01 withdrew the §3.3 case-directory grouping), pre-sorted
+//! longest-first by a static weight, and drained by `available_parallelism()`
+//! (or `DSS_GATE_JOBS`) threads via an `AtomicUsize` cursor +
+//! `std::thread::scope` — NOT rayon/tokio (tasks block on oracle subprocess
+//! I/O; the global rayon pool belongs to faer inside the solves).
 //!
-//! That grouping is necessary but **not sufficient**, and since coordinator
-//! decision **D33(2)** (G1.10a) a per-directory claim backs it: libtest runs
-//! this `#[test]` concurrently with its siblings in the same binary, and
-//! `corpus_ad_matches_normal_mode` compiles `ad_sweep.json`'s decks IN PLACE —
-//! among them `8500-Node/Run_8500Node.dss`, `Run_8500Node_Unbal.dss` and
-//! `Run_RecloserSiting.DSS`, whose own `Show`/`Export` lines run during
-//! `compile` and land in a case directory this gate is measuring (G1.10a F4 run
-//! 2 measured the consequence: one case's created-file SET carrying another
-//! deck's reports, `tmp/g110a/f_F4_unexpected_run2.md`). The claim therefore
-//! lives one level down, in [`crate::runner::CorpusGuard`] — exclusive per
-//! canonical case directory, reentrant for the owning thread — so every
-//! producer that guards a case dir takes it: this scheduler's cases (held
-//! across both oracle captures, the port run and the sweep), the AD sweep, and
-//! the opt-in report tests.
+//! Two cases of one folder may run at once because no producer runs in the
+//! vendored tree any more: every (case, producer) run compiles its own fresh
+//! scratch copy ([`crate::scratch::ScratchCopy`]) and the copy is removed
+//! afterwards, or the case fails naming the producer. The grouping, and the
+//! per-directory claim that backed it against this binary's sibling
+//! `#[test]`s (coordinator decision D33(2)), existed only because the tree was
+//! shared: parent (`Test/`) and child (`Test/AutoTrans/`) case directories
+//! still overlapped, and 28 of the 41 red runs of RETRO_FIXES waves 1-2 were
+//! that overlap's "leaked dropping" rows.
 //!
 //! The pinned `capi_v0145` channel is served by a persistent [`WorkerPool`]; the
 //! `r4133` channel by a persistent [`EpriPool`] of `epri-worker` bridge processes
@@ -55,9 +49,10 @@ use crate::manifest::{
 };
 use crate::props_census::{Mode as CensusMode, Row as CensusRow, RowKind as CensusRowKind};
 use crate::runner::{
-    CorpusGuard, assert_deferred_rust_smoke, assert_pending_errors_loudly, compare_with_result,
-    panic_msg, run_and_compare_abort, run_rust_capture,
+    assert_deferred_rust_smoke, assert_pending_errors_loudly, compare_with_result, panic_msg,
+    run_and_compare_abort, run_rust_capture,
 };
+use crate::scratch::{PORT, ScratchCopy};
 
 // ---------------------------------------------------------------------------
 // Unified case model.
@@ -77,14 +72,15 @@ struct UnifiedCase {
     order: usize,
     label: String,
     abs: String,
-    dir_key: String,
     weight: u64,
     class: CaseClass,
     case: SolvableCase,
 }
 
+/// One scheduled unit: exactly one case since RF-I00-01 (the `cases` vector is
+/// the drain loops' shape, kept so a future grouping stays a local change).
 struct Task {
-    dir_key: String,
+    key: String,
     weight: u64,
     cases: Vec<UnifiedCase>,
 }
@@ -100,14 +96,6 @@ fn kind_weight(kind: &str) -> u64 {
     } else {
         1 // micro / synthetic
     }
-}
-
-/// Directory key for grouping (case-insensitive, forward-slashed parent).
-fn dir_key_of(abs: &str) -> String {
-    abs.rsplit_once('/')
-        .map(|(d, _)| d)
-        .unwrap_or("")
-        .to_lowercase()
 }
 
 /// Apply the per-source property-forcing rule to a live case.
@@ -2814,12 +2802,10 @@ fn make_case(
         force_di(&mut c);
     }
     let weight = kind_weight(&c.kind) * (c.n_steps.max(1) as u64);
-    let dir_key = dir_key_of(&abs);
     UnifiedCase {
         order,
         label: format!("{source}:{}", c.path),
         abs,
-        dir_key,
         weight,
         class,
         case: c,
@@ -2848,61 +2834,39 @@ fn build_unified_cases() -> Vec<UnifiedCase> {
     out
 }
 
-/// Coordinator decision **D33(2)**, the scheduler's half: two manifest rows in
-/// ONE case directory are never scheduled at the same time, because
-/// [`build_tasks`] puts them in ONE task and a task is drained by a single
-/// thread, in manifest order. Case-insensitively — a Windows path can reach one
-/// physical folder through two spellings, and [`dir_key_of`] folds them.
-///
-/// The other half of the guarantee is against the SIBLING `#[test]`s of this
-/// binary (see the module doc) and is pinned by
-/// `runner::corpus_guard_serializes_two_threads_in_one_case_directory`.
+/// RF-I00-01: every case is its own task — two manifest rows in one case
+/// directory are two tasks (they run in two scratch copies, so nothing couples
+/// them any more) — and the tasks drain heaviest first, ties in label order.
 #[test]
-fn two_manifest_rows_in_one_case_directory_land_in_one_task() {
-    let mk = |order: usize, abs: &str| UnifiedCase {
+fn every_case_is_its_own_task_heaviest_first() {
+    let mk = |order: usize, abs: &str, weight: u64| UnifiedCase {
         order,
         label: format!("fixture:{abs}"),
         abs: abs.to_string(),
-        dir_key: dir_key_of(abs),
-        weight: 1,
+        weight,
         class: CaseClass::Live,
         case: SolvableCase::default(),
     };
-    // The `IEEETestCases/8500-Node` shape: several rows writing
-    // `<CircuitName>_*` reports into one folder, one of them spelled with a
-    // different case, plus one row in a different folder.
+    // The `IEEETestCases/8500-Node` shape: several rows in one folder (one of
+    // them spelled with a different case) plus one row in another.
     let tasks = build_tasks(
         vec![
-            mk(0, "C:/corpus/8500-Node/Run_8500Node.dss"),
-            mk(1, "C:/corpus/8500-Node/P174_Run_Voltage_Profile.DSS"),
-            mk(2, "C:/corpus/8500-node/Master-unbal.dss"),
-            mk(3, "C:/corpus/AutoTrans/Auto3bus.dss"),
+            mk(0, "C:/corpus/8500-Node/Run_8500Node.dss", 10),
+            mk(1, "C:/corpus/8500-Node/P174_Run_Voltage_Profile.DSS", 30),
+            mk(2, "C:/corpus/8500-node/Master-unbal.dss", 10),
+            mk(3, "C:/corpus/AutoTrans/Auto3bus.dss", 20),
         ],
         None,
     );
-    assert_eq!(
-        tasks.len(),
-        2,
-        "three rows of one case directory (two spellings) plus one row of \
-         another must be exactly two tasks, got {:?}",
-        tasks.iter().map(|t| &t.dir_key).collect::<Vec<_>>()
+    assert!(
+        tasks.iter().all(|t| t.cases.len() == 1),
+        "a task is exactly one case"
     );
-    let shared = tasks
-        .iter()
-        .find(|t| t.dir_key.ends_with("8500-node"))
-        .expect("the shared case directory has a task");
     assert_eq!(
-        shared.cases.iter().map(|c| c.order).collect::<Vec<_>>(),
-        vec![0, 1, 2],
-        "every row of one case directory belongs to that directory's single \
-         task, in manifest order — a task is drained by ONE thread, which is \
-         what keeps their file-writing windows apart (D33(2))"
+        tasks.iter().map(|t| t.cases[0].order).collect::<Vec<_>>(),
+        vec![1, 3, 2, 0],
+        "heaviest first; equal weights in label order"
     );
-    let other = tasks
-        .iter()
-        .find(|t| t.dir_key.ends_with("autotrans"))
-        .expect("the other case directory has its own task");
-    assert_eq!(other.cases.len(), 1);
 }
 
 /// A tiny deterministic PRNG (splitmix64) for the shuffle probe — avoids a dev
@@ -2915,27 +2879,20 @@ fn splitmix64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-/// Group cases into per-directory tasks, sorted longest-first (or shuffled).
+/// One task per case (RF-I00-01), sorted longest-first (or shuffled).
 fn build_tasks(cases: Vec<UnifiedCase>, shuffle_seed: Option<u64>) -> Vec<Task> {
-    let mut by_dir: BTreeMap<String, Task> = BTreeMap::new();
-    for uc in cases {
-        let t = by_dir.entry(uc.dir_key.clone()).or_insert_with(|| Task {
-            dir_key: uc.dir_key.clone(),
-            weight: 0,
-            cases: Vec::new(),
-        });
-        t.weight += uc.weight;
-        t.cases.push(uc);
-    }
-    let mut tasks: Vec<Task> = by_dir.into_values().collect();
-    // Keep cases within a task in manifest order (stable — build order).
-    for t in &mut tasks {
-        t.cases.sort_by_key(|c| c.order);
-    }
+    let mut tasks: Vec<Task> = cases
+        .into_iter()
+        .map(|uc| Task {
+            key: uc.label.to_lowercase(),
+            weight: uc.weight,
+            cases: vec![uc],
+        })
+        .collect();
     match shuffle_seed {
         None => {
-            // Longest-first; tie-break on dir_key for determinism.
-            tasks.sort_by(|a, b| b.weight.cmp(&a.weight).then(a.dir_key.cmp(&b.dir_key)));
+            // Longest-first; tie-break on the case label for determinism.
+            tasks.sort_by(|a, b| b.weight.cmp(&a.weight).then(a.key.cmp(&b.key)));
         }
         Some(seed) => {
             // Deterministic Fisher–Yates shuffle of the task order.
@@ -3012,7 +2969,6 @@ impl<'a> Ctx<'a> {
 
 /// Run + compare one case, fully `catch_unwind`-isolated → a `CaseOutcome`.
 fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
-    let _guard = CorpusGuard::new(&uc.abs);
     let ok_outcome = |result: Option<Value>| CaseOutcome {
         order: uc.order,
         label: uc.label.clone(),
@@ -3086,7 +3042,10 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
                 // clone is what the compare closure below owns; it is no longer
                 // per-channel, so both channels see the same case.
                 let cc = uc.case.clone();
-                let req = build_run_request(&uc.abs, &cc);
+                // RF-I00-01: the channel compiles its own fresh scratch copy;
+                // the request's sidecars stay keyed by the vendored deck.
+                let copy = ScratchCopy::new(&uc.abs, channel.tag());
+                let req = build_run_request(copy.deck(), &uc.abs, &cc);
                 let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     channel.call(&req)
                 })) {
@@ -3098,6 +3057,9 @@ fn run_one_case(uc: &UnifiedCase, ctx: &Ctx) -> CaseOutcome {
                         );
                     }
                 };
+                if let Err(e) = copy.remove() {
+                    return fail_outcome(format!("[{ch:?}] {e}"), dump_val);
+                }
                 if !resp.ok {
                     return fail_outcome(
                         format!("[{ch:?}] oracle case failed: {:?}", resp.error),
@@ -3436,18 +3398,21 @@ fn seed_one(uc: &UnifiedCase, ch: EngineChannel, ctx: &Ctx) -> SeedRecord {
         status: status.to_string(),
         reason: reason.chars().take(300).collect(),
     };
-    let _guard = CorpusGuard::new(&uc.abs);
     let channel = ctx.channel(uc, ch);
     // R4133_PROPS RP4.1 (2026-09-03): the seeding path's per-channel
     // `compare_all_properties = false` went with the gate path's — a seeding
     // measurement must see exactly what the gate compares, on both channels. The
     // clone is what the compare closure below owns.
     let cc = uc.case.clone();
-    let req = build_run_request(&uc.abs, &cc);
+    let copy = ScratchCopy::new(&uc.abs, channel.tag());
+    let req = build_run_request(copy.deck(), &uc.abs, &cc);
     let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req))) {
         Ok(r) => r,
         Err(e) => return mk("error", format!("fetch panic: {}", panic_msg(e))),
     };
+    if let Err(e) = copy.remove() {
+        return mk("error", e);
+    }
     if !resp.ok {
         return mk("error", format!("oracle: {:?}", resp.error));
     }
@@ -3645,17 +3610,20 @@ fn census_one(
         )
     };
 
-    let _guard = CorpusGuard::new(&uc.abs);
     let channel = ctx.channel(uc, ch);
     let mut cc = uc.case.clone();
     // The knob's whole point: the property capture is requested on BOTH channels,
     // regardless of the plan §1.1 masks the gate and the seeding path apply.
     cc.compare_all_properties = true;
-    let req = build_run_request(&uc.abs, &cc);
+    let copy = ScratchCopy::new(&uc.abs, channel.tag());
+    let req = build_run_request(copy.deck(), &uc.abs, &cc);
     let resp = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel.call(&req))) {
         Ok(r) => r,
         Err(e) => return oracle_error(format!("fetch panic: {}", panic_msg(e))),
     };
+    if let Err(e) = copy.remove() {
+        return oracle_error(e);
+    }
     if !resp.ok {
         return oracle_error(format!("{:?}", resp.error));
     }
@@ -3679,7 +3647,9 @@ fn census_one(
     let ledger_view = claims_ledger.map(|rt| rt.view(&uc.label, ch));
     let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let tol = harness::tol_for(&cc.kind);
-        let (mut dss, _baseline) = run_rust_capture(&label, &abs, &cc);
+        // The port's own scratch copy (RF-I00-01), removed when the walk ends.
+        let copy = ScratchCopy::new(&abs, PORT);
+        let (mut dss, _baseline) = run_rust_capture(&label, copy.deck(), &cc);
         let mut rows: Vec<CensusRow> = Vec::new();
         let mut blind = CensusBlindSpots::default();
         for (i, cp) in oc.checkpoints.iter().enumerate() {
