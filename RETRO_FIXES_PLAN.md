@@ -3637,6 +3637,11 @@ every later stage; each gate run to completion THREE times in a row (a flake-hun
 its own flake rate; wall times per lane and per corpus_gate into the part file). **After:** -.
 **Files:** `crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/*.rs`,
 `crates/dss-core/tests/harness/run_files.rs`, `crates/dss-core/tests/harness/capture_guard.rs`,
+`crates/dss-core/tests/harness/scratch.rs` (new, the shared `ScratchCopy`), `crates/dss-core/tests/harness/mod.rs`,
+`crates/dss-core/tests/di_pins.rs`, `crates/dss-core/tests/run_files_pins.rs`,
+`crates/dss-core/tests/run_file_contents_pins.rs`, `crates/dss-core/tests/props_r4133_pins.rs`,
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `crates/dss-epri/tests/modes.rs`, `crates/dss-epri/src/smoke.rs`
+(the tree writers part 1 measured, coordinator ruling 2026-09-26 14:30),
 `crates/dss-core/tests/corpus_manifest.rs`, `crates/dss-epri/src/guard.rs`,
 `crates/dss-epri/src/capture.rs`, `crates/dss-epri/src/bin/epri-worker.rs`,
 `tools/oracle/corpus_guard.py`, `tools/oracle/oracle_server.py`, `.config/nextest.toml`,
