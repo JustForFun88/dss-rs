@@ -1,0 +1,13 @@
+# RETRO_FIXES — step records (`RETRO_FIXES_PLAN.md` §2.3; appended by each step's settler)
+
+## RF-D00-05 — Make NCIM re-initialise generator Q when generators are added/enabled after the first solve (2026-09-26)
+
+- **What/why.** The NCIM generator Q registries are self-sizing (a machine created, enabled or re-phased after the first NCIM solve takes r4133's first-solve init on its own first pass, and every `deltaQNom` access is checked), the NCIM node space is re-initialised when its size no longer matches the circuit's, and (settlement) every distinct non-ground PV node gets one regulation row. So a late generator no longer aborts the process, and neither does a PV machine that joins a narrower PV block or has a grounded conductor (first solve included).
+- **r4133.** `InitGenQ` is one-shot (`Common/Solution.pas` l.648 / l.1115-1118 / l.1157; `InitPQGen` l.1662-1684; `InitQ` l.1926-1931), and PV blocks are keyed by a machine's first node (l.1945-1966, `PCElements/generator.pas` l.2171). Live `epri-worker` probes (local-only scripts under `tmp/retro_fix/state/RF-D00-05/`, re-derivable from the pins' decks) show #482 on the late decks, non-convergence after a branch removal and on a grounded conductor, and phases 2/3 left unregulated on a mixed-phase pair.
+- **uids:** 1 fixed (`RP|RP3.13|AT1|AT-1`) / 0 recorded / 0 invalid / 0 blocked. The pre-fix reds were captured in the default lane only (`ncim.rs` has no lane cfg).
+- **Ledger:** no exclusion, golden, tolerance or ledger change. Pins P10-P22 in `crates/dss-core/src/exec/tests/ncim.rs` (P18-P22 from the settlement).
+- **Notes left:** `docs/upgrade/DIVERGENCES.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md` (`ORPHANED_GAPS.md` / `STATUS.md` name no such panic).
+- **Handed to the coordinator (R12):** a `model=4` machine or load on a bus born after the first NCIM solve (NaN, non-converged), a same-node-count PD edit (stale NCIM Y, both engines), a born-PQ `kvar` edit between solves (stale seed, both engines); the pin guard for P10-P22 and the RP3.13 P1 registry row in `props_r4133_replay.rs`.
+- **Commits:** `87739233`, `327778c4`, `605a3468f24d202f9fa6643a9d7f321ac4b66b6c` (executor), `fb343248` (settlement).
+- **Gate:** fmt and clippy ×2 green. Default 13673 passed / 0 failed / 5 ignored; parity 13673 / 0 / 5. Corpus gate green in both lanes: every ledger entry hit, none stale. The default lane needed a third run: two runs went red only on the known ckt24 `oracle timeout after 120s` infra class. `lane_diff`: VERDICT PASS, 526 cases, 3221146 records, max |Δ| = 0 on every kind, 0 drifted iteration counts.
+- **audit:** 19 findings - 12 fixed / 7 recorded / 0 refuted.
