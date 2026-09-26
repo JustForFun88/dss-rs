@@ -205,12 +205,17 @@ fn log_has(sc: &Scratch, needle: &str) -> bool {
     sc.events.entries().iter().any(|e| e.contains(needle))
 }
 
-/// Count the event-log lines other than the `Sample` state trace — the trace is
-/// noise for the protection assertions. [`EventLog::append`] upper-cases only
-/// the action, so the trace's element field is stored verbatim as
-/// `Element=Debug Sample: Relay.<name>` (the spelling
+/// Count the event-log lines other than the `Debug Sample:` traces — noise for
+/// the protection assertions. That element spelling carries the per-`Sample`
+/// state trace (`Relay.pas:1325`) and every `OvercurrentLogic` trace
+/// (`dbg_sample` in `logic.rs`, `Relay.pas:1822`-`:2007`), so the needle drops
+/// them all. The `VoltageLogic`/DOC traces that `dbg` logs under the relay's
+/// own name (`Element=Relay.<name>`, e.g. OV/UV at `:2886`/`:2907`) are
+/// counted, which no caller exercises (none sets `DebugTrace`).
+/// [`EventLog::append`] upper-cases only the action, so the element field is
+/// stored verbatim as `Element=Debug Sample: Relay.<name>` (the spelling
 /// `sample_state_trace_follows_debugtrace` and `tests/harness/lane.rs` match);
-/// pinned by `non_debug_lines_excludes_the_sample_trace_only`.
+/// pinned by `non_debug_lines_skips_the_debug_sample_lines_only`.
 fn non_debug_lines(sc: &Scratch) -> usize {
     sc.events
         .entries()
@@ -276,14 +281,15 @@ fn sample_state_trace_follows_debugtrace() {
 }
 
 /// Self-check of [`non_debug_lines`] (G2.2d retro audit, AC-2): its needle must
-/// match the trace line as the event log really stores it. Before the fix it
-/// filtered on `"DEBUG SAMPLE"`, which no line contains, so it counted the
-/// trace too — latent only because its four callers never `sample()`. With
-/// `DebugTrace=yes` a below-pickup `sample()` logs exactly the trace, which the
-/// helper must skip, while any other line (here a protection event appended by
-/// hand) is still counted.
+/// match the trace lines as the event log really stores them. Before the fix
+/// it filtered on `"DEBUG SAMPLE"`, which no line contains, so it counted the
+/// traces too — latent only because its four callers never `sample()`. With
+/// `DebugTrace=yes` a below-pickup `sample()` logs exactly the state trace and
+/// an above-pickup one adds one `OvercurrentLogic` curve trace per phase, all
+/// of which the helper must skip, while any other line (here a protection
+/// event appended by hand) is still counted.
 #[test]
-fn non_debug_lines_excludes_the_sample_trace_only() {
+fn non_debug_lines_skips_the_debug_sample_lines_only() {
     let mut r = armed_relay();
     r.debug_trace = true;
     let mut ctrl = MockElem::new(3);
@@ -296,6 +302,24 @@ fn non_debug_lines_excludes_the_sample_trace_only() {
 
     sc.events.append("Relay.r1", "Opened", 0, 0.0, 0);
     assert_eq!(non_debug_lines(&sc), 1, "{:?}", sc.events.entries());
+
+    // Above pickup (ratio 10 on every phase): the state trace plus the three
+    // `Ph Curve (3-Phase) Trip` traces of `OvercurrentLogic` (`Relay.pas:2007`),
+    // all logged under the same `Debug Sample: Relay.r1` element.
+    let mut r = armed_relay();
+    r.debug_trace = true;
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3).with_current(10.0);
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    let entries = sc.events.entries();
+    let curve_traces = entries
+        .iter()
+        .filter(|e| e.contains("Element=Debug Sample: Relay.r1,") && e.contains("PH CURVE"))
+        .count();
+    assert_eq!(curve_traces, 3, "{entries:?}");
+    assert_eq!(entries.len(), 4, "{entries:?}");
+    assert_eq!(non_debug_lines(&sc), 0, "{entries:?}");
 }
 
 // --- Overcurrent (Type=Current) ---------------------------------------------
@@ -1614,7 +1638,9 @@ fn the_ordinal_array_setter_matches_the_interpreter() {
             "[open, closed, open, closed, closed, closed, ]",
         ),
         // The five-slot cap on both paths (`take(RCMAX - 1)` vs `:1286`); the
-        // 6th token is dropped, as B1(3b) measured on the r4133 DLL.
+        // 6th token is dropped, as B1(3b) measured on the r4133 DLL. A reproduced
+        // r4133 off-by-one (upstream report 75): RETRO_FIXES RF-D01-01 AC3-1
+        // flips this row (see `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
         (
             false,
             prop::STATE,
@@ -1760,6 +1786,16 @@ fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
 /// `state=(closed, closed, closed, closed, closed, open)` leaves
 /// `[closed, closed, closed, closed, closed, closed, ]`.
 ///
+/// **A reproduced upstream bug, pending its fix.** That bound is an r4133
+/// off-by-one — the ganged arm (`:1260`) and `StateArray` (`:62`) span six
+/// slots — reported upstream in
+/// `investigations/to_opendss/75-per-phase-state-list-drops-the-sixth-phase.md`
+/// (local-only), and the 2026-08-02 policy says it is not reproduced. The port
+/// still reproduces it here and in the ordinal twin `set_enum_array`: the fix
+/// must move both together (`the_ordinal_array_setter_matches_the_interpreter`
+/// asserts they agree) and is RETRO_FIXES RF-D01-01 AC3-1, which flips this
+/// pin and that test's row 2 to the sixth token landing.
+///
 /// r4133's own FRESH 6-phase render has **no defined value** in slots 4..6:
 /// `Create` allocates `FPresentState` with `FNPhases` (3) entries and
 /// initializes only those (`Relay.pas:829-843`), while the getter loops the
@@ -1770,12 +1806,15 @@ fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
 /// (`out_b1.txt` B1(3), reproducible 2/2 on re-run), and on the same
 /// construction stopped before the `solve` it reads all-closed — the flip
 /// happens at the `solve`, i.e. it tracks heap content, not the model
-/// (re-measured 2026-09-25, RF-D01-01 probe (a): the same bytes after the
-/// `solve`). That defect is NOT reproduced (2026-08-02 policy, A1 D8/A2a D7):
-/// the port initializes all six in-bounds slots to closed, and the first
-/// assertion below pins exactly that on the fresh 6-phase render. It is the
-/// only pin of that decision, so it is load-bearing, not setup noise; the cap
-/// itself is then measured from the ganged all-closed baseline, as B1(3b) did.
+/// (re-measured 2026-09-25, RF-D01-01 probe (a), transcript local-only: the
+/// same bytes after the `solve`). That defect is NOT reproduced (2026-08-02
+/// policy, A1 D8/A2a D7): the port initializes all six in-bounds slots to
+/// closed, and the first assertion below pins exactly that on the fresh
+/// 6-phase render through the property seam — load-bearing, not setup noise
+/// (rows 1, 3 and 4 of `the_ordinal_array_setter_matches_the_interpreter` and
+/// the fresh render of `a_seven_phase_controlled_element_renders_six_tokens`
+/// pin the same initialization). The cap itself is then measured from the
+/// ganged all-closed baseline, as B1(3b) did.
 #[test]
 fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     let mut dss = Dss::new();
@@ -1834,6 +1873,13 @@ fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
 /// engine: Relay's `RecalcElementData` has no phase-count check (the
 /// SwtControl #384 twin is `ORPHANED_GAPS.md` §1.15). The port answers six
 /// tokens at every step, each assert naming the r4133 bytes.
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus the deck's
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=1`,
+/// `set voltagebases=[115]` and `calcvoltagebases` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
 #[test]
 fn a_seven_phase_controlled_element_renders_six_tokens() {
     let mut dss = Dss::new();
