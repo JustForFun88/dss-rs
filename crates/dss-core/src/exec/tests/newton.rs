@@ -29,7 +29,7 @@
 //! **After a direct solve** (the RF-D00-01 settlement). r4133's `SumAllCurrents`
 //! also takes the PC direct-solve shortcut while `LastSolutionWasDirect` is still
 //! set, so its first Newton solve after `Solve mode=direct` returns the direct
-//! solution; the port's sum never does
+//! solution. The port's sum never does
 //! (`newton_after_a_direct_solve_matches_a_fresh_newton_solve`).
 //!
 //! **Why the deck is the corpus feeder.** `modes/newton/newton.dss` is the gated
@@ -461,7 +461,7 @@ fn run_deck(deck: &[&str], commands: &[&str]) -> Dss {
 ///
 /// `Solve mode=direct` (like a fault study, a harmonics solve or
 /// `LoadModel=Admittance`) arms `LastSolutionWasDirect`, and r4133 clears it only
-/// after the algorithm dispatch (`Common/Solution.pas:2481`; `SolveDirect` sets it
+/// after the algorithm dispatch (`Common/Solution.pas:2481`, set by `SolveDirect`
 /// at `:2782`). While it is set, `TPCElement.GetCurrents`
 /// (`PCElements/PCElement.pas:284`) answers `Yprim·V` instead of the load model,
 /// so r4133's `SumAllCurrents` sees every load as its constant-Z admittance and
@@ -473,7 +473,7 @@ fn run_deck(deck: &[&str], commands: &[&str]) -> Dss {
 /// itself — while direct→normal lands on the fresh one (8.3e-12 V). The port's
 /// Newton sum never takes that shortcut
 /// (`solution::solution::power_flow::sum_all_currents`), so the upstream bug is
-/// reproduced in neither lane; with that override removed the port read the
+/// reproduced in neither lane. With that override removed the port read the
 /// oracles' 10.0756 V.
 #[test]
 fn newton_after_a_direct_solve_matches_a_fresh_newton_solve() {
@@ -504,8 +504,8 @@ fn newton_after_a_direct_solve_matches_a_fresh_newton_solve() {
     };
     let direct_gap = gap(&direct_v, &fresh_v);
     let newton_gap = gap(&ckt.solution.node_v, &fresh_v);
-    // Measured: the direct solution 1.0075554317985269e1 V off the fresh Newton
-    // one; Newton after it 0 V off (same start, same iterates, 2 iterations).
+    // Measured: the direct solution sits 1.0075554317985269e1 V off the fresh
+    // Newton one, and Newton after it 0 V (same start, same iterates, 2 iterations).
     assert!(
         direct_gap > 10.0,
         "premise: the direct solution sits 10.0756 V off the Newton one (got {direct_gap:e} V)"
@@ -513,8 +513,8 @@ fn newton_after_a_direct_solve_matches_a_fresh_newton_solve() {
     assert!(
         newton_gap < 1e-9,
         "Newton after a direct solve must land on the fresh Newton solution, not on \
-         the direct one (r4133 and capi 0.14.5 both read 10.0756 V here; measured \
-         0 V): max |dV| = {newton_gap:e} V"
+         the direct one (r4133 and capi 0.14.5 both read 10.0756 V here, the port \
+         measured 0 V): max |dV| = {newton_gap:e} V"
     );
 }
 
@@ -723,8 +723,8 @@ fn newton_autoadd_scores_the_trial_generator_like_the_normal_algorithm() {
     // disabled (the stale meter samples) it scores `b2` at 1.21128540007173e-2,
     // 3.7e-3 relative off. That refused figure is upstream's: r4133 prints
     // `b2, 0.0121128540006551` under Newton and `b2, 0.0121581112543737` under
-    // the normal algorithm (capi 0.14.5 Newton `b2, 0.0121128540006772`; the
-    // RF-D00-01 settlement's live probe), so this pin is a deliberate divergence
+    // the normal algorithm (capi 0.14.5 Newton `b2, 0.0121128540006772`, all from
+    // the RF-D00-01 settlement's live probe), so this pin is a deliberate divergence
     // from r4133's Newton figure (CLAUDE.md upstream bug 5, never reproduced).
     assert!(
         (newton_gain - normal_gain).abs() <= 1e-10 * normal_gain.abs(),
@@ -998,9 +998,9 @@ fn csv_rows(text: &str) -> Vec<Vec<&str>> {
 /// upstream prints the one-Newton-step-stale current: r4133 prints
 /// `"Line.L1", 1, 1338.9, 548.5` and `"Line.L1", 2, -1330.4, -523.1` under
 /// Newton and `1339.6, 548.8` / `-1331.0, -523.4` under the normal algorithm
-/// (kW, kvar; live `epri-worker` probe, RF-D00-01 settlement, 60 Hz). With the
-/// solver's stamp drop disabled the port printed r4133's Newton rows; the
-/// rebuilt values asserted here are its normal-algorithm rows.
+/// (kW and kvar, live `epri-worker` probe at the RF-D00-01 settlement, 60 Hz).
+/// With the solver's stamp drop disabled the port printed r4133's Newton rows.
+/// The rebuilt values asserted here are its normal-algorithm rows.
 #[test]
 fn newton_export_powers_match_the_normal_algorithm() {
     let command = "Export Powers";
@@ -1032,9 +1032,9 @@ fn newton_export_powers_match_the_normal_algorithm() {
 /// through `GetLosses` (`Common/ExportResults.pas:1192`) over the cache-aware
 /// `Losses` (`Common/CktElement.pas:524-533`): r4133 prints `Line.L1, 8580.566,
 /// 25398.79` under Newton and `8586.077, 25413.53` under the normal algorithm
-/// (W, var; the settlement's live probe). With the solver's stamp drop disabled
-/// the port printed r4133's Newton row; the rebuilt value asserted here is its
-/// normal-algorithm row.
+/// (W and var, the settlement's live probe). With the solver's stamp drop
+/// disabled the port printed r4133's Newton row. The rebuilt value asserted here
+/// is its normal-algorithm row.
 #[test]
 fn newton_export_losses_match_the_normal_algorithm() {
     let command = "Export Losses";
@@ -1064,7 +1064,7 @@ fn newton_export_losses_match_the_normal_algorithm() {
 /// TotalMvar 0.548524, MWLosses 0.0101527, MvarLosses 0.029433` under Newton and
 /// `1.33956, 0.5488, 0.0101586, 0.0294493` under the normal algorithm (the
 /// settlement's live probe). With the solver's stamp drop disabled the port
-/// printed r4133's Newton row; the rebuilt values asserted here are its
+/// printed r4133's Newton row. The rebuilt values asserted here are its
 /// normal-algorithm row.
 #[test]
 fn newton_export_summary_matches_the_normal_algorithm() {
@@ -1301,7 +1301,7 @@ fn newton_show_currents_match_the_normal_algorithm() {
 /// well (`Common/ExportResults.pas:751`, `:977`), so there upstream prints the
 /// stale current: r4133's `Export ElemCurrents` reads `Vsource.source`
 /// conductor 1 at 82.6776 A under Newton and 82.7513 A under the normal
-/// algorithm (the settlement's live `epri-worker` probe); this pin asserts the
+/// algorithm (the settlement's live `epri-worker` probe). This pin asserts the
 /// latter.
 #[test]
 fn newton_reports_read_like_the_normal_algorithm() {
