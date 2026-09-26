@@ -642,7 +642,7 @@ fn gictransformer_pctperm_renders_the_live_rating() {
 /// overwrite. The port renders the live conductor list from all four.
 ///
 /// The three siblings carry a capi witness (233 cases) as well, but that witness
-/// is silent about the 6 231 (`wires`) / 6 232 (`cncables`, `tscables`) cells
+/// is silent about the 6 234 (`wires`) / 6 235 (`cncables`, `tscables`) cells
 /// each row masks on `engines: "r4133"` cases, where the capi channel does not
 /// run at all — the largest exposure in
 /// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` — so they name this pin too.
@@ -1265,7 +1265,7 @@ fn invcontrol_defaults_render_the_live_values() {
 }
 
 /// `load.zipv` — `EmptyCollectionRender`, capi-witnessed on 221 cases and pinned
-/// for the 4 070 cells it masks on 58 r4133-only cases.
+/// for the 4 071 cells it masks on 59 r4133-only cases.
 ///
 /// r4133's arm 33 is live but loops `nZIPV` (`Version8/Source/PCElements/
 /// Load.pas:2354-2357`), so a load that never typed `zipv=` renders `''` where
@@ -1331,7 +1331,7 @@ fn pd_element_perm_and_repair_render_the_live_ratings() {
 }
 
 /// `reactor.kvar` — `EchoDefault`, capi-witnessed on 65 cases and pinned for the
-/// 94 cells it masks on six r4133-only cases.
+/// 110 cells it masks on nine r4133-only cases.
 ///
 /// r4133 has no getter arm for index 4 (`Version8/Source/PDElements/
 /// Reactor.pas:1090-1103`), so the property answers the `'1200'` its

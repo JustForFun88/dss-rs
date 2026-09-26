@@ -5215,6 +5215,114 @@ fn declared_classes(case: &str) -> (BTreeSet<String>, Vec<String>) {
     (classes, unresolved)
 }
 
+/// Which channels really gate each census case, as case lists. The ledger may
+/// `skip` either channel of a `both` case so long as one stays live
+/// (`corpus_gate/ledger.rs`), and the scheduler then dispatches the other alone,
+/// so the manifest flag is not the answer by itself:
+///
+/// * **capi-gating** — its capi channel runs;
+/// * **r4133-only** — its r4133 channel runs and its capi channel does not:
+///   `engines: "r4133"`, or a `both` case whose capi channel is skipped
+///   (RF-D07-07 settlement: that case used to fall in neither bucket, so an echo
+///   row masking its cells on r4133 went unseen by the derivation);
+/// * **r4133-gating** — its r4133 channel runs, whatever capi does.
+#[derive(Debug, Default, PartialEq)]
+struct GatingBuckets {
+    r4133_only: Vec<String>,
+    capi_gating: Vec<String>,
+    r4133_gating: Vec<String>,
+}
+
+/// [`GatingBuckets`] from `(case, engines)` rows and each channel's `skip`s.
+fn gating_buckets(
+    population: &[(String, String)],
+    r4133_skipped: &BTreeSet<String>,
+    capi_skipped: &BTreeSet<String>,
+) -> GatingBuckets {
+    let mut buckets = GatingBuckets::default();
+    for (case, engines) in population {
+        let (capi, r4133) = match engines.as_str() {
+            "both" => (true, true),
+            "capi_v0145" => (true, false),
+            "r4133" => (false, true),
+            other => panic!("{case}: engines={other} is none of the three legal values"),
+        };
+        let capi_runs = capi && !capi_skipped.contains(case);
+        let r4133_runs = r4133 && !r4133_skipped.contains(case);
+        if capi_runs {
+            buckets.capi_gating.push(case.clone());
+        } else if r4133_runs {
+            buckets.r4133_only.push(case.clone());
+        }
+        if r4133_runs {
+            buckets.r4133_gating.push(case.clone());
+        }
+    }
+    buckets
+}
+
+/// The census population both manifest derivations read: every case's
+/// declared classes ([`declared_classes`], asserted fully resolved) and its
+/// [`GatingBuckets`] under the live ledger ([`ledger_skipped_cases`]).
+fn gating_population() -> (BTreeMap<String, BTreeSet<String>>, GatingBuckets) {
+    let lock_path = repo_root().join(POPULATION_LOCK);
+    let lock: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&lock_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
+    )
+    .expect("population.lock.json is JSON");
+    let population = property_population(&lock);
+    let mut classes = BTreeMap::new();
+    for (case, _) in &population {
+        let (declared, unresolved) = declared_classes(case);
+        assert!(
+            unresolved.is_empty(),
+            "{case}: Redirect/Compile targets that resolve to no file ({unresolved:?}) — a \
+             declaration behind them would be invisible to this derivation"
+        );
+        classes.insert(case.clone(), declared);
+    }
+    let buckets = gating_buckets(
+        &population,
+        &ledger_skipped_cases("r4133"),
+        &ledger_skipped_cases("capi_v0145"),
+    );
+    (classes, buckets)
+}
+
+/// **[`gating_buckets`] follows the channels that really run** (RF-D07-07
+/// settlement) — a synthetic population over every `engines` value, with and
+/// without each channel's `skip`. `b` is the case the exposure derivation used
+/// to drop: a `both` case whose capi channel is skipped is r4133-only.
+#[test]
+fn the_gating_buckets_follow_the_channels_that_really_run() {
+    let owned = |cases: &[&str]| -> Vec<String> { cases.iter().map(|c| c.to_string()).collect() };
+    let population: Vec<(String, String)> = [
+        ("a", "both"),
+        ("b", "both"),
+        ("c", "both"),
+        ("d", "r4133"),
+        ("e", "r4133"),
+        ("f", "capi_v0145"),
+        ("g", "capi_v0145"),
+    ]
+    .iter()
+    .map(|(case, engines)| (case.to_string(), engines.to_string()))
+    .collect();
+    let r4133_skipped: BTreeSet<String> = owned(&["c", "e"]).into_iter().collect();
+    let capi_skipped: BTreeSet<String> = owned(&["b", "g"]).into_iter().collect();
+    assert_eq!(
+        gating_buckets(&population, &r4133_skipped, &capi_skipped),
+        GatingBuckets {
+            r4133_only: owned(&["b", "d"]),
+            capi_gating: owned(&["a", "c", "f"]),
+            r4133_gating: owned(&["a", "b", "d"]),
+        },
+        "a case is capi-gating when its capi channel runs, r4133-only when only its r4133 \
+         channel does (a capi-skipped `both` case included), r4133-gating whenever r4133 runs"
+    );
+}
+
 /// **`props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` is complete by derivation**
 /// (RF-D07-07) — the list used to be checked only against itself, so when
 /// GOLDEN_REBASE G1.4a flipped the GIC decks to `engines: "r4133"`
@@ -5226,14 +5334,19 @@ fn declared_classes(case: &str) -> (BTreeSet<String>, Vec<String>) {
 /// derivation works one level up, on tracked evidence only: the census
 /// population and each case's `engines` ([`property_population`], the
 /// manifests' fingerprint), the ledger's channel `skip`s
-/// ([`ledger_skipped_cases`]) and the classes each case's deck declares
-/// ([`declared_classes`]). A row can only mask a cell on an r4133-only case
-/// whose deck declares its class, so every echo row whose class such a case
+/// ([`ledger_skipped_cases`], combined by [`gating_buckets`]) and the classes
+/// each case's deck declares ([`declared_classes`]). A row can only mask a
+/// cell on an r4133-only case whose deck declares its class, so every echo row
+/// whose class such a case
 /// declares must sit in exactly one of the two lists — measured exposed (it
 /// names a pin), or measured unexposed with its class count pinned
 /// (`props_norm::ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES`, whose doc says what
 /// "covered" means for the narrowed and carved-out rows); a row whose class no
-/// r4133-only case declares needs neither, by derivation.
+/// r4133-only case declares needs neither, by derivation. That makes the lists
+/// complete against population moves (a manifest flip, a ledger `skip`, a deck
+/// gaining or losing a class), not against a deck edit that makes a covered
+/// cell differ while every class set stays put — a re-census finds that (the
+/// limit `props_norm::ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES` spells out).
 ///
 /// Two more readings of the same sets: a listed exposure cannot sit on more
 /// cases than declare its class, and a `Capi(n)` witness needs a capi-gating
@@ -5242,34 +5355,8 @@ fn declared_classes(case: &str) -> (BTreeSet<String>, Vec<String>) {
 /// r4133-only now.
 #[test]
 fn the_r4133_only_exposure_list_is_derived_from_the_corpus() {
-    let lock_path = repo_root().join(POPULATION_LOCK);
-    let lock: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&lock_path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", lock_path.display())),
-    )
-    .expect("population.lock.json is JSON");
-    let (r4133_skipped, capi_skipped) = (
-        ledger_skipped_cases("r4133"),
-        ledger_skipped_cases("capi_v0145"),
-    );
-    let mut r4133_only: Vec<(String, BTreeSet<String>)> = Vec::new();
-    let mut capi_gating: Vec<(String, BTreeSet<String>)> = Vec::new();
-    for (case, engines) in property_population(&lock) {
-        let (classes, unresolved) = declared_classes(&case);
-        assert!(
-            unresolved.is_empty(),
-            "{case}: Redirect/Compile targets that resolve to no file ({unresolved:?}) — a \
-             declaration behind them would be invisible to this derivation"
-        );
-        let (skipped, bucket) = match engines.as_str() {
-            "r4133" => (&r4133_skipped, &mut r4133_only),
-            "both" | "capi_v0145" => (&capi_skipped, &mut capi_gating),
-            other => panic!("{case}: engines={other} is none of the three legal values"),
-        };
-        if !skipped.contains(&case) {
-            bucket.push((case, classes));
-        }
-    }
+    let (classes, buckets) = gating_population();
+    let (r4133_only, capi_gating) = (&buckets.r4133_only, &buckets.capi_gating);
     assert!(
         r4133_only.len() >= 80 && capi_gating.len() >= 300,
         "the population read back as {} r4133-only and {} capi-gating case(s) — the lock \
@@ -5278,17 +5365,17 @@ fn the_r4133_only_exposure_list_is_derived_from_the_corpus() {
         capi_gating.len()
     );
 
-    let declaring = |cases: &[(String, BTreeSet<String>)], class: &str| -> Vec<String> {
+    let declaring = |cases: &[String], class: &str| -> Vec<String> {
         cases
             .iter()
-            .filter(|(_, classes)| classes.contains(class))
-            .map(|(case, _)| case.clone())
+            .filter(|case| classes[case.as_str()].contains(class))
+            .cloned()
             .collect()
     };
     let mut problems = Vec::new();
     for row in props_norm::PROPS_ECHO_R4133 {
         let (class, prop) = (row.class, row.prop);
-        let on_r4133 = declaring(&r4133_only, class);
+        let on_r4133 = declaring(r4133_only, class);
         let n = on_r4133.len();
         match (
             props_norm::r4133_only_exposure(class, prop),
@@ -5324,7 +5411,7 @@ fn the_r4133_only_exposure_list_is_derived_from_the_corpus() {
         }
         if let props_norm::EchoWitness::Capi(w) | props_norm::EchoWitness::CapiAndPin(w, _) =
             row.witness
-            && declaring(&capi_gating, class).is_empty()
+            && declaring(capi_gating, class).is_empty()
         {
             problems.push(format!(
                 "{class}.{prop}: a capi witness ({w} case(s)) on a class no capi-gating \
@@ -5343,6 +5430,65 @@ fn the_r4133_only_exposure_list_is_derived_from_the_corpus() {
     assert!(
         problems.is_empty(),
         "the r4133-only exposure lists no longer match the corpus:\n{}",
+        problems.join("\n")
+    );
+}
+
+/// **`props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL` follows the manifests**
+/// (RF-D07-07 settlement) — the live half of
+/// [`the_norm_rows_with_no_in_scope_cell_are_exactly_the_declared_ones`], which
+/// pins the list against the frozen census only.
+///
+/// `props_norm::normalize_r4133` counts a visit on every compared cell of a
+/// row's pair, claimed or not, so a norm row is visited at all exactly when an
+/// r4133-gating case declares its class ([`GatingBuckets`]). Both ways: a row
+/// whose class no r4133-gating case declares must be listed — a manifest flip
+/// or an r4133 `skip` that takes a class's last r4133-gating case away would
+/// otherwise re-open RP2.1 AT1-1's never-visited hole while `bins.tsv` still
+/// shows the old in-scope cells — and a listed row whose class an r4133-gating
+/// case declares is a stale declaration (re-measure, shrink the list, re-freeze
+/// the census rows the frozen pin reads).
+#[test]
+fn the_norm_rows_with_no_in_scope_cell_are_the_classes_no_r4133_gating_case_declares() {
+    let (classes, buckets) = gating_population();
+    assert!(
+        buckets.r4133_gating.len() >= 300,
+        "the population read back as {} r4133-gating case(s) — the lock reader went vacuous",
+        buckets.r4133_gating.len()
+    );
+    let mut problems = Vec::new();
+    for row in props_norm::PROPS_NORM_R4133 {
+        let class = row.class.to_ascii_lowercase();
+        let listed = props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL
+            .iter()
+            .any(|(c, p)| c.eq_ignore_ascii_case(row.class) && p.eq_ignore_ascii_case(row.prop));
+        let declaring: Vec<&String> = buckets
+            .r4133_gating
+            .iter()
+            .filter(|case| classes[case.as_str()].contains(&class))
+            .collect();
+        match (declaring.first(), listed) {
+            (None, false) => problems.push(format!(
+                "{}.{}: no r4133-gating census case declares a {class}, so the gate never visits \
+                 the row and its liveness guard can never fire — list it in \
+                 NORM_ROWS_WITH_NO_IN_SCOPE_CELL (or gate a deck declaring the class on r4133)",
+                row.class, row.prop
+            )),
+            (Some(first), true) => problems.push(format!(
+                "{}.{}: listed in NORM_ROWS_WITH_NO_IN_SCOPE_CELL, but {} r4133-gating census \
+                 case(s) declare a {class} (first: {first}) — the gate visits the row now; \
+                 re-measure it (DSS_PROPS_CENSUS=claims), drop it from the list and re-freeze \
+                 the census rows the frozen pin reads",
+                row.class,
+                row.prop,
+                declaring.len()
+            )),
+            _ => {}
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "NORM_ROWS_WITH_NO_IN_SCOPE_CELL no longer matches the manifests:\n{}",
         problems.join("\n")
     );
 }
