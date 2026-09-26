@@ -61,9 +61,10 @@ deliberate: one `#[ignore]`d diagnostic (`adiakoptics::ckt24_graph_diagnostic`
 — a `.graph` inventory probe, run with `--ignored`, pending the WP-AD.5 driver),
 three `#[ignore]`d manual golden generators in `crates/dss-epri/tests/`
 (`gen_wasm_usermodels`, `gen_wasm_usermodels_wm4`, `gen_wasm_usermodels_wm5`,
-which need `WASM_TWIN_DLL` or `DSS_GEN_WM5=1`), the four that nextest reports as
-*skipped*, and one illustrative ` ```ignore ` doctest (the `define_properties!` macro-DSL
-snippet in `obj/props/mod.rs`, which cannot compile standalone). The `DSS_LIVE_*`
+which need `WASM_TWIN_DLL` or `DSS_GEN_WM5=1`), and one illustrative ` ```ignore `
+doctest (the `define_properties!` macro-DSL snippet in `obj/props/mod.rs`, which
+cannot compile standalone). `cargo nextest` reports the four `#[ignore]`d tests as
+*skipped*. The `DSS_LIVE_*`
 / `DSS_EXPENSIVE_TESTS` / `DSS_AD_*` env knobs below are opt-in **diagnostics**
 outside the gate — they print `SKIPPED` when unset and never gate a commit.
 
