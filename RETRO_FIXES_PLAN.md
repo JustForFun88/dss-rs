@@ -39,14 +39,16 @@ Before wave 1: land the finished, audited `lane-e` (`0240372a`, GOLDEN_REBASE G1
    `tmp/retro_fix/state/<step>.md`). Scope = exactly the step's uids and `files`. Shared
    documents (§4) are NOT edited by code/test steps: the executor appends the needed doc change
    to `tmp/retro_fix/notes/<doc-slug>.md` (`### <step> / <uid>` + the exact text to change).
-2. **Gate green** — the five commands (fmt, clippy ×2, test ×2); plus
+2. **Gate green** — the seven commands of CLAUDE.md "## Gate" (fmt, clippy ×2,
+   `cargo nextest run --workspace` in both lanes, `cargo test --workspace --doc` in both lanes:
+   RF-I00-01 replaced the five-command set of c67782d2); plus
    `pwsh -File tools/lanes/lane_diff.ps1` when a compat kernel, a lane alias or the solver is
    touched. Steps whose diff is documentation only (`needs_gate: no`) run `cargo fmt --all
    --check` plus, in both lanes, `cargo test -p dss-core --test oracle_parity_cfg_gate` (the
    citation rails), `--test reliability_pins` (reads `TESTING.md` / `TOLERANCE_NOTES.md` /
    `golden-rebase.md`) and `--test props_r4133_replay` (reads the rp3 record and the props
    README) instead of the full gate; a diff that touches any `.rs`/`.json`/`.dss`/`.py` file
-   runs the full gate regardless of the flag. Commands 4 and 5 run with
+   runs the full gate regardless of the flag. Commands 4 and 5 (the two nextest runs) run with
    `DSS_ORACLE_TIMEOUT_SECS=600` (the CI value of `.github/workflows/ci.yml`; it lengthens only
    the per-request oracle deadline, never the comparison — user decision 2026-09-26, after the
    120 s default produced 1–4 infra-red re-runs per step while six lanes gated at once).

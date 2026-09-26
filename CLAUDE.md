@@ -171,11 +171,16 @@ English upstream-ready reports for all confirmed r4133 bugs live in
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
-cargo test --workspace
-cargo test --workspace --features dss-core/oracle-parity
+cargo nextest run --workspace
+cargo nextest run --workspace --features dss-core/oracle-parity
+cargo test --workspace --doc
+cargo test --workspace --doc --features dss-core/oracle-parity
 ```
 
-Those five commands are the mandatory gate. Since DE_PASCALIZE **Stage F**
+Those seven commands are the mandatory gate (RETRO_FIXES RF-I00-01): commands
+4-5 run the pinned `cargo-nextest` of `.config/nextest.toml` (every test in its
+own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-7
+run the doctests, which nextest does not. Since DE_PASCALIZE **Stage F**
 (the `oracle-parity` feature split) the engine ships in **two lanes**, and both
 must be green:
 
@@ -215,12 +220,12 @@ the default lane bit-identical to the parity lane and gives it precisely the
 parity lane's oracle standing. Read the second term back in the moment Δ stops
 being zero (expected at MULTITHREADING M3c and RESONANCE WP-R1).
 
-It is not part of `cargo test` (two release builds, ~215 MB of dumps per lane):
+It is not part of the gate's test run (two release builds, ~215 MB of dumps per lane):
 run it whenever a `compat` kernel, a lane alias or the solver changes.
 
 The unified live corpus gate
 (`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
-of `cargo test` and runs **unconditionally**: one scheduler-driven test
+of the gate's test run (commands 4-5) and runs **unconditionally**: one scheduler-driven test
 (`corpus_gate_all_cases_match_engines`) walks all 526 manifest cases — solving
 the 522 that are not abort-by-design
 (vendored `tests/corpus/electricdss-tst` decks + the three synthetic families)
@@ -230,7 +235,7 @@ DLL (`r4133`), partitioned by the divergence ledger `tests/corpus/ledger.json`
 (every entry must be hit; stale entries fail the gate). Prerequisites: the
 pinned dss-python (`tools/golden/PIN.txt`) must be installed — without it the
 gate fails rather than skipping; the r4133 DLL is git-tracked and its
-`epri-worker` bridge is built by `cargo test` itself (Windows-only —
+`epri-worker` bridge is built by the gate's own `cargo nextest run` (Windows-only —
 `crates/dss-epri` is `#[cfg(windows)]`, bar its DLL-free `guard` module, ungated
 since GOLDEN_REBASE G1.10a so all three producers share one classification). New tests read feeders from the
 vendored corpus, never from `.inputs/` at runtime.
