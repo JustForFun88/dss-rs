@@ -70,7 +70,8 @@ use harness::scratch::{self, ScratchCopy};
 use harness::tol_for;
 
 // ---------------------------------------------------------------------------
-// The five live demand-interval cases, run once for the whole binary.
+// The five live demand-interval cases, one memo per deck (`CASE_RUNS`): each
+// deck runs at most once per process.
 // ---------------------------------------------------------------------------
 
 /// One live `compare_di` case: the manifest row's own deck, `post` block and
@@ -1723,6 +1724,11 @@ const DI_LIVE_CELLS: usize = 4_922_812;
 /// file kind (or a lost one) reds here and gets a class before it can be compared.
 #[test]
 fn the_di_class_table_covers_every_column_of_every_live_di_file() {
+    // Each case is looked up by its label (`case_run`), so a repeated label
+    // would read another case's memo: the five labels must be distinct.
+    let labels: BTreeSet<&str> = DI_CASES.iter().map(|case| case.label).collect();
+    assert_eq!(labels.len(), DI_CASES.len(), "the five DI cases");
+
     let mut shapes: BTreeSet<(String, usize, bool)> = BTreeSet::new();
     let (mut files, mut columns, mut cells) = (0usize, 0usize, 0usize);
 
@@ -1772,12 +1778,4 @@ fn the_di_class_table_covers_every_column_of_every_live_di_file() {
     assert_eq!(files, DI_LIVE_FILES, "live DI files");
     assert_eq!(columns, DI_LIVE_COLUMNS, "live DI columns classified");
     assert_eq!(cells, DI_LIVE_CELLS, "live DI cells classified");
-    // Each case is looked up by its label, so a repeated label would read
-    // another case's memo: the five labels are distinct, and every memo ran.
-    let labels: BTreeSet<&str> = DI_CASES.iter().map(|case| case.label).collect();
-    assert_eq!(labels.len(), DI_CASES.len(), "the five DI cases");
-    assert!(
-        CASE_RUNS.iter().all(|memo| memo.get().is_some()),
-        "every DI case ran"
-    );
 }
