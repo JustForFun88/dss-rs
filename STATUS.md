@@ -30,7 +30,7 @@
 
 **Era.** Post-acceptance. The 1:1 behavioral port is finished and
 referee-certified (2026-07-11); `PORTING_PLAN.md` is history. The order of all
-active work is `PLAN_SEQUENCE.md`; the binding conventions and the five-command
+active work is `PLAN_SEQUENCE.md`; the binding conventions and the seven-command
 gate are `CLAUDE.md`. The 2026-08-02 user policy is in force: **EPRI r4133 is
 the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
 and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
@@ -189,6 +189,10 @@ D42(2)'s two universals; `min lv bus`, an argmin over a bit-identical tie), `DI_
 522 live; `FORCED_{PROPS,ELEMENT_EXTRAS,PDELEMENTS,BUS,ZSC,TOPOLOGY,INC_MATRIX,RUN_FILES}_POPULATION` = (443, 312, 87, 44), `FORCED_DERIVED_POPULATION`
 = (445, 314, 87, 44), `FORCED_DI_POPULATION` = (522, 366, 101, 55) — the one forced surface outside that equality; no golden byte, |Δ| = 0 throughout; `WP_G1_MODES` **111** (**20** `Impure`), ledger **61** / 35 causes; the **G1.11′**
 close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP-G3–G5 remain.
+
+**RETRO_FIXES (settle the live findings of the 2026-09 retro audits) — OPEN**, run in waves of up to three lanes per
+[`RETRO_FIXES_PLAN.md`](RETRO_FIXES_PLAN.md), one record block per step in
+[`retro-fixes.md`](docs/phase-records/retro-fixes.md). Landed: RF-I00-01 `934ccb09`. Next: wave 101.
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
@@ -349,7 +353,7 @@ each row's measured cost.
   re-probe the skip-bearing cases with `DSS_GATE_SEED_LEDGER=1
   DSS_GATE_SEED_ONLY=<case>` and delete any entry whose cause upstream has fixed,
   so the r4133 channel re-lights instead of staying dark forever.
-- **`CorpusGuard` leaks deck-written artifacts under concurrency — root cause FOUND and FIXED at GOLDEN_REBASE G1.10a (2026-09-06); the item stays OPEN** (first seen G1.2 2026-08-29; drop-order mechanism
+- **`CorpusGuard` leaks deck-written artifacts under concurrency — root cause FOUND and FIXED at GOLDEN_REBASE G1.10a (2026-09-06); CLOSED by RETRO_FIXES RF-I00-01 (2026-09-26), bar the `espvlcontrol` sentences at its end** (first seen G1.2 2026-08-29; drop-order mechanism
   measured at G1.6b). Unfiltered `cargo test --workspace` runs intermittently leave untracked deck-written exports in the tracked corpus tree — nearly always `tests/corpus/electricdss-tst/Test/AutoTrans/`
   (`Auto3bus_*` / `AutoHLT_*` `.txt`, from the decks' own `export … file=` lines). **Forty-two sightings** 2026-08-29 … 2026-09-06 (G1.10a ×8, the RP rounds ×10, four merges ×7, G1.7 ×4, G1.8 and G1.6(i)
   ×3 each, the rest across G1.0–G1.6(ii); the `lane-b` chain retired its tally — nearly every unfiltered run left a set), 1 … 36 files per run; every set was removed before its commit and no tracked corpus
@@ -363,7 +367,7 @@ each row's measured cost.
   owner: the presence re-check after the sweep has no bounded re-list, so a delete-pending entry (a scanner still holding a just-written export) is reported as a leak — four parity reds in
   `Test/AutoTrans/` under concurrent load, every file gone from disk afterwards, the cases green scoped and on the quiet machine (**D23**). The same shape hides in **gitignored** droppings: two stale
   `*_SavedVoltages.dbl` in the main tree (one dating from 2026-09-04) read as pre-existing and shrank `SCRATCH_FILE_DECLINES` to (8, 8) until this merge deleted them by name. The single-case `espvlcontrol`
-  "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced a circuit and prints the deck's size on disk.
+  "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced a circuit and prints the deck's size on disk. **Closed by RETRO_FIXES RF-I00-01 (2026-09-26):** no test writes under `tests/corpus/` any more - measured per test binary (72 targets x 0 changes), not enforced for plain in-place compiles of decks with no writing verb; every former tree writer and every corpus-gate producer runs a per-run scratch copy (`harness::scratch::ScratchCopy`, `1d92c5eb` / `bfa5e109` / `1696469b`) removed within 25 x 200 ms, and the corpus gate fails on a change of the tree's listing or mtimes during its own walk (`scheduler::GateRun::assert_complete`, `135a8a59`); 0 tree changes in every gate run from part 1's run 5 on, both lanes. The `espvlcontrol` compiled-to-no-circuit shape stays with R11 / RF-D09-06; the capi one-shot's native death on that deck is RF-I00-02.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
   (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `BusTotalMiles` and its siblings are
   zeroed per meter on its `SequenceList`'s FROM bus and read on the TO bus, so a zone-boundary bus
@@ -457,10 +461,14 @@ both lanes and never tagged.
 ## 6. How to run / regenerate
 
 ```bash
-# Gate (must be green before any commit)
+# Gate (must be green before any commit; the seven commands of CLAUDE.md "## Gate")
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+cargo nextest run --workspace
+cargo nextest run --workspace --features dss-core/oracle-parity
+cargo test --workspace --doc
+cargo test --workspace --doc --features dss-core/oracle-parity
 
 # Run a script
 cargo run -p dss-cli -- path\to\script.dss
