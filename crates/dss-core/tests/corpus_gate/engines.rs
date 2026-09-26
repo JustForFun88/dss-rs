@@ -1373,9 +1373,10 @@ pub(crate) fn case_digest(folded: &str) -> u64 {
 /// Where one (case, channel) DI capture is copied to:
 /// `<target>/corpus_gate/di/<case key>/<channel>` (coordinator decision D42(5)).
 ///
-/// The demand-interval tree is run-created, so the channel's `CorpusGuard`
-/// sweeps it away at the end of the run — while the comparison happens here,
-/// later, after the port has re-run the same case in the same directory. The
+/// The demand-interval tree is run-created, so the channel's guard sweeps it
+/// away at the end of the run (inside the channel's scratch copy, which is then
+/// removed — RF-I00-01) — while the comparison happens here, later, after the
+/// port has re-run the same case in its own copy. The
 /// transport therefore COPIES the selected files into this directory (never
 /// moves them: the guard must still sweep the original and G1.10a must still see
 /// its name).
@@ -1387,7 +1388,7 @@ pub(crate) fn case_digest(folded: &str) -> u64 {
 /// in the two one-shot handles' own calls ([`Oracle::run_case`],
 /// [`EpriOneShot::call`]) so a request built by hand carries one too (finding
 /// AT3-5); the attachment is idempotent. The
-/// runner removes it inside its own `CorpusGuard` bracket after a SUCCESSFUL
+/// runner removes it after a SUCCESSFUL
 /// compare (`runner.rs`, [`remove_di_sidecar`]). A case that FAILED keeps its
 /// copies deliberately, for triage, and the next run of that case empties them.
 /// No guard ever sweeps this tree — it lives under the gate's own scratch root,

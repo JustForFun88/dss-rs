@@ -60,7 +60,7 @@ use manifest::{
     AD_OFF_REASONS, FAMILIES, SolvableCase, ad_disposition_is_valid, corpus_file, family_file,
     load_family, load_solvable, manifests_dir,
 };
-use runner::{CorpusGuard, panic_msg, run_and_compare};
+use runner::{panic_msg, run_and_compare};
 use scheduler::{CaseOutcome, GateRun, run_gate};
 
 // ===========================================================================
@@ -1256,17 +1256,11 @@ fn the_two_transports_agree_on_the_bus_capture_of_a_gated_both_case() {
     case.compare_bus = true; // scheduler::force_bus
     let abs = family_file("asymmetric", &case.path);
 
-    // Coordinator decision D35(3): this test drives BOTH oracle transports on a
-    // corpus deck, so it is a producer in that case directory exactly like the
-    // scheduler's own run and must hold the same exclusive claim — otherwise it
-    // races the gate's cases (and the `#[test]`s that compile decks in place) in
-    // the same binary, which is the shape the one-off
-    // `espvlcontrol.dss [capi] "You must create a new circuit object first"` red
-    // took (`runner::CorpusGuard`, D33(2)/D35(2)).
-    let _guard = runner::CorpusGuard::new(&abs);
-
+    // RF-I00-01: each transport compiles its own fresh scratch copy (capi's
+    // inside `Oracle::run_case`), so this test runs no producer in the vendored
+    // case directory and needs no claim on it: the D35(3) race with the gate's
+    // own run of the case went away with the shared directory.
     let capi = Oracle::for_spec(None).run_case(&abs, &case);
-    // RF-I00-01: each transport compiles its own fresh scratch copy.
     let resp = scratch::in_copy(&abs, "r4133", |deck| {
         engines::EpriOneShot::new().call(&engines::build_run_request(deck, &abs, &case))
     });
@@ -1564,13 +1558,9 @@ fn the_two_transports_agree_on_the_short_circuit_capture_of_a_gated_both_case() 
     case.compare_bus = true; // scheduler::force_bus; `compare_zsc` implies it
     let abs = family_file("modes", &case.path);
 
-    // The same D35(3) claim its bus-surface sibling takes: a two-transport
-    // producer in a corpus case directory holds the directory for the whole
-    // case (`runner::CorpusGuard`).
-    let _guard = runner::CorpusGuard::new(&abs);
-
+    // RF-I00-01: each transport compiles its own fresh scratch copy, exactly
+    // as in the bus-surface sibling.
     let capi = Oracle::for_spec(None).run_case(&abs, &case);
-    // RF-I00-01: each transport compiles its own fresh scratch copy.
     let resp = scratch::in_copy(&abs, "r4133", |deck| {
         engines::EpriOneShot::new().call(&engines::build_run_request(deck, &abs, &case))
     });
@@ -1875,11 +1865,12 @@ fn the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure() {
         node_counts,
     } in decks
     {
-        let abs = corpus_file(rel);
+        // RF-I00-01: the port compiles a fresh scratch copy of the deck.
+        let copy = scratch::ScratchCopy::new(&corpus_file(rel), scratch::PORT);
         let scratch = ad_scratch("dist");
         let mut dss = Dss::new();
         dss.command("clear");
-        dss.command(&format!("compile \"{abs}\""));
+        dss.command(&format!("compile \"{}\"", copy.deck()));
         dss.command(&format!("set datapath=\"{}\"", scratch.display()));
         dss.command("solve");
         let views = dss.all_bus_voltages();
@@ -1914,6 +1905,8 @@ fn the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure() {
             "{rel}: this pin is vacuous unless the deck's zone carries a distance"
         );
         let _ = std::fs::remove_dir_all(&scratch);
+        drop(dss);
+        copy.finish();
     }
 }
 
@@ -1952,11 +1945,15 @@ fn the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure() {
 /// merged lines still answer `kft`.
 #[test]
 fn the_reduced_midi_deck_reports_the_merged_lines_kft_distances() {
-    let abs = family_file("modes", "reduce/midi_reduce.dss");
+    // RF-I00-01: the port compiles a fresh scratch copy of the deck.
+    let copy = scratch::ScratchCopy::new(
+        &family_file("modes", "reduce/midi_reduce.dss"),
+        scratch::PORT,
+    );
     let scratch = ad_scratch("midi-reduce-dist");
     let mut dss = Dss::new();
     dss.command("clear");
-    dss.command(&format!("compile {abs:?}"));
+    dss.command(&format!("compile {:?}", copy.deck()));
     dss.command(&format!("set datapath={:?}", scratch.display().to_string()));
 
     // The deck reduces and re-solves itself; the three merges are its point.
@@ -1990,6 +1987,8 @@ fn the_reduced_midi_deck_reports_the_merged_lines_kft_distances() {
         assert_eq!(all_bus[i], km, "bus {name} AllBusDistances slot");
     }
     let _ = std::fs::remove_dir_all(&scratch);
+    drop(dss);
+    copy.finish();
 }
 
 /// GOLDEN_REBASE **G1.4d** — the port's own `AllPCEatBus` / `AllPDEatBus`
@@ -2236,17 +2235,18 @@ fn the_makeposseq_xfmr_at_bus_wires_are_each_channels_own_walk() {
 
 /// `modes:makeposseq/makeposseq_xfmr.dss` compiled the way the gate runs it
 /// (the deck issues its own `solve`, `makeposseq` and second `solve`), in a
-/// scratch data directory so nothing is written beside the corpus.
+/// fresh scratch copy (RF-I00-01) so nothing is written beside the corpus. The
+/// copy is removed before the solved circuit is handed back: the callers only
+/// query it in memory, and a handle the port still held would red here.
 fn makeposseq_xfmr_solved() -> Dss {
     let abs = family_file("modes", "makeposseq/makeposseq_xfmr.dss");
-    let scratch = ad_scratch("makeposseq-xfmr-at-bus");
-    let mut dss = Dss::new();
-    dss.command("clear");
-    dss.command(&format!("set datapath={:?}", scratch.display().to_string()));
-    dss.command(&format!("compile {abs:?}"));
-    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-    let _ = std::fs::remove_dir_all(&scratch);
-    dss
+    scratch::in_copy(&abs, scratch::PORT, |deck| {
+        let mut dss = Dss::new();
+        dss.command("clear");
+        dss.command(&format!("compile {deck:?}"));
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss
+    })
 }
 
 /// The text of the function whose signature line contains `head`, up to the
@@ -2443,12 +2443,14 @@ fn corpus_live_properties() {
         case.compare_all_properties = true;
         let oref = &oracle;
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _guard = CorpusGuard::new(abs);
+            // RF-I00-01: the capi run copies inside `Oracle::run_case`; the
+            // port compiles its own fresh copy, removed after the sweep.
             let oc = oref.run_case(abs, &case);
             let tol = harness::tol_for(&case.kind);
+            let copy = scratch::ScratchCopy::new(abs, scratch::PORT);
             let mut dss = Dss::new();
             dss.command("clear");
-            dss.command(&format!("compile \"{abs}\""));
+            dss.command(&format!("compile \"{}\"", copy.deck()));
             for p in &case.post {
                 dss.command(p);
             }
@@ -2483,6 +2485,8 @@ fn corpus_live_properties() {
                     label,
                 );
             }
+            drop(dss);
+            copy.finish();
             (elems, cmps)
         }));
         match res {
@@ -2666,16 +2670,32 @@ fn ad_solve_ad(abs: &str, controls_off: bool) -> Result<Dss, String> {
     Ok(dss)
 }
 
+/// Both arms of one AD sweep case, each in its own fresh scratch copy
+/// (RF-I00-01): the vendored deck is never compiled in place.
+#[allow(clippy::type_complexity)]
+fn ad_arms_in_copies(
+    abs: &str,
+    controls_off: bool,
+) -> (
+    Result<BTreeMap<String, Complex64>, String>,
+    Result<BTreeMap<String, Complex64>, String>,
+) {
+    let vn = scratch::in_copy(abs, scratch::PORT, |deck| {
+        ad_solve_normal(deck, controls_off).map(|d| ad_node_voltages(&d))
+    });
+    let va = scratch::in_copy(abs, scratch::PORT, |deck| {
+        ad_solve_ad(deck, controls_off).map(|d| ad_node_voltages(&d))
+    });
+    (vn, va)
+}
+
 fn ad_run_case_abs(abs: &str, label: &str, ad: &str, full: bool) {
     let controls_off = !full;
-    let _guard = CorpusGuard::new(abs);
-    let vn = ad_node_voltages(
-        &ad_solve_normal(abs, controls_off)
-            .unwrap_or_else(|e| panic!("AD sweep {label}: normal arm failed: {e}")),
-    );
-    let va = ad_node_voltages(&ad_solve_ad(abs, controls_off).unwrap_or_else(|e| {
+    let (vn, va) = ad_arms_in_copies(abs, controls_off);
+    let vn = vn.unwrap_or_else(|e| panic!("AD sweep {label}: normal arm failed: {e}"));
+    let va = va.unwrap_or_else(|e| {
         panic!("AD sweep {label}: `{ad}` disposition but AD init/solve failed: {e}")
-    }));
+    });
     let (gap, node, matched) = ad_max_rel_gap(&vn, &va);
     assert!(
         matched >= vn.len().saturating_sub(vn.len() / 20).max(1),
@@ -2703,12 +2723,15 @@ fn ad_decompose_probe() {
         return;
     };
     let abs = corpus_file(&rel);
-    let _guard = CorpusGuard::new(&abs);
-    let vn = ad_node_voltages(&ad_solve_normal(&abs, true).expect("orig normal"));
+    // RF-I00-01: every compile below reads a fresh scratch copy of the deck.
+    let vn = scratch::in_copy(&abs, scratch::PORT, |deck| {
+        ad_node_voltages(&ad_solve_normal(deck, true).expect("orig normal"))
+    });
+    let copy = scratch::ScratchCopy::new(&abs, scratch::PORT);
     let scratch = ad_scratch("decomp");
     let mut dss = Dss::new();
     dss.command("clear");
-    dss.command(&format!("compile \"{abs}\""));
+    dss.command(&format!("compile \"{}\"", copy.deck()));
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
     dss.command("set controlmode=off");
     dss.command("solve mode=snap");
@@ -2741,6 +2764,8 @@ fn ad_decompose_probe() {
          leg2 AD (inter-normal vs AD)                       = {leg2:.3e} @ {n2} (matched {m2})\n  \
          total (orig-normal vs AD)                          = {tot:.3e} @ {nt}"
     );
+    drop((dss, di));
+    copy.finish();
 }
 
 #[test]
@@ -2827,10 +2852,7 @@ fn ad_classify_families() {
             let abs = family_file(fam, &c.path);
             let path = format!("{fam}/{}", c.path);
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let _guard = CorpusGuard::new(&abs);
-                let vn = ad_solve_normal(&abs, true).map(|d| ad_node_voltages(&d));
-                let va = ad_solve_ad(&abs, true).map(|d| ad_node_voltages(&d));
-                (vn, va)
+                ad_arms_in_copies(&abs, true)
             }));
             let (proposal, gap, detail) = ad_classify_outcome(res);
             println!("ADCLASSIFY\t{path}\t{proposal}\t{gap:.3e}\t{detail}");
@@ -2883,11 +2905,7 @@ fn ad_classify(cases: &[AdSweepCase]) {
     for c in cases {
         let path = c.path.clone();
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let abs = corpus_file(&path);
-            let _guard = CorpusGuard::new(&abs);
-            let vn = ad_solve_normal(&abs, true).map(|d| ad_node_voltages(&d));
-            let va = ad_solve_ad(&abs, true).map(|d| ad_node_voltages(&d));
-            (vn, va)
+            ad_arms_in_copies(&corpus_file(&path), true)
         }));
         let (proposal, gap, detail) = ad_classify_outcome(res);
         println!("ADCLASSIFY\t{path}\t{proposal}\t{gap:.3e}\t{detail}");

@@ -131,7 +131,9 @@ fn is_under(p: &Path, dir: &Path) -> bool {
 /// tree below `root` sparsely (only the members above), so a `../` reference
 /// climbs to the same file. Copying the whole ancestor instead would move
 /// ~11 GB per gate run (38 decks climb to `Version8/Distrib`, 126 MB each);
-/// the sparse closure moves ~0.35 GB, and a member it missed would show as a
+/// the sparse closures move ~0.58 GB per lane through the scheduler (1784
+/// copies, 30 746 files, measured 2026-09-26) plus ~0.1 GB through the AD
+/// sweep (72 copies), and a member a closure missed would show as a
 /// port compile error that no manifest `expect_warnings` covers
 /// (`runner::assert_expected_warnings`), never as a silent change.
 #[derive(Debug, Clone)]

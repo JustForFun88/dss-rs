@@ -28,8 +28,8 @@ use crate::harness::{
 use crate::manifest::{EngineChannel, SolvableCase};
 
 // ---------------------------------------------------------------------------
-// Corpus guard (unchanged; keeps the vendored corpus pristine across both
-// engines' report/trace writes). RAII: created before the runs, restores on drop.
+// Corpus guard: no gate producer takes it since RF-I00-01 part 1 (every run
+// compiles a scratch copy, `crate::scratch`); only its rails, deleted in part 2.
 // ---------------------------------------------------------------------------
 
 /// Buffer small files up to this size for overwrite-restore. Mirrors the oracle
@@ -58,13 +58,13 @@ struct DirClaim {
 /// Live claims per **canonical** case directory, plus the condvar a producer
 /// waiting for a directory parks on.
 ///
-/// The corpus puts many decks in one folder (`Test/AutoTrans`,
-/// `IEEETestCases/8500-Node`, `StorageControllerTechNote/Support`, …), and this
-/// test binary has more than one producer walking them. The gate's scheduler is
-/// not the problem — its task unit IS the case-dir group, so its own cases in
-/// one folder are already sequential — but libtest runs the gate `#[test]`
+/// Historical (RF-I00-01 part 1 moved every producer onto a scratch copy): the
+/// corpus puts many decks in one folder (`Test/AutoTrans`, `8500-Node`, …), and
+/// this test binary had more than one producer walking them. The scheduler was
+/// not the problem — its task unit WAS the case-dir group, so its own cases in
+/// one folder were sequential — but libtest runs the gate `#[test]`
 /// concurrently with its siblings in the same binary, and
-/// `corpus_ad_matches_normal_mode` compiles `ad_sweep.json`'s decks **in place**
+/// `corpus_ad_matches_normal_mode` compiled `ad_sweep.json`'s decks **in place**
 /// (`8500-Node/Run_8500Node.dss`, `Run_8500Node_Unbal.dss` and
 /// `Run_RecloserSiting.DSS` all carry `ad: "pf"`). A deck's own `Show`/`Export`
 /// lines run during `compile`, i.e. before `ad_solve_normal` re-points
@@ -1915,9 +1915,9 @@ pub(crate) fn compare_with_result(
             );
             // G1.10b: the CONTENTS of the members the gate selected. The oracle's
             // bytes came back through the case's sidecar directory (coordinator
-            // decision D40(6)); read them — which also deletes the directory, inside
-            // this case's `CorpusGuard` bracket — and pair them with the port's,
-            // which the probe above read in place before its sweep. The same
+            // decision D40(6)); read them — which also deletes the directory — and
+            // pair them with the port's, read in its own scratch copy (RF-I00-01)
+            // by the probe above before its sweep. The same
             // `excluded` closure partitions both surfaces: a name whose PRESENCE is
             // triaged has no contents to compare either.
             let oracle_contents = harness::run_files::read_sidecar(
@@ -1992,8 +1992,8 @@ pub(crate) fn compare_with_result(
 /// demand-interval capture back off its sidecar directory.
 ///
 /// The transports cannot answer with the file TEXT: the tree is run-created, so
-/// each channel's own `CorpusGuard` sweeps it away at the end of that run, long
-/// before the port re-runs the same case in the same directory and this gate
+/// each channel's guard sweeps it away in the channel's scratch copy (RF-I00-01)
+/// before the port re-runs the same case in its own copy and this gate
 /// compares. They therefore COPY the selected members into
 /// `<target>/corpus_gate/di/<case key>/<channel>/`
 /// (`engines::di_sidecar_dir`, coordinator decision D42(5)) and reply with
