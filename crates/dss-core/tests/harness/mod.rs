@@ -4736,9 +4736,9 @@ static SEQ_ARM_POSSEQ_R4133: std::sync::atomic::AtomicUsize =
 /// census the *gating* population: `seq_floors` calls the comparator at 24
 /// fixture sites in this same test binary — six of them deliberately on the
 /// 1-phase positive-sequence arm, four of those with [`PropsChannel::R4133`] —
-/// and under the mandatory `cargo test --workspace` shape those calls used to
-/// land in these statics, so the epilogue guard read `(297 915, 81, 4)` instead
-/// of the gate-only `(297 896, 79, 0)` and failed every time. Pinned by
+/// and under `cargo test` (one process per test binary, the gate's runner
+/// until RF-I00-01) those calls landed in these statics: the guard read
+/// `(297 915, 81, 4)`, not the gate-only `(297 896, 79, 0)`, and failed. Pinned by
 /// `seq_floors::a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census`.
 pub fn record_seq_arm(arm: SeqArm, channel: PropsChannel) {
     use std::sync::atomic::Ordering::Relaxed;
@@ -6685,9 +6685,9 @@ mod seq_floors {
     /// **Why a bounded delta and not `== 0`** (coordinator decision **D31**,
     /// 2026-09-05): the gating population now contributes
     /// [`super::SEQ_ARM_CENSUS_MEASURED`]`.2` rows to `SEQ_ARM_POSSEQ_R4133`
-    /// (`modes/makeposseq/makeposseq_gic.dss`), and the ~200 s gate test runs on a
-    /// sibling thread of this same binary, so no absolute value of that counter is
-    /// assertable here. What IS assertable is a bound the gate can never reach:
+    /// (`modes/makeposseq/makeposseq_gic.dss`). Under `cargo test` the gate test
+    /// shares this process (nextest gives it its own), so no absolute value holds
+    /// under both runners. What IS assertable is a bound the gate never reaches:
     /// the gate's total contribution over the whole run is that constant, so
     /// driving the comparator strictly more than that many times and requiring the
     /// counter to move by at most that much fails the instant the comparator

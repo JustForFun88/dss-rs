@@ -6,10 +6,17 @@
 //! directory closure ([`Closure`]) is copied into it, the producer compiles the
 //! COPY's deck, and the copy is removed afterwards within one bounded budget
 //! ([`COPY_REMOVE_ATTEMPTS`] x [`COPY_REMOVE_PAUSE`]). A copy that outlives the
-//! budget fails the case naming its producer: that is the D32(2) engine-leak
-//! rail on its new footing (a handle the producer still holds, the dss_capi
-//! Storage `DebugTrace` class, blocks the removal exactly as it blocked the
-//! old sweep).
+//! budget fails the case naming its producer. For the port, whose engine lives
+//! in the gate's own process, that is the D32(2) engine-leak rail on its new
+//! footing (a handle the engine still holds blocks the removal exactly as it
+//! blocked the old sweep). An oracle producer's process is gone before its copy
+//! is removed (a pooled worker is recycled after every case unless
+//! `DSS_GATE_RECYCLE_AFTER` > 1, a one-shot exits), so its lifetime handles,
+//! the dss_capi Storage `DebugTrace` class among them, are released by then:
+//! for the two oracle channels the leak rail stays the transport's
+//! `sweep_failed` report (`runner::assert_swept_clean`), and
+//! `engines::transport_cwd_tests` keep a worker alive to prove the step back
+//! out of the copy.
 //!
 //! Why: parent (`Test/`) and child (`Test/AutoTrans/`) case directories ran
 //! concurrently in ONE shared tree, and a recursive snapshot reading a sibling
@@ -35,12 +42,17 @@
 //!
 //! Shared (RF-I00-01 part 1, coordinator ruling 2026-09-26 14:30): the corpus
 //! gate re-exports this module (`corpus_gate/scratch.rs`, which keeps the
-//! rails) and every other test binary that runs a vendored deck compiles a
-//! copy made here (`di_pins`, `run_files_pins`, `run_file_contents_pins`,
-//! `props_r4133_pins`); `dss-epri`'s IEEE13 smoke and mode walk make theirs
-//! with `dss_epri::smoke::Ieee13Copy`. All of them remove their copies within
-//! the one budget of `dss_epri::guard` ([`COPY_REMOVE_ATTEMPTS`] x
-//! [`COPY_REMOVE_PAUSE`]).
+//! rails), and every test binary that part 1 measured WRITING into the tree
+//! compiles a copy made here (`di_pins`, `run_files_pins`,
+//! `run_file_contents_pins`, `props_r4133_pins`), and `dss-epri`'s IEEE13 smoke
+//! and mode walk make theirs with `dss_epri::smoke::Ieee13Copy`. All of them remove
+//! their copies within the one budget of `dss_epri::guard`
+//! ([`COPY_REMOVE_ATTEMPTS`] x [`COPY_REMOVE_PAUSE`]). "No test writes under
+//! `tests/corpus/`" is a MEASURED property, not a structural one: the lib unit
+//! tests and several pin binaries still compile vendored decks that carry no
+//! writing verb in place, read-only (part 1 attributed 72 targets x 0 changes),
+//! nothing refuses a plain in-place compile, and [`TreePhoto`] sees a writer
+//! only while it overlaps the corpus gate's own walk.
 // Each including binary uses a subset (`props_r4133_pins` includes this file
 // alone, through `#[path]`).
 #![allow(dead_code)]
@@ -272,7 +284,18 @@ pub fn closure_of(deck: &Path) -> Closure {
                         p = with_ext;
                     }
                 }
-                if !listings.is_file(&p) || !is_under(&p, &corpus) {
+                if !listings.is_file(&p) {
+                    continue;
+                }
+                if !is_under(&p, &corpus) {
+                    // A RELATIVE reference that climbs out of `tests/corpus/`
+                    // cannot be carried into a copy (there it would resolve
+                    // under the scratch root, not at its vendored target), so
+                    // it is listed like an absolute one, for the pinned
+                    // population to see, instead of being skipped in silence.
+                    if !absolute {
+                        outside.insert(tok.clone());
+                    }
                     continue;
                 }
                 let script_ref = redirects || is_script(&p);
@@ -423,13 +446,21 @@ impl ScratchCopy {
     /// would push the deepest decks' copies past `MAX_PATH`, which neither
     /// oracle engine opts out of.
     pub fn new(case_path: &str, producer: &'static str) -> ScratchCopy {
+        Self::new_in(case_path, producer, run_nonce())
+    }
+
+    /// [`Self::new`] with the run nonce given: the seam the fresh-directory
+    /// rail (`scratch::tests::a_run_directory_that_already_exists_is_refused`)
+    /// drives with a nonce it has already used, so a pre-existing run directory
+    /// is refused by this very code, not by a stand-in.
+    pub fn new_in(case_path: &str, producer: &'static str, nonce: String) -> ScratchCopy {
         let closure = cached_closure(case_path);
         let parent = scratch_root()
             .join(format!("{:016x}", case_digest(&fold(&closure.deck))))
             .join(producer);
         std::fs::create_dir_all(&parent)
             .unwrap_or_else(|e| panic!("scratch copy: cannot create {parent:?}: {e}"));
-        let run_dir = parent.join(run_nonce());
+        let run_dir = parent.join(nonce);
         std::fs::create_dir(&run_dir).unwrap_or_else(|e| {
             panic!(
                 "scratch copy: the run directory {run_dir:?} for {case_path} ({producer}) \
@@ -564,11 +595,13 @@ pub fn in_copy<T>(case_path: &str, producer: &'static str, f: impl FnOnce(&str) 
 /// their snapshot / classify / sweep / `sweep_failed` jobs, but only ever on a
 /// scratch copy. The gate-side entry points that hand a directory to one of
 /// them call this (`runner::CorpusGuard::new`, `run_files::RunFileProbe::start`,
-/// `engines::build_run_request`, which names the transports' guard directory),
-/// so a vendored path reaching a guard is refused before anything is
-/// photographed, run or swept — the structural half of "no producer runs inside
-/// `tests/corpus/`"; [`TreePhoto`] around the whole gate walk is the measured
-/// half.
+/// `engines::build_run_request`, which names the transports' guard directory,
+/// and `runner::run_and_compare_abort`, which builds its own request), and so
+/// does `props_r4133_pins`'s `Deck::compile_inner`, so a vendored path reaching
+/// a guard is refused before anything is photographed, run or swept — the
+/// structural half of "no producer runs inside `tests/corpus/`" for those
+/// entry points. [`TreePhoto`] around the corpus gate's own walk is the
+/// measured half. A plain in-place compile elsewhere is refused by neither.
 #[track_caller]
 pub fn not_vendored<'a>(p: &'a Path, who: &str) -> &'a Path {
     let abs = lexical(&std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()));
@@ -591,7 +624,8 @@ pub fn not_vendored<'a>(p: &'a Path, who: &str) -> &'a Path {
 /// The read-only-tree rail of RETRO_FIXES RF-I00-01 (`INFRA|2`):
 /// `scheduler::run_gate` photographs `tests/corpus/` before its first case and
 /// after its last, and `GateRun::assert_complete` fails the gate on any
-/// difference. A producer that swept what it wrote still moves its folder's
+/// difference; a writer in another test process is seen only while it
+/// overlaps that window. A producer that swept what it wrote still moves its folder's
 /// mtime, and a vendored file rewritten with its own bytes still moves its own,
 /// so a writer that cleaned up after itself is caught as surely as one that
 /// left a dropping. Each entry is read through its OWN handle

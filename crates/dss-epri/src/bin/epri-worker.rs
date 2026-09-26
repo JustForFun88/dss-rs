@@ -77,7 +77,15 @@ fn main() {
     };
     let version = engine.version().trim().to_string();
     // Where every `run` reply is sent from (RF-I00-01, the `run` arm below).
-    let startup_cwd = std::env::current_dir().ok();
+    // Without one there is nowhere to step back to, so the worker refuses to
+    // start, as the Python transport does (`os.getcwd()` raising at startup).
+    let startup_cwd = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("epri-worker: no startup working directory to step back to: {e}");
+            std::process::exit(1);
+        }
+    };
     if !version.contains(&expect) {
         eprintln!(
             "epri-worker: engine {version:?} does not contain pinned {expect:?} (no silent pass)"
@@ -276,10 +284,21 @@ fn main() {
                 // scratch copy and removes it after the reply, but a compile
                 // leaves this process's working directory inside the copy
                 // (r4133 `Executive/ExecHelper.pas:752-754`) and Windows refuses
-                // to remove a process's working directory: step back first.
-                if let Some(dir) = &startup_cwd {
-                    let _ = std::env::set_current_dir(dir);
-                }
+                // to remove a process's working directory: step back first. A
+                // failed step back fails the case naming the cause, as the
+                // Python twin's `finally: os.chdir(startup_cwd)` does, instead of
+                // replying from inside the copy (where it would read as an
+                // engine-held handle when the copy survives its removal).
+                let out = match std::env::set_current_dir(&startup_cwd) {
+                    Ok(()) => out,
+                    Err(e) => serde_json::json!({
+                        "ok": false,
+                        "error": format!(
+                            "epri-worker: cannot step back to {}: {e}",
+                            startup_cwd.display()
+                        ),
+                    }),
+                };
                 reply(out);
             }
             other => {

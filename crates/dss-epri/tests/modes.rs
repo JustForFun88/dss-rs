@@ -62,8 +62,8 @@ const WP_G1_FAMILIES: &[(&str, &[ModeKind])] = &[
 /// The walk's engine and the scratch copy it compiled (RETRO_FIXES
 /// RF-I00-01): the DLL compiles a fresh copy of the vendored IEEE13
 /// ([`Ieee13Copy`]), never `tests/corpus/`, and the test removes the copy
-/// after the walk, once the engine is gone — a copy that survives the budget
-/// fails the test naming the producer.
+/// after the walk, stepping back out of it (the DLL is never unloaded) — a
+/// copy that survives the budget fails the test naming the producer.
 type Fixture = (Engine, Ieee13Copy);
 
 /// A solved IEEE13 with an EnergyMeter attached, so the `Meters` rows read a
@@ -72,10 +72,10 @@ fn solved_ieee13() -> Fixture {
     let dll = dss_epri::smoke::dll_path();
     assert!(dll.is_file(), "r4133 DLL not found: {}", dll.display());
     let engine = Engine::new(&dll).expect("load the vendored r4133 DLL");
-    // The caller keeps the copy (and removes it) for as long as it drives the
-    // engine: the compiled circuit reads nothing back, but the cwd is in it.
+    // The caller keeps the copy (and removes it): the cwd is in it.
     let copy = Ieee13Copy::new().unwrap_or_else(|e| panic!("{e}"));
     let case = copy.deck().to_string();
+    dss_epri::smoke::refuse_vendored(&case).unwrap_or_else(|e| panic!("{e}"));
     engine.clear().expect("clear");
     engine.compile(&case, false).expect("compile IEEE13");
     engine

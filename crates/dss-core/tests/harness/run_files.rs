@@ -443,7 +443,9 @@ pub fn contents_census() -> (usize, usize) {
 /// drives a `both` case's channels strictly in sequence (fetch, compare, then
 /// the next channel), `dss_epri::guard::copy_selected_contents` and its Python
 /// twin `remove_dir_all` the sidecar before each copy, and this function deletes
-/// it as it reads.
+/// it as it reads. No other test asks for a sidecar: the opt-in
+/// `corpus_live_properties` sweep, which since RF-I00-01 runs in its own
+/// process beside the gate, clears both sidecar flags of its requests.
 #[track_caller]
 pub fn read_sidecar(
     dir: &std::path::Path,
@@ -483,9 +485,9 @@ pub fn read_sidecar(
             dss_epri::guard::decode_run_file(&bytes, name).unwrap_or_else(|e| panic!("{ctx}: {e}"));
         out.insert(name.clone(), text);
     }
-    // The gate owns the directory, so it removes it in the same bracket that
-    // owns the case-dir claim — a sidecar that outlived its case would be read
-    // by nobody and would grow the build tree by ~19 MB per drive.
+    // The gate owns the directory, so it removes it as the case reads it — a
+    // sidecar that outlived its case would be read by nobody and would grow the
+    // build tree by ~19 MB per drive.
     let _ = std::fs::remove_dir_all(dir);
     Some(out)
 }

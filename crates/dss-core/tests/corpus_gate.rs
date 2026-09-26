@@ -449,7 +449,7 @@ fn corpus_gate_all_cases_match_engines() {
 /// var meant a stray `DSS_PROPS_CENSUS=1` in a shell or CI environment turned
 /// the one mandatory live comparison into a green no-op. Here the var only ARMS
 /// this test; the gate always runs the gate. Unset, this is a no-op that costs
-/// nothing on `cargo test --workspace`.
+/// nothing in the gate's `cargo nextest run --workspace`.
 ///
 /// Run it alone — the census is a full second pass over the corpus:
 /// `DSS_PROPS_CENSUS=1 cargo test -p dss-core --test corpus_gate
@@ -2441,6 +2441,12 @@ fn corpus_live_properties() {
         }
         let mut case = c.clone();
         case.compare_all_properties = true;
+        // RF-I00-01 settlement: this sweep compares properties only, and under
+        // the gate's nextest it runs in its own process beside the corpus gate,
+        // so it asks for neither sidecar surface. The gate's per-case sidecars
+        // (keyed by the vendored deck) stay the gate's alone.
+        case.compare_run_files = false;
+        case.compare_di = false;
         let oref = &oracle;
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             // RF-I00-01: the capi run copies inside `Oracle::run_case`; the
