@@ -178,25 +178,47 @@ const DI_CASES: [DiCase; 5] = [
 /// ckt7's three tied service buses (the `Min LV Bus` argmin, D42(2)(b)).
 const TIE_BUSES: [&str; 3] = ["s1x_1001577", "s2x_1001577", "s3x_1001577"];
 
-/// What one pass over [`DI_CASES`] produced: each case's demand-interval tree,
-/// read at the gate's own capture slot, plus the per-node per-unit magnitudes of
-/// ckt7's three tied buses at the port's own final state.
-struct PortRun {
-    trees: BTreeMap<&'static str, DiTree>,
+/// What one run of one [`DI_CASES`] row produced: the case's demand-interval
+/// tree, read at the gate's own capture slot, plus — ckt7 only, empty for the
+/// other four — the per-node per-unit magnitudes of ckt7's three tied buses at
+/// the port's own final state.
+struct CaseRun {
+    tree: DiTree,
     ckt7_tie: Vec<(String, Vec<f64>)>,
-    /// The same three buses at the operating point the capi probe used for
-    /// [`TIE_MAGNITUDES_HEX`] — `compile Master_ckt7.dss` + one `solve`
-    /// (`tmp/g110c/probe_tie.py`), so the two sides of that comparison are the
-    /// same feeder at the same point (audit findings AC-6 / AT-5).
-    ckt7_snapshot_tie: Vec<(String, Vec<f64>)>,
 }
 
-static PORT: OnceLock<PortRun> = OnceLock::new();
+/// One memo PER DECK, index-aligned with [`DI_CASES`] (RETRO_FIXES RF-I00-03).
+///
+/// A memo lives as long as its process. The gate's runner, `cargo-nextest`, runs
+/// every test in its own process, so the single five-deck memo this replaced
+/// (`PORT`) made each of the six tests that read it run all five decks — three
+/// of them yearly runs over EPRI feeders — measured at ~155 s per test
+/// (RF-I00-01 part 3). With one memo per deck each test runs only the decks it
+/// reads: the five ckt7 pins run ckt7 alone, and only the class-table pin runs
+/// all five. Under `cargo test` (one process) every deck still runs once per
+/// binary, shared by every test that reads it.
+static CASE_RUNS: [OnceLock<CaseRun>; DI_CASES.len()] = [const { OnceLock::new() }; DI_CASES.len()];
 
-/// The five decks, run ONCE per binary — three of them are yearly runs over
-/// EPRI feeders, so every test in this file shares the one pass.
-fn port() -> &'static PortRun {
-    PORT.get_or_init(run_di_cases)
+/// ckt7's three tied buses at the operating point the capi probe used for
+/// [`TIE_MAGNITUDES_HEX`] — `compile Master_ckt7.dss` + one `solve`
+/// (`tmp/g110c/probe_tie.py`), so the two sides of that comparison are the same
+/// feeder at the same point (audit findings AC-6 / AT-5). Read by
+/// [`the_ckt7_min_lv_bus_is_an_argmin_over_a_tie`] alone, so it has its own memo.
+static CKT7_SNAPSHOT_TIE: OnceLock<Vec<(String, Vec<f64>)>> = OnceLock::new();
+
+/// One case's run, computed at most once per process (see [`CASE_RUNS`]), or a
+/// panic naming the case.
+fn case_run(label: &str) -> &'static CaseRun {
+    let i = DI_CASES
+        .iter()
+        .position(|case| case.label == label)
+        .unwrap_or_else(|| panic!("{label} is not one of the five `compare_di` cases"));
+    CASE_RUNS[i].get_or_init(|| run_di_case(&DI_CASES[i]))
+}
+
+/// [`ckt7_snapshot_tie`], computed at most once per process.
+fn ckt7_snapshot() -> &'static [(String, Vec<f64>)] {
+    CKT7_SNAPSHOT_TIE.get_or_init(ckt7_snapshot_tie)
 }
 
 /// The vendored corpus path of a deck, exactly as the corpus gate addresses it
@@ -217,61 +239,53 @@ fn corpus_deck(rel: &str) -> PathBuf {
     deck
 }
 
-/// Run the five decks the way `corpus_gate::runner` does — `clear` → `compile` →
-/// the manifest's `post` block → one `solve` per checkpoint — inside the gate's
-/// own run-file probe, and read each tree where the runner reads it: after the
-/// engine is DROPPED (so every demand-interval stream the run closed is on disk;
+/// Run one deck the way `corpus_gate::runner` does — `clear` → `compile` → the
+/// manifest's `post` block → one `solve` per checkpoint — inside the gate's own
+/// run-file probe, and read its tree where the runner reads it: after the engine
+/// is DROPPED (so every demand-interval stream the run closed is on disk;
 /// `crates/dss-core/src/solution/meters/demand_interval.rs:515-570`
 /// `close_all_di_files`) and before `RunFileProbe::finish_and_clean`, which
-/// sweeps the tree away. Each deck runs in its own fresh scratch copy
+/// sweeps the tree away. The deck runs in its own fresh scratch copy
 /// (`harness::scratch`, RETRO_FIXES RF-I00-01), removed after the sweep; the
 /// vendored corpus is never written.
-fn run_di_cases() -> PortRun {
-    let mut trees = BTreeMap::new();
+fn run_di_case(case: &DiCase) -> CaseRun {
     let mut ckt7_tie = Vec::new();
-    for case in &DI_CASES {
-        let copy = ScratchCopy::new(&corpus_deck(case.rel).to_string_lossy(), scratch::PORT);
-        let deck = PathBuf::from(copy.deck());
-        let ctx = format!("di_pins:{}", case.label);
-        let probe = RunFileProbe::start(&deck.to_string_lossy());
-        let mut dss = Dss::new();
-        dss.command("clear");
-        dss.command(&format!("compile \"{}\"", deck.display()));
-        for cmd in case.post {
-            dss.command(cmd);
-        }
-        assert!(
-            dss.circuit().is_some(),
-            "{ctx}: `compile` left the port with no active circuit ({:?})",
-            dss.errors()
-        );
-        for _ in 0..case.n_steps {
-            dss.command("solve");
-        }
-        if case.label == "ckt7" {
-            for bus in TIE_BUSES {
-                let v = dss
-                    .bus_voltages(bus)
-                    .unwrap_or_else(|| panic!("{ctx}: bus {bus} is not in the circuit"));
-                ckt7_tie.push((
-                    bus.to_string(),
-                    v.pu_vmag_angle.iter().map(|(mag, _)| *mag).collect(),
-                ));
-            }
-        }
-        // The engine goes first, exactly as in `corpus_gate::runner`: a stream it
-        // still held would not be on disk for the read below.
-        drop(dss);
-        let tree = probe.di_tree(&ctx);
-        probe.finish_and_clean(&ctx, false);
-        copy.finish();
-        trees.insert(case.label, tree);
+    let copy = ScratchCopy::new(&corpus_deck(case.rel).to_string_lossy(), scratch::PORT);
+    let deck = PathBuf::from(copy.deck());
+    let ctx = format!("di_pins:{}", case.label);
+    let probe = RunFileProbe::start(&deck.to_string_lossy());
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command(&format!("compile \"{}\"", deck.display()));
+    for cmd in case.post {
+        dss.command(cmd);
     }
-    PortRun {
-        trees,
-        ckt7_tie,
-        ckt7_snapshot_tie: ckt7_snapshot_tie(),
+    assert!(
+        dss.circuit().is_some(),
+        "{ctx}: `compile` left the port with no active circuit ({:?})",
+        dss.errors()
+    );
+    for _ in 0..case.n_steps {
+        dss.command("solve");
     }
+    if case.label == "ckt7" {
+        for bus in TIE_BUSES {
+            let v = dss
+                .bus_voltages(bus)
+                .unwrap_or_else(|| panic!("{ctx}: bus {bus} is not in the circuit"));
+            ckt7_tie.push((
+                bus.to_string(),
+                v.pu_vmag_angle.iter().map(|(mag, _)| *mag).collect(),
+            ));
+        }
+    }
+    // The engine goes first, exactly as in `corpus_gate::runner`: a stream it
+    // still held would not be on disk for the read below.
+    drop(dss);
+    let tree = probe.di_tree(&ctx);
+    probe.finish_and_clean(&ctx, false);
+    copy.finish();
+    CaseRun { tree, ckt7_tie }
 }
 
 /// Repeat, on the port, the probe that measured [`TIE_MAGNITUDES_HEX`] on
@@ -326,10 +340,7 @@ fn ckt7_snapshot_tie() -> Vec<(String, Vec<f64>)> {
 
 /// One case's tree, or a panic naming the case.
 fn tree_of(label: &str) -> &'static DiTree {
-    port()
-        .trees
-        .get(label)
-        .unwrap_or_else(|| panic!("{label} is not one of the five `compare_di` cases"))
+    &case_run(label).tree
 }
 
 /// The one-file tree a drive runs over: the comparator compares the file SET
@@ -1299,8 +1310,8 @@ const TIE_MAGNITUDES_HEX: [(&str, [&str; 3]); 3] = [
 /// and `Min Bus` / `Max Bus` / `Max LV Bus` equal on every row).
 #[test]
 fn the_ckt7_min_lv_bus_is_an_argmin_over_a_tie() {
-    let run = port();
-    let tree = tree_of("ckt7");
+    let run = case_run("ckt7");
+    let tree = &run.tree;
     let ctx = "ckt7 min lv bus";
     let tol = tol_for("large");
     let rows = lines_of(&tree[VOLTEX_FILE]);
@@ -1388,13 +1399,11 @@ fn the_ckt7_min_lv_bus_is_an_argmin_over_a_tie() {
         first.len()
     );
     assert_eq!(
-        run.ckt7_snapshot_tie.len(),
+        ckt7_snapshot().len(),
         TIE_MAGNITUDES_HEX.len(),
         "{ctx}: the snapshot probe must read all three tied buses"
     );
-    for ((name, mags), (oracle_bus, oracle_hex)) in
-        run.ckt7_snapshot_tie.iter().zip(TIE_MAGNITUDES_HEX)
-    {
+    for ((name, mags), (oracle_bus, oracle_hex)) in ckt7_snapshot().iter().zip(TIE_MAGNITUDES_HEX) {
         assert_eq!(
             name, oracle_bus,
             "{ctx}: the snapshot probe read {name} where capi_v0145 recorded \
@@ -1714,7 +1723,6 @@ const DI_LIVE_CELLS: usize = 4_922_812;
 /// file kind (or a lost one) reds here and gets a class before it can be compared.
 #[test]
 fn the_di_class_table_covers_every_column_of_every_live_di_file() {
-    let run = port();
     let mut shapes: BTreeSet<(String, usize, bool)> = BTreeSet::new();
     let (mut files, mut columns, mut cells) = (0usize, 0usize, 0usize);
 
@@ -1764,5 +1772,12 @@ fn the_di_class_table_covers_every_column_of_every_live_di_file() {
     assert_eq!(files, DI_LIVE_FILES, "live DI files");
     assert_eq!(columns, DI_LIVE_COLUMNS, "live DI columns classified");
     assert_eq!(cells, DI_LIVE_CELLS, "live DI cells classified");
-    assert_eq!(run.trees.len(), DI_CASES.len(), "the five DI cases");
+    // Each case is looked up by its label, so a repeated label would read
+    // another case's memo: the five labels are distinct, and every memo ran.
+    let labels: BTreeSet<&str> = DI_CASES.iter().map(|case| case.label).collect();
+    assert_eq!(labels.len(), DI_CASES.len(), "the five DI cases");
+    assert!(
+        CASE_RUNS.iter().all(|memo| memo.get().is_some()),
+        "every DI case ran"
+    );
 }
