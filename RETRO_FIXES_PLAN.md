@@ -3898,3 +3898,97 @@ by construction), never a re-run into green.
 - Measured on an idle machine, three runs each: executions, nextest CPU sum, wall of commands 2-5
   before and after, recorded.
 - Record block written, the uid closed or recorded with a reason.
+
+### RF-I00-05 — `gate-kind`: a syn-based classifier picks the gate for comment-only and doc-comment-only diffs (user decision 2026-09-27)
+<!-- RF-STEP {"step": "RF-I00-05", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-I00-04"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full for this step itself (it adds a
+crate). **After:** RF-I00-04 (the harness move re-points the rails this step enumerates). Scheduled
+by hand (§6) on one lane, landed before waves 1-2 resume, because part 2 rewrites the ritual text
+of §2.2/§2.5/§2.6 that every running stage reads.
+**Files:** `Cargo.toml` (workspace members), `tools/gate-kind/Cargo.toml`, `tools/gate-kind/src/main.rs`,
+`tools/gate-kind/src/lib.rs`, `tools/gate-kind/tests/*.rs` and `tools/gate-kind/tests/fixtures/**`
+(new), `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (the `GATE_RAILS` registry pin),
+`TESTING.md` (in-step, R9: the gate-kind section), `RETRO_FIXES_PLAN.md` §2.2/§2.5/§2.6,
+`docs/phase-records/retro-fixes.md`.
+**Decision (user, 2026-09-27):** the gate kind is chosen by what the diff can change at compile
+time, not by file extension alone. `.md` keeps the docs gate (tests read the documents at run
+time: the citation rail, `reliability_pins`, `props_r4133_replay`, `corpus_gate/scratch.rs`).
+For `.rs` files the classifier decides between plain comments, doc comments and code. Every other
+file kind (`.toml`, `.json`, `.dss`, `.py`, `Cargo.lock`, `.ps1`, binaries, anything unlisted) has
+no reliable "nothing compiled changed" test, so it stays FULL. Rationale: on a warm `target/` the
+full gate is ~7 min per stage (commands 4/5 are bound by `corpus_gate`, ~205 s each), on a cold
+one 20+ min, and it runs up to three times per step (gate, settle, settle 2). A large share of
+the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
+**Parts:**
+1. `INFRA|7` - the classifier. New workspace member `tools/gate-kind` (`publish = false`,
+   `#![forbid(unsafe_code)]`, edition 2024, deps `syn` 2 with `full` + `extra-traits`,
+   `proc-macro2`, `quote`; nothing else, no engine crate). Library API
+   `classify_rs(base: &str, head: &str) -> RsKind` with `RsKind::{Same, Comments, Doc, Code}`,
+   and `classify_diff(repo, base_rev, head_rev_or_worktree) -> GateKind` over `git diff
+   --name-status -M100% <base>..<head>` (or `<base>` vs the working tree). Rules, in this order:
+   - `.md` only → `GateKind::Docs`. Nothing changed → `GateKind::None`.
+   - A `.rs` file added, deleted, renamed, mode-changed, binary, or one whose base or head
+     `syn::parse_file` FAILS → `Code`. syn is the parser because it lexes strings, raw strings,
+     byte strings, lifetimes and nested block comments correctly, which a regex stripper does not
+     (`"http://x"` is the classic trap); a parse failure is never "comments".
+   - Both sides parse: render each `syn::File` back to tokens (`quote::ToTokens`), walk the
+     token trees and drop every attribute whose path is `doc` (`#[doc = ...]`, `#![doc = ...]`,
+     `#[doc(hidden)]`, `#[doc = include_str!(...)]`) and every `cfg_attr(..., doc ...)`; compare
+     the two remaining streams by `to_string()` (spans ignored). Different → `Code`. Equal, but
+     the streams WITH doc attributes differ → `Doc`. Equal both ways → `Comments` (only plain
+     `//` / `/* */` comments or whitespace moved; rustfmt is the only compiler-side consumer).
+     Doc attributes inside macro invocations are compared as part of the macro's tokens, so a
+     doc-comment edit inside a macro body is `Code` (conservative, documented).
+   - Any other path → `Code`. The overall kind is the maximum over files:
+     `None < Docs < Comments < Doc < Code` (a diff mixing `.md` and comment-only `.rs` is
+     `Comments`, which includes the docs gate, see the table).
+   The binary prints one line per file (`<kind>\t<path>`), a final `GATE_KIND=<kind>` line,
+   and exits 0; it never decides by itself what to run. Tests (`tools/gate-kind/tests/`): fixture
+   pairs for each rule - a `//` edit, a `/* */` edit, a doc-comment edit, a doc edit inside a
+   macro body, a string literal containing `//`, a raw string containing `*/`, an added line
+   (shift only), a base that does not parse, a renamed file, an `.md`-plus-comments diff, a
+   `Cargo.lock` diff - each asserting the exact kind; plus one test over the repo itself: the
+   working tree vs HEAD of the step's own base is `None`.
+   The gate table (also written into §2.2 by part 2; RAILS = every test binary that opens a
+   `.md` file or a `crates/**/*.rs` source at run time, measured by the step - expected
+   `oracle_parity_cfg_gate`, `reliability_pins`, `props_r4133_replay`,
+   `props_r4133_evidence_lock`, `capture_order`, `depascalize_metrics_gate`, `pd_elements_pins`,
+   `golden_lock` and the `scratch::` tests of `corpus_gate` by name filter; verify, the list is
+   the measurement, not this sentence):
+   | kind | commands |
+   | `None` | nothing, the stage says so |
+   | `Docs` | `cargo fmt --all --check`, RAILS in both lanes |
+   | `Comments` | same as `Docs` (a comment moves lines and may contain a rail's needle) |
+   | `Doc` | `Docs` + clippy both lanes + doctests both lanes (commands 2, 3, 6, 7) |
+   | `Code` | the full seven commands |
+   New rail in `oracle_parity_cfg_gate.rs`: `GATE_RAILS` (the list above) equals the measured
+   set of test binaries under `crates/*/tests/` whose source opens a `.md` or a `crates/` `.rs`
+   path at run time (the same text walk the other registries use), so a new document-reading
+   test cannot silently stay outside the reduced gates. Gate (full), commit.
+2. `INFRA|7` - the ritual. §2.2: the table above replaces the "docs gate" paragraph (the docs
+   gate becomes the `Docs` row, a superset of today's three binaries). §2.5/§2.6: "the gate whose
+   kind matches the diff" is now "the kind `cargo run -p gate-kind -- --base <sha>` prints";
+   stage 2 (the step gate) uses the same call over `<base>..HEAD`, so the plan's per-step `gate`
+   flag is only the scheduling estimate. Landing stays the full gate. TESTING.md gets a short
+   "Which gate to run" section pointing at the tool and the table. Record block (5-10 lines:
+   the rule, the RAILS list, the measured wall of each kind on the step's own diffs, the commits).
+   Gate by the tool's own verdict on part 2's diff (expected `Docs`, since it touches only
+   `.md`), commit. The coordinator re-points `GATE_BY_DIFF` / `GATE_TEXT` in the execution
+   script (`rf_exec.js`, outside the tree) after the step lands, before waves 1-2 resume.
+**Findings**
+- `INFRA|7` (major) - RETRO_FIXES_PLAN.md §2.2/§2.5/§2.6, `rf_exec.js` `GATE_BY_DIFF`: the gate
+  kind is decided by file extension, so a `.rs` diff that changes only comments or doc comments
+  runs the full seven-command gate (~7 min warm, 20+ min cold) up to three times per step, while
+  nothing it compiles has changed. No tool can tell a comment-only `.rs` diff from a code diff
+  today, which is why the extension rule exists.
+**Probes:** the fixture pairs of part 1 and the tool's verdict on three landed commits: RF-I00-03
+part 1 (85bef901, `di_pins.rs` doc comments + code → `Code`), the STATUS sync 046060b3 (`.md` →
+`Docs`), and 5a303f6c (CLAUDE.md + the plan → `Docs`); recorded in `part_1.md`.
+**Acceptance:**
+- `cargo run -p gate-kind -- --base <sha>` classifies every fixture pair as specified, never
+  returns `Comments`/`Doc` for a file that fails to parse, and reports `Code` for every non-`.rs`,
+  non-`.md` path.
+- `GATE_RAILS` equals the measured document-/source-reading binaries, pinned by the rail.
+- §2.2 carries the table, §2.5/§2.6 the tool call, TESTING.md the section; the seven commands
+  themselves are unchanged in text and the landing gate stays full.
+- Record block written, the uid closed or recorded with a reason.
