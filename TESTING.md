@@ -11,9 +11,20 @@ triage a divergence into the ledger, re-vendor the r4133 binary).
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
-cargo test --workspace
-cargo test --workspace --features dss-core/oracle-parity
+cargo nextest run --workspace
+cargo nextest run --workspace --features dss-core/oracle-parity
+cargo test --workspace --doc
+cargo test --workspace --doc --features dss-core/oracle-parity
 ```
+
+Commands 4-5 run the pinned **`cargo-nextest` 0.9.146** (RETRO_FIXES RF-I00-01;
+`.config/nextest.toml` refuses an older runner; install it with `cargo install
+cargo-nextest --version 0.9.146 --locked` or the prebuilt from `get.nexte.st`):
+every test in its own process, `retries = 0`, `fail-fast = false`, no test
+groups - pinned by `the_nextest_profile_never_retries_and_serializes_nothing`
+(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`). nextest does not run
+doctests, hence commands 6-7. The RETRO_FIXES gate and CI run commands 4-5
+with `DSS_ORACLE_TIMEOUT_SECS=600`.
 
 Since DE_PASCALIZE **Stage F** the engine ships in two builds, so the gate runs
 in **two lanes** — see [The two lanes](#the-two-lanes-stage-f) below for what
