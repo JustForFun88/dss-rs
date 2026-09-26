@@ -1608,6 +1608,11 @@ fn assert_twin_matches_r4133(
         (s.re - gen_kw_kvar.0).abs() < 1e-6 && (s.im - gen_kw_kvar.1).abs() < 1e-6,
         "twin Generator.g1 = {s:?} kW/kvar vs live r4133 {gen_kw_kvar:?}"
     );
+    // RP3.13's per-phase sizing on the first-solve path (RF-D00-05 settlement,
+    // audit AT-3): every registry access is checked now, so r4133's length-1
+    // seed would silently drop the PQ->PV promotion's phase-1..n writes.
+    let (_, _, _, _, dq, _) = gen_ncim_state(twin, "g1");
+    assert_eq!(dq.len(), 3, "g1's deltaQNom is sized per phase: {dq:?}");
 }
 
 /// The shared verdict of the late-generator pins: the re-solve that brought
@@ -1619,7 +1624,9 @@ fn assert_twin_matches_r4133(
 ///
 /// r4133 cannot answer a late deck itself: live `epri-worker` probe
 /// 2026-09-25 (OpenDSSDirect.dll r4133 "Version 11.0.0.1 (64-bit build)",
-/// `tmp/retro_fix/state/RF-D00-05/probe_r4133_late_gen.py`) — the second
+/// the local-only, gitignored
+/// `tmp/retro_fix/state/RF-D00-05/probe_r4133_late_gen.py`; re-derive by
+/// sending the pins' decks through `epri-worker`) — the second
 /// `Solve` raises `DSS error #482 Error Encountered in Solve: Access violation
 /// … Read of address 0000000000000000` at iteration 1 on all four decks
 /// (created / enabled × model 3 / 4): the nil read of the late machine's empty
@@ -1668,8 +1675,9 @@ fn assert_late_generator_lands_on_the_twin(
 /// r4133's straight up-front `model=4` twin — `late_gen_network` with
 /// `late_gen_line(4, "")`, one NCIM solve: converged, 3 iterations, these node
 /// voltages, `Generator.g1` at -266.6666… kW and -143.93141923682322 kvar per
-/// phase (live `epri-worker` probe 2026-09-25, case `upfront_m4` of
-/// `tmp/retro_fix/state/RF-D00-05/probe_r4133_late_gen.py`).
+/// phase (live `epri-worker` probe 2026-09-25, case `upfront_m4` of the
+/// local-only `tmp/retro_fix/state/RF-D00-05/probe_r4133_late_gen.py`; this
+/// deck through `epri-worker` re-derives it).
 const R4133_M4_TWIN: [(f64, f64); 6] = [
     (7199.557856794634, 0.0),
     (-3599.77892839732, -6234.999999999999),
@@ -1692,7 +1700,7 @@ const R4133_M4_TWIN_KVAR: f64 = -3.0 * 143.93141923682322;
 ///
 /// The twin is re-solved after `Init`, not straight: `model=3` in the `New`
 /// clears `SolutionInitialized` (r4133 `PCElements/generator.pas` l.702), so
-/// the late re-solve re-initialises first (`DoPFLOWsolution` l.2444-2461:
+/// the late re-solve re-initialises first (`DoPFLOWsolution` l.2445-2461:
 /// `SolveYDirect`, then `SetGeneratordQdV`'s `SolveZeroLoadSnapShot`, l.1012)
 /// and that leaves the swing bus 4.649e-5 V off the ideal EMF — which NCIM
 /// then holds (identity swing rows, zero swing mismatch). `Init`
@@ -1786,11 +1794,16 @@ fn ncim_generator_enabled_between_solves_does_not_panic() {
 /// `SolveCircuit`'s `WHOLEMATRIX` rebuild (l.2805-2808) has already cleared
 /// `SystemYChanged` (`Common/Ymatrix.pas` l.271). The port panicked ("index
 /// out of bounds: the len is 7 but the index is 7", `ncim_get_num_generators`'
-/// per-node Q-limit tally); r4133 on the `model=4` variant (same probe) raises
-/// #482 with the new bus's `NodeV` uninitialised (`5e-322`). The port now
+/// per-node Q-limit tally); r4133 raises #482 on this very deck (settlement
+/// probe `late_m3_newbus`, 2026-09-26, offset 87EDD4) and on its `model=4`
+/// variant, with the new bus's `NodeV` uninitialised (`5e-322`). The port now
 /// re-initialises the NCIM node space when it no longer spans the circuit:
 /// the re-solve converges, the PV equation holds at the new bus and Kirchhoff
-/// closes at both buses (port-only numbers: r4133 cannot answer).
+/// closes at both buses (port-only numbers: r4133 cannot answer). The new
+/// bus starts from a real voltage only because `model=3` in the `New` clears
+/// `SolutionInitialized` (generator.pas l.702), so `SolveYDirect` seeds it
+/// before NCIM runs; a `model=4` machine or a load there starts at 0 V and
+/// does not converge (an open item of the RF-D00-05 settlement).
 #[test]
 fn ncim_generator_on_a_new_bus_after_first_solve_does_not_panic() {
     let mut late = ncim_resolve_after(
@@ -1833,8 +1846,9 @@ fn ncim_generator_on_a_new_bus_after_first_solve_does_not_panic() {
 
 /// r4133 on the generator-free network (`late_gen_network(None)`) solved once
 /// under NCIM: converged, 3 iterations, these node voltages (live
-/// `epri-worker` probe 2026-09-25, case `nogen` of
-/// `tmp/retro_fix/state/RF-D00-05/probe2_r4133_sequences.py`; the
+/// `epri-worker` probe 2026-09-25, case `nogen` of the local-only
+/// `tmp/retro_fix/state/RF-D00-05/probe2_r4133_sequences.py`, re-derived by
+/// sending this deck through `epri-worker`; the
 /// `EnergyMeter`-carrying variant `nogen_meter` answers bit-identically).
 const R4133_NO_GEN: [(f64, f64); 6] = [
     (7199.557856794634, 0.0),
@@ -1878,7 +1892,8 @@ fn genbus_kcl(dss: &mut Dss) -> Complex64 {
 /// solve left it — the state
 /// [P15](ncim_generator_reenabled_between_solves_resumes_from_its_kept_q)
 /// resumes from. No pre-fix panic (the registry exists): a regression pin for
-/// the self-sizing rule's "existing registries are never touched".
+/// "a disabled machine's registry is never touched" (the enabled machines'
+/// kept Q is [P22](ncim_converted_machine_resolves_warm_from_its_clamped_q)'s).
 #[test]
 fn ncim_generator_disabled_between_solves_resolves_without_it() {
     for model in [3, 4] {
@@ -1906,8 +1921,10 @@ fn ncim_generator_disabled_between_solves_resolves_without_it() {
 /// `reenable_m4` of the [`R4133_NO_GEN`] probe): converged in 3 iterations,
 /// back on the straight up-front fixpoint — [`R4133_M3_REENABLED`] and
 /// [`R4133_M4_TWIN`] (1.0e-12 V from its `reenable_m4` answer) — with the
-/// kvar below. No pre-fix panic (the registry exists): a regression pin for
-/// the kept-Q rule.
+/// kvar below. No pre-fix panic (the registry exists). This deck cannot tell
+/// a kept registry from a re-seeded one (a PV machine's Q comes back in one
+/// Newton step); [P22](ncim_converted_machine_resolves_warm_from_its_clamped_q)
+/// pins the kept-Q rule.
 #[test]
 fn ncim_generator_reenabled_between_solves_resumes_from_its_kept_q() {
     for (model, nodes, kvar) in [
@@ -2003,4 +2020,181 @@ fn ncim_generator_rephased_between_solves_does_not_panic() {
     );
     let mut twin = solve_ncim(&late_gen_network(Some(late_gen_line(3, ""))));
     assert_late_generator_lands_on_the_twin(&mut late, &mut twin, 3, 3);
+}
+
+/// **P18** (RF-D00-05 settlement, audit AC-1) — the model-4 arm of
+/// [P17](ncim_generator_rephased_between_solves_does_not_panic): a 1-phase
+/// `model=4` machine re-phased to 3 phases between two NCIM solves. r4133
+/// answers this deck (live `epri-worker` probe of the RF-D00-05 audit, case
+/// `ph1to3_m4`): converged in 3 iterations onto its straight up-front twin,
+/// [`R4133_M4_TWIN`] (the late machine's grown registry reads the 1-phase
+/// seed, which equals the 3-phase `Qnominalperphase` on this deck).
+#[test]
+fn ncim_generator_rephased_between_solves_model4_matches_r4133() {
+    let one_phase = "New Generator.g1 bus1=genbus.1 phases=1 kv=7.2 kw=266.6666666666667 \
+                     model=4 maxkvar=500 minkvar=-500 vpu=1.0";
+    let mut late = ncim_resolve_after(
+        &late_gen_deck(&[one_phase.to_string()]),
+        &[
+            "Generator.g1.phases=3 bus1=genbus kv=12.47 kw=800 maxkvar=1500 minkvar=-1500"
+                .to_string(),
+        ],
+    );
+    assert_twin_matches_r4133(&mut late, 3, &R4133_M4_TWIN, (-800.0, R4133_M4_TWIN_KVAR));
+}
+
+/// **P19** (RF-D00-05 settlement, audit AT-6) — a `model=3` machine with zero
+/// Q-limits created after the first NCIM solve is demoted to PQ on its own
+/// initialising pass and logged as converted (`ncim_expv`, read by
+/// `Show PV2PQ`), exactly as on a first solve (r4133 l.1936-1939 logs it under
+/// `InitQ`; r4133 itself cannot answer the late deck: it reads the late
+/// machine's empty registry, l.2305). It injects no Q (registry `[0.0; 3]`).
+#[test]
+fn ncim_late_zero_limit_pv_machine_is_logged_as_converted() {
+    let mut late = ncim_resolve_after(
+        &late_gen_network(None),
+        &[
+            "New Generator.g1 bus1=genbus phases=3 kv=12.47 kw=800 model=3 \
+           maxkvar=0 minkvar=0 vpu=1.0"
+                .to_string(),
+        ],
+    );
+    assert!(late.circuit().expect("circuit").is_solved, "must converge");
+    let (model, expv, _, _, dq, _) = gen_ncim_state(&late, "g1");
+    assert_eq!(model, 4, "demoted to PQ");
+    assert!(
+        expv,
+        "the late machine's own initialising pass logs the conversion"
+    );
+    assert_eq!(dq, vec![0.0; 3], "no Q for a machine without Q-limits");
+    let kcl = genbus_kcl(&mut late);
+    assert!(kcl.norm() < 1e-6, "KCL at genbus = {kcl:?} kW/kvar");
+}
+
+/// The node index of `genbus.<phase>`.
+fn genbus_node(dss: &Dss, phase: usize) -> usize {
+    let ckt = dss.circuit().expect("circuit");
+    let name = format!("genbus.{phase}");
+    (1..ckt.solution.node_v.len())
+        .find(|&k| ckt.node_name(k).eq_ignore_ascii_case(&name))
+        .unwrap_or_else(|| panic!("no node {name}"))
+}
+
+/// Converged; Kirchhoff closes at `genbus` over `gens` + `Load.ld1` +
+/// `Line.l1`'s far terminal; every `regulated` GENBUS phase sits at the
+/// 12.47 kV / sqrt(3) PV target of these decks.
+fn assert_genbus_pv_regulated(dss: &mut Dss, gens: &[&str], regulated: &[usize]) {
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(
+        dss.circuit().expect("circuit").is_solved,
+        "NCIM must converge"
+    );
+    let target = 12_470.0 / 3f64.sqrt();
+    for &ph in regulated {
+        let k = genbus_node(dss, ph);
+        let v = dss.circuit().expect("circuit").solution.node_v[k].norm();
+        assert!(
+            (v - target).abs() < V_TOL,
+            "|V(genbus.{ph})| = {v} V, PV target {target} V"
+        );
+    }
+    let mut kcl = term_power_kw(dss, "Load.ld1", 1) + term_power_kw(dss, "Line.l1", 2);
+    for g in gens {
+        kcl += term_power_kw(dss, g, 1);
+    }
+    assert!(kcl.norm() < 1e-6, "KCL at genbus = {kcl:?} kW/kvar");
+}
+
+const MIXED_G1: &str = "New Generator.g1 bus1=genbus.1 phases=1 kv=7.2 \
+                        kw=266.6666666666667 model=3 maxkvar=500 minkvar=-500 vpu=1.0";
+const MIXED_G2: &str = "New Generator.g2 bus1=genbus phases=3 kv=12.47 kw=800 model=3 \
+                        maxkvar=1500 minkvar=-1500 vpu=1.0";
+
+/// **P20** (RF-D00-05 settlement, audit AC-1) — two `model=3` machines on one
+/// bus whose conductors do not line up (a 1-phase g1 on `genbus.1` first, a
+/// 3-phase g2 on `genbus`), declared up-front or g2 created after the first
+/// NCIM solve. r4133 reserves g1's one-row block for both and drops g2's
+/// phase-2/3 cells. Live `epri-worker` probe 2026-09-26 (local-only
+/// `tmp/retro_fix/state/RF-D00-05/settle/probe3_r4133_mixed_pv.py`; re-derive
+/// by sending these two decks through `epri-worker`): up-front converged in 3
+/// iterations with GENBUS.2/.3 at 7138.105769118706 / 7137.5977895458145 V,
+/// unregulated against the 7199.557856794634 V target; late raises #482 (g2's
+/// empty registry). The port asserted in its sparse set on both
+/// ("row < self.n"). With one row per PV node every GENBUS node is held at
+/// its target, and the late deck lands on the up-front deck re-solved after
+/// `Init` — the reset its `model=3` `New` triggers, as in
+/// [P10](ncim_generator_added_after_first_solve_does_not_panic_model3)
+/// (port-only numbers: r4133 answers neither correctly).
+#[test]
+fn ncim_mixed_phase_pv_machines_on_one_bus_regulate_every_node() {
+    let gens = ["Generator.g1", "Generator.g2"];
+    let mut upfront = solve_ncim(&late_gen_deck(&[
+        MIXED_G1.to_string(),
+        MIXED_G2.to_string(),
+    ]));
+    assert_genbus_pv_regulated(&mut upfront, &gens, &[1, 2, 3]);
+    let mut late = ncim_resolve_after(
+        &late_gen_deck(&[MIXED_G1.to_string()]),
+        &[MIXED_G2.to_string()],
+    );
+    assert_genbus_pv_regulated(&mut late, &gens, &[1, 2, 3]);
+    let mut twin = ncim_resolve_after(
+        &late_gen_deck(&[MIXED_G1.to_string(), MIXED_G2.to_string()]),
+        &["Init".to_string()],
+    );
+    assert_genbus_pv_regulated(&mut twin, &gens, &[1, 2, 3]);
+    let a = twin.circuit().expect("circuit").solution.node_v.clone();
+    let b = late.circuit().expect("circuit").solution.node_v.clone();
+    assert_eq!(a.len(), b.len(), "same node space");
+    for k in 1..a.len() {
+        assert!(
+            (a[k] - b[k]).norm() < V_TOL,
+            "node {k}: Init twin {:?} vs late {:?}",
+            a[k],
+            b[k]
+        );
+    }
+}
+
+/// **P21** (RF-D00-05 settlement, audit AC-1) — a 3-phase `model=3` machine
+/// with a conductor tied to ground (`bus1=genbus.1.2.0`). r4133 addresses
+/// Jacobian column `2·0 - 1` for it, which KLUSolve drops, leaving an empty
+/// regulation row: live `epri-worker` probe 2026-09-26 (case `grounded_D` of
+/// the P20 probe) — not converged after 15 iterations, every node still at the
+/// flat start. The port overflowed ("attempt to subtract with overflow").
+/// Here the grounded conductor has no regulation row and no injection, and the
+/// two live phases are held at their target (port-only numbers).
+#[test]
+fn ncim_pv_machine_with_a_grounded_conductor_regulates_its_live_nodes() {
+    let mut dss = solve_ncim(&late_gen_deck(&[
+        "New Generator.g1 bus1=genbus.1.2.0 phases=3 kv=12.47 kw=800 model=3 \
+         maxkvar=1500 minkvar=-1500 vpu=1.0"
+            .to_string(),
+    ]));
+    assert_genbus_pv_regulated(&mut dss, &["Generator.g1"], &[1, 2]);
+}
+
+/// **P22** (RF-D00-05 settlement, audit AT-2) — the kept-Q rule's observable:
+/// the machine of `pv_circuit("1.01")` (the corpus deck
+/// `modes/ncim/ncim_pv_pq.dss`) is converted PV->PQ at its 500 kvar/phase
+/// `maxkvar` limit on the first solve, and a warm re-solve resumes from that clamped
+/// registry: 2 Newton passes, as in r4133 (live `epri-worker` probe
+/// 2026-09-26, case `qlimit_warm` of the local-only
+/// `tmp/retro_fix/state/RF-D00-05/settle/probe3_r4133_mixed_pv.py`: 4, then
+/// 2 iterations). Re-seeding the registries on every solve takes 5.
+#[test]
+fn ncim_converted_machine_resolves_warm_from_its_clamped_q() {
+    let mut dss = solve_ncim(&pv_circuit("1.01"));
+    assert_eq!(
+        dss.circuit().expect("circuit").solution.iteration,
+        4,
+        "r4133: 4"
+    );
+    let (model, expv, _, _, dq, _) = gen_ncim_state(&dss, "g1");
+    assert!(model == 4 && expv, "converted PV->PQ on the first solve");
+    assert_eq!(dq, vec![500_000.0; 3], "clamped at the maxkvar limit");
+    dss.command("Solve");
+    let ckt = dss.circuit().expect("circuit");
+    assert!(ckt.is_solved, "the warm re-solve converges");
+    assert_eq!(ckt.solution.iteration, 2, "warm re-solve (r4133: 2)");
 }
