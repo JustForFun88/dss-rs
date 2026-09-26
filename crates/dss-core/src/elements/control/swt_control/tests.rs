@@ -985,6 +985,60 @@ fn a_seven_phase_controlled_element_renders_six_tokens() {
     );
 }
 
+/// RF-D01-01 settlement round 2 (SA-1) — r4133's `Else`-without-`Begin`
+/// fall-through (defect 1 of [`SwtControl::interpret_switch_state`]'s doc) is
+/// not reproduced. Only `AuxParser.CmdString := param` (`:455`) sits under the
+/// `Else` (`:453`); the reads and the per-phase `While` (`:457-480`) run on the
+/// unquoted path too and re-read the GLOBAL AuxParser, and the quoted branch
+/// stops without applying a list's sixth token (`:461`). So a 7-token quoted
+/// list leaves its seventh token behind, and the NEXT bare `state=` write
+/// applies it to slot 1 after its ganged fill.
+///
+/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 part 2 residue probe, a
+/// 3-phase line so every read is in bounds): from the ganged `state=closed`
+/// baseline, `state=(closed, closed, closed, closed, closed, closed, open)`
+/// reads `[closed, closed, closed, ]`, the next `state=closed` reads
+/// `[open, closed, closed, ]` and a second one `[closed, closed, closed, ]`
+/// (the AuxParser drained). The port parses every write with a fresh parser,
+/// so it reads `[closed, closed, closed, ]` at every step; the assert on the
+/// divergent step names r4133's bytes. The pin holds across the pending
+/// sixth-token fix (AC3-1): a 5- or a 6-token bound drops the seventh token
+/// alike.
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=2`,
+/// `set voltagebases=[115]`, `calcvoltagebases` and `solve` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
+#[test]
+fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l3 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new swtcontrol.sw switchedobj=line.l3 switchedterm=1",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    let closed3 = "[closed, closed, closed, ]";
+    dss.command("edit swtcontrol.sw state=closed");
+    assert_eq!(ask(&mut dss, "? swtcontrol.sw.state"), closed3);
+    dss.command("edit swtcontrol.sw state=(closed, closed, closed, closed, closed, closed, open)");
+    assert_eq!(ask(&mut dss, "? swtcontrol.sw.state"), closed3);
+    dss.command("edit swtcontrol.sw state=closed");
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.sw.state"),
+        closed3,
+        "r4133: [open, closed, closed, ] (the residual 7th token lands in slot 1)"
+    );
+    dss.command("edit swtcontrol.sw state=closed");
+    assert_eq!(ask(&mut dss, "? swtcontrol.sw.state"), closed3);
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+}
+
 /// `ControlledElement = NIL` renders the bare `'[]'` — r4133's getters skip
 /// the loop entirely (`:589`/`:600`), measured on the orphan control
 /// (`tmp/rp37/out_nil_controlled.txt`: `'[]'` for both `state` and `normal`,
