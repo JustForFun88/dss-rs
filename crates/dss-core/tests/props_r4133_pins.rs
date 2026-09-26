@@ -79,14 +79,15 @@
 //!
 //! Several of the flagged decks write while they run — `Test/TD21RelayTest.DSS`
 //! and its siblings end in `show eventlog`, `StorageControllerTechNote/Schedule/
-//! ScheduleRun.dss` in nine `Export` commands — into the **vendored** corpus
-//! tree. The corpus gate has its own guard for that (`corpus_gate/runner.rs`'s
-//! `CorpusGuard`, which also buffers contents); it is `pub(crate)` to that
-//! binary, so this file carries the same contract in miniature
-//! ([`DeckDirGuard`]): snapshot the deck's directory, delete on the way out
-//! every file the run created, and fail loudly if the run *changed* a vendored
-//! byte count instead of only adding files. [`the_deck_guard_really_sweeps`]
-//! proves it is not a no-op.
+//! ScheduleRun.dss` in nine `Export` commands. Since RETRO_FIXES RF-I00-01 none
+//! of them runs in the **vendored** corpus tree: [`Deck::compile`] compiles a
+//! fresh scratch copy of the deck's closure (`harness/scratch.rs`, the corpus
+//! gate's own copies, included here alone), removed — loudly — when the deck
+//! drops. [`DeckDirGuard`] still brackets the copy's deck folder, the gate's
+//! guard contract in miniature: snapshot it, delete on the way out every file
+//! the run created, and fail loudly if the run *changed* a copied byte count
+//! instead of only adding files. [`the_deck_guard_really_sweeps`] proves it is
+//! not a no-op.
 //!
 //! It also carries `CorpusGuard`'s **shared per-directory snapshot**, and for
 //! the same measured reason: three pins below run decks out of
@@ -96,13 +97,18 @@
 //! output as vendored), A sweeps, B writes again, B *keeps* it. One snapshot per
 //! directory plus a reference count means the names set is always the pristine
 //! one and exactly one sweep runs, when the last guard leaves
-//! ([`overlapping_deck_guards_still_sweep`]).
+//! ([`overlapping_deck_guards_still_sweep`]). On the per-deck copies no two
+//! guards share a folder any more; the registry stays, with its rail.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use dss_core::exec::Dss;
+
+// RETRO_FIXES RF-I00-01: every deck compiles its own fresh scratch copy.
+#[path = "harness/scratch.rs"]
+mod scratch;
 
 // ---------------------------------------------------------------------------
 // Deck plumbing
@@ -149,10 +155,10 @@ fn lock_registry() -> std::sync::MutexGuard<'static, DirSnapshots> {
     dir_registry().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Keeps the vendored deck directory exactly as it was found: files the run
-/// created are removed when the **last** guard on that directory drops, and a
-/// *modified* pre-existing file is a loud failure (the decks below only ever
-/// add).
+/// Keeps the copied deck folder (a scratch copy, RF-I00-01) as it was found:
+/// files the run created are removed when the **last** guard on that folder
+/// drops, and a *modified* copied file is a loud failure (the decks below only
+/// ever add).
 struct DeckDirGuard {
     dir: PathBuf,
     before: Arc<BTreeMap<PathBuf, u64>>,
@@ -212,21 +218,24 @@ impl Drop for DeckDirGuard {
         if !std::thread::panicking() {
             assert!(
                 changed.is_empty(),
-                "a pinned deck rewrote vendored corpus bytes (not merely added \
-                 output files), which this guard cannot restore: {changed:?}"
+                "a pinned deck rewrote corpus bytes copied into its scratch copy \
+                 (not merely added output files), which this guard cannot restore: {changed:?}"
             );
         }
     }
 }
 
-/// A compiled corpus deck, plus the guard that cleans up after it.
+/// A compiled corpus deck, plus the scratch copy it compiled and the guard
+/// that cleans up after it.
 ///
 /// Field order is the drop order: the engine is torn down first, then the guard
 /// sweeps — so anything the deck's own `Export`/`Show` wrote is already flushed
-/// when the sweep runs.
+/// when the sweep runs — and then the copy is removed (loudly: a copy that
+/// survives its budget fails the pin naming the producer).
 struct Deck {
     dss: Dss,
     _guard: DeckDirGuard,
+    _copy: scratch::ScratchCopy,
 }
 
 impl Deck {
@@ -242,12 +251,16 @@ impl Deck {
     }
 
     fn compile_inner(rel: &str, allowed: &[u32]) -> Self {
-        let path = corpus_root().join(rel);
+        let vendored = corpus_root().join(rel);
         assert!(
-            path.is_file(),
+            vendored.is_file(),
             "vendored deck is missing: {}",
-            path.display()
+            vendored.display()
         );
+        let copy = scratch::ScratchCopy::new(&vendored.to_string_lossy(), scratch::PORT).loud();
+        // The path compiled below is refused when it is the vendored deck.
+        let path = PathBuf::from(copy.deck());
+        scratch::not_vendored(&path, "props_r4133_pins::Deck::compile_inner");
         let guard = DeckDirGuard::new(path.parent().expect("a deck has a directory"));
         let mut dss = Dss::new();
         dss.command(&format!("compile \"{}\"", path.display()));
@@ -259,7 +272,11 @@ impl Deck {
                 e.message
             );
         }
-        Self { dss, _guard: guard }
+        Self {
+            dss,
+            _guard: guard,
+            _copy: copy,
+        }
     }
 
     /// The port's live render of `Class.Name.Prop` — the very getter the gate's
