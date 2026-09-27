@@ -201,8 +201,21 @@ fn do_normal_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
 /// SumCurrents`: `ComputeIterminal`, then `Currents[NodeRef[i]] += Iterminal[i]`
 /// with `NodeRef=0` accumulating harmlessly into the ground slot). Primarily
 /// for the Newton iteration.
+///
+/// One departure from r4133: the sum never takes the direct-solve shortcut of
+/// `TPCElement.GetCurrents` (`PCElements/PCElement.pas:284`, `CalcYPrimContribution`
+/// while `LastSolutionWasDirect`). r4133 clears that flag only after the algorithm
+/// dispatch (`Common/Solution.pas:2481`), so on the first Newton solve after a direct
+/// one (`SolveDirect` `:2782` / `SolveAD` `:2669`: `Solve mode=direct`, a fault study,
+/// harmonics, `LoadModel=Admittance`) every PC element reports `Yprim·V` instead of
+/// its model current and Newton converges to the direct (constant-Z) solution —
+/// measured 10.0756 V off a fresh Newton solve on the `modes/newton/newton.dss` feeder,
+/// in r4133 and capi 0.14.5 alike (`exec::tests::newton::
+/// newton_after_a_direct_solve_matches_a_fresh_newton_solve`). An upstream bug the port
+/// never reproduces. The flag itself keeps r4133's lifecycle: only this sum ignores it.
 fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
-    let sys = sys_ctx(ckt);
+    let mut sys = sys_ctx(ckt);
+    sys.last_solution_was_direct = false;
     let sol = &mut ckt.solution;
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
@@ -217,13 +230,15 @@ fn sum_all_currents(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
-/// Pascal `DoNewtonSolution`: the Newton iteration
-/// `Vn+1 = Vn - [Y]⁻¹·Termcurr`, driving the sum of terminal currents into
-/// every node to zero. `Termcurr` is `SumAllCurrents` (PD: `Yprim·V`; PC:
-/// the compensation currents). Same convergence/budget clause as
-/// `DoNormalSolution`: `(Converged and Iteration >= MinIterations) or
-/// Iteration >= MaxIterations`. The `dV` work array (`ReAllocMem(dV, NumNodes+1)`)
-/// is the per-step scratch inside `solve_system_newton_step`.
+/// Pascal `DoNewtonSolution` (r4133 `Common/Solution.pas:1165-1230`): the Newton iteration
+/// `Vn+1 = Vn - [Y]⁻¹·Termcurr` driving the sum of terminal currents into every node to zero
+/// — `Termcurr` is `SumAllCurrents` (PD: `Yprim·V`; PC: the compensation currents) — under
+/// `DoNormalSolution`'s convergence/budget clause; `dV` (`ReAllocMem(dV, NumNodes+1)`) is the
+/// per-step scratch inside `solve_system_newton_step`. Two departures from r4133: the exit
+/// drops the `Iterminal` stamps the last `SumAllCurrents` formed at the pre-update guess
+/// ([`drop_stale_newton_iterminal_stamps`], CLAUDE.md upstream bug 5), on the converged
+/// and the iteration-limit exit alike; and the sum evaluates every PC model even right
+/// after a direct solve ([`sum_all_currents`]).
 pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     // ControlIteration == 1: update the load multipliers for this solution.
     if ckt.solution.control_iteration == 1 {
@@ -244,8 +259,10 @@ pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
         if ckt.solution.system_y_changed {
             build_y_matrix(ckt, env, BuildOption::WholeMatrix, false)?;
         }
-        // UseAuxCurrents/AddInAuxCurrents(NEWTONSOLVE): AutoAdd only.
-
+        // AutoAdd's trial device (r4133 `Common/Solution.pas:1213`, capi `:957`).
+        if ckt.solution.use_aux_currents {
+            add_in_aux_currents(ckt, SolveAlgorithm::Newton);
+        }
         // Solve for the change in voltages and update the guess.
         ckt.solution.solve_system_newton_step()?;
         ckt.solution.loads_need_updating = false;
@@ -255,9 +272,11 @@ pub(crate) fn do_newton_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> Solve
         if (converged && ckt.solution.iteration >= ckt.solution.min_iterations)
             || ckt.solution.iteration >= ckt.solution.max_iterations
         {
-            return Ok(());
+            break;
         }
     }
+    drop_stale_newton_iterminal_stamps(ckt, env);
+    Ok(())
 }
 
 /// Pascal `SolveYDirect`: solve with only source injections.
@@ -666,4 +685,58 @@ pub(crate) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
     ckt.solution.iteration = 1;
     ckt.solution.last_solution_was_direct = true;
     Ok(())
+}
+
+/// Drop the `Iterminal` stamps the Newton loop's last `SumAllCurrents` left on
+/// every element whose terminal current is not its own model state — CLAUDE.md
+/// upstream bug 5, repaired at its root (`RETRO_FIXES_PLAN.md` RF-D00-01) so
+/// that no reader needs a special case.
+///
+/// r4133 `DoNewtonSolution` (`Common/Solution.pas:1165-1230`) increments
+/// `SolutionCount` at the top of every iteration (`:1199`), sums every
+/// element's `ComputeIterminal` (`:1203` → `SumAllCurrents` `:3550-3565` →
+/// `TDSSCktElement.SumCurrents` `Common/CktElement.pas:1247-1262`, whose
+/// `ComputeIterminal` stamps `IterminalSolutionCount` at `:636-639`), and only
+/// then applies `NodeV -= dV` (`:1221-1226`); the loop exits right after that
+/// update (`:1228`). So every stamp is valid for the live `SolutionCount` while
+/// the current behind it was formed at the pre-final guess `NodeV_{n-1}`, and
+/// every cache-aware read after the solve (the `ComputeIterminal` of
+/// `Get_Power` `CktElement.pas:680`, `Get_Losses` `:743`, `GetPhasePower`
+/// `:1049`, `GetPhaseLosses` `:1090` — Powers, Losses, Summary, meters,
+/// monitors, control sampling) multiplies the converged `NodeV_n` by the
+/// previous step's current. r4133 keeps that stale current, an upstream bug the
+/// port never reproduces.
+///
+/// Which stamps go is decided by what the **normal** fixed point leaves behind,
+/// so that Newton and normal report alike:
+///
+/// * A PC element whose `Iterminal` holds its own model's current — Pascal's
+///   `ITerminalUpdated` (`PCElements/PCElement.pas:510-514`), set by every
+///   `Calc*ModelContribution`, e.g. `TLoadObj.DoConstantPQLoad`
+///   (`PCElements/Load.pas:1413`) — keeps its stamp. `DoNormalSolution`'s last
+///   `GetPCInjCurr` pass (`Common/Solution.pas:1066`, via `TLoadObj.InjCurrents`
+///   `Load.pas:1922-1936`) evaluated that same model at `NodeV_{n-1}` and
+///   stamped it for the live count too, and its `GetCurrents` returns the stored
+///   current as it stands (`TLoadObj.GetTerminalCurrents` `Load.pas:1904-1918`
+///   → `TPCElement.GetTerminalCurrents` `PCElement.pas:247-265`), so both read
+///   paths already agree with the normal algorithm there.
+/// * Every other element — PD elements, `Vsource`/`Isource`, the VCCS, UPFC,
+///   VSConverter and GIC sources — got its stamp from `SumAllCurrents` alone,
+///   on `Yprim·Vterminal` at `NodeV_{n-1}`: a stamp the normal fixed point never
+///   leaves. Dropping it makes the next cache-aware read recompute at `NodeV_n`,
+///   exactly as after a normal solve.
+///
+/// Nothing is computed here, so no `GetCurrents` side effect (a `DebugTrace`
+/// record, `PCElements/Storage.pas:2874`) runs, and the iterates, the iteration
+/// count and `SolutionCount` are untouched. Only the exit after a successful
+/// `NodeV -= dV` needs it: an error return leaves `NodeV` where the stamps were
+/// formed.
+fn drop_stale_newton_iterminal_stamps(ckt: &Circuit, env: &mut SolveEnv) {
+    for &r in &ckt.ckt_elements {
+        let cd = env.store.ckt_elem_mut(r).cd_mut();
+        // The elements `sum_all_currents` stamped, minus the model-state ones.
+        if cd.enabled && !cd.node_ref.is_empty() && !cd.iterminal_updated {
+            cd.iterminal_solution_count = None;
+        }
+    }
 }

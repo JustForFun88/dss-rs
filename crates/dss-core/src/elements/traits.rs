@@ -813,7 +813,9 @@ pub trait CktElement: Send {
         }
     }
 
-    /// `ComputeIterminal`: cache-aware terminal-current refresh.
+    /// `ComputeIterminal` (r4133 `Common/CktElement.pas:632-640`): cache-aware refresh. Never
+    /// one Newton step stale: the solver drops the stamps its last `SumAllCurrents` formed at
+    /// the pre-update guess (`power_flow::drop_stale_newton_iterminal_stamps`; r4133 keeps them).
     fn compute_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         if !self.cd().iterminal_solved_for(sys.solution_count) {
             let mut curr = vec![Complex64::ZERO; self.cd().yorder];
@@ -824,17 +826,15 @@ pub trait CktElement: Send {
         }
     }
 
-    /// Force a fresh `Iterminal` from the present `NodeV`, bypassing the
-    /// `SolutionCount` cache — the model of the CAPI `CktElement.Currents` read
-    /// path (`CAPI_CktElement.pas` `elem.GetCurrents`), which always recomputes
-    /// `Yprim·Vterminal (± inj)` rather than returning the solver's internal
-    /// `ComputeIterminal` cache. The two agree after every fixed-point solve
-    /// (the cache is invalid at read time, so `compute_iterminal` recomputes),
-    /// but `DoNewtonSolution`'s final `SumAllCurrents` stamps `Iterminal` at the
-    /// converged `SolutionCount` from the *pre-final* voltage guess `NodeV_{n-1}`
-    /// (the update `NodeV -= dV` follows it), so a plain `compute_iterminal`
-    /// would then return that one-step-stale current. Reporting reads use this
-    /// to match the oracle's fresh `GetCurrents`.
+    /// Write a fresh `GetCurrents` into `Iterminal` and stamp it, bypassing the `SolutionCount`
+    /// test — the model of upstream's scratch-buffer read (`CktElement.Currents`, r4133
+    /// `DDLL/DCktElement.pas:584`; capi `CAPI_CktElement.pas` `elem.GetCurrents`). `GetCurrents`
+    /// is still the element's own: a PD element or a source recomputes `Yprim·Vterminal (± inj)`
+    /// at `node_v`, a PC element holding its model state (`ITerminalUpdated`) returns that stored
+    /// current (r4133 `PCElements/PCElement.pas:247-265`). So after every solve this reads what
+    /// [`Self::compute_iterminal`] reads — the solver drops the stale Newton stamps — and the two
+    /// differ only in how often `GetCurrents` runs, i.e. in its side effects (a `DebugTrace`
+    /// record).
     fn refresh_iterminal(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let mut curr = vec![Complex64::ZERO; self.cd().yorder];
         self.get_currents(sys, node_v, &mut curr);

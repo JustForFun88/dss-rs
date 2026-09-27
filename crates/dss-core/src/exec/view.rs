@@ -1530,45 +1530,45 @@ impl Dss {
             // arm (`Common/CktElement.pas:1071`) and the `n > 0` test are the
             // same two zero paths.
             let mut total_w = vec![num_complex::Complex64::ZERO; elem.cd().nterms];
-            // Powers (and Losses, below) model the oracle's `Get_Powers` /
-            // `Get_Losses`, which route through the cache-aware `ComputeIterminal`;
-            // Currents model the fresh `CktElement.Currents` (`GetCurrents`,
-            // `CAPI_CktElement.pas`). The two `Iterminal` read paths agree after
-            // every fixed-point / direct / harmonic solve — the cache is invalid
-            // there, so upstream's cache-aware read recomputes fresh at the
-            // present `NodeV` too, and the single-frequency reasoning in the
-            // block comment above holds.
+            // Powers (and Losses / PhaseLosses, below) model the oracle's
+            // `CktElement.Powers` / `Losses` / `PhaseLosses`, which go through the
+            // cache-aware `ComputeIterminal` (r4133 `DDLL/DCktElement.pas:608` →
+            // `GetPhasePower`, `Common/CktElement.pas:1049`;
+            // `DDLL/DCktElement.pas:630` → `Get_Losses`,
+            // `Common/CktElement.pas:743`; `GetPhaseLosses`,
+            // `Common/CktElement.pas:1090`); Currents model
+            // `CktElement.Currents`, a scratch-buffer `GetCurrents`
+            // (`DDLL/DCktElement.pas:584`). The two read paths return the same
+            // current after every solve, so the single-frequency reasoning in the
+            // block comment above holds for all of them: a PD element's or a
+            // source's stamp is invalid at read time and both recompute at the
+            // present `NodeV`, while a PC element holding its model state
+            // (`ITerminalUpdated`) returns that one stored current either way.
             //
-            // After a **Newton** solve the two read paths diverge upstream, and
-            // that divergence is an upstream bug we do NOT reproduce (CLAUDE.md
-            // known bug 5, torn down in both lanes by `GOLDEN_REBASE_PLAN.md`
-            // G2.3). `DoNewtonSolution`'s final `SumAllCurrents` stamps
-            // `Iterminal` at the pre-final voltage guess `NodeV_{n-1}` and marks
-            // it solved for this `SolutionCount` (the `NodeV -= dV` update
-            // follows it), so upstream's cache-aware path (Powers/Losses)
-            // returns a one-step-stale current while `GetCurrents` (Currents)
-            // recomputes at the converged `NodeV_n` — i.e. it reports
-            // `S != V·conj(I)` for one element in one read (`Vsource.pas`
-            // `GetCurrents` reads `NodeV` directly, whereas `CktElement.pas`
-            // `Get_Powers`/`Get_Losses` reuse `ComputeIterminal`).
+            // Newton included — upstream breaks it there (CLAUDE.md upstream bug
+            // 5: `DoNewtonSolution` leaves every stamp valid on a current formed
+            // at the pre-final guess `NodeV_{n-1}`, so its Powers/Losses read
+            // reports `S != V·conj(I)`), and the port repairs that at the source:
+            // `do_newton_solution` drops those stamps on exit
+            // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`,
+            // `RETRO_FIXES_PLAN.md` RF-D00-01), so no reader of the engine needs a
+            // Newton special case and none is made here.
             //
-            // So this is `refresh_iterminal` unconditionally: one fresh current
-            // at `NodeV_n` feeds Powers, Losses AND Currents, and the identity
-            // `S = V·conj(I)` — which is what `Powers` *means* — holds under
-            // every algorithm. Nothing but a Newton solve moves: everywhere else
-            // the cache is invalid here, so the cache-aware read computed the
-            // same value.
-            //
-            // GATE NOTE: this staleness was the ONLY feature-sensitive signal
-            // distinguishing `algorithm=Newton` from the normal fixed point on
-            // the `newton.dss` / `newton_feeder.dss` corpus decks (same voltages,
-            // same iteration count), and no oracle channel reports those decks'
-            // powers/losses correctly — so both lanes now drop exactly those two
-            // channels for those two decks
-            // (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`)
-            // and the signal is carried instead by `exec::tests::newton`'s in-engine
-            // Newton-dispatch tripwire plus its expected-value pin.
+            // GATE NOTE: every oracle channel keeps the stale read, so the two gated
+            // `newton.dss` / `newton_feeder.dss` decks' powers/losses stay dropped
+            // from the oracle compare in both lanes
+            // (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`),
+            // and Newton dispatch plus the repaired values are carried by
+            // `exec::tests::newton`'s tripwire and expected-value pins.
             // See investigations/issue-05-newton-stale-iterminal.md.
+            //
+            // The read below is a `refresh_iterminal` rather than the cache-aware
+            // `compute_iterminal` it models: the same current, but it runs
+            // `GetCurrents` even on a valid stamp, and on a `DebugTrace=yes`
+            // Storage that appends one trace record (r4133
+            // `PCElements/Storage.pas:2874`) — part of this reader's footprint,
+            // which the Storage trace comparison pins
+            // (`tests/corpus_gate/scheduler.rs::TRACE_READBACK_RECORDS`).
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.refresh_iterminal(&sys, &node_v);
                 let cd = elem.cd();
@@ -1604,7 +1604,7 @@ impl Dss {
                 total_w.iter().map(|s| s * 0.001).collect();
             // The element's own losses path (`Get_Losses`) — the same cache-aware
             // `ComputeIterminal`, read BEFORE the currents refresh below so it
-            // reuses the fresh current the Powers block just left in the cache
+            // reuses the current the Powers block just left in the cache
             // (`refresh_iterminal` stamps it for this `SolutionCount`), i.e.
             // Powers and Losses are one and the same current by construction.
             let loss = elem.losses(&sys, &node_v);
@@ -1617,8 +1617,9 @@ impl Dss {
             // rule the two oracle transports obey (§1.1(a): group A before
             // group B).
             let phase_losses = elem.phase_losses(&sys, &node_v);
-            // Currents: fresh recompute from the converged `NodeV` (oracle
-            // `GetCurrents`), overwriting the `Iterminal` cache after Powers/Losses.
+            // Currents: the element's own `GetCurrents` (the oracle's
+            // scratch-buffer `CktElement.Currents`), overwriting the `Iterminal`
+            // cache after Powers/Losses.
             if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
                 elem.refresh_iterminal(&sys, &node_v);
                 let cd = elem.cd();
@@ -1631,11 +1632,10 @@ impl Dss {
             // produced, so they are formed here from the one current computed
             // above rather than by a second read path: upstream allocates a
             // scratch buffer and calls `GetCurrents` again for each of them
-            // (r4133 `DDLL/DCktElement.pas:1068`/`:837`), which is the same
-            // current whenever the cache is invalid and, after a Newton solve,
-            // the *fresh* one this snapshot already uses (CLAUDE.md upstream
-            // bug 5 / `GOLDEN_REBASE_PLAN.md` G2.3 — see the block comment
-            // above). Doing it here also keeps `report/export/*` untouched.
+            // (r4133 `DDLL/DCktElement.pas:1068`/`:837`), which returns the
+            // current this loop already holds (see the block comment above the
+            // Powers read). Doing it here also keeps `report/export/*`
+            // untouched.
             //
             // `c_to_polar_deg` is the port of `CtoPOLARdeg`
             // (`Shared/Ucomplex.pas:131` in r4133 == `DSSUcomplex.pas` in capi):
