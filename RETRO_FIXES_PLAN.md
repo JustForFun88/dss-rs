@@ -4173,7 +4173,10 @@ are applied under §4 (RF-D04-01 takes TESTING.md's `INFRA|` entries).
   step's). Assertion and panic messages are re-worded like comments (verify with `rg` that no test
   asserts their text). `PD_PINS_FILE` becomes the repository path
   `crates/dss-core/tests/pd_elements_pins.rs`, joined from the repository root in one line rustfmt
-  keeps (`Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")).join(PD_PINS_FILE)` is one), its
+  keeps: the test's `PathBuf::from(env!("CARGO_MANIFEST_DIR"))` becomes
+  `PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))`, a `let path` line of 99 columns.
+  `PathBuf` is the one `std::path` name in scope (`mod.rs:104`), so `Path::new` would need a wider
+  import, and `std::path::Path::new(` makes the line 106 columns, which rustfmt splits. The const's
   doc names the repository root as the base, and its message prints `{PD_PINS_FILE}` alone. Every
   hunk keeps its line count (`git diff -U0 <base>`: equal old and new counts per hunk), because
   committed citations in TESTING.md, `tests/TOLERANCE_NOTES.md`, the plans, the records and `.rs`
@@ -4189,7 +4192,9 @@ are applied under §4 (RF-D04-01 takes TESTING.md's `INFRA|` entries).
   digests each entry's full JSON, so re-wording it would move the digest `population.lock.json`
   pins (`…@c3edbc40146704a3`) in a text-only step.
 **Probes:** the census, at the step base (the scope) and again at the head (the check), both over
-`crates tests tools TESTING.md tests/TOLERANCE_NOTES.md CLAUDE.md --glob '!tests/corpus/electricdss-tst/**' --glob '!tests/golden/**'`.
+`crates tests tools TESTING.md CLAUDE.md --glob '!tests/corpus/electricdss-tst/**' --glob '!tests/golden/**'`
+(no root inside another: rg prints a file that two roots reach twice, and `tests` holds
+`tests/TOLERANCE_NOTES.md`).
 (1) The path probe `rg -n -e 'tests/harness' -e 'mod harness\b'`, 16 hits at 35adac05.
 (2) The phrase probe `rg -n -i -e 'compile[sd]? into' -e '(same|this|including|gate|test) binar' -e 'cannot import' -e 'share[sd]? the process' -e 'same process' -e '#\[path\]' -e 'relative to .crates/dss-core.' -e 'crates/dss-core/\{'`,
 126 hits at 35adac05. Each hit is read with the doc or comment block around it, every false
