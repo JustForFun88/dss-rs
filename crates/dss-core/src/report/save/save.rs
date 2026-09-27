@@ -61,10 +61,11 @@
 //!   transformer `Windings`, the controllers' element lists → weights) is
 //!   written after that sizer — except a Line impedance matrix the deck set
 //!   ahead of one of the line's references, which stays there because its
-//!   parse would clear that reference. The relation is read off the class
-//!   property tables, not listed by class, and the hoist re-orders the set-order
-//!   chain itself for the duration of the write, so the generic walk and every
-//!   override see it. r4133 has three guards: `LoadShape`
+//!   parse would clear that reference, and ahead of which the line's `Phases`
+//!   is also written, at the head of the line. The relation is read off the
+//!   class property tables, not listed by class, and the hoist re-orders the
+//!   set-order chain itself for the duration of the write, so the generic walk
+//!   and every override see it. r4133 has three guards: `LoadShape`
 //!   (`General/DSSObject.pas:144-172`), `XYcurve` (`XYcurve.pas:978-1003`), and
 //!   the `PriceShape`/`TShape` set-time re-stamp — an `npts=` re-stamps `npts`
 //!   and then the last-set of `price`/`temp` and the three file properties
@@ -267,9 +268,20 @@ fn struct_count_prop(cls: &ClassProps) -> usize {
         .map_or(0, |pd| pd.size_prop)
 }
 
-/// The **sizing-property hoist** (RF-D01-04): the order [`write_dss_object`]
-/// walks an object's set properties in, or `None` when that is the set-order
-/// chain itself (the common case — nothing of the line moves).
+/// What the sizing-property hoist ([`save_order`]) does to one object's line.
+#[derive(Default)]
+struct Hoist {
+    /// The order [`write_dss_object`] walks the object's set properties in, or
+    /// `None` when that is the set-order chain itself (the common case —
+    /// nothing of the line moves).
+    order: Option<Vec<usize>>,
+    /// The sizers also written at the head of the line, ahead of every member:
+    /// each one sizes a member the fence keeps ahead of it.
+    lead: Vec<usize>,
+}
+
+/// The **sizing-property hoist** (RF-D01-04): how [`write_dss_object`] writes
+/// an object's set properties ([`Hoist`]).
 ///
 /// Every property is parsed against the **live** value of its sizer
 /// ([`parse_sizer`]), so a line that writes an array before its sizer reloads
@@ -307,19 +319,25 @@ fn struct_count_prop(cls: &ClassProps) -> usize {
 /// reference that rebuilt it, it would reload the line matrix-specified, the
 /// reference gone. Such a matrix never crosses a reference: set ahead of the
 /// last reference that precedes `S`, it stays where the deck put it and does
-/// not make `S` move — the reference rebuilds it on reload as it did live
-/// (r4133's order, which round-trips there). Nothing
-/// else moves, and no token is added or dropped. Values are rendered live, so a
-/// property written behind a sizer it used to precede reloads the value the
+/// not make `S` move, as in r4133's order. It still parses against `S`, which
+/// is written behind it, so on reload it would parse at the default order and
+/// a line of any other phase count would reject it
+/// (`Parser/ParserDel.pas:786-790`); r4133 does, and the rejected matrix arm
+/// still clears `SymComponentsModel` (`PDElements/Line.pas:691`), so the
+/// trailing phase re-set is refused too (`:673-682`). So `S` is also written
+/// at the head of the line ([`Hoist::lead`]), ahead of every member, and its
+/// chain token stays behind the reference that may re-set it. Nothing else
+/// moves, and no other token is added or dropped. Values are rendered live, so
+/// a property written behind a sizer it used to precede reloads the value the
 /// object holds now.
-fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
+fn save_order(cls: &ClassProps, data: &DssObjData) -> Hoist {
     let chain: Vec<usize> = std::iter::successors(data.next_property_set(None), |&p| {
         data.next_property_set(Some(p))
     })
     .collect();
     // Fast path: most lines hold no sized property at all.
     if chain.iter().all(|&p| parse_sizer(cls, p).is_none()) {
-        return None;
+        return Hoist::default();
     }
     let n = cls.num_properties();
     let sizer_of: Vec<Option<usize>> = (0..=n)
@@ -344,14 +362,25 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
         cls.class_name() == "Line" && matches!(p, RMATRIX | XMATRIX | CMATRIX)
     };
     let mut order = chain.clone();
+    let mut lead = Vec::new();
     for &s in &chain {
-        let pos = order.iter().position(|&p| p == s)?;
+        let Some(pos) = order.iter().position(|&p| p == s) else {
+            return Hoist::default();
+        };
         let fence = order[..pos]
             .iter()
             .rposition(|&p| is_ref[p])
             .map_or(0, |r| r + 1);
         // Whether the member at chain index `i` (< `pos`) moves behind `S`.
         let moves = |i: usize, p: usize| sizer_of[p] == Some(s) && (i >= fence || !clears_refs(p));
+        // A member the fence keeps ahead of `S` still parses against it.
+        if order[..pos]
+            .iter()
+            .enumerate()
+            .any(|(i, &p)| sizer_of[p] == Some(s) && !moves(i, p))
+        {
+            lead.push(s);
+        }
         if !order[..pos].iter().enumerate().any(|(i, &p)| moves(i, p)) {
             continue;
         }
@@ -371,7 +400,10 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
         order.insert(at, s);
         order.splice(at + 1..at + 1, ahead);
     }
-    (order != chain).then_some(order)
+    Hoist {
+        order: (order != chain).then_some(order),
+        lead,
+    }
 }
 
 /// Pascal `WriteDSSObject` (`Utilities.pas:1221-1235`): one script line —
@@ -381,8 +413,9 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
 /// `HasBeenSaved`.
 ///
 /// **The sizing-property hoist** ([`save_order`]) is applied here, once, for the
-/// generic walk and every override alike: when it re-orders the line, the
-/// object's set-order chain is re-stamped in that order
+/// generic walk and every override alike: a sizer it leads with
+/// ([`Hoist::lead`]) is written right behind the object's name, and when it
+/// re-orders the line, the object's set-order chain is re-stamped in that order
 /// ([`DssObjData::set_as_next_seq`], each member once) for the duration of the
 /// `SaveWrite` dispatch and then restored exactly
 /// ([`DssObjData::copy_prp_sequence_from`] the snapshot, the counter slot
@@ -407,9 +440,13 @@ pub fn write_dss_object(
     out.push('.');
     out.push_str(arena.obj(idx).data().name());
     out.push('"');
-    // The sizing-property hoist: re-stamp the chain in save order; restored
-    // right after the dispatch below.
-    let chain_snapshot = save_order(cx.cls, arena.obj(idx).data()).map(|order| {
+    // The sizing-property hoist: the sizers it leads with, then the chain
+    // re-stamped in save order; restored right after the dispatch below.
+    let Hoist { order, lead } = save_order(cx.cls, arena.obj(idx).data());
+    for s in lead {
+        save_write_token(out, cx, arena.obj(idx), s);
+    }
+    let chain_snapshot = order.map(|order| {
         let data = arena.obj_mut(idx).data_mut();
         let snapshot = data.clone();
         for p in order {
