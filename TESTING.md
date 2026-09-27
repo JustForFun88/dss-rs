@@ -99,7 +99,7 @@ fails if the cfg string appears anywhere else.
 
 The whole lane policy lives in **one** file, `crates/dss-test-harness/src/harness/lane.rs`
 (`PARITY`, `ITER_SLACK`, `compare_report`, `expected_eventlog`, the
-field-scoped exclusion lists) — no golden driver reads the cfg directly, and
+field-scoped exclusion lists) — no golden driver reads the cfg directly bar two tests, `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in` (which compares it with `lane::PARITY`) and `run_file_contents_pins.rs::the_two_sig_trace_columns_are_declined_on_both_channels`, and
 the module's own unit tests assert the *split itself* (a rendering-only
 difference must pass in the default lane and fail in the parity lane, in
 whichever lane the suite runs). Stage F introduces **no** tolerance: the
@@ -253,8 +253,8 @@ workspace crate, `dss-test-harness` (`publish = false`, `#![forbid(unsafe_code)]
 no `[features]`): the module `crates/dss-test-harness/src/harness/` (`mod.rs`,
 `lane.rs`, `scenario.rs`, `scratch.rs`, `regen.rs`, `props_norm.rs`, `di.rs`,
 `run_files.rs`, `run_file_contents.rs`, `topology.rs`, `inc_matrix.rs`,
-`aggregates.rs`, `capture_guard.rs`, `export_policies.rs`), moved line-neutrally
-from `crates/dss-core/tests/harness/`. `dss-core` takes it as a dev-dependency, 27
+`aggregates.rs`, `capture_guard.rs`, `export_policies.rs`), moved with `git mv`, line-neutrally bar the 14-line test deleted from `lane.rs`,
+from `crates/dss-core/tests/harness/`. `dss-core` takes it as a dev-dependency (a normal dependency of a product crate reds `oracle_parity_cfg_gate.rs::no_product_crate_links_a_test_only_crate`), 27
 drivers under `crates/dss-core/tests/` import it with
 `use dss_test_harness::harness;` (`props_r4133_pins.rs` imports only
 `harness::scratch`), so it compiles once per lane and its 408 self-tests run once

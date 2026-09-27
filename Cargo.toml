@@ -39,9 +39,11 @@ wasmi = { version = "=1.0.9", default-features = false, features = ["simd"] }
 # the live corpus — including yearly/8500-node/`large` decks — through the
 # engine, and at opt-level 0 a single yearly EPRI-feeder deck costs ~14 min
 # (~×10 vs optimized). Optimize the engine crates and all dependencies
-# (notably faer's sparse LU) while the test binaries themselves stay at opt 0
-# for fast incremental builds. Rust float semantics do not change with opt
-# level (no fast-math/reassociation), and the live gate's exact-iteration-count
+# (notably faer's sparse LU). A package override covers every target of its
+# package, test binaries included, so dss-core's integration tests build at
+# opt 3 too, and only members with no override (dss-cli, dss-metis) stay at
+# opt 0. Rust float semantics do not change with opt level (no
+# fast-math/reassociation), and the live gate's exact-iteration-count
 # contract across the whole corpus pins that empirically.
 #
 # Safety knobs are ORTHOGONAL to opt-level and pinned explicitly so a future
