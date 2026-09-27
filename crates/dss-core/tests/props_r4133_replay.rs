@@ -936,8 +936,10 @@ const DECLARED_OUT_OF_SCOPE: (usize, usize, usize) = (221, 21, 0);
 /// nor did any census-time `capi_v0145` case enter it, so a census cell is in
 /// scope today exactly when it was in scope when it was measured.
 /// `props_r4133_evidence_lock.rs::the_in_scope_population_is_the_census_one_plus_named_additions`
-/// locks both halves (the census set by count and digest, the additions by
-/// name) and reds on the next in-scope deck until it is named there.
+/// locks both halves (the census set by count and digest, the census-time
+/// `capi_v0145` cases by name — none may enter the scope or pass as an
+/// addition — and the additions by name) and reds on the next in-scope deck
+/// until it is named there.
 /// The rule is [`row_out_of_scope_by_ceiling`], and it is applied only
 /// on these four cited pairs, only to numeric rows, and with a margin: the
 /// extracts round `max_rel_in_scope` to two decimals (`%.2e`), so the
@@ -1813,9 +1815,10 @@ const RP32_SKIPPED_TAG: &str = "capi015_multistep_limitation";
 ///   so the getter answers the `PropertyValue[23]` store, the sibling of
 ///   `remoteptratio` (`:1452`), measured at 888 cells by RP2.1 part A: the
 ///   `InitPropertyValues` default `'100'` (`:1448`) where no deck writes the
-///   property (864 cells), the deck's own token `'800'` stored by the `Edit`
-///   loop (`:420`) where one does (24 cells), while the live value is -100 /
-///   -800 (`:627`, `:500-507`).
+///   property (861 cells), the deck's own token stored by the `Edit` loop
+///   (`:420`) where one does (27 cells: 24 × `'800'`, and 3 × `'100'` — the
+///   ADiakoptics `zone_2` deck's `revThreshold=100`, the default's spelling),
+///   while the live value is -100 / -800 (`:627`, `:500-507`).
 const BIN7_ECHO_SUPPLEMENT: &[&str] = &[
     "autotrans.pctperm",
     "autotrans.repair",
@@ -3740,8 +3743,8 @@ fn examples(name: &str, src: Source) -> Vec<Example> {
 }
 
 /// The [`SUPPLEMENT`] header's machine-readable bin declarations, in file
-/// order: one `# BIN <pair> <bin>` line per pair whose bin no README table
-/// records (`regcontrol.fwdthreshold`, `regcontrol.revthreshold`). The line
+/// order: one `# BIN <pair> <bin>` line per pair no README WP-RP1 record bins
+/// (`regcontrol.fwdthreshold`, `regcontrol.revthreshold`). The line
 /// carries the bin only; the pair's cells are the sum of its data rows, which
 /// [`Corpus::load`] adds up, so neither number lives in this file as a literal
 /// (RETRO_FIXES RF-D00-16, finding `RP|RP2.1|AT2|AT2-3`).
@@ -3750,7 +3753,8 @@ fn examples(name: &str, src: Source) -> Vec<Example> {
 /// does a pair declared twice or a header that declares nothing: the
 /// declaration is evidence, so a malformed one must be loud rather than
 /// skipped. `props_r4133_evidence_lock.rs` (`SUPPLEMENT_BINS`) pins the same
-/// two lines as bytes.
+/// two lines as bytes and checks each bin against its pair's data rows by the
+/// README's assignment rule.
 fn supplement_bin_declarations() -> Vec<(String, u8)> {
     let mut out: Vec<(String, u8)> = Vec::new();
     for line in read(SUPPLEMENT).lines() {

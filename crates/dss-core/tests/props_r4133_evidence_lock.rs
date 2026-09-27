@@ -19,12 +19,13 @@
 //! # What is locked
 //!
 //! 1. **Bytes** — SHA-256 + length over the five verbatim copies
-//!    ([`VERBATIM`]) and over the four derived files the replay consumes
-//!    ([`DERIVED`]: `examples_full.txt`, `examples_supplement.txt`, `bins.tsv`,
-//!    `shape_in_scope.txt`). They are hashed **raw**: `.gitattributes` marks
-//!    the directory `-text` (asserted below), so the committed bytes and the
-//!    working-tree bytes are the same on every platform, CRLF and LF files
-//!    alike.
+//!    ([`VERBATIM`]) and over the six derived files ([`DERIVED`]): the four the
+//!    replay consumes (`examples_full.txt`, `examples_supplement.txt`,
+//!    `bins.tsv`, `shape_in_scope.txt`) and the two in-scope pair extracts
+//!    (`structural_pairs_in_scope.txt`, `numeric_pairs_in_scope.txt`). They
+//!    are hashed **raw**: `.gitattributes` marks the directory `-text`
+//!    (asserted below), so the committed bytes and the working-tree bytes are
+//!    the same on every platform, CRLF and LF files alike.
 //! 2. **Row counts** of the derived files (the acceptance criterion of WP-RP0).
 //! 3. **Cross-file equalities** — `bins.tsv` ↔ the pair files ↔
 //!    `examples_full.txt` ↔ the in-scope pair files ↔ `shape_in_scope.txt`,
@@ -32,8 +33,9 @@
 //!    files and against the numeric bin rule (`bin = 7` iff `max_rel >= 1e-4`),
 //!    and every `(pair, rust-example, r4133-example)` triple of the two
 //!    in-scope extracts as a row of the digest-locked `examples_full.txt`.
-//!    These catch a partial regeneration, and they are the only guard of the
-//!    two in-scope extracts, which carry no digest of their own.
+//!    These catch a partial regeneration and tie the files to each other;
+//!    what pins a value the triple check admits (another recorded spelling of
+//!    the same pair) is the digest of item 1.
 //! 4. **The two counted claims the README's data traps make** — the 17
 //!    heterogeneous structural pairs and bin 1's nine echo-carrying pairs (four
 //!    mixed, five pure echo). Both are re-derived here from
@@ -49,10 +51,14 @@
 //! 6. **The population the in-scope numbers measure** — the live manifests'
 //!    `engines ∈ {both, r4133}` cases are the census's 462 ([`CENSUS_IN_SCOPE`],
 //!    count + digest) plus the named post-census additions
-//!    ([`IN_SCOPE_ADDED_SINCE_CENSUS`]), and the r4133 `kind: "skip"` rows of
-//!    `tests/corpus/ledger.json` the README's in-scope section counts are still
-//!    the ones it names ([`R4133_SKIPS`]). These read live files, so they are
-//!    the tripwire for the README's population prose (RETRO_FIXES RF-D00-16).
+//!    ([`IN_SCOPE_ADDED_SINCE_CENSUS`]), no census-time `capi_v0145` case
+//!    ([`CENSUS_OUT_OF_SCOPE`], by name, the list itself locked by
+//!    [`CENSUS_ALL`]) is in scope or named as an addition, [`MANIFESTS`] are
+//!    the manifests the gate's population lock counts, and the r4133
+//!    `kind: "skip"` rows of `tests/corpus/ledger.json` the README's in-scope
+//!    section counts are still the ones it names ([`R4133_SKIPS`]). These read
+//!    live files, so they are the tripwire for the README's population prose
+//!    (RETRO_FIXES RF-D00-16).
 //!
 //! Nothing here needs an oracle, a solve or a feature flag: it is a data lock,
 //! green in both lanes.
@@ -64,6 +70,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
+use dss_test_harness::harness::{ValueVerdict, value_verdict};
 use sha2::{Digest, Sha256};
 
 /// The vendored evidence directory, repo-root-relative.
@@ -102,13 +109,18 @@ const VERBATIM: &[(&str, &str, usize)] = &[
     ),
 ];
 
-/// The four derived files the replay consumes: name, SHA-256 over the raw
-/// bytes, byte length. Unlike [`VERBATIM`] they have no local source to be a
-/// copy of — `examples_full.txt`, `bins.tsv` and `shape_in_scope.txt` are
-/// WP-RP0's derivations of the 2026-08-08 census, `examples_supplement.txt` is
-/// RP2.1's measurement — so the digest is the only thing that pins their value
-/// text: the structural checks below hold across an in-place value rewrite
-/// (RETRO_FIXES RF-D00-16, finding `RP|RP0.1|AC1|AC1-1`).
+/// The six derived files: name, SHA-256 over the raw bytes, byte length.
+/// Unlike [`VERBATIM`] they have no local source to be a copy of —
+/// `examples_full.txt`, `bins.tsv`, `shape_in_scope.txt` and the two in-scope
+/// pair extracts are WP-RP0's derivations of the 2026-08-08 census,
+/// `examples_supplement.txt` is RP2.1's measurement — so the digest is the only
+/// thing that pins their value text: the structural checks below hold across
+/// an in-place value rewrite (RETRO_FIXES RF-D00-16, finding
+/// `RP|RP0.1|AC1|AC1-1`), and an in-scope extract's example cell can be
+/// re-pointed at another spelling `examples_full.txt` records for the same
+/// pair without breaking any count or triple (the settlement's finding AT-2:
+/// 112 of the 198 structural and 39 of the 53 numeric in-scope pairs have
+/// more than one).
 const DERIVED: &[(&str, &str, usize)] = &[
     (
         "examples_full.txt",
@@ -117,8 +129,8 @@ const DERIVED: &[(&str, &str, usize)] = &[
     ),
     (
         "examples_supplement.txt",
-        "3969ee4a44c6b10e7bd93055dfcf624434d1d10e68006c51334435d33636aab5",
-        11_511,
+        "b2e2c184730e4420a1aaf13d5be9ee9e0fbec39ad3a1ecb53109b5942b7e3d00",
+        11_748,
     ),
     (
         "bins.tsv",
@@ -129,6 +141,16 @@ const DERIVED: &[(&str, &str, usize)] = &[
         "shape_in_scope.txt",
         "cb0c7e068dfc01a0d5bca4dbcb024e7f0dc1a7b72146018dc69034724593deb4",
         382,
+    ),
+    (
+        "structural_pairs_in_scope.txt",
+        "fccfc39fcbd121775824525149d33db9348370d1bb440684a426461ea585f198",
+        8903,
+    ),
+    (
+        "numeric_pairs_in_scope.txt",
+        "e1c858f6a8dbe96219781964d43eda78aa01e41bf807bc6368ba3d42dc5a7684",
+        3295,
     ),
 ];
 
@@ -153,8 +175,11 @@ const ROW_COUNTS: &[(&str, usize)] = &[
 const SUPPLEMENT_PAIRS: usize = 26;
 /// Cells behind those 76 rows (the file's own `count` column).
 const SUPPLEMENT_CELLS: usize = 4541;
-/// The supplement header's `# BIN <pair> <bin>` lines: the two pairs whose bin
-/// no README table records, declared by the file itself:
+/// The supplement header's `# BIN <pair> <bin>` lines: the two pairs no README
+/// WP-RP1 record bins (the replay reads the README's prose binning only for
+/// the 24 WP-RP1 pairs), declared by the file itself and checked against their
+/// own data rows by the README's rule in
+/// [`the_supplement_carries_only_pairs_no_frozen_row_can`]:
 /// `regcontrol.fwdthreshold` echoes prop 36
 /// (`Version8/Source/Controls/RegControl.pas:294`), which `InitPropertyValues`
 /// never writes (`:1423-1459` initialises 1..32 only);
@@ -273,13 +298,14 @@ const CENSUS_IN_SCOPE: (usize, &str) = (
     "4bb3fa6ff02c9ba8f1581c42f14cb394134b17b0849cddd910ce286464418e03",
 );
 
-/// In-scope cases the manifests gained after the census, by label. None of
-/// them has a frozen cell, so no in-scope number above describes them: they
-/// are named here so that the population lock can tell a known addition from
-/// drift. At RF-D00-16 the live manifests hold 526 cases (366 `both` + 101
-/// `r4133` + 59 `capi_v0145`), 467 in scope = the census's 462 + these five;
-/// the other change since, three GIC decks moved `both` → `r4133`, stays in
-/// scope and moves nothing.
+/// In-scope cases the manifests gained after the census, by label: decks the
+/// census never saw. None of them has a frozen cell, so no in-scope number
+/// above describes them: they are named here so that the population lock can
+/// tell a known addition from drift. A census-time case is never an addition
+/// — one of [`CENSUS_OUT_OF_SCOPE`] named here reds. At RF-D00-16 the live
+/// manifests hold 526 cases (366 `both` + 101 `r4133` + 59 `capi_v0145`), 467
+/// in scope = the census's 462 + these five; the other change since, three GIC
+/// decks moved `both` → `r4133`, stays in scope and moves nothing.
 const IN_SCOPE_ADDED_SINCE_CENSUS: &[&str] = &[
     "asymmetric:autotrans/autotrans_xfmrcode.dss",
     "controls:energymeter/midi_relcalc.dss",
@@ -287,6 +313,86 @@ const IN_SCOPE_ADDED_SINCE_CENSUS: &[&str] = &[
     "modes:faultstudy/faultstudy_micro.dss",
     "modes:makeposseq/makeposseq_gic.dss",
 ];
+
+/// The census-time cases of [`MANIFESTS`] the in-scope filter left out — the
+/// 59 `capi_v0145` cases of the 521, sorted, re-derived like
+/// [`CENSUS_IN_SCOPE`] from `git show 6db7f202:<manifest>` (RETRO_FIXES
+/// RF-D00-16 settlement, findings AT-1/AC-1/AT-4). Their census cells were
+/// measured *outside* the in-scope population, so none of them may join it
+/// unnoticed: a flip to `both`/`r4133` reds with its label, and naming it in
+/// [`IN_SCOPE_ADDED_SINCE_CENSUS`] cannot green that red (a subtraction of
+/// the named additions alone would restore the census digest exactly). All 59
+/// are still `capi_v0145` at RF-D00-16.
+const CENSUS_OUT_OF_SCOPE: &[&str] = &[
+    "controls:autotrans/autotrans_both.dss",
+    "controls:autotrans/autotrans_reg.dss",
+    "controls:autotrans/midi_autotrans.dss",
+    "controls:autotrans/midi_autotrans_both.dss",
+    "controls:capcontrol/capcontrol_follow_noshape.dss",
+    "controls:capcontrol/capcontrol_pf.dss",
+    "controls:combo/combo_metering.dss",
+    "controls:combo/midi_controls.dss",
+    "controls:gendispatcher/gendispatcher.dss",
+    "controls:gendispatcher/gendispatcher_kvarlimit.dss",
+    "controls:gendispatcher/midi_gendispatcher.dss",
+    "controls:invcontrol/invcontrol_avr.dss",
+    "controls:invcontrol/invcontrol_drc.dss",
+    "controls:invcontrol/invcontrol_expmodel.dss",
+    "controls:invcontrol/invcontrol_monbus.dss",
+    "controls:invcontrol/invcontrol_storage_vv_vw.dss",
+    "controls:invcontrol/invcontrol_vv_drc.dss",
+    "controls:invcontrol/invcontrol_wattpf.dss",
+    "controls:invcontrol/invcontrol_wattvar.dss",
+    "controls:invcontrol/midi_invcontrol_drc.dss",
+    "controls:sensor/midi_sensor.dss",
+    "controls:sensor/sensor_map.dss",
+    "controls:storagecontroller/storagectrl_follow.dss",
+    "controls:storagecontroller/storagectrl_time.dss",
+    "controls:swtcontrol/swtcontrol_lock.dss",
+    "modes:inputformat/shape_filearr/shape_filearr.dss",
+    "modes:inputformat/shape_mmf/shape_mmf.dss",
+    "modes:inputformat/shape_mmf_io/shape_mmf_io.dss",
+    "modes:makeposseq/makeposseq_ctrl.dss",
+    "modes:makeposseq/makeposseq_line.dss",
+    "modes:makeposseq/makeposseq_pc.dss",
+    "modes:makeposseq/makeposseq_report.dss",
+    "modes:makeposseq/makeposseq_shunt.dss",
+    "modes:makeposseq/makeposseq_xfmr.dss",
+    "modes:reduce/midi_reduce.dss",
+    "modes:reduce/reduce_default.dss",
+    "modes:reduce/reduce_keeplist.dss",
+    "modes:reduce/reduce_mergeparallel.dss",
+    "modes:reduce/reduce_shortlines.dss",
+    "modes:reduce/reduce_switches.dss",
+    "solvable_now:Test/CapControlFollow.dss",
+    "solvable_now:Version8/Distrib/EPRITestCircuits/ckt24/Run_Ckt24.dss",
+    "solvable_now:Version8/Distrib/EPRITestCircuits/ckt24/master_ckt24.dss",
+    "solvable_now:Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
+    "solvable_now:Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master.DSS",
+    "solvable_now:Version8/Distrib/Examples/ADiakoptics/ckt24/Torn_Circuit/Master_Interconnected.dss",
+    "solvable_now:Version8/Distrib/Examples/HarmonicsTMode/IEEE_519.DSS",
+    "solvable_now:Version8/Distrib/Examples/HarmonicsVariableLoad/IEEE_519.DSS",
+    "solvable_now:Version8/Distrib/Examples/Matlab/HarmonicT_MATLAB/IEEE_519.DSS",
+    "solvable_now:Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-csv-pq.dss",
+    "solvable_now:Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-dbl-p.dss",
+    "solvable_now:Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-sng-p.dss",
+    "solvable_now:Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-p.dss",
+    "solvable_now:Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-mm-txt-pq.dss",
+    "solvable_now:Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24-nomm.dss",
+    "solvable_now:Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24/master_ckt24.dss",
+    "solvable_now:Version8/Distrib/Examples/Microgrid/GridFormingInverter/GFM_IEEE8500/Run_RecloserSiting.DSS",
+    "solvable_now:Version8/Distrib/Examples/Paulo_Example/DSSFiles/subestacao.dss",
+    "solvable_now:Version8/Distrib/IEEETestCases/8500-Node/Run_RecloserSiting.DSS",
+];
+
+/// All 521 census-time labels of [`MANIFESTS`], any `engines`, as `(count,
+/// digest)` in [`CENSUS_IN_SCOPE`]'s form (`git show 6db7f202:<manifest>`,
+/// 34 258 bytes hashed). The census in-scope set and [`CENSUS_OUT_OF_SCOPE`]
+/// must add up to it, so that list cannot lose or gain a label unnoticed.
+const CENSUS_ALL: (usize, &str) = (
+    521,
+    "050cef2ecb04569f5fc76219e2185644913b2f2d98174d14dea70fa68cf24d71",
+);
 
 /// Every r4133-channel `kind: "skip"` row of `tests/corpus/ledger.json`, as
 /// `(case label, ledger id, cause_ref)`: in-scope cases whose r4133 side never
@@ -495,8 +601,11 @@ fn read_json(rel: &str) -> serde_json::Value {
 }
 
 /// The live manifests' cases as `"<prefix>:<path>" -> engines`, every case of
-/// [`MANIFESTS`] (a case without an `engines` string, with an unknown channel
-/// or listed twice panics — the join must be exact).
+/// [`MANIFESTS`]. A case with no `engines` key is `both`, the corpus schema's
+/// default the gate applies (`corpus_gate/manifest.rs`, `default_engines`;
+/// TESTING.md names `"both"` the default), so such a case is classified exactly
+/// as the gate channels it; an `engines` that is not a string, an unknown
+/// channel or a case listed twice panics — the join must be exact.
 fn manifest_engines() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     for (prefix, rel) in MANIFESTS {
@@ -510,9 +619,10 @@ fn manifest_engines() -> BTreeMap<String, String> {
                 .as_str()
                 .unwrap_or_else(|| panic!("{rel}: a case without a `path`: {case}"));
             let label = format!("{prefix}:{path}");
-            let engines = case["engines"]
-                .as_str()
-                .unwrap_or_else(|| panic!("{label}: no `engines` string"));
+            let engines = case.get("engines").map_or("both", |e| {
+                e.as_str()
+                    .unwrap_or_else(|| panic!("{label}: `engines` is not a string: {e}"))
+            });
             assert!(
                 matches!(engines, "both" | "r4133" | "capi_v0145"),
                 "{label}: unknown `engines` {engines:?}"
@@ -524,6 +634,13 @@ fn manifest_engines() -> BTreeMap<String, String> {
         }
     }
     out
+}
+
+/// SHA-256 hex over labels in ascending order, each followed by `\n` — the
+/// form of [`CENSUS_IN_SCOPE`] and [`CENSUS_ALL`].
+fn label_digest(labels: &BTreeSet<&str>) -> String {
+    let blob: String = labels.iter().map(|label| format!("{label}\n")).collect();
+    format!("{:x}", Sha256::digest(blob.as_bytes()))
 }
 
 /// The in-scope filter of the vendored `README.md`: `engines ∈ {both, r4133}`.
@@ -555,9 +672,11 @@ fn verbatim_copies_keep_their_bytes() {
 /// **The digest is what stops a quiet edit of a derived file** ([`DERIVED`]).
 /// The row counts, sums and bins below hold across an in-place rewrite of a
 /// value; one moved byte anywhere — a value, a count, a comment line of the
-/// supplement's header — moves the digest. The two in-scope extracts carry no
-/// digest: every column of theirs is cross-checked against digest-locked files
-/// in [`bins_tsv_agrees_with_the_pair_files`].
+/// supplement's header — moves the digest. That includes the two in-scope
+/// extracts: [`bins_tsv_agrees_with_the_pair_files`] ties their columns to the
+/// other files, but an example cell re-pointed at another spelling
+/// `examples_full.txt` records for the same pair passes it — only the digest
+/// sees that edit.
 #[test]
 fn derived_files_keep_their_bytes() {
     for (name, want, len) in DERIVED {
@@ -622,8 +741,8 @@ fn derived_extracts_keep_their_row_counts() {
             assert!(
                 !read(name).lines().any(|l| l.starts_with('#')),
                 "{name}: a `#`-prefixed line appeared in a frozen extract — only \
-                 {SUPPLEMENT} carries comments, and this file's row count is what \
-                 guards its bytes"
+                 {SUPPLEMENT} carries comments, so this is a hand edit of the evidence \
+                 or a generator change"
             );
         }
     }
@@ -853,6 +972,7 @@ fn examples_full_carries_every_pair_and_every_cell() {
 fn the_supplement_carries_only_pairs_no_frozen_row_can() {
     let frozen: BTreeSet<String> = bins().into_iter().map(|b| b.pair).collect();
     let mut pairs: BTreeMap<String, usize> = BTreeMap::new();
+    let mut spellings: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     let mut triples = BTreeSet::new();
     let mut cells = 0usize;
     for line in data_rows(
@@ -872,9 +992,13 @@ fn the_supplement_carries_only_pairs_no_frozen_row_can() {
              for pairs the frozen census could not record"
         );
         assert!(
-            triples.insert((pair.clone(), rust, r4133)),
+            triples.insert((pair.clone(), rust.clone(), r4133.clone())),
             "examples_supplement.txt: duplicate (pair, rust, r4133) triple in {line:?}"
         );
+        spellings
+            .entry(pair.clone())
+            .or_default()
+            .push((rust, r4133));
         *pairs.entry(pair).or_default() += count;
         cells += count;
     }
@@ -920,6 +1044,44 @@ fn the_supplement_carries_only_pairs_no_frozen_row_can() {
         .map(|(pair, bin)| (pair.to_string(), *bin))
         .collect();
     assert_eq!(declared, want, "examples_supplement.txt `# BIN` lines");
+
+    // A declared bin is the one the README's assignment rule (§"`bins.tsv` —
+    // the assignment rule") gives the pair's own data rows, so the declaration
+    // is checked, not trusted (RETRO_FIXES RF-D00-16 settlement, finding
+    // AC-6). Numeric — every row `Numeric` under the census's own comparator
+    // (`harness::value_verdict`, at a zero floor: these rows are divergent by
+    // construction) — is bin 7 iff the pair's `max_rel` is >= 1e-4, else 6.
+    // Structural is the chain of [`classify`]; the supplement orders a pair's
+    // rows by count, not census order, so there is no representative row to
+    // pick and every row must land in the declared bin.
+    for (pair, bin) in &declared {
+        let rows = &spellings[pair];
+        let rels: Vec<f64> = rows
+            .iter()
+            .filter_map(|(rust, r4133)| match value_verdict(rust, r4133, 0.0, 0.0) {
+                ValueVerdict::Numeric { max_rel, .. } => Some(max_rel),
+                _ => None,
+            })
+            .collect();
+        let derived: BTreeSet<u8> = if rels.len() == rows.len() {
+            let max_rel = rels.iter().copied().fold(0.0f64, f64::max);
+            BTreeSet::from([if max_rel >= 1e-4 { 7 } else { 6 }])
+        } else {
+            assert!(
+                rels.is_empty(),
+                "examples_supplement.txt: {pair} mixes numeric and structural rows {rows:?}"
+            );
+            rows.iter()
+                .map(|(rust, r4133)| classify(rust, r4133))
+                .collect()
+        };
+        assert_eq!(
+            derived,
+            BTreeSet::from([*bin]),
+            "examples_supplement.txt `# BIN {pair} {bin}`: the README's rule puts its data rows \
+             {rows:?} in bin(s) {derived:?}"
+        );
+    }
 }
 
 #[test]
@@ -1354,13 +1516,21 @@ fn rp1_4_keeps_the_gendispatcher_weights_the_r4133_table_loses() {
 /// **The in-scope numbers still describe the population they were measured
 /// on.** Every in-scope figure in this directory is a measurement over the
 /// census's 462 in-scope cases ([`CENSUS_IN_SCOPE`]), while the manifests it
-/// joins to are live files that keep growing. The live in-scope set, less the
-/// named post-census additions ([`IN_SCOPE_ADDED_SINCE_CENSUS`]), must be that
-/// census set exactly — same count, same digest — so a census case that left
-/// the scope, a census-time `capi_v0145` case that entered it, or a new
-/// in-scope deck nobody named reds here instead of silently changing what
-/// `max_rel_in_scope` is a ceiling over (RETRO_FIXES RF-D00-16, finding
-/// `RP|RP0.1|AT2|AT2-3`).
+/// joins to are live files that keep growing. So, instead of silently changing
+/// what `max_rel_in_scope` is a ceiling over:
+///
+/// * no census-time `capi_v0145` case ([`CENSUS_OUT_OF_SCOPE`]) is in scope
+///   today or named in [`IN_SCOPE_ADDED_SINCE_CENSUS`] — its census cells were
+///   measured outside the population — and either reds with its label;
+/// * the live in-scope set, less the named additions, is the census set
+///   exactly — same count, same digest — so a census case that left the scope
+///   or a new in-scope deck nobody named reds;
+/// * the census set and [`CENSUS_OUT_OF_SCOPE`] add up to the census's 521
+///   labels ([`CENSUS_ALL`]), so the out-of-scope list cannot be trimmed to
+///   let a flip through
+///
+/// (RETRO_FIXES RF-D00-16, finding `RP|RP0.1|AT2|AT2-3`, and its settlement's
+/// AT-1/AC-1).
 #[test]
 fn the_in_scope_population_is_the_census_one_plus_named_additions() {
     let engines = manifest_engines();
@@ -1376,6 +1546,31 @@ fn the_in_scope_population_is_the_census_one_plus_named_additions() {
         IN_SCOPE_ADDED_SINCE_CENSUS.len(),
         "IN_SCOPE_ADDED_SINCE_CENSUS names a case twice"
     );
+    assert!(
+        CENSUS_OUT_OF_SCOPE.windows(2).all(|w| w[0] < w[1]),
+        "CENSUS_OUT_OF_SCOPE must be sorted and name each case once"
+    );
+    let out_of_scope: BTreeSet<&str> = CENSUS_OUT_OF_SCOPE.iter().copied().collect();
+
+    let named: Vec<&str> = added.intersection(&out_of_scope).copied().collect();
+    assert!(
+        named.is_empty(),
+        "{named:?}: census-time `capi_v0145` case(s) named in IN_SCOPE_ADDED_SINCE_CENSUS. An \
+         addition is a deck the census never saw; these were walked by it and measured outside \
+         the in-scope population, so naming them would hide the drift this lock exists for"
+    );
+    let entered: Vec<String> = out_of_scope
+        .iter()
+        .filter(|label| live.contains(*label))
+        .map(|label| format!("{label} ({})", engines[*label]))
+        .collect();
+    assert!(
+        entered.is_empty(),
+        "census-time `capi_v0145` case(s) now in scope: {entered:?}. Their census cells were \
+         measured outside the in-scope population, so `cells_in_scope`, `max_rel_in_scope` and \
+         the in-scope extracts no longer cover what the r4133 channel compares: re-derive them \
+         (the RP0.2 census knob) or keep the case `capi_v0145` — never re-baseline this pin"
+    );
     for label in &added {
         assert!(
             live.contains(label),
@@ -1385,22 +1580,96 @@ fn the_in_scope_population_is_the_census_one_plus_named_additions() {
         );
     }
 
-    let census: Vec<&str> = live.difference(&added).copied().collect();
-    let blob: String = census.iter().map(|label| format!("{label}\n")).collect();
-    let got = format!("{:x}", Sha256::digest(blob.as_bytes()));
+    let census: BTreeSet<&str> = live.difference(&added).copied().collect();
+    // Nameable drift for the message: live `capi_v0145` cases that were not
+    // census-time ones — a census in-scope case that left the scope, or a new
+    // out-of-scope deck (harmless, listed for completeness).
+    let left: Vec<&str> = engines
+        .iter()
+        .filter(|(label, e)| e.as_str() == "capi_v0145" && !out_of_scope.contains(label.as_str()))
+        .map(|(label, _)| label.as_str())
+        .collect();
     assert_eq!(
-        (census.len(), got.as_str()),
+        (census.len(), label_digest(&census).as_str()),
         CENSUS_IN_SCOPE,
         "the live in-scope population less the {} named additions is no longer the census's \
          (live: {} of {} cases in scope). A new in-scope deck has no frozen cell: name it in \
-         IN_SCOPE_ADDED_SINCE_CENSUS. A census case that was removed or renamed, or whose \
-         `engines` crossed the {{both, r4133}} boundary (diff the labels against \
-         `git show 6db7f202:<manifest>` of the four MANIFESTS), means the frozen in-scope \
-         measurements no longer cover what the r4133 channel compares: re-derive them (the \
-         RP0.2 census knob), never re-baseline this pin",
+         IN_SCOPE_ADDED_SINCE_CENSUS. A census case that was removed or renamed, or that left \
+         the {{both, r4133}} scope (live `capi_v0145` cases the census did not have as \
+         `capi_v0145`: {left:?}), means the frozen in-scope measurements no longer cover what \
+         the r4133 channel compares (diff the labels against `git show 6db7f202:<manifest>` of \
+         the four MANIFESTS): re-derive them (the RP0.2 census knob), never re-baseline this pin",
         added.len(),
         live.len(),
         engines.len()
+    );
+
+    let all: BTreeSet<&str> = census.union(&out_of_scope).copied().collect();
+    assert_eq!(
+        (all.len(), label_digest(&all).as_str()),
+        CENSUS_ALL,
+        "the census in-scope set and CENSUS_OUT_OF_SCOPE no longer add up to the census's 521 \
+         labels: CENSUS_OUT_OF_SCOPE is census evidence (`git show 6db7f202:<manifest>`), never \
+         edited to let a case into the scope"
+    );
+}
+
+/// **[`MANIFESTS`] are the gated corpus.** The population lock above sees only
+/// the cases of the manifests it reads, so a gated family missing from
+/// [`MANIFESTS`] would add in-scope cases it cannot see. The committed
+/// fingerprint of the gated population, `tests/corpus/manifests/
+/// population.lock.json` (`population_lock.rs` fails on any live count that
+/// moves), records `solvable_now.json`'s case count and each family's
+/// (`family_counts`): [`MANIFESTS`] must be `solvable_now` plus exactly those
+/// families, at `tests/corpus/<family>/manifest.json`, with those counts
+/// (RETRO_FIXES RF-D00-16 settlement, finding AC-5).
+#[test]
+fn the_census_manifests_are_the_gated_ones() {
+    let lock = read_json("tests/corpus/manifests/population.lock.json");
+    let count = |v: &serde_json::Value, what: &str| -> usize {
+        v.as_u64()
+            .and_then(|n| usize::try_from(n).ok())
+            .unwrap_or_else(|| panic!("population.lock.json: no case count for {what}"))
+    };
+    let mut want: BTreeMap<String, (String, usize)> = BTreeMap::new();
+    want.insert(
+        "solvable_now".to_string(),
+        (
+            "tests/corpus/manifests/solvable_now.json".to_string(),
+            count(
+                &lock["manifest_counts"]["solvable_now.json"],
+                "solvable_now.json",
+            ),
+        ),
+    );
+    let families = lock["family_counts"]
+        .as_object()
+        .expect("population.lock.json: no `family_counts` object");
+    assert!(!families.is_empty(), "population.lock.json: no family");
+    for (family, n) in families {
+        want.insert(
+            family.clone(),
+            (
+                format!("tests/corpus/{family}/manifest.json"),
+                count(n, family),
+            ),
+        );
+    }
+    let got: BTreeMap<String, (String, usize)> = MANIFESTS
+        .iter()
+        .map(|(prefix, rel)| {
+            let cases = read_json(rel)["cases"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{rel}: no `cases` array"))
+                .len();
+            (prefix.to_string(), (rel.to_string(), cases))
+        })
+        .collect();
+    assert_eq!(
+        got, want,
+        "MANIFESTS (prefix -> (path, cases)) must be population.lock.json's solvable_now + \
+         families: a gated manifest missing here holds in-scope cases the population lock \
+         cannot see"
     );
 }
 
