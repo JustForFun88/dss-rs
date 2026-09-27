@@ -1,0 +1,13 @@
+//! The module, documented at length.
+
+/// Adds two numbers.
+///
+/// ```
+/// assert_eq!(2 + 2, 4);
+/// ```
+pub fn add(a: u32, b: u32) -> u32 {
+    a + b
+}
+
+/** A block doc, reworded. */
+pub struct Pair(pub u32, pub u32);

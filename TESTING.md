@@ -84,6 +84,41 @@ and `overflow-checks`/`debug-assertions` are pinned `true` explicitly in the
 overrides — the reason the gate uses this instead of `--release` (which sets
 overflow-checks=false).
 
+### Which gate to run (the RETRO_FIXES stage gates)
+
+Every merge into `update` runs the seven commands above. Inside a RETRO_FIXES step the
+per-stage gates (stage 2 before the step's commit, the settlement and its second round,
+`RETRO_FIXES_PLAN.md` §2.2/§2.5/§2.6) run the row the diff's kind picks, the kind being what the
+diff can change at compile time (RETRO_FIXES RF-I00-05, user decision 2026-09-27).
+`cargo run -p gate-kind -- --base <rev>` (`tools/gate-kind`, a `syn` classifier) grades the
+working tree and its untracked files against `<rev>`, or a committed range with `--head <rev>`.
+It prints one `<kind>\t<path>\t<reason>` line per file and a final `GATE_KIND=<kind>` line, the
+diff's kind being the maximum over its files, and it never runs anything itself.
+
+| kind | the diff holds | commands |
+|---|---|---|
+| `None` | no change | none |
+| `Docs` | `.md` files | `cargo fmt --all --check` + RAILS, each entry in the lanes it names |
+| `Comments` | `.rs` files whose token streams are equal once their doc comments are stripped (plain or doc comments, whitespace) | `Docs` + commands 2, 3, 6 and 7 (a comment moves lines and may hold a rail's needle, clippy lints comments, doctests live in them) |
+| `Code` | anything else | the seven commands, plus `tools/lanes/lane_diff.ps1` when a compat kernel, a lane alias or the solver changes |
+
+`Code` is, among others, every path that is neither `.md` nor `.rs`, an added, deleted, renamed
+or unparsable `.rs`, a path under `tools/gate-kind/` or on its `ALWAYS_CODE` list (a `.rs` that
+a unit test outside RAILS reads as text), a file whose tokens hold `line!`, `column!`,
+`Location::caller` or `stringify!`, a doc edit in a file whose items carry a derive or an
+attribute macro outside the tool's allowlist, a doc edit inside a macro invocation, and any tool
+error. The module doc of `tools/gate-kind/src/lib.rs` holds the full list (symlinks, mode
+changes and non-UTF-8 sides included). RAILS are the tests that read a repository `.md` or `.rs`
+at run time or include one at compile time. They are listed once, in the `GATE_RAILS` register
+of `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (package, target, optional exact nextest
+filterset, lanes: both, or once for a package that does not depend on `dss-core`), whose rail
+re-measures the reader needles (a path literal ending in `.md` or `.rs`, an extension
+comparison, an `include_str!`, a `file!()`) over every test target of the workspace and reds
+when the register differs. A directory walk shows no needle: `WALK_SITES` beside the register
+counts the `read_dir` calls of every test source and reds on a new one until it is classified.
+No document or script copies the list. A tree without the tool, a tool that does not build or prints no `GATE_KIND=` line, and a
+diff that touches `tools/gate-kind/` run the seven commands, and in doubt the gate is full.
+
 ### The two lanes (Stage F)
 
 `DE_PASCALIZE_PLAN.md` Part IV.2 split the engine into two builds of the same
