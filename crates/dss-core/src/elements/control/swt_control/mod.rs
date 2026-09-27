@@ -41,9 +41,14 @@
 //! absorbed by FastMM (measured live on a 4-phase controlled element, probe
 //! P2(iv-b)). The port keeps all six slots in-bounds and initialized all-CLOSED
 //! like `Create`'s initialized slots: observables (render token count = the
-//! controlled element's `NPhases`, per-phase drive of each conductor, the
-//! 5-token per-phase parse cap, ganged drive) stay r4133-exact, the OOB is not
-//! reproduced.
+//! controlled element's `NPhases`, per-phase drive of each conductor, ganged
+//! drive) stay r4133-exact, the OOB is not reproduced. The 5-token per-phase
+//! parse cap matches r4133 too, but it is r4133's `:461` off-by-one (upstream
+//! report 75), still reproduced until RETRO_FIXES RF-D01-01 AC3-1 fixes it
+//! with the ordinal twin `set_enum_array`. The render count holds up to six
+//! phases only: past six,
+//! r4133's uncapped getters read beyond the six-slot `StateArray` itself, which
+//! is not reproduced either ([`SwtControl::state_size`] clips at six).
 //!
 //! **Parse-time drive model.** r4133's `set_States` drives
 //! `ControlledElement.Closed[Idx]` immediately mid-parse (`:532-549`) and
@@ -144,11 +149,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("Lock"),
         PropDef::double("Delay").flags(PropFlags::UNITS_S),
         // Normal/State: the r4133 per-phase state arrays (RP3.7). The render
-        // loops the LIVE controlled-element phase count exactly as r4133
-        // (`GetPropertyValue` `:589-599/:600-610`); the write takes the raw
+        // loops the controlled-element phase count as r4133 does
+        // (`GetPropertyValue` `:589-599/:600-610`), read off the `ctrl_snap`
+        // snapshot (staleness: `ORPHANED_GAPS.md` §1.13), up to six phases (the
+        // `state_size` clip past six); the write takes the raw
         // value through `set_enum_array_raw` → `interpret_switch_state`
         // (ganged-vs-per-phase keyed on WasQuoted, first-char token match,
-        // 5-token per-phase cap — `:410-482`).
+        // 5-token per-phase cap — `:410-482`; the cap is r4133's `:461`
+        // off-by-one, upstream report 75, still reproduced until RETRO_FIXES
+        // RF-D01-01 AC3-1).
         PropDef::mapped_string_enum_array("Normal", enums.swt_control_state)
             .flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::mapped_string_enum_array("State", enums.swt_control_state)
@@ -203,10 +212,11 @@ pub struct SwtControl {
     present_state: [ControlAction; ARR],
     /// `FNormalState : pStateArray` (`SwtControl.pas:38`) — the reset target
     /// per phase. r4133 `Create` initializes it all-CLOSED with
-    /// `NormalStateSet = FALSE` (`:299-307`); the scalar-era `None`-until-first
-    /// readback survives RP3.7 A1 through [`SwtControl::normal_view`] gating on
-    /// [`Self::normal_state_set`] (A2's array render shows the r4133
-    /// all-closed array directly).
+    /// `NormalStateSet = FALSE` (`:299-307`), and the `Normal` getter renders
+    /// it whatever the latch says (`GetPropertyValue` arm 6, `:589-599`; the
+    /// port's `get_enum_array` likewise), so a fresh control reads all-closed.
+    /// [`Self::normal_state_set`] gates only the Edit supplemental
+    /// ([`SwtControl::normal_defaults_to_present`]).
     normal_state: [ControlAction; ARR],
     /// `NormalStateSet` (`SwtControl.pas:42`): FALSE until the first
     /// `Normal`/`State`/`Action` write; the Edit supplemental copies Present
@@ -272,7 +282,9 @@ impl SwtControl {
     /// The ganged (scalar) view of a per-phase state array: slot 1. Every
     /// corpus deck writes ganged (all slots equal), so the view is exact there;
     /// it feeds the 0.14.5 queue machinery (`sample`) and the scalar `Action`
-    /// readback glue only.
+    /// readback glue only. On a per-phase (heterogeneous) state it is not
+    /// exact, and the queue then ganged-rewrites every slot: `ORPHANED_GAPS.md`
+    /// §1.16.
     fn ganged_view(arr: &[ControlAction; ARR]) -> ControlAction {
         arr[1]
     }
@@ -294,16 +306,26 @@ impl SwtControl {
     /// (`RecalcElementData` `:346`, `Reset` `:633`); with `ControlledElement =
     /// NIL` both getters return the bare `'[]'` (`:589`/`:600`, measured on the
     /// orphan control — `tmp/rp37/out_nil_controlled.txt`). The port reads the
-    /// count off the controlled-element snapshot, which
-    /// [`SwtControl::recalc`] refreshes at every `EndEdit` and
-    /// `make_pos_sequence` refreshes from the live `PosSeqCtx` — so after
-    /// `makeposseq` the render follows the now-1-phase element exactly as
-    /// r4133's live loop does (`tmp/rp37/probe.md` §6/§11.4).
+    /// count off the controlled-element snapshot `ctrl_snap`, which only
+    /// `set_object_ref` (`accessors.rs`, each `switchedobj=` resolution)
+    /// writes, `make_like` copies and `make_pos_sequence` refreshes from the
+    /// live `PosSeqCtx` — so after `makeposseq` the render follows the
+    /// now-1-phase element exactly as r4133's live loop does
+    /// (`tmp/rp37/probe.md` §6/§11.4). [`SwtControl::recalc`] only reads it:
+    /// a later phase-count edit of the switched element is not seen until the
+    /// ref is re-resolved (`ORPHANED_GAPS.md` §1.13).
     ///
-    /// The `min(SW_MAX)` clip is the module-doc bound decision: r4133 loops the
-    /// element's raw `NPhases` past its 3-entry allocation (probe P2(iv-b)
-    /// renders four tokens off a 4-phase element); the port matches every
-    /// measured observable while staying inside its own six initialized slots.
+    /// The `min(SW_MAX)` clip is the module-doc bound decision. Up to six
+    /// phases it is invisible: r4133 loops the element's raw `NPhases` past its
+    /// 3-entry allocation (probe P2(iv-b) renders four tokens off a 4-phase
+    /// element) and the port answers the same count from its own six
+    /// initialized slots. Past six it is a recorded divergence: r4133's 7th
+    /// token reads `FPresentState^[7]` beyond `StateArray =
+    /// Array[1..SWTCONTROLMAXDIM]` itself (`:14`/`:19`), an out-of-bounds read
+    /// never reproduced (2026-08-02 policy), so the port renders six tokens
+    /// where r4133 renders `NPhases` (seven, with warning #384 from `:334` on
+    /// every edit, on a 7-phase line: RF-D01-01 probe (b)). Pinned by
+    /// `tests::a_seven_phase_controlled_element_renders_six_tokens`.
     pub(crate) fn state_size(&self) -> usize {
         if self.ccd.controlled_element.is_none() {
             return 0; // `ControlledElement = NIL` → `'[]'`
@@ -359,7 +381,9 @@ impl SwtControl {
     /// - `State`/`Normal`: ganged when the value was NOT quoted (`:433-451`,
     ///   slots 1..6); quoted values go phase-by-phase through the AuxParser
     ///   (`:453-480`) — at most FIVE tokens honored (loop bound
-    ///   `i < SWTCONTROLMAXDIM`, `:461`), unlisted slots unchanged.
+    ///   `i < SWTCONTROLMAXDIM`, `:461`: an r4133 off-by-one, upstream report
+    ///   75, still reproduced until RETRO_FIXES RF-D01-01 AC3-1), unlisted
+    ///   slots unchanged.
     /// - tokens match on the first character only via [`match_state_token`];
     ///   a non-matching token leaves its slot unchanged (no else arm).
     ///
@@ -380,7 +404,8 @@ impl SwtControl {
     ///    two are missing, which is what makes this an upstream slip rather
     ///    than a design. The port scopes the per-phase loop to the quoted
     ///    branch and keeps a FRESH parser per call, so no state can leak
-    ///    between writes.
+    ///    between writes (pinned against the measured r4133 bytes by
+    ///    `tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write`).
     /// 2. *The empty-`ParamName` guard read* (`:417`). The guard keys on
     ///    `LowerCase(property_name[1])` where `property_name = ParamName`,
     ///    which `Edit` leaves EMPTY for a POSITIONAL token
@@ -434,7 +459,12 @@ impl SwtControl {
                     let mut token = parser.make_string(&vars);
                     let mut i = 1usize;
                     // `:461` `While (Length(DataStr2)>0) and (i<SWTCONTROLMAXDIM)`
-                    // — a 6th token is silently dropped (probe §11.2).
+                    // — a 6th token is silently dropped (probe §11.2). That
+                    // bound is an r4133 off-by-one (upstream report 75: the
+                    // ganged arm `:435` and the type `:19` span six slots),
+                    // still reproduced here and in the ordinal twin
+                    // `set_enum_array` until RETRO_FIXES RF-D01-01 AC3-1 fixes
+                    // both together.
                     while !token.is_empty() && i < SW_MAX {
                         if let Some(state) = match_state_token(&token) {
                             if prop == SwtStateProp::State {

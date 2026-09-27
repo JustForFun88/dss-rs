@@ -205,14 +205,23 @@ fn log_has(sc: &Scratch, needle: &str) -> bool {
     sc.events.entries().iter().any(|e| e.contains(needle))
 }
 
-/// Count non-`Debug Sample` event-log lines — the trace lines are noise for the
-/// protection assertions, and the filter keeps them so whether or not the relay
-/// under test has `DebugTrace` on.
+/// Count the event-log lines other than the `Debug Sample:` traces — noise for
+/// the protection assertions. That element spelling carries the per-`Sample`
+/// state trace (`Relay.pas:1325`) and every `OvercurrentLogic` trace
+/// (`dbg_sample` in `logic.rs`, `Relay.pas:1822`-`:2007`), so the needle drops
+/// them all. The `VoltageLogic`/DOC traces that `dbg` logs under the relay's
+/// own name (`Element=Relay.<name>`, e.g. OV/UV at `:2886`/`:2907`) are
+/// counted, which no caller exercises (none sets `DebugTrace`).
+/// [`EventLog::append`] upper-cases only the action, so the element field is
+/// stored verbatim as `Element=Debug Sample: Relay.<name>` (the spelling
+/// `sample_state_trace_follows_debugtrace` and
+/// `crates/dss-test-harness/src/harness/lane.rs` match);
+/// pinned by `non_debug_lines_skips_the_debug_sample_lines_only`.
 fn non_debug_lines(sc: &Scratch) -> usize {
     sc.events
         .entries()
         .iter()
-        .filter(|e| !e.contains("DEBUG SAMPLE"))
+        .filter(|e| !e.contains("Element=Debug Sample:"))
         .count()
 }
 
@@ -270,6 +279,48 @@ fn sample_state_trace_follows_debugtrace() {
             );
         }
     }
+}
+
+/// Self-check of [`non_debug_lines`] (G2.2d retro audit, AC-2): its needle must
+/// match the trace lines as the event log really stores them. Before the fix
+/// it filtered on `"DEBUG SAMPLE"`, which no line contains, so it counted the
+/// traces too — latent only because its four callers never `sample()`. With
+/// `DebugTrace=yes` a below-pickup `sample()` logs exactly the state trace and
+/// an above-pickup one adds one `OvercurrentLogic` curve trace per phase, all
+/// of which the helper must skip, while any other line (here a protection
+/// event appended by hand) is still counted.
+#[test]
+fn non_debug_lines_skips_the_debug_sample_lines_only() {
+    let mut r = armed_relay();
+    r.debug_trace = true;
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3).with_current(0.1); // below pickup: no event
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    assert_eq!(sc.events.entries().len(), 1, "{:?}", sc.events.entries());
+    assert!(log_has(&sc, "Element=Debug Sample: Relay.r1,"));
+    assert_eq!(non_debug_lines(&sc), 0, "{:?}", sc.events.entries());
+
+    sc.events.append("Relay.r1", "Opened", 0, 0.0, 0);
+    assert_eq!(non_debug_lines(&sc), 1, "{:?}", sc.events.entries());
+
+    // Above pickup (ratio 10 on every phase): the state trace plus the three
+    // `Ph Curve (3-Phase) Trip` traces of `OvercurrentLogic` (`Relay.pas:2007`),
+    // all logged under the same `Debug Sample: Relay.r1` element.
+    let mut r = armed_relay();
+    r.debug_trace = true;
+    let mut ctrl = MockElem::new(3);
+    let mut mon = MockElem::new(3).with_current(10.0);
+    let mut sc = Scratch::new();
+    r.sample(&mut ctrl, &mut mon, &mut sc.ctx(0, 0.0));
+    let entries = sc.events.entries();
+    let curve_traces = entries
+        .iter()
+        .filter(|e| e.contains("Element=Debug Sample: Relay.r1,") && e.contains("PH CURVE"))
+        .count();
+    assert_eq!(curve_traces, 3, "{entries:?}");
+    assert_eq!(entries.len(), 4, "{entries:?}");
+    assert_eq!(non_debug_lines(&sc), 0, "{entries:?}");
 }
 
 // --- Overcurrent (Type=Current) ---------------------------------------------
@@ -1588,7 +1639,9 @@ fn the_ordinal_array_setter_matches_the_interpreter() {
             "[open, closed, open, closed, closed, closed, ]",
         ),
         // The five-slot cap on both paths (`take(RCMAX - 1)` vs `:1286`); the
-        // 6th token is dropped, as B1(3b) measured on the r4133 DLL.
+        // 6th token is dropped, as B1(3b) measured on the r4133 DLL. A reproduced
+        // r4133 off-by-one (upstream report 75): RETRO_FIXES RF-D01-01 AC3-1
+        // flips this row (see `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
         (
             false,
             prop::STATE,
@@ -1734,6 +1787,16 @@ fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
 /// `state=(closed, closed, closed, closed, closed, open)` leaves
 /// `[closed, closed, closed, closed, closed, closed, ]`.
 ///
+/// **A reproduced upstream bug, pending its fix.** That bound is an r4133
+/// off-by-one — the ganged arm (`:1260`) and `StateArray` (`:62`) span six
+/// slots — reported upstream in
+/// `investigations/to_opendss/75-per-phase-state-list-drops-the-sixth-phase.md`
+/// (local-only), and the 2026-08-02 policy says it is not reproduced. The port
+/// still reproduces it here and in the ordinal twin `set_enum_array`: the fix
+/// must move both together (`the_ordinal_array_setter_matches_the_interpreter`
+/// asserts they agree) and is RETRO_FIXES RF-D01-01 AC3-1, which flips this
+/// pin and that test's row 2 to the sixth token landing.
+///
 /// r4133's own FRESH 6-phase render has **no defined value** in slots 4..6:
 /// `Create` allocates `FPresentState` with `FNPhases` (3) entries and
 /// initializes only those (`Relay.pas:829-843`), while the getter loops the
@@ -1743,10 +1806,16 @@ fn a_quoted_single_token_is_per_phase_a_bare_one_is_ganged() {
 /// a `solve`, it reads `[closed, closed, closed, open, open, open, ]`
 /// (`out_b1.txt` B1(3), reproducible 2/2 on re-run), and on the same
 /// construction stopped before the `solve` it reads all-closed — the flip
-/// happens at the `solve`, i.e. it tracks heap content, not the model. That
-/// defect is NOT reproduced (2026-08-02 policy, A1 D8/A2a D7): the port
-/// initializes all six in-bounds slots to closed, which is why the pin ganges to
-/// a known baseline first and asserts nothing about a fresh 6-phase render.
+/// happens at the `solve`, i.e. it tracks heap content, not the model
+/// (re-measured 2026-09-25, RF-D01-01 probe (a), transcript local-only: the
+/// same bytes after the `solve`). That defect is NOT reproduced (2026-08-02
+/// policy, A1 D8/A2a D7): the port initializes all six in-bounds slots to
+/// closed, and the first assertion below pins exactly that on the fresh
+/// 6-phase render through the property seam — load-bearing, not setup noise
+/// (rows 1, 3 and 4 of `the_ordinal_array_setter_matches_the_interpreter` and
+/// the fresh render of `a_seven_phase_controlled_element_renders_six_tokens`
+/// pin the same initialization). The cap itself is then measured from the
+/// ganged all-closed baseline, as B1(3b) did.
 #[test]
 fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     let mut dss = Dss::new();
@@ -1764,7 +1833,8 @@ fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
         dss.command(&format!("? relay.r6.{prop}"));
         dss.result().to_string()
     };
-    // One token per controlled-element phase (six), all in-bounds and closed.
+    // One token per controlled-element phase (six), all in-bounds and closed:
+    // the port's answer to r4133's uninitialized slots 4..6 (see the doc).
     assert_eq!(get(&mut dss, "State"), closed6);
 
     dss.command("edit relay.r6 state=closed");
@@ -1782,6 +1852,117 @@ fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
         get(&mut dss, "State"),
         "[open, closed, open, closed, open, closed, ]"
     );
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+}
+
+/// RP3.7 retro audit AT3-1 — past six phases the render stops at six tokens
+/// where r4133 does not. `GetPropertyValue` 39/40 loop
+/// `ControlledElement.NPhases` uncapped (`Relay.pas:1409`/`:1420`), so the 7th
+/// token reads `FPresentState^[7]` past `StateArray =
+/// Array[1..RELAYCONTROLMAXDIM]` (`:57`/`:62`, six slots) and past `Create`'s
+/// 3-entry allocation (`:829-830`): an out-of-bounds read, never reproduced
+/// (2026-08-02 policy), so [`Relay::state_size`] clips at six.
+///
+/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 probe (b), deck
+/// `b_relay7.dss`, whose circuit/line/relay lines this test replays; no
+/// `solve`):
+/// State and Normal render SEVEN tokens fresh, all `closed`; after the ganged
+/// `state=open` (slots `1..RELAYCONTROLMAXDIM` only, `:1260`) State
+/// reads `[open, open, open, open, open, open, closed, ]`, the 7th token being
+/// the never-written slot; `state=closed` then gives seven `closed` and Normal
+/// keeps the first write's six `open` plus a 7th `closed`. No warning on either
+/// engine: Relay's `RecalcElementData` has no phase-count check (the
+/// SwtControl #384 twin is `ORPHANED_GAPS.md` §1.15). The port answers six
+/// tokens at every step, each assert naming the r4133 bytes.
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus the deck's
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=1`,
+/// `set voltagebases=[115]` and `calcvoltagebases` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
+#[test]
+fn a_seven_phase_controlled_element_renders_six_tokens() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l7 bus1=src.1.2.3.1.2.3.1 bus2=b1.1.2.3.1.2.3.1 phases=7 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new relay.r7 monitoredobj=line.l7 monitoredterm=1 type=current phasetrip=800",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    let get = |dss: &mut Dss, prop: &str| {
+        dss.command(&format!("? relay.r7.{prop}"));
+        dss.result().to_string()
+    };
+    let closed6 = "[closed, closed, closed, closed, closed, closed, ]";
+    let open6 = "[open, open, open, open, open, open, ]";
+    let r4133_closed7 = "r4133: [closed, closed, closed, closed, closed, closed, closed, ]";
+    let r4133_open6_closed = "r4133: [open, open, open, open, open, open, closed, ]";
+    assert_eq!(get(&mut dss, "State"), closed6, "{r4133_closed7}");
+    assert_eq!(get(&mut dss, "Normal"), closed6, "{r4133_closed7}");
+
+    dss.command("edit relay.r7 state=open");
+    assert_eq!(get(&mut dss, "State"), open6, "{r4133_open6_closed}");
+    dss.command("edit relay.r7 state=closed");
+    assert_eq!(get(&mut dss, "State"), closed6, "{r4133_closed7}");
+    assert_eq!(get(&mut dss, "Normal"), open6, "{r4133_open6_closed}");
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
+}
+
+/// RF-D01-01 settlement round 2 (SA-1) — the Relay twin of
+/// `swt_control::tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write`.
+/// `Relay.pas:1278-1305` carries the same `Else`-without-`Begin` fall-through
+/// (only `:1280` sits under the `Else`; the reads `:1282-1283` and the
+/// per-phase `While` `:1286` run on the unquoted path too), not reproduced
+/// ([`Relay::interpret_relay_state`]'s doc).
+///
+/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 part 2 residue probe, a
+/// 3-phase line): from the ganged `state=closed` baseline,
+/// `state=(closed, closed, closed, closed, closed, closed, open)` reads
+/// `[closed, closed, closed, ]`, the next `state=closed` reads
+/// `[open, closed, closed, ]` and a second one `[closed, closed, closed, ]`.
+/// The port reads `[closed, closed, closed, ]` at every step; the assert on
+/// the divergent step names r4133's bytes. Like its twin, the pin holds across
+/// the pending sixth-token fix (AC3-1).
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=2`,
+/// `set voltagebases=[115]`, `calcvoltagebases` and `solve` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
+#[test]
+fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l3 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new relay.r monitoredobj=line.l3 monitoredterm=1 type=current phasetrip=800",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    let get = |dss: &mut Dss| {
+        dss.command("? relay.r.state");
+        dss.result().to_string()
+    };
+    let closed3 = "[closed, closed, closed, ]";
+    dss.command("edit relay.r state=closed");
+    assert_eq!(get(&mut dss), closed3);
+    dss.command("edit relay.r state=(closed, closed, closed, closed, closed, closed, open)");
+    assert_eq!(get(&mut dss), closed3);
+    dss.command("edit relay.r state=closed");
+    assert_eq!(
+        get(&mut dss),
+        closed3,
+        "r4133: [open, closed, closed, ] (the residual 7th token lands in slot 1)"
+    );
+    dss.command("edit relay.r state=closed");
+    assert_eq!(get(&mut dss), closed3);
     assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 

@@ -54,17 +54,24 @@
 //! the generic ordinal tokenizer cannot: r4133 splits ganged-vs-per-phase on
 //! `WasQuoted` (`Relay.pas:1256-1306`), so `state=open` fills every slot while
 //! `state=(open)` writes phase 1 only, and it honors at most FIVE per-phase
-//! tokens (`:1286`) while rendering one per controlled-element phase. `Action`
+//! tokens (`:1286` — an r4133 off-by-one, upstream report 75, the port still
+//! reproduces until RETRO_FIXES RF-D01-01 AC3-1) while rendering one per
+//! controlled-element phase. `Action`
 //! keeps its `StringEnumActionProperty` seam (`Relay::do_action`) with the
 //! same guard + ganged fill, and the `NormalState := PresentState` supplemental
 //! (`:616-619`, outside `InterpretRelayState`) runs from the property side
 //! effects for `Action` and `State` alike — refused-while-locked writes
-//! included. The render/drive bound is the **live** controlled-element phase
-//! count (`Relay::state_size`), which `make_pos_sequence` now refreshes from
+//! included. The render/drive bound is the controlled element's phase count
+//! (`Relay::state_size`, read off the `ctrl_snap` snapshot, whose staleness
+//! after a later `phases=` edit is `ORPHANED_GAPS.md` §1.13), which
+//! `make_pos_sequence` now refreshes from
 //! the live `PosSeqCtx`, so after `makeposseq` the relay renders `[closed, ]`
 //! exactly as r4133's live `ControlledElement.NPhases` loop does. Every byte in
 //! this paragraph was measured on the vendored r4133 DLL
-//! (`tmp/rp37/out_b1.txt`, `out_b1b.txt`).
+//! (`tmp/rp37/out_b1.txt`, `out_b1b.txt`). The one deliberate exception is a
+//! controlled element with more than six phases: the port clips the count at
+//! six where r4133's uncapped getters read past the six-slot array
+//! (`Relay::state_size`).
 //!
 //! Concern split mirrors the Recloser: this file holds the property metadata, the
 //! [`Relay`] struct, construction/`recalc`, and `Sample`/`DoPendingAction`/`Reset`;
@@ -604,8 +611,22 @@ impl Relay {
     }
 
     /// Per-phase state-array count (Pascal `Min(RELAYCONTROLMAXDIM,
-    /// ControlledElement.NPhases)` — GetPropertyValue 39/40, VoltageLogic,
-    /// Sample, Reset, ...). The per-phase state arrays are dimensioned by the
+    /// ControlledElement.NPhases)`, the bound of r4133's drive/sense/reset
+    /// loops: `Relay.pas:683` MakeLike, `:965` RecalcElementData, `:1318`
+    /// Sample, `:1454` Reset, `:1787` OvercurrentLogic, `:2404`
+    /// DirectionalOvercurrentLogic, `:2852` VoltageLogic, ...).
+    ///
+    /// The render ([`Self::render_size`]) reuses the clip although r4133's
+    /// getters do not: `GetPropertyValue` 39/40 loop `ControlledElement.NPhases`
+    /// uncapped (`:1409`/`:1420`), so on a >6-phase controlled element their
+    /// 7th token reads `FPresentState^[7]` past the six-slot `StateArray`
+    /// (`:62`) and past `Create`'s 3-entry allocation (`:829-830`). That
+    /// out-of-bounds read is never reproduced (2026-08-02 policy): the port
+    /// renders six tokens where r4133 renders `NPhases` (seven on a 7-phase
+    /// line, RF-D01-01 probe (b)), pinned by
+    /// `tests::a_seven_phase_controlled_element_renders_six_tokens`.
+    ///
+    /// The per-phase state arrays are dimensioned by the
     /// SWITCHED (controlled) element's phase count, NOT the relay's own
     /// `FNPhases` (which Pascal forces to `MonitoredElement.NPhases`,
     /// RecalcElementData line 906 — used only for `vbase`, `cBuffer` sizing and
@@ -718,8 +739,9 @@ impl Relay {
     /// - `State`/`Normal`: ganged over slots `1..RELAYCONTROLMAXDIM` when the
     ///   value was NOT quoted (`:1258-1277`), phase-by-phase through the
     ///   AuxParser when it was (`:1278-1305`) — at most FIVE tokens honored
-    ///   (`:1286` `While … and (i < RELAYCONTROLMAXDIM)`), unlisted slots
-    ///   unchanged.
+    ///   (`:1286` `While … and (i < RELAYCONTROLMAXDIM)`: an r4133 off-by-one,
+    ///   upstream report 75, still reproduced until RETRO_FIXES
+    ///   RF-D01-01 AC3-1), unlisted slots unchanged.
     /// - tokens match on the first character only ([`match_state_token`]); a
     ///   non-matching token leaves its slot unchanged (the `case` has no else).
     ///
@@ -739,7 +761,9 @@ impl Relay {
     /// guard's `:1244` `property_name[1]` read is undefined for a positional token
     /// (Edit leaves `ParamName` empty, `:519-521`). The port scopes the
     /// per-phase loop to the quoted branch with a FRESH parser and keys the
-    /// guard on the property identity.
+    /// guard on the property identity. The fall-through's non-reproduction is
+    /// pinned against the measured r4133 bytes by
+    /// `tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write`.
     ///
     /// The slot writes land in the arrays only; the controlled element is driven
     /// by [`Relay::recalc`]'s per-phase force at `EndEdit` (r4133's
@@ -771,6 +795,10 @@ impl Relay {
         let mut i = 1usize;
         // `:1286` `While (Length(DataStr2)>0) and (i<RELAYCONTROLMAXDIM)` — a
         // sixth token is silently dropped (measured, `out_b1b.txt` B1(3b)).
+        // That bound is an r4133 off-by-one (upstream report 75: the ganged arm
+        // `:1260` and the type `:62` span six slots), still reproduced here and
+        // in the ordinal twin `set_enum_array` until RETRO_FIXES RF-D01-01 AC3-1
+        // fixes both together.
         while !token.is_empty() && i < RCMAX {
             if let Some(state) = match_state_token(&token) {
                 match prop {
