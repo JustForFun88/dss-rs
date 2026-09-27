@@ -1,0 +1,7 @@
+# Link Windows MSVC builds with the rust-lld that ships in every rustup toolchain
+# (stable included, no extra install). Measured 2026-09-27 on this workspace: the
+# incremental test build after a dss-core edit links ~30% faster than with
+# link.exe, and both lanes' nextest and doctest runs stay green on its binaries.
+# Only this target is affected. The CI runner (windows-latest, stable) has it too.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
