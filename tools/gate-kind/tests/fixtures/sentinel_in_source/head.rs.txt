@@ -1,0 +1,3 @@
+// a comment
+#[__gate_kind_stripped_doc__]
+pub fn f() {}

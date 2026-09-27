@@ -1,6 +1,6 @@
 //! Corpus manifest coverage gate (CORPUS_TEST_PLAN.md §2) — the "no silent
-//! omissions" guarantee. Oracle-free and always-on (runs in the normal
-//! `cargo test --workspace`).
+//! omissions" guarantee. Oracle-free and always-on (runs in the gate's
+//! `cargo nextest run --workspace`).
 //!
 //! Asserts a **bijection** between the `.dss` files under
 //! `tests/corpus/electricdss-tst/` and the entries across the manifests in
@@ -170,23 +170,23 @@ fn every_dss_is_accounted_for_exactly_once() {
 /// collide with a real name in this corpus.
 ///
 /// It lives in this oracle-free hygiene binary, not next to the comparator in
-/// `harness/mod.rs` (compiled into 22 test binaries) and not in `corpus_gate`
-/// beside the live gate: the scan then runs **once** per `cargo test` AND never
-/// concurrently with a deck solve. Measured 2026-09-04 (G1.3d(i) F5): decks
-/// write exports into the corpus tree while they solve, and reading one of them
-/// mid-write fails with a Windows sharing violation — a probe replicating this
-/// walk against the live gate hit
-/// `EPRITestCircuits/ckt7/ckt7_Power_elem_kVA.txt` "Permission denied", which is
-/// exactly how this test failed once in the corpus-gate binary. `cargo` runs test
-/// binaries one at a time, so here there is no concurrent writer at all — a
-/// premise, not a law: it holds for `cargo`'s own sequential runner plus the
-/// one-gate-per-worktree rule (coordinator decision D13), and a parallel runner
-/// (`cargo-nextest`) or two concurrent `cargo test` invocations in one worktree
-/// would put a live-gate writer back beside this walk.
+/// `harness/mod.rs` (compiled into 22 test binaries), so the scan runs **once**
+/// per gate run. Measured 2026-09-04 (G1.3d(i) F5): decks then wrote their
+/// exports into the corpus tree while they solved, and reading one mid-write
+/// failed with a Windows sharing violation - a probe replicating this walk
+/// against the live gate hit `EPRITestCircuits/ckt7/ckt7_Power_elem_kVA.txt`
+/// "Permission denied", which is how this test once failed in `corpus_gate`.
+/// That separation USED to rest on `cargo` running test binaries one at a time
+/// (coordinator decision D13). Since RETRO_FIXES RF-I00-01 it rests on a
+/// measured property of the tree: no test WRITES under it (every former writer
+/// and every corpus-gate producer runs a scratch copy, `harness::scratch`, while
+/// decks with no writing verb are still compiled in place, read-only, measured
+/// 72 targets x 0 changes), the gate-side guard entry points refuse a vendored
+/// folder (`harness::scratch::not_vendored`), and the corpus gate fails on a
+/// change of `tests/corpus/` during its own walk (`GateRun::assert_complete`).
 ///
-/// Leftover exports from an earlier run are still counted (the file count is
-/// therefore `>=`, not `==`); they can only ADD names, never remove one, so the
-/// `0` assertion below stays conservative.
+/// No run leaves an export in the tree any more; the count stays `>=` only
+/// because another lane may add a deck.
 ///
 /// This census is the **load-bearing** guard for that collision, not a
 /// belt-and-braces one: on the r4133 channel a meter named `0` is

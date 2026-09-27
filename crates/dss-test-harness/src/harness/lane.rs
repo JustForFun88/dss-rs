@@ -72,10 +72,10 @@ use super::{ColSel, ColTol, ElemChannels, ExportPolicy, GateSpec, RowPolicy, com
 /// The single lane switch of the test suite: every policy in this module
 /// branches on this `const`, so **both arms always compile** (and both are
 /// type-checked in both lanes) exactly like the engine's `compat` kernels.
-/// `oracle_parity_cfg_gate.rs` sanctions the cfg string here because this is
-/// test code; no golden driver may read the cfg directly — it calls these
-/// helpers.
-pub const PARITY: bool = cfg!(feature = "oracle-parity");
+/// The lane is read from `dss_core::compat::ORACLE_PARITY` (this crate has no
+/// lane feature). Its agreement with each driver's build is pinned by
+/// `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in`.
+pub const PARITY: bool = dss_core::compat::ORACLE_PARITY;
 
 /// Default-lane slack on an iteration count compared against an **oracle**
 /// golden, in iterations.
@@ -1021,20 +1021,6 @@ mod tests {
         let r = std::panic::catch_unwind(f);
         SILENCE_PANICS.with(|s| s.set(false));
         r.is_ok()
-    }
-
-    /// Non-vacuity of the whole split: the harness's lane const must equal the
-    /// lane the **engine** was compiled in. If the feature ever stopped
-    /// propagating into the integration-test crate (a Cargo wiring slip), every
-    /// lane branch here would silently run the default policy against a parity
-    /// engine and the parity gate would evaporate — this catches that.
-    #[test]
-    fn lane_const_tracks_the_engine_build() {
-        assert_eq!(
-            PARITY,
-            dss_core::compat::ORACLE_PARITY,
-            "the test crate and the engine disagree about the lane"
-        );
     }
 
     /// The monitor transform is exactly the clients' unflushed placeholder, and

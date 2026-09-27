@@ -1,0 +1,4 @@
+pub fn nonce() -> u32 {
+    // a per-call-site nonce
+    line!()
+}

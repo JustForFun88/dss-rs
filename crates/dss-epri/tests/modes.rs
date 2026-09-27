@@ -25,10 +25,10 @@
 #![cfg(windows)]
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
 use dss_epri::dss::Engine;
 use dss_epri::modes::{self, ModeEffect, ModeKind, ModeSpec, ModeStatus};
+use dss_epri::smoke::Ieee13Copy;
 
 /// A mode index past the last `case` arm of every DDLL family (the largest in
 /// the whole DDLL is `SolutionI(51)`), so it always reaches the `else` branch.
@@ -59,23 +59,23 @@ const WP_G1_FAMILIES: &[(&str, &[ModeKind])] = &[
     ("PDElements", &[ModeKind::I, ModeKind::F, ModeKind::S]),
 ];
 
-fn workspace_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR = <root>/crates/dss-epri (baked at build time).
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-}
+/// The walk's engine and the scratch copy it compiled (RETRO_FIXES
+/// RF-I00-01): the DLL compiles a fresh copy of the vendored IEEE13
+/// ([`Ieee13Copy`]), never `tests/corpus/`, and the test removes the copy
+/// after the walk, stepping back out of it (the DLL is never unloaded) — a
+/// copy that survives the budget fails the test naming the producer.
+type Fixture = (Engine, Ieee13Copy);
 
 /// A solved IEEE13 with an EnergyMeter attached, so the `Meters` rows read a
 /// real meter rather than the family's "no active meter" defaults.
-fn solved_ieee13() -> Engine {
+fn solved_ieee13() -> Fixture {
     let dll = dss_epri::smoke::dll_path();
     assert!(dll.is_file(), "r4133 DLL not found: {}", dll.display());
     let engine = Engine::new(&dll).expect("load the vendored r4133 DLL");
-    let case = workspace_root()
-        .join("tests/corpus/electricdss-tst/Version8/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss")
-        .to_string_lossy()
-        .replace('\\', "/");
+    // The caller keeps the copy (and removes it): the cwd is in it.
+    let copy = Ieee13Copy::new().unwrap_or_else(|e| panic!("{e}"));
+    let case = copy.deck().to_string();
+    dss_epri::smoke::refuse_vendored(&case).unwrap_or_else(|e| panic!("{e}"));
     engine.clear().expect("clear");
     engine.compile(&case, false).expect("compile IEEE13");
     engine
@@ -83,7 +83,7 @@ fn solved_ieee13() -> Engine {
         .expect("attach an EnergyMeter");
     engine.solve(false).expect("solve IEEE13");
     assert!(engine.converged(), "IEEE13 must converge");
-    engine
+    (engine, copy)
 }
 
 /// Re-select the fixture the family rows read from. Called before **every**
@@ -115,7 +115,7 @@ fn select_fixture(e: &Engine) {
 /// engine, the way `tests/protocol.rs` drives its worker.
 #[test]
 fn r4133_mode_capability_is_complete_for_wp_g1() {
-    let e = solved_ieee13();
+    let (e, copy) = solved_ieee13();
     the_fixture_selects_the_line_the_bus_and_the_meter(&e);
     every_wp_g1_mode_is_served(&e);
     a_bogus_mode_is_an_unknown_mode_on_every_wp_g1_family_and_shape(&e);
@@ -132,6 +132,8 @@ fn r4133_mode_capability_is_complete_for_wp_g1() {
     // Nothing in the walk left a non-zero errno behind for the next caller.
     let (errno, desc) = e.poll_error();
     assert_eq!(errno, 0, "the mode walk left errno {errno} set: {desc}");
+    drop(e);
+    copy.remove().unwrap_or_else(|m| panic!("{m}"));
 }
 
 /// The fixture the family rows read from is what it claims to be, pinned by
