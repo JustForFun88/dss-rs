@@ -626,13 +626,16 @@ fn save_writes_the_code_name_while_dump_hides_it() {
 /// `Common/CktElement.pas:365-368`). An `XfmrCode` stores `phases=0` unguarded,
 /// so fetching one must leave the element's phase count where it was, on the
 /// auto (`AutoTrans.pas:2351`) and on the Transformer it was copied from
-/// (`Transformer.pas:2333`), instead of zeroing it.
+/// (`Transformer.pas:2333`), instead of zeroing it. Only the phase write is
+/// dropped: the rest of the fetch still runs, which the code's `XHL` arriving
+/// on both elements shows (a fetch that bailed out on the zero would keep the
+/// phase count too).
 #[test]
 fn a_code_with_zero_phases_keeps_the_phase_count() {
     let mut dss = Dss::new();
     for line in [
         "New Circuit.zp basekv=69 phases=3 bus1=src",
-        "New XfmrCode.z0 phases=3 windings=2",
+        "New XfmrCode.z0 phases=3 windings=2 xhl=12.5",
         "New AutoTrans.a1 phases=3 windings=2",
         "~ wdg=1 bus=src conn=s kV=69 kVA=10000",
         "~ wdg=2 bus=lo conn=w kV=34.5 kVA=10000",
@@ -658,6 +661,8 @@ fn a_code_with_zero_phases_keeps_the_phase_count() {
         "0",
         "the code holds 0"
     );
+    assert_ne!(query(&mut dss, "AutoTrans.a1.XHX"), "12.5");
+    assert_ne!(query(&mut dss, "Transformer.x1.XHL"), "12.5");
 
     for line in [
         "Edit AutoTrans.a1 xfmrcode=z0",
@@ -668,32 +673,54 @@ fn a_code_with_zero_phases_keeps_the_phase_count() {
     }
     assert_eq!(query(&mut dss, "AutoTrans.a1.phases"), "3");
     assert_eq!(query(&mut dss, "Transformer.x1.phases"), "3");
+    assert_eq!(query(&mut dss, "AutoTrans.a1.XHX"), "12.5", "the fetch ran");
+    assert_eq!(
+        query(&mut dss, "Transformer.x1.XHL"),
+        "12.5",
+        "the fetch ran"
+    );
 }
 
-/// `XfmrCode.k{np}{nw}`: `np` phases, `nw` wye windings of 10 MVA.
-fn shape_code(np: u32, nw: u32) -> Vec<String> {
+/// `XfmrCode.{name}`: `np` phases, `nw` wye windings of `kva` kVA at `pct_r` %R.
+fn code_lines(name: &str, np: u32, nw: u32, kva: f64, pct_r: f64) -> Vec<String> {
     let kvs: &[f64] = if np == 3 {
         &[69.0, 34.5, 13.8]
     } else {
         &[39.8, 19.9, 7.97]
     };
-    let mut lines = vec![format!("New XfmrCode.k{np}{nw} phases={np} windings={nw}")];
+    let mut lines = vec![format!("New XfmrCode.{name} phases={np} windings={nw}")];
     for (i, kv) in kvs.iter().take(nw as usize).enumerate() {
-        lines.push(format!("~ wdg={} conn=wye kV={kv} kVA=10000 %r=0.5", i + 1));
+        lines.push(format!(
+            "~ wdg={} conn=wye kV={kv} kVA={kva} %r={pct_r}",
+            i + 1
+        ));
     }
     lines
+}
+
+/// `XfmrCode.k{np}{nw}`: `np` phases, `nw` wye windings of 10 MVA.
+fn shape_code(np: u32, nw: u32) -> Vec<String> {
+    code_lines(&format!("k{np}{nw}"), np, nw, 10000.0, 0.5)
 }
 
 /// `{kind}.t1` on `src`/`lo`, specified by `xfmrcode=` with the code of shape
 /// `built`, solved. Both codes are defined in the same order in every deck.
 fn shape_deck(kind: &str, codes: [(u32, u32); 2], built: (u32, u32)) -> Dss {
+    let lines: Vec<String> = codes
+        .iter()
+        .flat_map(|&(np, nw)| shape_code(np, nw))
+        .collect();
+    code_deck(kind, &lines, &format!("k{}{}", built.0, built.1))
+}
+
+/// `{kind}.t1` on `src`/`lo`, specified by `xfmrcode={built}` after the code
+/// definitions `codes`, solved.
+fn code_deck(kind: &str, codes: &[String], built: &str) -> Dss {
     let mut dss = Dss::new();
     let mut lines = vec!["New Circuit.rf basekv=69 phases=3 bus1=src".to_string()];
-    for (np, nw) in codes {
-        lines.extend(shape_code(np, nw));
-    }
+    lines.extend(codes.iter().cloned());
     lines.extend([
-        format!("New {kind}.t1 xfmrcode=k{}{}", built.0, built.1),
+        format!("New {kind}.t1 xfmrcode={built}"),
         "~ wdg=1 bus=src".to_string(),
         "~ wdg=2 bus=lo".to_string(),
         "Set tolerance=1e-10".to_string(),
@@ -728,31 +755,62 @@ fn assert_refetch_reprocesses(kind: &str, from: (u32, u32), to: (u32, u32)) {
     );
 
     let mut direct = shape_deck(kind, codes, to);
-    let (y_re, v_re) = solved(&mut refetched);
-    let (y_direct, v_direct) = solved(&mut direct);
+    assert_same_machine(kind, &mut refetched, &mut direct);
+}
+
+/// `re` (re-fetched, re-solved) holds exactly the machine `direct` (built from
+/// the new code) holds: the assembled Y, the node voltages, and `{kind}.t1`'s
+/// terminal currents and powers, which read the voltages through the element's
+/// own node references.
+fn assert_same_machine(kind: &str, re: &mut Dss, direct: &mut Dss) {
+    let (y_re, v_re) = solved(re);
+    let (y_direct, v_direct) = solved(direct);
     assert_eq!(
         y_re, y_direct,
         "{kind}: re-fetched Y differs from the direct one"
     );
     assert_eq!(v_re, v_direct, "{kind}: re-fetched voltages differ");
+    let name = format!("{kind}.t1");
+    let terminal = |dss: &mut Dss| {
+        let t1 = dss
+            .snapshot_elements()
+            .into_iter()
+            .find(|s| s.name.eq_ignore_ascii_case(&name))
+            .expect("t1 is in the circuit");
+        (t1.currents, t1.powers)
+    };
+    assert_eq!(
+        terminal(&mut *re),
+        terminal(&mut *direct),
+        "{kind}: re-fetched t1 currents/powers differ"
+    );
 }
 
 /// A re-fetch that changes the terminal shape after a solve. `SetNumWindings`
 /// re-creates the terminals (blank bus references) and only `Set_NConds`
 /// raises `BusNameRedefined` (`Common/CktElement.pas:359`), which with the
 /// auto's correct `2 * Fnphases` never fires, so `fetch_xfmr_code` raises the
-/// flag from the shape change itself. Without it the re-solve aborted with
-/// #482 (`element "t1" has no node references`), the port and r4133 alike
-/// in the cases below. Measured 2026-09-27 on the epri-worker (r4133 DLL), same
-/// decks with no `bus=` after the edit: r4133 reprocesses the 3-phase auto
-/// only through its wrong `NConds := Fnphases + 1` (`AutoTrans.pas:2353`; the
-/// new `T1_3.1-3` nodes appear, with `LO.1` at 300 746 V on a 34.5 kV winding),
-/// while the 1-phase auto (2 -> 3 windings), where that value is right, is not
-/// reprocessed and the re-solve aborts with #482.
+/// flag from the shape change itself. With that raise removed (measured
+/// 2026-09-27) the port's re-solve aborts with #482 on the legs that grow the
+/// winding count or change the phase count: `element "t1" has no node
+/// references` where the winding count grows, a singular system Y where only
+/// the conductor count changes.
+///
+/// r4133 behaves differently on every leg. Measured 2026-09-27 on the
+/// epri-worker (r4133 DLL), same decks with no `bus=` after the edit: every
+/// `xfmrcode=` on an auto also logs #100131 (`AutoTrans.pas:567`), and a
+/// 3-phase auto is already off before the edit, on its wrong
+/// `NConds := Fnphases + 1` (`AutoTrans.pas:2353`). That wrong value is what
+/// reprocesses 3-phase 2 -> 3 windings there (the new `T1_3.1-3` nodes appear,
+/// with `LO.1` at 300 746 V on a 34.5 kV winding). 3-phase -> 1-phase re-solves
+/// with no message on the old node list, every voltage unchanged. The 1-phase
+/// auto (2 -> 3 windings), where that value is right, is not reprocessed and
+/// its re-solve aborts with #482 (`Error Encountered in Solve: Aborting`).
 #[test]
 fn a_shape_changing_code_after_a_solve_reprocesses_the_buses() {
-    assert_refetch_reprocesses("AutoTrans", (3, 2), (3, 3)); // NTerms 2 -> 3
-    assert_refetch_reprocesses("AutoTrans", (3, 2), (1, 2)); // NConds 6 -> 2
+    assert_refetch_reprocesses("AutoTrans", (3, 2), (3, 3)); // NTerms 2 -> 3; r4133: via Fnphases + 1
+    assert_refetch_reprocesses("AutoTrans", (3, 3), (3, 2)); // NTerms 3 -> 2
+    assert_refetch_reprocesses("AutoTrans", (3, 2), (1, 2)); // NConds 6 -> 2; r4133: stale
     assert_refetch_reprocesses("AutoTrans", (1, 2), (1, 3)); // r4133: #482
 }
 
@@ -766,22 +824,37 @@ fn a_shape_changing_code_after_a_solve_reprocesses_the_buses() {
 #[test]
 fn a_shape_changing_code_reprocesses_a_transformer_too() {
     assert_refetch_reprocesses("Transformer", (3, 2), (3, 3)); // r4133: #482
+    assert_refetch_reprocesses("Transformer", (3, 3), (3, 2)); // NTerms 3 -> 2
     assert_refetch_reprocesses("Transformer", (3, 2), (1, 2)); // r4133: stale
 }
 
 /// The converse: a code of the same shape keeps the terminals, so it raises
-/// nothing (the Pascal `NConds :=` with the right value is a no-op too).
+/// nothing (the Pascal `NConds :=` with the right value is a no-op too). The
+/// kept terminals must still carry their node references, which the flag no
+/// longer restores: re-fetching another code of the same shape and re-solving
+/// gives exactly the machine built from that code.
 #[test]
 fn a_same_shape_code_does_not_flag_the_buses() {
+    let mut codes: Vec<String> = [(3, 2), (3, 3)]
+        .iter()
+        .flat_map(|&(np, nw)| shape_code(np, nw))
+        .collect();
+    codes.extend(code_lines("k32b", 3, 2, 12000.0, 0.7));
     for kind in ["AutoTrans", "Transformer"] {
-        let mut dss = shape_deck(kind, [(3, 2), (3, 3)], (3, 2));
+        let mut dss = code_deck(kind, &codes, "k32");
         assert!(!dss.circuit().unwrap().bus_name_redefined);
-        dss.command(&format!("Edit {kind}.t1 xfmrcode=k32"));
+        for code in ["k32", "k32b"] {
+            dss.command(&format!("Edit {kind}.t1 xfmrcode={code}"));
+            assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+            assert!(
+                !dss.circuit().unwrap().bus_name_redefined,
+                "{kind}: a same-shape code ({code}) must not reprocess the buses"
+            );
+        }
+        dss.command("Solve");
         assert!(dss.errors().is_empty(), "{:?}", dss.errors());
-        assert!(
-            !dss.circuit().unwrap().bus_name_redefined,
-            "{kind}: a same-shape code must not reprocess the buses"
-        );
+        let mut direct = code_deck(kind, &codes, "k32b");
+        assert_same_machine(kind, &mut dss, &mut direct);
     }
 }
 
@@ -791,11 +864,32 @@ fn a_same_shape_code_does_not_flag_the_buses() {
 /// AutoTrans object.', 100130)` (`:566`), so its `XfmrBank` stays `''`. The port
 /// follows dss_capi 0.14.5 (`AutoTrans.pas:482` there): the name is accepted
 /// without a message, stored, read back live by `?` (the getter reads the field,
-/// not the parse store) and keys the CIM bank (`cim/power_xfmr.rs`). Adopting
-/// #100130 is an open decision (`auto_trans/mod.rs`, the `Bank` row); this pin
-/// holds the behaviour until it is taken.
+/// not the parse store) and keys the CIM bank (`cim/power_xfmr.rs`): the
+/// exported `PowerTransformer` is named after it, where an auto with no bank
+/// is its own bank. Adopting #100130 is an open decision (`auto_trans/mod.rs`,
+/// the `Bank` row); this pin holds the behaviour until it is taken.
 #[test]
 fn bank_is_stored_silently_where_r4133_logs_100130() {
+    // `Export CIM100 fil=` writes the one combined file; it is read back by the
+    // path the command reports and deleted by name.
+    let cim = |dss: &mut Dss, tag: &str| {
+        let path =
+            std::env::temp_dir().join(format!("dss_autoxc_cim_{tag}_{}.xml", std::process::id()));
+        let seen = dss.errors().len();
+        dss.command(&format!(
+            "Export CIM100 fil=\"{}\"",
+            path.to_string_lossy().replace('\\', "/")
+        ));
+        assert_eq!(dss.errors().len(), seen, "{:?}", &dss.errors()[seen..]);
+        let file = dss.last_result_file().to_string();
+        let text = std::fs::read_to_string(&file).expect("CIM export file");
+        let _ = std::fs::remove_file(&file);
+        text
+    };
+    let mut plain = coded();
+    let own_bank = cim(&mut plain, "plain");
+    assert!(!own_bank.contains(">b7<"), "no bank named b7 without bank=");
+
     let mut dss = coded();
     let seen = dss.errors().len();
     dss.command("Edit AutoTrans.t1 bank=b7");
@@ -811,5 +905,10 @@ fn bank_is_stored_silently_where_r4133_logs_100130() {
             .all(|e| e.code != Some(100130) && !e.message.contains("Bank Property not used")),
         "#100130 is not logged: {:?}",
         dss.errors()
+    );
+    // The CIM consumer: the stored name keys the auto's bank.
+    assert!(
+        cim(&mut dss, "bank").contains(">b7<"),
+        "the exported bank is named b7"
     );
 }
