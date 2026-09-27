@@ -2093,6 +2093,12 @@ def main() -> None:
     except Exception:  # older dss-python without the attribute
         pass
     log(f"oracle_server ready: {oracle}")
+    # RETRO_FIXES RF-I00-01: every case is compiled in the gate's own scratch
+    # COPY, and `Compile` leaves this process's working directory inside it
+    # (dss_capi `SetCurrentDSSDir`; r4133 `Executive/ExecHelper.pas:752-754`).
+    # Windows refuses to remove a directory that is a process's working
+    # directory, so every reply is sent from here, never from the copy.
+    startup_cwd = os.getcwd()
 
     # NB: read with readline(), not `for line in sys.stdin` — the latter reads
     # ahead in large blocks and would deadlock the request/response protocol
@@ -2127,7 +2133,10 @@ def main() -> None:
         if warn:
             _set_early_abort(d, False)
         try:
-            result = run_case(d, req)
+            try:
+                result = run_case(d, req)
+            finally:
+                os.chdir(startup_cwd)
             reply({"ok": True, "result": result})
         except Exception as e:  # one bad case must not kill the server
             log("case failed:\n" + traceback.format_exc())

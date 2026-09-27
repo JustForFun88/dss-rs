@@ -355,7 +355,7 @@ impl PropFlags {
     /// non-r4133 full-enumeration surface (r4133 render is never byte-gated,
     /// RUNG2-COMMON §"Property renames / additions"). The named-query (`?`) and
     /// props-table surfaces still expose it; the props-table comparison excludes
-    /// it via the `PROPS_015X` allowlist row (tests/harness).
+    /// it via the `PROPS_015X` allowlist row (crates/dss-test-harness/src/harness).
     ///
     /// **Carrier-free between WP-U2.5 and R4133_PROPS RP1.1.** SwtControl
     /// `RatedCurrent` (WP-U2.4) was the first carrier; U2.5 brought all four

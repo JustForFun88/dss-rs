@@ -176,7 +176,12 @@ pub struct RunFileReport {
 
 impl RunFileProbe {
     /// Snapshot the case directory before the Rust engine touches it.
+    ///
+    /// RETRO_FIXES RF-I00-01 part 2: `case_path` is the deck of the port's own
+    /// scratch copy; a vendored deck is refused before anything is photographed
+    /// ([`super::scratch::not_vendored`]).
     pub fn start(case_path: &str) -> RunFileProbe {
+        super::scratch::not_vendored(std::path::Path::new(case_path), "RunFileProbe::start");
         RunFileProbe {
             guard: CorpusGuard::new(case_path),
         }
@@ -438,7 +443,9 @@ pub fn contents_census() -> (usize, usize) {
 /// drives a `both` case's channels strictly in sequence (fetch, compare, then
 /// the next channel), `dss_epri::guard::copy_selected_contents` and its Python
 /// twin `remove_dir_all` the sidecar before each copy, and this function deletes
-/// it as it reads.
+/// it as it reads. No other test asks for a sidecar: the opt-in
+/// `corpus_live_properties` sweep, which since RF-I00-01 runs in its own
+/// process beside the gate, clears both sidecar flags of its requests.
 #[track_caller]
 pub fn read_sidecar(
     dir: &std::path::Path,
@@ -478,9 +485,9 @@ pub fn read_sidecar(
             dss_epri::guard::decode_run_file(&bytes, name).unwrap_or_else(|e| panic!("{ctx}: {e}"));
         out.insert(name.clone(), text);
     }
-    // The gate owns the directory, so it removes it in the same bracket that
-    // owns the case-dir claim — a sidecar that outlived its case would be read
-    // by nobody and would grow the build tree by ~19 MB per drive.
+    // The gate owns the directory, so it removes it as the case reads it — a
+    // sidecar that outlived its case would be read by nobody and would grow the
+    // build tree by ~19 MB per drive.
     let _ = std::fs::remove_dir_all(dir);
     Some(out)
 }
@@ -1303,5 +1310,15 @@ mod tests {
             }
         }
         out
+    }
+
+    /// RF-I00-01 part 2 — the port's run-file probe brackets a scratch copy,
+    /// never a vendored folder: it refuses a vendored deck up front.
+    #[test]
+    #[should_panic(expected = "RunFileProbe::start")]
+    fn the_probe_refuses_a_vendored_deck() {
+        let deck =
+            super::super::scratch::corpus_root().join("electricdss-tst/Test/PVSystemTest.dss");
+        let _ = RunFileProbe::start(&deck.to_string_lossy());
     }
 }

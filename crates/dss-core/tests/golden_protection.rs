@@ -32,7 +32,7 @@
 //!
 //! Regenerate only manually: `python tools/golden/gen_protection.py`.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
