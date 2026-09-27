@@ -46,6 +46,13 @@
 //!    `(pair, rust, r4133)` triple, disjointness from `bins.tsv`, the
 //!    presence of the provenance header that IS those pairs' bin assignment,
 //!    and its machine-readable `# BIN <pair> <bin>` lines ([`SUPPLEMENT_BINS`]).
+//! 6. **The population the in-scope numbers measure** — the live manifests'
+//!    `engines ∈ {both, r4133}` cases are the census's 462 ([`CENSUS_IN_SCOPE`],
+//!    count + digest) plus the named post-census additions
+//!    ([`IN_SCOPE_ADDED_SINCE_CENSUS`]), and the r4133 `kind: "skip"` rows of
+//!    `tests/corpus/ledger.json` the README's in-scope section counts are still
+//!    the ones it names ([`R4133_SKIPS`]). These read live files, so they are
+//!    the tripwire for the README's population prose (RETRO_FIXES RF-D00-16).
 //!
 //! Nothing here needs an oracle, a solve or a feature flag: it is a data lock,
 //! green in both lanes.
@@ -240,6 +247,81 @@ const RP1_1_CLOSED: &[(&str, usize, &[&str])] = &[
     ("sensor", 16, &["action"]),
 ];
 
+/// The four manifests the in-scope filter joins census `case` labels to, as
+/// `(label prefix, repo-root-relative path)`: a label is `"<prefix>:<path>"`
+/// (vendored `README.md` §"The in-scope filter").
+const MANIFESTS: &[(&str, &str)] = &[
+    ("solvable_now", "tests/corpus/manifests/solvable_now.json"),
+    ("asymmetric", "tests/corpus/asymmetric/manifest.json"),
+    ("controls", "tests/corpus/controls/manifest.json"),
+    ("modes", "tests/corpus/modes/manifest.json"),
+];
+
+/// **The population every in-scope number here measures**: the census-time
+/// cases of [`MANIFESTS`] with `engines ∈ {both, r4133}` — 462 of 521 — as
+/// `(count, digest)`, the digest being the SHA-256 over the sorted labels,
+/// each followed by `\n`.
+/// `cells_in_scope`, `max_rel_in_scope`, the two `*_in_scope.txt` extracts and
+/// `shape_in_scope.txt` are all measured over exactly these cases, and
+/// `props_r4133_replay.rs` uses `max_rel_in_scope` as a ceiling. Re-derived
+/// 2026-09-27 (RETRO_FIXES RF-D00-16, finding `RP|RP0.1|AT2|AT2-3`) by applying
+/// the filter to the four manifests as RP0.1's vendoring commit `6db7f202`
+/// holds them (`git show 6db7f202:<manifest>`): 521 cases = 366 `both` + 96
+/// `r4133` + 59 `capi_v0145`.
+const CENSUS_IN_SCOPE: (usize, &str) = (
+    462,
+    "4bb3fa6ff02c9ba8f1581c42f14cb394134b17b0849cddd910ce286464418e03",
+);
+
+/// In-scope cases the manifests gained after the census, by label. None of
+/// them has a frozen cell, so no in-scope number above describes them: they
+/// are named here so that the population lock can tell a known addition from
+/// drift. At RF-D00-16 the live manifests hold 526 cases (366 `both` + 101
+/// `r4133` + 59 `capi_v0145`), 467 in scope = the census's 462 + these five;
+/// the other change since, three GIC decks moved `both` → `r4133`, stays in
+/// scope and moves nothing.
+const IN_SCOPE_ADDED_SINCE_CENSUS: &[&str] = &[
+    "asymmetric:autotrans/autotrans_xfmrcode.dss",
+    "controls:energymeter/midi_relcalc.dss",
+    "controls:espvlcontrol/espvlcontrol.dss",
+    "modes:faultstudy/faultstudy_micro.dss",
+    "modes:makeposseq/makeposseq_gic.dss",
+];
+
+/// Every r4133-channel `kind: "skip"` row of `tests/corpus/ledger.json`, as
+/// `(case label, ledger id, cause_ref)`: in-scope cases whose r4133 side never
+/// runs, so the `engines`-only filter admits cells the r4133 compare cannot
+/// reach. The README's "four of the 462" are the `epri-303-crash` rows (all
+/// census cases); the fifth is the post-census `espvlcontrol` deck, whose
+/// class r4133 cannot instantiate.
+const R4133_SKIPS: &[(&str, &str, &str)] = &[
+    (
+        "asymmetric:line/line_spacing_asym.dss",
+        "r4133-linespacing-asym-303",
+        "epri-303-crash",
+    ),
+    (
+        "controls:espvlcontrol/espvlcontrol.dss",
+        "r4133-espvlcontrol-uninstantiable",
+        "epri-espvlcontrol-uninstantiable",
+    ),
+    (
+        "modes:inputformat/shape_binfiles/shape_binfiles.dss",
+        "r4133-binaryshape-303",
+        "epri-303-crash",
+    ),
+    (
+        "solvable_now:Test/IEEE13_LineAndCableSpacing.dss",
+        "r4133-linecablespacing-303",
+        "epri-303-crash",
+    ),
+    (
+        "solvable_now:Test/IEEE13_LineSpacing.dss",
+        "r4133-linespacing-303",
+        "epri-303-crash",
+    ),
+];
+
 fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
 }
@@ -402,6 +484,51 @@ fn digest(name: &str) -> (usize, String) {
     let path = repo_root().join(DIR).join(name);
     let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     (bytes.len(), format!("{:x}", Sha256::digest(&bytes)))
+}
+
+/// A repo-root-relative JSON file, parsed.
+fn read_json(rel: &str) -> serde_json::Value {
+    let path = repo_root().join(rel);
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+}
+
+/// The live manifests' cases as `"<prefix>:<path>" -> engines`, every case of
+/// [`MANIFESTS`] (a case without an `engines` string, with an unknown channel
+/// or listed twice panics — the join must be exact).
+fn manifest_engines() -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for (prefix, rel) in MANIFESTS {
+        let json = read_json(rel);
+        let cases = json["cases"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{rel}: no `cases` array"));
+        assert!(!cases.is_empty(), "{rel}: no case");
+        for case in cases {
+            let path = case["path"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{rel}: a case without a `path`: {case}"));
+            let label = format!("{prefix}:{path}");
+            let engines = case["engines"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{label}: no `engines` string"));
+            assert!(
+                matches!(engines, "both" | "r4133" | "capi_v0145"),
+                "{label}: unknown `engines` {engines:?}"
+            );
+            assert!(
+                out.insert(label.clone(), engines.to_string()).is_none(),
+                "{label}: listed twice"
+            );
+        }
+    }
+    out
+}
+
+/// The in-scope filter of the vendored `README.md`: `engines ∈ {both, r4133}`.
+fn in_scope(engines: &str) -> bool {
+    engines == "both" || engines == "r4133"
 }
 
 #[test]
@@ -1221,5 +1348,116 @@ fn rp1_4_keeps_the_gendispatcher_weights_the_r4133_table_loses() {
         &live[5..],
         &["genlist", "weights", "basefreq", "enabled", "like"],
         "the GenDispatcher tail changed shape"
+    );
+}
+
+/// **The in-scope numbers still describe the population they were measured
+/// on.** Every in-scope figure in this directory is a measurement over the
+/// census's 462 in-scope cases ([`CENSUS_IN_SCOPE`]), while the manifests it
+/// joins to are live files that keep growing. The live in-scope set, less the
+/// named post-census additions ([`IN_SCOPE_ADDED_SINCE_CENSUS`]), must be that
+/// census set exactly — same count, same digest — so a census case that left
+/// the scope, a census-time `capi_v0145` case that entered it, or a new
+/// in-scope deck nobody named reds here instead of silently changing what
+/// `max_rel_in_scope` is a ceiling over (RETRO_FIXES RF-D00-16, finding
+/// `RP|RP0.1|AT2|AT2-3`).
+#[test]
+fn the_in_scope_population_is_the_census_one_plus_named_additions() {
+    let engines = manifest_engines();
+    let live: BTreeSet<&str> = engines
+        .iter()
+        .filter(|(_, e)| in_scope(e))
+        .map(|(label, _)| label.as_str())
+        .collect();
+
+    let added: BTreeSet<&str> = IN_SCOPE_ADDED_SINCE_CENSUS.iter().copied().collect();
+    assert_eq!(
+        added.len(),
+        IN_SCOPE_ADDED_SINCE_CENSUS.len(),
+        "IN_SCOPE_ADDED_SINCE_CENSUS names a case twice"
+    );
+    for label in &added {
+        assert!(
+            live.contains(label),
+            "{label}: named as an in-scope addition since the census, but the live manifests \
+             have it as {}",
+            engines.get(*label).map_or("no case", String::as_str)
+        );
+    }
+
+    let census: Vec<&str> = live.difference(&added).copied().collect();
+    let blob: String = census.iter().map(|label| format!("{label}\n")).collect();
+    let got = format!("{:x}", Sha256::digest(blob.as_bytes()));
+    assert_eq!(
+        (census.len(), got.as_str()),
+        CENSUS_IN_SCOPE,
+        "the live in-scope population less the {} named additions is no longer the census's \
+         (live: {} of {} cases in scope). A new in-scope deck has no frozen cell: name it in \
+         IN_SCOPE_ADDED_SINCE_CENSUS. A census case that was removed or renamed, or whose \
+         `engines` crossed the {{both, r4133}} boundary (diff the labels against \
+         `git show 6db7f202:<manifest>` of the four MANIFESTS), means the frozen in-scope \
+         measurements no longer cover what the r4133 channel compares: re-derive them (the \
+         RP0.2 census knob), never re-baseline this pin",
+        added.len(),
+        live.len(),
+        engines.len()
+    );
+}
+
+/// **The r4133 skip rows the README's in-scope section names are still skip
+/// rows.** The filter is `engines`-only, so it admits cases whose r4133 side
+/// the ledger switches off; the README counts them (the four `epri-303-crash`
+/// census cases, and since G1.2 the `espvlcontrol` deck). This pins the ledger
+/// side of that prose: every r4133 `kind: "skip"` row is one of
+/// [`R4133_SKIPS`] and each of those is still there with its id and cause, on
+/// an in-scope `engines: both` case (the `capi_v0145` channel gates each deck
+/// fully), census or named addition as the table says (RETRO_FIXES RF-D00-16,
+/// finding `RP|RP0.1|AT3|AT3-1`).
+#[test]
+fn the_r4133_skip_rows_are_the_readme_four_plus_espvlcontrol() {
+    let engines = manifest_engines();
+    let ledger = read_json("tests/corpus/ledger.json");
+    let entries = ledger["entries"]
+        .as_array()
+        .expect("tests/corpus/ledger.json: no `entries` array");
+    let field = |e: &serde_json::Value, key: &str| -> String {
+        e[key]
+            .as_str()
+            .unwrap_or_else(|| panic!("ledger.json: an entry without a `{key}` string: {e}"))
+            .to_string()
+    };
+    let skips: BTreeSet<(String, String, String)> = entries
+        .iter()
+        .filter(|e| e["channel"] == "r4133" && e["kind"] == "skip")
+        .map(|e| (field(e, "case"), field(e, "id"), field(e, "cause_ref")))
+        .collect();
+    let want: BTreeSet<(String, String, String)> = R4133_SKIPS
+        .iter()
+        .map(|(case, id, cause)| (case.to_string(), id.to_string(), cause.to_string()))
+        .collect();
+    assert_eq!(
+        skips, want,
+        "the r4133 skip rows of tests/corpus/ledger.json moved: the README's in-scope section \
+         counts them, so update R4133_SKIPS together with a README note"
+    );
+
+    let mut crash_303 = 0usize;
+    for (case, id, cause) in R4133_SKIPS {
+        assert_eq!(
+            engines.get(*case).map(String::as_str),
+            Some("both"),
+            "{id}: {case} must be an `engines: both` case of the live manifests"
+        );
+        let post_census = IN_SCOPE_ADDED_SINCE_CENSUS.contains(case);
+        if *cause == "epri-303-crash" {
+            crash_303 += 1;
+            assert!(!post_census, "{id}: the four 303 skips are census cases");
+        } else {
+            assert!(post_census, "{id}: {case} is the post-census skip");
+        }
+    }
+    assert_eq!(
+        crash_303, 4,
+        "the README names exactly four `epri-303-crash` skip cases"
     );
 }
