@@ -404,7 +404,13 @@ pub struct Solution {
     pub ncim_pv_bus_idx: Vec<i32>,
     /// `NCIM_Jacobian` — the real-valued sparse Jacobian (rebuilt each iteration).
     pub ncim_jacobian: Option<RealSparseSet>,
-    /// `NCIM_InitGenQ` — first-run / reinit flag for the generator Q registries.
+    /// `InitGenQ` (r4133 `Common/Solution.pas` l.339) — the **one-shot**
+    /// first-solve flag: `true` only from construction (`TSolutionObj.Create`,
+    /// l.648), cleared by `do_ncim_solution` after its first Newton pass
+    /// (l.1157), re-armed nowhere (r4133 has no other writer either). It gates
+    /// the first solve's flat start and all-machine registry init; a generator
+    /// that joins later is initialised by the self-sizing registries instead
+    /// (`ncim_init_pq_gen` / `ncim_get_num_generators`, RF-D00-05).
     pub ncim_init_gen_q: bool,
     /// `NCIM_Ready` — whether the NCIM structures are initialized.
     pub ncim_ready: bool,

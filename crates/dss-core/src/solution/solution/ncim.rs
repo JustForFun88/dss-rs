@@ -105,6 +105,22 @@ fn do_pqbus(sol: &mut Solution, i: usize, v: Complex64, power: Complex64) {
     sol.ncim_delta_f[base + 1] += curr.re;
 }
 
+/// The 0-based Jacobian row of `node`'s voltage-regulation equation, r4133's
+/// `GCoord = 2·NumNodes + PVBusIdx[node] - 1` (1-based, `Common/Solution.pas`
+/// l.1426; `PVBusIdx` is stored here one higher, see
+/// [`ncim_get_num_generators`]). `None` for a node without a row: node 0 (a
+/// grounded conductor) or a node that no enabled `model=3` machine registered
+/// on this Newton pass. Its three readers — [`do_pvbus`],
+/// [`ncim_build_jacobian`] and [`ncim_update_gen_q`] — run after
+/// `ncim_get_num_generators` in the same pass ([`do_ncim_solution`]), which
+/// registers every live node of every enabled `model=3` machine, so a PV node
+/// always has its row; the checked form keeps a broken invariant from
+/// aborting the process (RF-D00-05: no deck may panic here).
+fn pv_reg_row(sol: &Solution, num_nodes: usize, node: usize) -> Option<usize> {
+    let idx = usize::try_from(*sol.ncim_pv_bus_idx.get(node)?).ok()?;
+    Some(num_nodes * 2 + idx.checked_sub(2)?)
+}
+
 /// Pascal `NCIM_DoPVBus` (l.171): stamp a PV node's power-injection derivative
 /// (negated, since a generator injects) plus the voltage-regulation coupling
 /// cells `Z`/`X` that tie the node voltage to the PV-bus Q equation. `num_nodes`
@@ -130,7 +146,9 @@ fn do_pvbus(sol: &mut Solution, num_nodes: usize, i: usize, vtarget: f64, power:
     // Voltage-regulation subsection.
     let vmag = v.norm();
     // GCoord (1-based) = NumNodes*2 + PVBusIdx[i] - 1  → 0-based gz.
-    let gz = num_nodes * 2 + sol.ncim_pv_bus_idx[i] as usize - 1 - 1;
+    let Some(gz) = pv_reg_row(sol, num_nodes, i) else {
+        return;
+    };
     sol.ncim_delta_f[gz] = vtarget - vmag;
     let den = vmag * vmag;
     let jac = sol.ncim_jacobian.as_mut().expect("jacobian built");
@@ -259,17 +277,61 @@ fn ncim_init(ckt: &mut Circuit, env: &mut SolveEnv, init_y: bool) -> Result<usiz
 }
 
 /// Pascal `TSolutionObj.GetNumGenerators` (**r4133** `Common/Solution.pas`
-/// l.1884-1990; `NCIM_GetNumGenerators` l.574 in the retired capi015 refactor):
+/// l.1884-1988; `NCIM_GetNumGenerators` l.574 in the retired capi015 refactor):
 /// classify each enabled generator as a
 /// PV-bus (model-3 with Q-limits) participant, assign its `NCIM_Idx`, tally the
-/// per-node Q-limits and generator counts. Returns the total number of PV-bus
-/// generator phases (the size of the Jacobian's voltage-regulation section).
+/// per-node Q-limits and generator counts. Returns the number of distinct
+/// non-ground PV nodes, the size of the Jacobian's voltage-regulation section
+/// (r4133 returns the rows it reserved, `NPhases` per block, l.1957-1958).
+///
+/// **The PV registry is self-sizing** (RF-D00-05). r4133 zeroes a model-3
+/// machine's `deltaQNom` only under `InitQ` (l.1926-1931), i.e. on the first
+/// Newton pass of the circuit's first NCIM solve (`InitGenQ`, see
+/// [`ncim_init_pq_gen`]); a machine that joins later keeps the empty array and
+/// r4133 faults on it (probe on that fn). Here a machine whose registry is
+/// **empty** takes that same `InitQ` init on its own first pass — zero ΔQ per
+/// phase and, for the zero-limit demotion below, the conversion record — and
+/// one sized for fewer phases than it now has (a `phases` edit) is grown with
+/// the same `0.0` (r4133 reads past its end there). Entries that exist are
+/// never touched: every registry r4133 can read is read unchanged, and a
+/// machine's converged Q carries into the next solve exactly as in r4133.
+///
+/// **One regulation row per PV node** (RF-D00-05 settlement). r4133 keys a
+/// PV block by a machine's first node (l.1945-1966): a new first node
+/// reserves `NPhases` rows, one per conductor, even where an earlier block
+/// already holds that conductor's node; a known first node reuses the block
+/// from that node's row; phase `i` sits at `NCIMIdx + i - 1`. Where the
+/// conductors do not line up r4133 goes wrong four ways (live `epri-worker`
+/// probes 2026-09-26 on the decks of the `exec::tests::ncim` pins P20, P21,
+/// P23 and P24):
+///
+/// - a narrower block (a 1-phase machine on `bus.1` before a 3-phase one on
+///   `bus`): rows past the block, which KLUSolve drops; converged in 3
+///   iterations with GENBUS.2/.3 unregulated at 7138.1 / 7137.6 V against the
+///   7199.56 V target;
+/// - a differently ordered block (a 3-phase machine on `bus.2.3.1` after one
+///   on `bus`): GENBUS.1's equation lands past the block and its reserved row
+///   stays empty; not converged after 15 iterations, GENBUS.1 at 6989.6 V;
+/// - an overlapping block (a 1-phase machine on `bus.2` before a 3-phase one
+///   on `bus`): a second row for GENBUS.2, and `PVBusIdx` is last-writer
+///   (l.1319), so the first machine's row carries no equation; converged in 4
+///   iterations at this port's node voltages, but that machine is clamped at
+///   its node's summed 1000 kvar limit (twice its own 500 kvar) and the second
+///   machine's phase 2 absorbs 695.55 kvar against it;
+/// - a conductor tied to ground: column `2·0 - 1`, which KLUSolve drops; not
+///   converged after 15 iterations, every node at the flat start.
+///
+/// Here every distinct non-ground node of the PV machines gets one row, in
+/// first-reference order, and the first machine to reach a row takes its
+/// whole regulation step (`QDelta[Shift] := 0`, l.2106, r4133's rule for a
+/// lined-up block), so every PV node is regulated. On every deck whose
+/// conductors line up the rows are r4133's, row for row.
 fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) -> i32 {
     for idx in 0..ckt.solution.ncim_node_num_gen.len() {
         ckt.solution.ncim_node_num_gen[idx] = 0;
         ckt.solution.ncim_node_limits[idx] = ZERO;
     }
-    let mut result = 0i32;
+    // `bus_refs[row] = node`: one voltage-regulation row per distinct PV node.
     let mut bus_refs: Vec<usize> = Vec::new();
     let gens = ckt.generators.clone();
     for r in gens {
@@ -285,38 +347,52 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
         let qmin = (gobj.kvar_min * 1e3) / nphases as f64;
         let add2limits;
         if gobj.gen_model == 3 {
-            if init_q {
+            // `InitQ` for this machine: the circuit's first pass (r4133
+            // l.1926-1931), or its own first pass when it joined late.
+            let init_this = init_q || gobj.delta_q_nom.is_empty();
+            if init_this {
                 gobj.delta_q_nom = vec![0.0; nphases];
+            } else if gobj.delta_q_nom.len() < nphases {
+                gobj.delta_q_nom.resize(nphases, 0.0);
             }
             if gobj.kvar_max == 0.0 && gobj.kvar_min == 0.0 {
                 // No Q-limits declared → cannot regulate; demote to PQ (model 4).
                 // The *conversion record* (r4133's `PV2PQList` append, the port's
                 // `ncim_expv`) is gated on `InitQ` (r4133 l.1936-1939) — only the
-                // initializing pass logs it. Reachable with `InitQ = false` only
-                // when a generator is edited back to `model=3` with zero Q-limits
-                // between two solves (the PQ→PV promotion at l.2216 requires
-                // nonzero limits, so it can never re-create this shape itself).
+                // initializing pass logs it (the first solve's, or a late
+                // machine's own). Otherwise reachable only when a generator is
+                // edited back to `model=3` with zero Q-limits between two solves
+                // (the PQ→PV promotion, l.2226-2229, needs nonzero limits, l.2172, so it
+                // can never re-create this shape itself).
                 gobj.gen_model = 4;
-                if init_q {
+                if init_this {
                     gobj.ncim_expv = true;
                 }
                 continue;
             }
-            let target = gobj.cd.node_ref[0];
-            let mut bidx: i32 = -1;
-            for (k, &b) in bus_refs.iter().enumerate() {
-                if b == target {
-                    bidx = k as i32;
-                    break;
+            // One row per distinct non-ground node, in first-reference order.
+            // r4133 (l.1945-1966) keys a block by the machine's first node and
+            // puts phase `i` at `NCIMIdx + i - 1`: the same row as here for
+            // every machine whose conductors line up with the block's. Where
+            // they do not (a narrower, differently ordered or overlapping
+            // block, a conductor tied to ground) r4133 drops or orphans rows;
+            // see the function doc. Every PV node gets its own row here.
+            let mut first_row: Option<usize> = None;
+            for &nr in &gobj.cd.node_ref[..nphases] {
+                if nr == 0 {
+                    continue;
                 }
+                let row = match bus_refs.iter().position(|&b| b == nr) {
+                    Some(k) => k,
+                    None => {
+                        bus_refs.push(nr);
+                        bus_refs.len() - 1
+                    }
+                };
+                first_row.get_or_insert(row);
             }
-            if bidx < 0 {
-                gobj.ncim_idx = result + 1;
-                result += nphases as i32;
-                bus_refs.extend_from_slice(&gobj.cd.node_ref[..nphases]);
-            } else {
-                gobj.ncim_idx = bidx + 1;
-            }
+            // `NCIMIdx`: the machine's first row, 1-based (0 = no live node).
+            gobj.ncim_idx = first_row.map_or(0, |r| r as i32 + 1);
             add2limits = true;
         } else {
             // r4133 l.1972-1973: `Else Add2Limits := pGen.GenModel = 4;`. (The
@@ -332,7 +408,13 @@ fn ncim_get_num_generators(ckt: &mut Circuit, env: &mut SolveEnv, init_q: bool) 
             }
         }
     }
-    result
+    // `PVBusIdx[node]` (r4133 `NCIMIdx + idx`, l.1319): the PV node's
+    // regulation row is `2·NumNodes + PVBusIdx - 2`, 0-based (l.1426).
+    ckt.solution.ncim_pv_bus_idx.fill(0);
+    for (row, &nr) in bus_refs.iter().enumerate() {
+        ckt.solution.ncim_pv_bus_idx[nr] = row as i32 + 2;
+    }
+    bus_refs.len() as i32
 }
 
 /// Pascal `NCIM_CalcInjCurr` (l.540): compute the injection-current mismatch
@@ -406,7 +488,6 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
             let p_nom = gobj.p_nominal_per_phase;
             let q_nom = gobj.q_nominal_per_phase;
             let v_target = gobj.v_target;
-            let ncim_idx = gobj.ncim_idx;
             let delta_q = gobj.delta_q_nom.clone();
             let y00 = gobj.cd.yprim.as_ref().map(|m| m.get(0, 0)).unwrap_or(ZERO);
             for p in 0..nphases {
@@ -434,15 +515,15 @@ fn ncim_get_powers(ckt: &mut Circuit, env: &mut SolveEnv) {
                         ckt.solution.ncim_node_power[node_idx] += gen_s;
                         ckt.solution.ncim_gen_power[node_idx] += gen_s;
                         ckt.solution.ncim_node_pv_target[node_idx] = v_target;
-                        ckt.solution.ncim_pv_bus_idx[node_idx] = ncim_idx + (p as i32 + 1);
+                        // `PVBusIdx[node]` was set by `ncim_get_num_generators`
+                        // this pass (r4133 writes `NCIMIdx + idx` here, l.1319:
+                        // the same row wherever the conductors line up).
                     }
                     4 => {
-                        // PQ bus.
-                        let gen_s = if delta_q.is_empty() {
-                            Complex64::new(p_nom, q_nom)
-                        } else {
-                            Complex64::new(p_nom, delta_q[0])
-                        };
+                        // PQ bus. r4133 l.1323-1326: `deltaQNom[0]`, or the
+                        // nominal Q when the registry is empty.
+                        let gen_s =
+                            Complex64::new(p_nom, delta_q.first().copied().unwrap_or(q_nom));
                         if ckt.solution.ncim_node_type[node_idx] == NCIM_PQ_NODE {
                             ckt.solution.ncim_node_power[node_idx] -= gen_s;
                         } else {
@@ -519,15 +600,20 @@ fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
             .typed::<Generator>(r)
             .expect("generators list holds Generators");
         if gobj.cd.enabled && gobj.gen_model == 3 {
-            let nphases = gobj.cd.nphases;
-            let ncim_idx = gobj.ncim_idx as usize;
-            for i in 1..=nphases {
-                // GCoord (1-based) = NumNodes*2 + (NCIM_Idx + i - 1).
-                let gcoord = num_nodes * 2 + (ncim_idx + i - 1);
-                let nr = gobj.cd.node_ref[i - 1];
-                let gcoord_y = nr * 2 - 1; // 1-based
-                jac.set_element(gcoord - 1, gcoord_y - 1, 1e-20);
-                jac.set_element(gcoord - 1, gcoord_y, 1e-20);
+            for &nr in &gobj.cd.node_ref[..gobj.cd.nphases] {
+                // A grounded conductor has no regulation row (r4133 writes
+                // column `2·0 - 1` here, which KLUSolve drops).
+                if nr == 0 {
+                    continue;
+                }
+                // GCoord (1-based) = NumNodes*2 + PVBusIdx[node] - 1 (r4133
+                // l.1426), which is `generator.pas`'s `NCIMIdx + i - 1`
+                // (l.2171) wherever the conductors line up.
+                let Some(gz) = pv_reg_row(&ckt.solution, num_nodes, nr) else {
+                    continue;
+                };
+                jac.set_element(gz, nr * 2 - 2, 1e-20);
+                jac.set_element(gz, nr * 2 - 1, 1e-20);
             }
         }
     }
@@ -539,37 +625,77 @@ fn ncim_build_jacobian(ckt: &mut Circuit, env: &mut SolveEnv) {
     }
 }
 
-/// Pascal `NCIM_InitPQGen` (l.419): seed the model-4 (PQ) generators' `deltaQNom`
-/// with their nominal per-phase Q.
-fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv) {
+/// Pascal `TSolutionObj.InitPQGen` (**r4133** `Common/Solution.pas`
+/// l.1662-1684; `NCIM_InitPQGen` l.419 in the retired capi015 refactor): seed
+/// the enabled non-PV (`GenModel <> 3`) generators' `deltaQNom` with their
+/// nominal per-phase Q.
+///
+/// **Which machines, which Q — the self-sizing rule (RF-D00-05).** r4133 runs
+/// this only under `InitGenQ` (l.1115-1118), a one-shot flag: set only in
+/// `TSolutionObj.Create` (l.648), cleared after the first Newton pass
+/// (l.1157), re-armed nowhere. It therefore seeds the machines that are
+/// enabled at the circuit's first NCIM solve and no others, and every later
+/// solve warm-starts from the registries as the last one left them. A machine
+/// *created*, *enabled* or *re-phased* after that pass keeps an empty (or
+/// short) `deltaQNom`, and r4133 dereferences it: the model-3 read in
+/// `GetNCIMPowers` (l.1308), the PQ→PV test and the current stamp of
+/// `UpdateGenQ`'s ELSE arm (l.2209, l.2305). Live `epri-worker` probe
+/// 2026-09-25 on the r4133 DLL (re-derive by sending the decks of the
+/// `exec::tests::ncim` late-generator pins P10-P12 — created / enabled ×
+/// model 3 / 4 — through `epri-worker`): the second `Solve` answers `DSS
+/// error #482 Error Encountered in Solve: Access violation … Read of address
+/// 0000000000000000` at iteration 1, created or enabled, model 3 or 4 — and
+/// the port panicked ("index out of bounds: the len is 0 but the index is 0").
+/// Not reproduced (CLAUDE.md 2026-08-02). The port runs this on **every**
+/// solve and seeds, beside r4133's first-solve set (`init_gen_q`), exactly the
+/// machines whose registry is empty — the late ones — with the value r4133
+/// seeds every machine with, `Qnominalperphase` (l.1678-1679). A registry
+/// shorter than the machine's phases (a `phases` edit) is grown with its own
+/// `[0]`, the only entry r4133's PQ reads take (l.1326, l.2209, l.2305).
+/// Every other registry is left as the last solve left it, so a PV machine
+/// resumes from its converged Q. The same keep leaves a born-PQ machine's
+/// seed stale after a `kvar` edit between two NCIM solves (r4133 too: the
+/// seed is taken only under `InitGenQ`). That is an open defect shared with
+/// r4133, not a rule of this port: the RF-D00-05 settlement hands it over as a
+/// follow-up step. (The model-3 registry is sized the same way by
+/// [`ncim_get_num_generators`].)
+///
+/// **Per-phase, not length 1** (RP3.13). r4133 sizes the array to **1**
+/// (l.1678), but every *writer* indexes it per phase: the PV arm's own stamp
+/// (l.2107), the PV→PQ clamp (l.2151-2154) and the PQ→PV promotion
+/// (l.2253-2256) all run `j := 0 to NPhases-1`. So a machine born `model=4`
+/// that the promotion arm later flips to PV writes past the end of the
+/// length-1 dynamic array — unchecked in FPC; measured 2026-09-03 on an 8-line
+/// deck (`tmp/rp313/repro_pq2pv.dss`) it **corrupts the r4133 DLL**: the solve
+/// itself still answers (`converged=True`, 5 iterations, node voltages the
+/// port matches to the digit — own `epri-worker` probe, re-measured in the
+/// RP3.13 audit settlement), and the DLL then **hangs on the first element
+/// access after it** (`set_active_element Line.l1` never returns; a run killed
+/// at 150 s had burned 0.12 s of worker CPU: blocked, not spinning). The port
+/// panicked here instead. Same class as the `Bus_Int_Duration` overrun; not
+/// reproduced. `deltaQNom` is per-phase state, so it is sized that way —
+/// every reader of the scalar form takes `[0]` (l.1326 model-4 power, l.2305
+/// the ELSE arm's current stamp), which this leaves bit-identical.
+fn ncim_init_pq_gen(ckt: &mut Circuit, env: &mut SolveEnv, init_gen_q: bool) {
     let gens = ckt.generators.clone();
     for r in gens {
         let gobj = env
             .store
             .typed_mut::<Generator>(r)
             .expect("generators list holds Generators");
-        if gobj.cd.enabled && gobj.gen_model != 3 {
-            // r4133 `InitPQGen` (`Common/Solution.pas` l.1678-1679) sizes this to
-            // **1**, but every *writer* indexes it per phase: the PV arm's own
-            // stamp (l.2107), the PV→PQ clamp (l.2155) and the PQ→PV promotion
-            // (l.2255) all run `j := 0 to NPhases-1`. So a machine born `model=4`
-            // that the promotion arm later flips to PV writes past the end of the
-            // length-1 dynamic array — unchecked in FPC; measured 2026-09-03 on an
-            // 8-line deck (`tmp/rp313/repro_pq2pv.dss`) it **corrupts the r4133
-            // DLL**: the solve itself still answers (`converged=True`, 5
-            // iterations, node voltages the port matches to the digit — own
-            // `epri-worker` probe, re-measured in the RP3.13 audit settlement),
-            // and the DLL then **hangs on the first element access after it**
-            // (`set_active_element Line.l1` never returns; a run killed at 150 s
-            // had burned 0.12 s of worker CPU: blocked, not spinning). The port
-            // panicked here instead. Same class as the
-            // `Bus_Int_Duration` overrun; not reproduced (CLAUDE.md 2026-08-02).
-            // `deltaQNom` is per-phase state, so size it that way — every reader of
-            // the scalar form takes `[0]` (l.1326 model-4 power, l.2306 the ELSE
-            // arm's current stamp), which this leaves bit-identical, and the
-            // model-3 path is re-sized by `GetNumGenerators` (l.1928-1930) before
-            // anything indexes it.
-            gobj.delta_q_nom = vec![gobj.q_nominal_per_phase; gobj.cd.nphases];
+        if !gobj.cd.enabled || gobj.gen_model == 3 {
+            continue;
+        }
+        let nphases = gobj.cd.nphases;
+        if init_gen_q || gobj.delta_q_nom.is_empty() {
+            gobj.delta_q_nom = vec![gobj.q_nominal_per_phase; nphases];
+        } else if gobj.delta_q_nom.len() < nphases {
+            let q0 = gobj
+                .delta_q_nom
+                .first()
+                .copied()
+                .unwrap_or(gobj.q_nominal_per_phase);
+            gobj.delta_q_nom.resize(nphases, q0);
         }
     }
 }
@@ -620,12 +746,27 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
             let bidx = q_node_ref.iter().position(|&b| b == node_refs[0]);
             if bidx.is_none() {
                 for (j, &nr) in node_refs.iter().enumerate() {
+                    if nr == 0 {
+                        // A grounded conductor: no regulation row and no
+                        // injection (`ncim_get_powers` skips node 0), so no Q
+                        // to update (r4133 divides by `NodeV[0] = 0` here).
+                        gobj.cd.iterminal[j] = ZERO;
+                        continue;
+                    }
                     let qmax = ckt.solution.ncim_node_limits[nr].re;
                     let qmin = ckt.solution.ncim_node_limits[nr].im;
                     let volt = ckt.solution.node_v[nr];
-                    let shift = gobj.ncim_idx as usize + j;
-                    let mut gen_q =
-                        gobj.delta_q_nom[j] + qdelta.get(shift).copied().unwrap_or(0.0) * gen_gain;
+                    // r4133's `Shift := NCIMIdx + j` (l.2086): this node's
+                    // row in `qdelta`, `PVBusIdx[node] - 1` (see
+                    // `ncim_get_num_generators` and `pv_reg_row`).
+                    let shift =
+                        pv_reg_row(&ckt.solution, num_nodes, nr).map(|row| row + 1 - gen_idx);
+                    // `deltaQNom[j]` (r4133 l.2087). `ncim_get_num_generators`
+                    // sized the registry to `NPhases` on this very pass, so its
+                    // init value `0.0` is never the one taken here.
+                    let q_prev = gobj.delta_q_nom.get(j).copied().unwrap_or(0.0);
+                    let step = shift.and_then(|k| qdelta.get(k)).copied().unwrap_or(0.0);
+                    let mut gen_q = q_prev + step * gen_gain;
                     if !ignore_q {
                         if gen_q >= 0.0 {
                             pv_ok = pv_ok && (gen_q < qmax);
@@ -635,13 +776,17 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
                     } else if gobj.kvar_max == 0.0 && gobj.kvar_min == 0.0 {
                         gen_q = 0.0;
                     }
-                    if let Some(s) = qdelta.get_mut(shift) {
+                    // r4133 l.2106 `QDelta[Shift] := 0.0`: the first machine to
+                    // reach a row takes its whole regulation step.
+                    if let Some(s) = shift.and_then(|k| qdelta.get_mut(k)) {
                         *s = 0.0;
                     }
-                    gobj.delta_q_nom[j] = gen_q;
+                    // r4133 l.2107-2108: store, then stamp from the stored value.
+                    if let Some(q) = gobj.delta_q_nom.get_mut(j) {
+                        *q = gen_q;
+                    }
                     gobj.cd.iterminal[j] =
-                        -(Complex64::new(gobj.p_nominal_per_phase, gobj.delta_q_nom[j]) / volt)
-                            .conj();
+                        -(Complex64::new(gobj.p_nominal_per_phase, gen_q) / volt).conj();
                 }
             } else {
                 pv_ok = false;
@@ -659,15 +804,17 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
                 } else {
                     (0.0, 0.0)
                 };
-                // r4133 l.2148-2156: the sign test re-reads `deltaQNom[0]` on
-                // every phase, so phase 0's own overwrite feeds the later phases
-                // (identical for the usual `qMax >= 0 > qMin`, faithful when not).
-                for j in 0..nphases {
-                    gobj.delta_q_nom[j] = if gobj.delta_q_nom[0] >= 0.0 {
-                        qmax
-                    } else {
-                        qmin
-                    };
+                // r4133 l.2148-2156 (`for j := 0 to NPhases-1`): the sign test
+                // re-reads `deltaQNom[0]` on every phase, so phase 0's own
+                // overwrite feeds the later phases (identical for the usual
+                // `qMax >= 0 > qMin`, faithful when not) — hence the split.
+                if let Some((q0, rest)) = gobj
+                    .delta_q_nom
+                    .get_mut(..nphases)
+                    .and_then(<[f64]>::split_first_mut)
+                {
+                    *q0 = if *q0 >= 0.0 { qmax } else { qmin };
+                    rest.fill(if *q0 >= 0.0 { qmax } else { qmin });
                 }
             }
         } else {
@@ -686,9 +833,19 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
                     let checked = pq_checked.iter().any(|&b| b == node_refs[0]);
                     if !checked {
                         let my_vmax = gobj.v_base * gobj.vpu;
+                        // `deltaQNom[0]` (r4133 l.2209), which nothing in this
+                        // loop writes. `ncim_init_pq_gen` sized the registry at
+                        // the top of the solve, so the fallback (its seed, and
+                        // r4133's own empty-registry value, l.1323-1324) is never
+                        // the one taken.
+                        let q0 = gobj
+                            .delta_q_nom
+                            .first()
+                            .copied()
+                            .unwrap_or(gobj.q_nominal_per_phase);
                         for &nr in &node_refs {
                             let vnode = ckt.solution.node_v[nr].norm();
-                            if gobj.delta_q_nom[0] > 0.0 {
+                            if q0 > 0.0 {
                                 pq_ok = pq_ok && (vnode <= my_vmax);
                             } else {
                                 pq_ok = pq_ok && (vnode >= my_vmax);
@@ -711,12 +868,12 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
                         } else {
                             (0.0, 0.0)
                         };
-                        // r4133 l.2253: `deltaQNom[0]` re-read per phase (as above).
-                        gobj.delta_q_nom[j] = if gobj.delta_q_nom[0] >= 0.0 {
-                            qmax
-                        } else {
-                            qmin
-                        };
+                        // r4133 l.2253-2256: `deltaQNom[0]` re-read per phase
+                        // (as above).
+                        let up = gobj.delta_q_nom.first().is_some_and(|&q0| q0 >= 0.0);
+                        if let Some(q) = gobj.delta_q_nom.get_mut(j) {
+                            *q = if up { qmax } else { qmin };
+                        }
                     }
                     gobj.ncim_expv = false;
                 }
@@ -725,8 +882,11 @@ fn ncim_update_gen_q(ckt: &mut Circuit, env: &mut SolveEnv) {
             // r4133 l.2300-2307 "Update currents for all the other gen models" —
             // inside the ELSE arm too: a model-3 generator's `Iterminal` was
             // already stamped per phase (`deltaQNom[j]`) in the PV branch above.
-            if !gobj.delta_q_nom.is_empty() {
-                let q0 = gobj.delta_q_nom[0];
+            // Every enabled registry is sized by now (`ncim_init_pq_gen` at the
+            // top of the solve, `ncim_get_num_generators` for a zero-limit
+            // model-3 demotion), so this always stamps (r4133 l.2305 reads `[0]`
+            // unconditionally).
+            if let Some(&q0) = gobj.delta_q_nom.first() {
                 let p = gobj.p_nominal_per_phase;
                 for (j, &nr) in node_refs.iter().enumerate() {
                     let volt = ckt.solution.node_v[nr];
@@ -923,18 +1083,40 @@ fn ncim_stamp_swing_source_currents(ckt: &Circuit, env: &mut SolveEnv) {
     src.ncim_swing_stamped_at = Some(sys.solution_count);
 }
 
-/// Pascal `DoNCIMSolution` (l.981): the NCIM Newton loop. `V ← V − ΔV` each
-/// iteration until `Converged()` (the `NCIM_Converged` mismatch test) and the
-/// min/max-iteration clause.
+/// Pascal `TSolutionObj.DoNCIMSolution` (**r4133** `Common/Solution.pas`
+/// l.1095-1161; `DoNCIMSolution` l.981 in the retired capi015 refactor): the
+/// NCIM Newton loop. `V ← V − ΔV` each iteration until `Converged()` (the
+/// `NCIM_Converged` mismatch test) and the min/max-iteration clause.
+///
+/// `InitGenQ` (`ncim_init_gen_q`) keeps r4133's one-shot meaning — the first
+/// solve's flat start (`InitNCIM(ActorID, InitGenQ)`, l.1124) and its
+/// all-machine registry init (l.1115-1118, cleared at l.1157) — while the
+/// registries themselves are self-sizing, so a generator that joins after the
+/// first solve is initialised on its own instead of faulting (RF-D00-05; see
+/// [`ncim_init_pq_gen`]).
+///
+/// **A node space that changed since the last NCIM solve re-initialises it**
+/// (RF-D00-05). r4133 rebuilds the NCIM structures on `SystemYChanged or not
+/// NCIMRdy` (l.1123), but a network edited between two solves never reaches
+/// that test with `SystemYChanged` set: `SolveCircuit` rebuilds the
+/// `WHOLEMATRIX` Y first (l.2805-2808), which clears it (`Common/Ymatrix.pas`
+/// l.271), and only `Set algorithm=NCIM` and the control loop clear `NCIMRdy`.
+/// So a bus created after the first NCIM solve — a generator on a new line's
+/// far end — left the per-node NCIM vectors one bus short: an unchecked
+/// overrun in r4133, "index out of bounds: the len is 7 but the index is 7"
+/// in `ncim_get_num_generators` here. The port also re-initialises when those
+/// vectors no longer span the circuit's nodes (no flat start after the first
+/// solve — `init_y` stays `InitGenQ`).
 pub(crate) fn do_ncim_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     ckt.solution.iteration = 0;
 
     let mut init_gen_q = ckt.solution.ncim_init_gen_q;
-    if init_gen_q {
-        ncim_init_pq_gen(ckt, env);
-    }
+    // r4133 l.1115-1118 runs `InitPQGen` under `InitGenQ` only; the port runs
+    // it every solve, where it also seeds the late machines' empty registries.
+    ncim_init_pq_gen(ckt, env, init_gen_q);
 
-    if ckt.solution.system_y_changed || !ckt.solution.ncim_ready {
+    let node_space_stale = ckt.solution.ncim_node_type.len() != ckt.num_nodes + 1;
+    if ckt.solution.system_y_changed || !ckt.solution.ncim_ready || node_space_stale {
         ckt.solution.ncim_nodes = ncim_init(ckt, env, init_gen_q)?;
     }
 
