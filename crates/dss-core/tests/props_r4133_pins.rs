@@ -663,6 +663,10 @@ fn gictransformer_pctperm_renders_the_live_rating() {
 /// each row masks on `engines: "r4133"` cases, where the capi channel does not
 /// run at all — the largest exposure in
 /// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` — so they name this pin too.
+/// The two counts come from different days: the 233 from the 2026-08-23 claims
+/// census, the cells from RF-D07-07's 2026-09-26 re-census. `gic/gic_midi.dss`
+/// gated capi at the first and is `r4133` since G1.4a, so that one case may be
+/// counted on both sides.
 ///
 /// Decks: `modes/upgrade/upgrade_spacing_ratings.dss` (`Line.l1`, defined with
 /// `wires=[big small big neut]`) for the populated render — itself one of the
@@ -1281,8 +1285,11 @@ fn invcontrol_defaults_render_the_live_values() {
     assert_eq!(combi.get("InvControl.vv_drc.Mode"), "Voltvar");
 }
 
-/// `load.zipv` — `EmptyCollectionRender`, capi-witnessed on 221 cases and pinned
-/// for the 4 071 cells it masks on 59 r4133-only cases.
+/// `load.zipv` — `EmptyCollectionRender`, capi-witnessed on 221 cases (the
+/// 2026-08-23 claims census) and pinned for the 4 071 cells it masks on 59
+/// r4133-only cases (RF-D07-07's 2026-09-26 re-census). None of the three decks
+/// G1.4a moved off the capi channel between the two counts is among the 59, so
+/// no case is counted on both sides.
 ///
 /// r4133's arm 33 is live but loops `nZIPV` (`Version8/Source/PCElements/
 /// Load.pas:2354-2357`), so a load that never typed `zipv=` renders `''` where
@@ -1347,8 +1354,12 @@ fn pd_element_perm_and_repair_render_the_live_ratings() {
     assert_eq!(flt.get("Fault.f.pctperm"), "13");
 }
 
-/// `reactor.kvar` — `EchoDefault`, capi-witnessed on 65 cases and pinned for the
-/// 110 cells it masks on nine r4133-only cases.
+/// `reactor.kvar` — `EchoDefault`, capi-witnessed on 65 cases (the 2026-08-23
+/// claims census) and pinned for the 110 cells it masks on nine r4133-only cases
+/// (RF-D07-07's 2026-09-26 re-census). G1.4a moved `gic/gic_midi.dss`,
+/// `gic/gictransformer_gic.dss` and `GIC_Example.dss` from `both` to `r4133`
+/// between the two counts, and all three are among the nine, so up to three
+/// cases may be counted on both sides.
 ///
 /// r4133 has no getter arm for index 4 (`Version8/Source/PDElements/
 /// Reactor.pas:1090-1103`), so the property answers the `'1200'` its
