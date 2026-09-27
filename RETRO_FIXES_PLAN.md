@@ -19,7 +19,7 @@ STOP); `(Get-Command cargo).Source` under `.cargo\bin`; r4133 is the behavioural
 upstream bugs are never reproduced in any lane; every deliberate divergence is excluded
 field-by-field and pinned by an expected-value test; tolerances are never loosened; no
 `#[ignore]`, no filter that greens on zero matches; commit messages and records stay short.
-Coordinator rulings R1–R12 (§5) are part of this plan.
+Coordinator rulings R1–R13 (§5) are part of this plan.
 
 A finding is closed only by evidence: the fix, or a recorded reason why it is not fixed
 (never silently dropped). A finding the executor proves wrong at HEAD is recorded as
@@ -181,6 +181,16 @@ Derived from binding project policy (CLAUDE.md); the user may overrule any of th
   origin's domain, with the origin's state file as its brief, added to `wp_index.json` and
   scheduled by the driver after the origin lands; the origin's record names it. Such steps join
   this plan's ledger and audit ritual unchanged.
+- **R13 — the harness path after RF-I00-04 (coordinator, 2026-09-27).** Since RF-I00-04 landed
+  (`c7ae56ea`) the golden harness is the workspace crate `dss-test-harness`, at
+  `crates/dss-test-harness/src/harness/<f>`. In the **Files:** list, the findings and the probes
+  of every step that had not landed by then, `crates/dss-core/tests/harness/<f>` means
+  `crates/dss-test-harness/src/harness/<f>`: a new harness module named there is created there
+  and declared in `crates/dss-test-harness/src/harness/mod.rs`, and a harness dependency named
+  for `crates/dss-core/Cargo.toml` goes to `crates/dss-test-harness/Cargo.toml`. The drivers
+  under `crates/dss-core/tests/` keep their paths. The driver's index and run arguments are
+  re-pointed by script, the section texts are not rewritten (a landed record keeps the spelling
+  of its day), and the executor's scope check reads the re-pointed list.
 
 ## 6. Schedule (computed by schedule.py from wp_index.json — 137 steps, 54 waves of up to 3 lanes; never edited by hand)
 
