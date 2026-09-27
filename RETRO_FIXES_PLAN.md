@@ -1632,7 +1632,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 <!-- RF-STEP {"step": "RF-D04-01", "effort": "high", "parts": 2, "gate": "docs", "oracle": false, "after": ["RF-D00-01", "RF-D00-04", "RF-D00-16", "RF-D00-17", "RF-D01-16", "RF-D01-17", "RF-D01-18", "RF-D01-19", "RF-D02-13", "RF-D02-14", "RF-D02-21", "RF-D03-01", "RF-D03-05", "RF-D03-06", "RF-D03-07", "RF-D03-08", "RF-D06-01", "RF-D06-02", "RF-D06-03", "RF-D06-04", "RF-D06-06", "RF-D06-08", "RF-D06-09", "RF-D06-10", "RF-D07-01", "RF-D07-02", "RF-D07-03", "RF-D07-04", "RF-D07-05", "RF-D07-06", "RF-D08-01", "RF-D08-02", "RF-D08-03", "RF-D08-04", "RF-D08-05", "RF-D08-06", "RF-D08-07", "RF-D09-01", "RF-D09-03", "RF-D09-04", "RF-D09-05", "RF-D09-10", "RF-D09-11", "RF-D09-12", "RF-D10-01", "RF-D10-02", "RF-D10-04"], "n_uids": 17} -->
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-04, RF-D00-16, RF-D00-17, RF-D01-16, RF-D01-17, RF-D01-18, RF-D01-19 … (47 steps, see the header).
 **Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
-**Doc notes (§4):** `tests/TOLERANCE_NOTES.md` (only the G1.3a SA-4 verbatim-copy sentence below; that file is not in this step's files). This step is the TESTING.md doc-owner for the G-series. **Partition rule for the TESTING.md notes file** (`tmp/retro_fix/notes/testing-md.md`, the spelling RF-D07-01 / RF-D05-04 use; the rule refines §4's first-owner rule and is stated identically in RF-D04-02): an entry `### <step> / <uid>` is applied by RF-D04-01 iff its `<uid>` starts with `G|`, by RF-D04-02 iff it starts with `RP|` (the only two prefixes in the index); a step that leaves both kinds is split by entry. Apply only entries still unmarked whose author has landed; mark each applied entry directly under its header with `<!-- applied by RF-D04-01 <commit> -->`; list the applied entries in the record by `<step> / <uid>`. RF-D04-02, RF-D04-03, RF-D04-07 and RF-D04-09 (the last TESTING.md owner, which asserts no unmarked entry remains) follow.
+**Doc notes (§4):** `tests/TOLERANCE_NOTES.md` (only the G1.3a SA-4 verbatim-copy sentence below; that file is not in this step's files). This step is the TESTING.md doc-owner for the G-series. **Partition rule for the TESTING.md notes file** (`tmp/retro_fix/notes/TESTING.md`, the execution script's slug, the file every landed step wrote to, `testing-md.md` wherever this plan spells it means the same file; the rule refines §4's first-owner rule and is stated identically in RF-D04-02): an entry `### <step> / <uid>` is applied by RF-D04-01 iff its `<uid>` starts with `G|` or `INFRA|` (the RF-I00 steps' entries and the unmarked settlement items of RF-I00-01, added by the coordinator 2026-09-27), by RF-D04-02 iff it starts with `RP|`; a step that leaves both kinds is split by entry. Apply only entries still unmarked whose author has landed; mark each applied entry directly under its header with `<!-- applied by RF-D04-01 <commit> -->`; list the applied entries in the record by `<step> / <uid>`. RF-D04-02, RF-D04-03, RF-D04-07 and RF-D04-09 (the last TESTING.md owner, which asserts no unmarked entry remains) follow.
 **Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (TESTING.md's second runtime reader), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Parts:**
 1. The `G|` note pass, in author-wave order: apply and mark every eligible entry, re-measure the `<!-- line-citations: N -->` marker (R10) after the pass, run the docs gate, commit green; write the applied list and any entry deferred (with the reason) to `tmp/retro_fix/state/RF-D04-01.md`. If the pass will not fit, stop after a clean commit with the remaining entries listed - the workflow spawns another part (§3).
@@ -1665,7 +1665,7 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 <!-- RF-STEP {"step": "RF-D04-02", "effort": "high", "parts": 1, "gate": "docs", "oracle": false, "after": ["RF-D00-01", "RF-D00-04", "RF-D00-16", "RF-D00-17", "RF-D01-03", "RF-D01-16", "RF-D01-17", "RF-D01-18", "RF-D01-19", "RF-D02-13", "RF-D02-14", "RF-D02-21", "RF-D03-01", "RF-D03-05", "RF-D03-06", "RF-D03-07", "RF-D03-08", "RF-D04-01", "RF-D05-02", "RF-D06-01", "RF-D06-02", "RF-D06-03", "RF-D06-04", "RF-D06-06", "RF-D06-07", "RF-D06-08", "RF-D06-09", "RF-D06-10", "RF-D07-01", "RF-D07-02", "RF-D07-03", "RF-D07-04", "RF-D07-05", "RF-D07-06", "RF-D07-10", "RF-D08-01", "RF-D08-02", "RF-D08-03", "RF-D08-04", "RF-D08-05", "RF-D08-06", "RF-D08-07", "RF-D09-01", "RF-D09-03", "RF-D09-04", "RF-D09-05", "RF-D09-10", "RF-D09-11", "RF-D09-12", "RF-D10-01", "RF-D10-02", "RF-D10-04"], "n_uids": 9} -->
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-04, RF-D00-16, RF-D00-17, RF-D01-03, RF-D01-16, RF-D01-17, RF-D01-18 … (52 steps, see the header).
 **Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/corpus/props_r4133/README.md`
-**Doc notes (§4):** - (doc-owner step for both files on the RP side. **Partition rule for the TESTING.md notes file** (stated identically in RF-D04-01): this step applies exactly the entries whose `<uid>` starts with `RP|` - RF-D04-01 applied the `G|` ones - among the entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-02 <commit> -->`; list the applied entries in the record by `<step> / <uid>`; re-measure the `<!-- line-citations: N -->` marker (R10) after the pass. For the README apply every unmarked landed entry (RF-D05-02, landed before this step, marked what it consumed); the last owners are RF-D04-09 (TESTING.md) and RF-D04-13 (README). Build on RF-D05-02's README edits and never re-word a README sentence it rewrote.)
+**Doc notes (§4):** - (doc-owner step for both files on the RP side. **Partition rule for the TESTING.md notes file** (stated identically in RF-D04-01): this step applies exactly the entries whose `<uid>` starts with `RP|` - RF-D04-01 applied the `G|` and `INFRA|` ones - among the entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-02 <commit> -->`; list the applied entries in the record by `<step> / <uid>`; re-measure the `<!-- line-citations: N -->` marker (R10) after the pass. For the README apply every unmarked landed entry (RF-D05-02, landed before this step, marked what it consumed); the last owners are RF-D04-09 (TESTING.md) and RF-D04-13 (README). Build on RF-D05-02's README edits and never re-word a README sentence it rewrote.)
 **Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins`, each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
 **Findings** (locate by phrase; all in the r4133-props sections of TESTING.md, roughly "Re-measuring (`DSS_PROPS_CENSUS=1`)" through the claim-chain table. Exact-count rule: RF-D07-01 (landed before this step, RP5.1/SA1/SA-2) replaced the `LINE_CITED_DOCS` anti-vacuity floors by fail-on-stale EXACT per-document counts of resolved citations in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`; if an edit of this step (an applied note included - several ask for symbol-only citations) changes the number of resolvable `file:LINE` citations in TESTING.md, re-measure and update that document's exact count in the same commit (that `.rs` file is in this step's files for the count only; never keep or drop a citation just to hold the number). If RF-D07-01 landed the count as a marker inside the document instead, update the marker and leave the `.rs` file untouched.):
 - `RP|RP0.2|AC1|AC-2` (note) - TESTING.md "Re-measuring" paragraph ("the r4133 property masks bypassed"): RP4.1 (59e521e5, 2026-09-03) deleted those masks; only tombstone comments remain in `corpus_gate/scheduler.rs`. Fix: drop the phrase and state that RP4.1 removed the masks, matching the `DSS_PROPS_CENSUS` env-var table row and the `run_props_census` doc.
@@ -2490,9 +2490,13 @@ if it joins the rail, of the plan, in-step.
   symbols instead (the `kv_value_eq` compare that holds the file's only `lane::PARITY` read;
   the `PARITY` const assert) and delete the false sentence.
 - `G|G2.1f|SA1|SA-2` (note) - same doc block: `lane.rs:795-796 asserts it equals
-  dss_core::compat::ORACLE_PARITY` is stale. Fix: cite the test
-  `lane_const_tracks_the_engine_build` in `harness/lane.rs` by name; note the same
-  replacement for the record (`golden-rebase.md`, G2.1f settlement block).
+  dss_core::compat::ORACLE_PARITY` is stale. Amended by the coordinator 2026-09-27 after
+  RF-I00-04: the cfg-gate half is done (RF-I00-04 part 1 rewrote that doc block, deleted
+  `lane_const_tracks_the_engine_build` and pinned the lane read by
+  `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in`); verify at HEAD
+  and cite THAT pin by name wherever the block still needs one. What remains is the record note
+  (`golden-rebase.md`, G2.1f settlement block): its `lane.rs:78`, `lane.rs:795-796` and
+  'credited by the first arm through ORACLE_PARITY at :796' become the pin by name.
 - `G|G2.2a|SA1|SA-2` (note) - same doc block, the census sentence: "Two such comments exist
   in-tree (`tests/golden_reports.rs:1628`, `tests/corpus_gate/scheduler.rs:358`)" - one of the
   two no longer exists. Fix: rewrite with symbols: one prose bare-`PARITY` comment remains (in
@@ -3828,7 +3832,7 @@ doc-comment path mentions in `crates/dss-core/src/compat.rs`, `exec/view.rs`, `e
 `obj/props/prop_flags.rs`, `report/table.rs` and `crates/dss-epri/src/capture.rs`, `guard.rs`,
 `smoke.rs` (path prefix only, line-neutral), `docs/phase-records/retro-fixes.md`,
 `RETRO_FIXES_PLAN.md`.
-**Ruling (coordinator, 2026-09-27, after the part-1 STOP):** Files extended by `crates/dss-core/tests/reliability_pins.rs` (three `crates/dss-core/tests/harness/mod.rs` path literals re-pointed line-neutrally, the now-stale comment beside them re-worded line-neutrally), `crates/dss-core/tests/depascalize_metrics_gate.rs` (`engine_sources` skips a named `TEST_ONLY_CRATES` list holding `dss-test-harness`: the P7/P8 metrics are about the engine, test code legitimately builds the shapes they ban) and `Cargo.lock`. D1 accepted: the two lint scopes sit on the `pub mod harness;` item of `lib.rs`, never inside the moved files. D2 accepted: no `lane.rs:78` sanction row exists at HEAD, the test-only-crate allowance goes into `the_lane_constant_is_read_only_by_compat_modules_and_tests` only, the cfg-string rail stays path-based (mutation-proved). D3 accepted (`PD_PINS_FILE` re-based at its const). D5: the 19 surviving full-path citations are part 2's. D7: inside `harness/lane.rs` the doc of `PARITY` is re-worded line-neutrally (the lane is read from `dss_core::compat::ORACLE_PARITY`, the cross-crate agreement is pinned by the `golden_smoke.rs` pin) and the now-tautological `lane_const_tracks_the_engine_build` is deleted, not kept as `x == x`: outright when no committed citation or register names a `lane.rs` line after it (check TESTING.md, `tests/TOLERANCE_NOTES.md`, `golden-rebase.md`, `oracle_parity_cfg_gate.rs`), otherwise replaced by a same-length comment naming the pin. The acceptance's "two named line-neutral edits" becomes "the named line-neutral edits" (`lane.rs:78`, the `PARITY` doc, the deleted test, `mod.rs` `PD_PINS_FILE`), distinct names 3 075 -> 3 075 (+1 pin, -1 tautology, the delta explained in `part_1.md`).
+**Ruling (coordinator, 2026-09-27, after the part-1 STOP):** Files extended by `crates/dss-core/tests/reliability_pins.rs` (three `crates/dss-core/tests/harness/mod.rs` path literals re-pointed line-neutrally, the now-stale comment beside them re-worded line-neutrally), `crates/dss-core/tests/depascalize_metrics_gate.rs` (`engine_sources` skips a named `TEST_ONLY_CRATES` list holding `dss-test-harness`: the P7/P8 metrics are about the engine, test code legitimately builds the shapes they ban) and `Cargo.lock`. D1 accepted: the two lint scopes sit on the `pub mod harness;` item of `lib.rs`, never inside the moved files. D2 accepted: no `lane.rs:78` sanction row exists at HEAD, the test-only-crate allowance goes into `the_lane_constant_is_read_only_by_compat_modules_and_tests` only, the cfg-string rail stays path-based (mutation-proved). D3 accepted (`PD_PINS_FILE` re-based at its const). D5: the 19 surviving full-path citations are part 2's. D7: inside `harness/lane.rs` the doc of `PARITY` is re-worded line-neutrally (the lane is read from `dss_core::compat::ORACLE_PARITY`, the cross-crate agreement is pinned by the `golden_smoke.rs` pin) and the now-tautological `lane_const_tracks_the_engine_build` is deleted, not kept as `x == x`: outright when no committed citation or register names a `lane.rs` line after it (check TESTING.md, `tests/TOLERANCE_NOTES.md`, `golden-rebase.md`, `oracle_parity_cfg_gate.rs`), otherwise replaced by a same-length comment naming the pin. The acceptance's "two named line-neutral edits" becomes "the named line-neutral edits" (`lane.rs:78`, the `PARITY` doc, the deleted test, `mod.rs` `PD_PINS_FILE`), distinct names 3 075 -> 3 075 (+1 pin, -1 tautology, the delta explained in `part_1.md`). D8 confirmed after the settlement (coordinator, 2026-09-27): `[profile.dev.package.dss-test-harness] opt-level = 3` (with the dev safety knobs) keeps the harness at the opt level the `dss-core` test targets always had, the move had silently dropped it to 0 (default-lane corpus gate mean 303 s without it, 228 s with it, 229 s at the base).
 **Measured (2026-09-26, the reason for this step):** RF-I00-01 settle-2 gate, default lane, idle
 16-core machine: 13 709 test executions for 3 075 distinct names. `mod harness;` in 27 drivers
 textually includes the 14 harness files (36 891 lines) into 27 test crates, so each of the 409
@@ -4094,3 +4098,48 @@ the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
   the scoped section. The seven commands are unchanged in text and the landing gate stays full.
 - The `Docs` and `Comments` probes ran green with their walls in `part_3.md`, the record block is
   written, the uid closed or recorded with a reason.
+
+### RF-I00-06 — Re-word the texts the harness move made false (R12 follow-up of RF-I00-04)
+<!-- RF-STEP {"step": "RF-I00-06", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "inline_shared": false, "after": ["RF-I00-05"], "n_uids": 1} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** the kind `gate-kind` prints (the
+three JSON data files make the diff `Code`, so expect the full seven commands). **After:**
+RF-I00-05, and scheduled by hand (§6) after the wave-1 and wave-2 landings: every lane branch edits
+harness files and merges `update` across the rename first, so these re-words never meet an in-flight
+hunk of the same lines. **Brief:** RF-I00-04's settlement, findings AC-4 and AT-7 (both RECORDED:
+frozen by that step's byte-identity and ledger-unchanged acceptance).
+**Files:** `crates/dss-test-harness/src/harness/mod.rs`, `inc_matrix.rs`, `scratch.rs`, `lane.rs`,
+`tests/corpus/ledger.json`, `tests/corpus/modes/manifest.json`,
+`tests/corpus/manifests/solvable_now.json`, `crates/dss-core/tests/golden_cim.rs`,
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (only when a register literal or an exact
+citation count moves, R10), `docs/phase-records/retro-fixes.md`, `RETRO_FIXES_PLAN.md`.
+**Findings**
+- `INFRA|8` (note) - texts that still name the pre-move path `crates/dss-core/tests/harness/...`,
+  describe the harness as a `mod` of the driver binaries, or print a path through `..` (verified at
+  83aaa67f by the RF-I00-04 settlement, line numbers of that commit, re-locate by phrase):
+  `mod.rs:8`, `:46`, `:4737`, `:4922`, `:9485` (a panic message naming `tests/harness/mod.rs`),
+  `:9621`, `:11102` (the `PD_PINS_FILE` const, whose `:11624-11625` message prints
+  `crates/dss-core/../dss-core/tests/pd_elements_pins.rs`), `:12191`, `:12814`, `:12892`, `:14466`,
+  `:15879`, `:18031`; `inc_matrix.rs:573`, `:778-779`; `scratch.rs:56-57`; `lane.rs:1071`, `:1098`;
+  `tests/corpus/ledger.json:10` and `:1059` (`crates/dss-core/tests/harness/mod.rs::skip_whole_element`);
+  `tests/corpus/modes/manifest.json:539`; `tests/corpus/manifests/solvable_now.json:2`;
+  `crates/dss-core/tests/golden_cim.rs:49`. Fix: re-word each site to the crate and its path
+  (`crates/dss-test-harness/src/harness/<file>.rs`, "the `dss-test-harness` crate"), line-neutral
+  wherever a committed citation or register names the line (check TESTING.md,
+  `tests/TOLERANCE_NOTES.md`, `docs/phase-records/golden-rebase.md` and the `oracle_parity_cfg_gate.rs`
+  registers before each edit, re-measure any exact count the same commit). `PD_PINS_FILE` may be
+  joined from the repo root (the five `CARGO_MANIFEST_DIR/../..` sites show the pattern) so the
+  message prints a clean path. The ledger edits change note text only, never an entry's matching
+  fields: the corpus gate stays green with every entry hit and none stale. The `.json` files carry
+  no golden byte and no lock digest (verify: `golden_lock`, `population_lock` and
+  `props_r4133_evidence_lock` must not hash them; if one does, stop that site and record it, R8).
+**Probes:** `rg -n "crates/dss-core/tests/harness|tests/harness/" crates tests tools TESTING.md
+tests/TOLERANCE_NOTES.md CLAUDE.md` before and after: after the step the only hits outside
+`docs/phase-records/`, `docs/plans-archive/` and this plan are the ones this section lists as kept
+(expected none).
+**Acceptance:**
+- No live text under `crates/`, `tests/`, `tools/` or the operational docs names the pre-move
+  path or the `mod harness;` inclusion; the sites above are re-worded, line-neutral where cited.
+- Ledger, manifests and locks unchanged in what they match or hash, the corpus gate green in both
+  lanes with every ledger entry hit.
+- Gate green by kind, record block written (5-10 lines: site count, commits, gate result), the uid
+  closed or recorded with a reason.
