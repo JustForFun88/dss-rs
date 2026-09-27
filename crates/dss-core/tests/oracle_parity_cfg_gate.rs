@@ -7516,8 +7516,10 @@ struct Member {
 
 /// The package names a `Cargo.toml` depends on, in any dependency table
 /// (`[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, their
-/// `[target.<cfg>.*]` forms and dotted `[dependencies.<name>]` headers), a
-/// renamed dependency's `package = "…"` included.
+/// `[target.<cfg>.*]` forms, `[workspace.dependencies]` and dotted
+/// `[dependencies.<name>]` headers), a dotted key naming its dependency in its
+/// first segment (`log.workspace = true`, the spelling most members use) and
+/// a renamed dependency's `package = "…"` (inline or dotted) included.
 fn manifest_deps(manifest: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut in_deps = false;
@@ -7540,10 +7542,11 @@ fn manifest_deps(manifest: &str) -> BTreeSet<String> {
             continue;
         }
         if let Some((key, val)) = line.split_once('=') {
-            let key = key.trim().trim_matches('"');
-            out.insert(key.to_string());
-            if key == "package" {
-                out.insert(val.trim().trim_matches('"').to_string());
+            let unquote = |s: &str| s.trim().trim_matches(|c| c == '"' || c == '\'').to_string();
+            let segs: Vec<String> = key.split('.').map(unquote).collect();
+            out.insert(segs[0].clone());
+            if segs.last().is_some_and(|s| s == "package") {
+                out.insert(unquote(val));
             }
             if let Some(renamed) = val.find("package").and_then(|p| val[p..].split('"').nth(1)) {
                 out.insert(renamed.to_string());
@@ -8437,25 +8440,125 @@ fn group_end(code: &str, open: usize) -> Option<usize> {
     None
 }
 
+/// The external crates whose macros expand `line!()` at their call site, kept
+/// out of every member and of `[workspace.dependencies]` by
+/// [`the_gate_kind_premises_hold_across_files`].
+const LOCATION_CRATES: [&str; 2] = ["log", "tracing"];
+
+/// The panic hooks of lexed `code` that may record a panic's location, as
+/// `(offset, why)`: every `update_hook` and miette `set_panic_hook`, and every
+/// `set_hook` whose argument is not a closure that ignores its parameter (`_`)
+/// or passes it whole to a hook bound by `take_hook()` in the same file
+/// (`prev(info)`). `PanicHookInfo` prints its location through `Display` and
+/// `Debug`, so any other use of the parameter counts, a `{info}` capture in a
+/// literal included. miette's `set_hook` installs a report handler, not a
+/// panic hook, and is left out.
+fn location_hooks(code: &str, lits: &[Lit]) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    for name in ["update_hook", "set_panic_hook"] {
+        for p in token_positions(code, name) {
+            out.push((p, format!("`{name}` installs a panic hook")));
+        }
+    }
+    let binds_take_hook = |callee: &str| {
+        token_positions(code, callee).into_iter().any(|k| {
+            let head = code[..k].trim_end();
+            head.strip_suffix("let")
+                .is_some_and(|h| !h.ends_with(|c: char| c.is_alphanumeric() || c == '_'))
+                && code[k + callee.len()..].trim_start().starts_with('=')
+                && code[k..]
+                    .split(';')
+                    .next()
+                    .is_some_and(|s| s.contains("take_hook"))
+        })
+    };
+    for p in token_positions(code, "set_hook") {
+        let path = code[..p].trim_end();
+        if path
+            .strip_suffix("::")
+            .is_some_and(|h| h.trim_end().ends_with("miette"))
+        {
+            continue;
+        }
+        let rest = &code[p + "set_hook".len()..];
+        let open = p + "set_hook".len() + (rest.len() - rest.trim_start().len());
+        if code.as_bytes().get(open) != Some(&b'(') {
+            continue;
+        }
+        let end = group_end(code, open).unwrap_or(code.len());
+        let arg = &code[open..end];
+        let Some(bar) = arg.find('|') else {
+            out.push((p, "a `set_hook` argument that is not a closure".into()));
+            continue;
+        };
+        let head = &arg[bar + 1..];
+        let param = head[..head.find('|').unwrap_or(0)]
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .trim();
+        if param == "_" {
+            continue;
+        }
+        if param.is_empty() || !param.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            out.push((
+                p,
+                "a `set_hook` closure whose parameter is not a name".into(),
+            ));
+            continue;
+        }
+        for q in token_positions(arg, param) {
+            if q <= bar + 1 + head.find('|').unwrap_or(0) {
+                continue;
+            }
+            let before = arg[..q].trim_end();
+            let callee = before.strip_suffix('(').map(|b| {
+                let b = b.trim_end();
+                &b[b.rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+                    .map_or(0, |k| k + 1)..]
+            });
+            let passed_whole = arg[q + param.len()..].trim_start().starts_with(')')
+                && callee.is_some_and(|c| !c.is_empty() && binds_take_hook(c));
+            if !passed_whole {
+                out.push((
+                    open + q,
+                    format!("a panic hook uses `{param}` other than `prev({param})`"),
+                ));
+            }
+        }
+        for l in lits.iter().filter(|l| l.start >= open && l.end <= end) {
+            if captures(&l.text, param) {
+                out.push((l.start, format!("a panic hook formats `{param}`")));
+            }
+        }
+    }
+    out
+}
+
 /// The premises of `tools/gate-kind` beyond the edited file (RF-I00-05
-/// settlement: audits AC1-4, AC2-1 and AC2-2, the coordinator's R6-a). The tool
-/// grades a file whose own tokens hold `line!`, `column!`, `Location::caller` or
-/// `stringify!` as `Code`, but a `macro_rules!` body holding `line!`, `column!`
-/// or `stringify!` expands at its caller's line and spacing, and
-/// `Location::caller` (under `#[track_caller]`), a panic hook's `.location()`,
-/// `dbg!` and a `Backtrace` report a caller's line. None of them sits in the
-/// tree, so a comment-only edit of a caller moves no compiled value. An external
-/// crate's macro is outside the scan, so no member depends on `log` or
-/// `tracing` either, whose macros expand `line!()` at the call site. A new one
-/// reds here: extend the tool to grade its callers first.
+/// settlement: audits AC1-4, AC2-1 and AC2-2, the coordinator's R6-a;
+/// round 2: SA-2). The tool grades a file whose own tokens hold `line!`,
+/// `column!`, `Location::caller` or `stringify!` as `Code`, but a
+/// `macro_rules!` body holding `line!`, `column!` or `stringify!` expands at
+/// its caller's line and spacing, and `Location::caller` (under
+/// `#[track_caller]`), a `.location()` read, a panic hook that uses its
+/// argument other than passing it on ([`location_hooks`]), `dbg!` and a
+/// `Backtrace` report a caller's line. None of them sits in the tree, so a
+/// comment-only edit of a caller moves no compiled value. An external crate's
+/// macro is outside the scan, so no member and no `[workspace.dependencies]`
+/// entry names a [`LOCATION_CRATES`] crate, in any spelling [`manifest_deps`]
+/// reads. A new one reds here: extend the tool to grade its callers first.
+/// Not scanned: an external crate other than those two that records its
+/// caller's location.
 #[test]
 fn the_gate_kind_premises_hold_across_files() {
     let root = repo_root();
     let mut offenders = Vec::new();
     let mut macros = 0usize;
+    let mut hooks = 0usize;
     for path in rust_sources(&root) {
         let text = fs::read_to_string(&path).expect("source is readable");
-        let (code, _) = lex_rust(&text);
+        let (code, lits) = lex_rust(&text);
         let rel = rel_slash(&root, &path);
         let line = |at: usize| code[..at].matches('\n').count() + 1;
         for (at, _) in keyword_items(&code, "macro_rules!") {
@@ -8495,21 +8598,26 @@ fn the_gate_kind_premises_hold_across_files() {
         for p in token_positions(&code, "Backtrace") {
             offenders.push(format!("{rel}:{}: Backtrace", line(p)));
         }
+        hooks += token_positions(&code, "set_hook").len();
+        for (p, why) in location_hooks(&code, &lits) {
+            offenders.push(format!("{rel}:{}: {why}", line(p)));
+        }
     }
-    for m in workspace_members(&root) {
-        let manifest = fs::read_to_string(m.dir.join("Cargo.toml")).expect("the member manifest");
-        for l in manifest.lines() {
-            let key = l.split('=').next().unwrap_or_default().trim();
-            let table = l.trim().trim_start_matches('[').trim_end_matches(']');
-            if matches!(key, "log" | "tracing")
-                || table.ends_with(".log")
-                || table.ends_with(".tracing")
-            {
-                offenders.push(format!("{}: depends on `{}`", m.name, l.trim()));
-            }
+    let root_manifest = fs::read_to_string(root.join("Cargo.toml")).expect("the root manifest");
+    let manifests = workspace_members(&root)
+        .into_iter()
+        .map(|m| (m.name, m.deps))
+        .chain([(
+            "the root manifest".to_string(),
+            manifest_deps(&root_manifest),
+        )]);
+    for (who, deps) in manifests {
+        for dep in LOCATION_CRATES.iter().filter(|d| deps.contains(**d)) {
+            offenders.push(format!("{who}: depends on `{dep}`"));
         }
     }
     assert!(macros > 0, "the premise scan found no macro_rules! at all");
+    assert!(hooks > 0, "the premise scan found no set_hook at all");
     assert!(
         offenders.is_empty(),
         "a caller's line or spacing reaches a compiled value, which tools/gate-kind \
@@ -8545,34 +8653,375 @@ fn no_member_builds_with_a_script_or_as_a_proc_macro() {
     );
 }
 
-/// The info strings of a fence rustdoc compiles as Rust (an empty one too).
+/// A fence rustdoc may compile as Rust, a superset of its `LangString::parse`:
+/// left out only when its info string holds a token rustdoc does not know and
+/// no token that marks Rust (`rust…`, `ignore…`, `should_panic`, `no_run`,
+/// `compile_fail`, `test_harness`, `standalone_crate`, an `E0000` code).
+/// rustdoc makes `should_panic,foo` Rust and `foo,should_panic` text, both
+/// counted here. `{…}` class groups and `edition…` are neutral, so an empty
+/// info string is Rust.
 fn is_rust_fence(info: &str) -> bool {
-    info.split([',', ' ']).filter(|t| !t.is_empty()).all(|t| {
-        matches!(
-            t,
-            "rust"
-                | "ignore"
-                | "no_run"
-                | "should_panic"
-                | "compile_fail"
-                | "test_harness"
-                | "standalone_crate"
-        ) || t.starts_with("edition")
-    })
+    let mut bare = String::new();
+    let mut depth = 0usize;
+    for c in info.chars() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => bare.push(c),
+            _ => bare.push(' '),
+        }
+    }
+    let tokens: Vec<String> = bare
+        .split([',', ' ', '\t'])
+        .filter(|t| !t.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let marks_rust = |t: &str| {
+        t.starts_with("rust")
+            || t.starts_with("ignore")
+            || matches!(
+                t,
+                "should_panic" | "no_run" | "compile_fail" | "test_harness" | "standalone_crate"
+            )
+            || (t.len() == 5 && t.starts_with('e') && t[1..].bytes().all(|b| b.is_ascii_digit()))
+    };
+    tokens.iter().any(|t| marks_rust(t)) || tokens.iter().all(|t| t.starts_with("edition"))
 }
 
-/// No doctest reads a repository `.md` or `.rs` (audits AC1-3 and AT1-3): the
-/// `Docs` gate runs no doctest, so a doctest reader would skip the gate of the
-/// document it reads. Every fenced Rust block of a line doc comment (`///`,
-/// `//!`) under a member's `src/` is lexed and scanned with [`reader_needles`],
-/// an `ignore` block included. The tree holds no block doc comment (`/** */`,
-/// `/*! */`), asserted here, so the line scan sees every doctest.
+/// The indentation of `s` in columns, a tab advancing to the next multiple of 4
+/// (CommonMark).
+fn doc_cols(s: &str) -> usize {
+    let mut cols = 0;
+    for c in s.chars() {
+        match c {
+            ' ' => cols += 1,
+            '\t' => cols += 4 - cols % 4,
+            _ => break,
+        }
+    }
+    cols
+}
+
+/// `s` past a list marker (`-`, `+`, `*`, or 1-9 digits and `.` or `)`) and
+/// one space (a tab stays, counted by [`doc_cols`]), or `None`.
+fn past_list_marker(s: &str) -> Option<&str> {
+    let digits = s.bytes().take_while(u8::is_ascii_digit).count();
+    let len = match digits {
+        0 if s.starts_with(['-', '+', '*']) => 1,
+        1..=9 if s[digits..].starts_with(['.', ')']) => digits + 1,
+        _ => return None,
+    };
+    let rest = &s[len..];
+    if rest.is_empty() || rest.starts_with('\t') {
+        return Some(rest);
+    }
+    rest.strip_prefix(' ')
+}
+
+/// A doc line's text with its blockquote (`>`) and list markers stripped while
+/// each level stays indented under 4 columns: `(text, columns, contained)`,
+/// `contained` telling a marker was stripped. `columns >= 4` is code indented
+/// at that level (CommonMark: an indented code block, in a blockquote or a list
+/// item too).
+fn past_containers(doc: &str) -> (&str, usize, bool) {
+    let mut s = doc;
+    let mut contained = false;
+    loop {
+        let cols = doc_cols(s);
+        let t = s.trim_start_matches([' ', '\t']);
+        if cols >= 4 {
+            return (t, cols, contained);
+        }
+        if let Some(r) = t.strip_prefix('>') {
+            s = r.strip_prefix(' ').unwrap_or(r);
+        } else if let Some(r) = past_list_marker(t) {
+            s = r;
+        } else {
+            return (t, cols, contained);
+        }
+        contained = true;
+    }
+}
+
+/// `t` (trimmed at its start) as a fence line: the fence character, the run
+/// length (3 or more) and the info string. A backtick run whose info string
+/// holds a backtick is inline code, not a fence (CommonMark).
+fn fence_of(t: &str) -> Option<(char, usize, &str)> {
+    let c = t.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let len = t.chars().take_while(|x| *x == c).count();
+    let info = &t[len..];
+    (len >= 3 && !(c == '`' && info.contains('`'))).then_some((c, len, info))
+}
+
+/// The CommonMark tag names of a raw HTML block of kinds 1 and 6.
+const HTML_BLOCK_TAGS: [&str; 67] = [
+    "address",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "blockquote",
+    "body",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "iframe",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "menu",
+    "menuitem",
+    "nav",
+    "noframes",
+    "ol",
+    "optgroup",
+    "option",
+    "p",
+    "param",
+    "pre",
+    "script",
+    "search",
+    "section",
+    "source",
+    "style",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+];
+
+/// `t` may open a raw HTML block, a superset of CommonMark's seven start
+/// conditions: a `<!` or `<?`, a tag of [`HTML_BLOCK_TAGS`], or a line that
+/// starts with a tag and ends with `>`. An HTML block runs to a blank line or
+/// an end marker and can swallow a fence line.
+fn opens_html_block(t: &str) -> bool {
+    let t = t.trim();
+    let Some(r) = t.strip_prefix('<') else {
+        return false;
+    };
+    if r.starts_with(['!', '?']) {
+        return true;
+    }
+    let r = r.strip_prefix('/').unwrap_or(r);
+    if !r.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    let len = r
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+        .unwrap_or(r.len());
+    let after = &r[len..];
+    let delimited =
+        after.is_empty() || after.starts_with([' ', '\t', '>']) || after.starts_with("/>");
+    (delimited && HTML_BLOCK_TAGS.contains(&r[..len].to_ascii_lowercase().as_str()))
+        || t.ends_with('>')
+}
+
+/// The doc-comment lines of one Rust source that a doctest can be made of, per
+/// the CommonMark rustdoc reads, and the shapes this model does not follow.
+#[derive(Default)]
+struct DoctestLines {
+    /// `(line, text)` of every line inside a fence [`is_rust_fence`] accepts
+    /// and of every line outside a fence indented as code at any container
+    /// level ([`past_containers`]): a superset of rustdoc's blocks, which also
+    /// holds list continuations and lazy paragraph lines.
+    code: Vec<(usize, String)>,
+    /// The fences opened.
+    fences: usize,
+    /// `(line, why)` of each shape the model refuses.
+    refused: Vec<(usize, &'static str)>,
+}
+
+/// The [`DoctestLines`] of `text`. A doc run is a block of consecutive `///`
+/// or `//!` lines (the marker kind switching ends it). Indented code needs 4
+/// columns after rustdoc's unindent (it strips the smallest indent of the
+/// item's docs), so 4 raw columns at any container level is a superset.
+/// Fences are followed exactly under three premises, each refused where it
+/// fails:
+/// - a fence line sits at the doc margin (at most one column after the
+///   marker, outside any blockquote or list), where the unindent leaves it a
+///   top-level fence that no container closes early,
+/// - a fence closes inside its run (rustdoc joins the runs of one item, so a
+///   fence left open spans an attribute or a blank line),
+/// - no line opens a raw HTML block, which could swallow a fence line.
+fn doctest_lines(text: &str) -> DoctestLines {
+    let mut out = DoctestLines::default();
+    let mut run: Option<&str> = None;
+    // An open fence: its character, run length, Rust or not, opening line.
+    let mut fence: Option<(char, usize, bool, usize)> = None;
+    for (k, raw) in text.lines().enumerate() {
+        let n = k + 1;
+        let t = raw.trim_start();
+        let doc = t.strip_prefix("//!").map(|d| ("//!", d)).or_else(|| {
+            t.strip_prefix("///")
+                .filter(|d| !d.starts_with('/'))
+                .map(|d| ("///", d))
+        });
+        let kind = doc.map(|(marker, _)| marker);
+        if kind != run {
+            if let Some((.., open)) = fence.take() {
+                out.refused
+                    .push((open, "a fence left open at the end of its doc comment"));
+            }
+            run = kind;
+        }
+        let Some((_, d)) = doc else {
+            continue;
+        };
+        let margin = doc_cols(d) <= 1;
+        if let Some((c, len, rust, _)) = fence {
+            let closes = fence_of(d.trim_start())
+                .is_some_and(|(c2, len2, info)| c2 == c && len2 >= len && info.trim().is_empty());
+            if closes {
+                if !margin {
+                    out.refused
+                        .push((n, "a closing fence line off the doc margin"));
+                }
+                fence = None;
+            } else if rust {
+                out.code.push((n, d.to_string()));
+            }
+            continue;
+        }
+        let (inner, cols, contained) = past_containers(d);
+        if let Some((c, len, info)) = fence_of(inner) {
+            if !margin || contained || cols >= 4 {
+                out.refused.push((
+                    n,
+                    "a fence line off the doc margin or inside a blockquote or a list",
+                ));
+            }
+            fence = Some((c, len, is_rust_fence(info.trim()), n));
+            out.fences += 1;
+        } else {
+            if cols >= 4 {
+                out.code.push((n, d.to_string()));
+            }
+            // 4 raw columns may be 3 after the unindent: an HTML start there too.
+            if !contained && cols <= 4 && opens_html_block(inner) {
+                out.refused
+                    .push((n, "a line that may open a raw HTML block"));
+            }
+        }
+    }
+    if let Some((.., open)) = fence {
+        out.refused
+            .push((open, "a fence left open at the end of its doc comment"));
+    }
+    out
+}
+
+/// The reader needles of one doctest line, found without lexing: every span
+/// between two consecutive `"` that [`is_reader_needle`] accepts, a `file!`
+/// and a `read_dir`. A needle holds no whitespace, so it never spans lines, and
+/// a literal with inner quotes (escaped or raw) still ends in a span that ends
+/// where it does, so this is a superset of [`reader_needles`] on the block.
+fn doctest_line_needles(line: &str) -> Vec<String> {
+    let quotes: Vec<usize> = line.match_indices('"').map(|(k, _)| k).collect();
+    let mut out: Vec<String> = quotes
+        .windows(2)
+        .map(|w| &line[w[0] + 1..w[1]])
+        .filter(|s| is_reader_needle(s))
+        .map(str::to_string)
+        .collect();
+    for mac in ["file!", "read_dir"] {
+        if line.contains(mac) {
+            out.push(mac.to_string());
+        }
+    }
+    out
+}
+
+/// The attribute brackets of lexed `code` that set a `doc` value
+/// (`#[doc = …]`, `#![doc = …]`, `doc = …` inside `cfg_attr`), as offsets:
+/// rustdoc joins their text into the item's docs, a doctest included, and the
+/// line model of [`doctest_lines`] does not read it.
+fn doc_value_attributes(code: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    for (at, _) in code.match_indices('#') {
+        let r = code[at + 1..].trim_start();
+        let r = r.strip_prefix('!').map_or(r, str::trim_start);
+        if !r.starts_with('[') {
+            continue;
+        }
+        let open = code.len() - r.len();
+        let group = &code[open..group_end(code, open).unwrap_or(code.len())];
+        if token_positions(group, "doc").into_iter().any(|p| {
+            let a = group[p + "doc".len()..].trim_start();
+            a.starts_with('=') && !a.starts_with("==")
+        }) {
+            out.push(at);
+        }
+    }
+    out
+}
+
+/// No doctest reads a repository `.md` or `.rs` (audits AC1-3 and AT1-3,
+/// settlement round 2: SA-1): the `Docs` gate runs no doctest, so a doctest
+/// reader would skip the gate of the document it reads. Under every member's
+/// `src/` (every lib module lives there: no `[lib] path` and no `#[path]`
+/// module, asserted here), each line [`doctest_lines`] may put in a doctest
+/// (a fence rustdoc may compile, an `ignore` one included, and every line
+/// indented as code) is scanned with [`doctest_line_needles`]. The docs
+/// rustdoc reads besides the line comments are refused: a block doc comment
+/// (`/** */`, `/*! */`) and a `doc` attribute with a value
+/// ([`doc_value_attributes`]), and so are the Markdown shapes the model does
+/// not follow ([`doctest_lines`]). The model's blocks were checked against
+/// `cargo test --doc -- --list` on a probe crate (rustc 1.98 nightly,
+/// 2026-09-27), which the self-test
+/// [`the_doctest_scan_holds_every_block_rustdoc_compiles`] replays.
 #[test]
 fn no_doctest_reads_a_repository_file() {
     let root = repo_root();
-    let mut blocks = 0usize;
+    let (mut fences, mut lines) = (0usize, 0usize);
     let mut offenders = Vec::new();
     for m in workspace_members(&root) {
+        let manifest = fs::read_to_string(m.dir.join("Cargo.toml")).expect("the member manifest");
+        let mut in_lib = false;
+        for l in manifest.lines() {
+            let t = l.split('#').next().unwrap_or_default().trim();
+            if t.starts_with('[') {
+                in_lib = t == "[lib]";
+            } else if in_lib && t.split('=').next().unwrap_or_default().trim() == "path" {
+                offenders.push(format!(
+                    "{}: a `[lib] path` the scan of src/ does not follow",
+                    m.name
+                ));
+            }
+        }
         for path in rs_files_under(&m.dir.join("src")) {
             let text = fs::read_to_string(&path).expect("source is readable");
             let rel = rel_slash(&root, &path);
@@ -8592,50 +9041,249 @@ fn no_doctest_reads_a_repository_file() {
                     }
                 }
             }
-            let mut fence: Option<(bool, String)> = None;
-            let mut scan = |rust: bool, body: &str, blocks: &mut usize| {
-                if !rust {
-                    return;
-                }
-                *blocks += 1;
-                let (c, l) = lex_rust(body);
-                for (_, lit) in reader_needles(&c, &l) {
-                    offenders.push(format!("{rel}: a doctest reads {lit:?}"));
-                }
-            };
-            for raw in text.lines() {
-                let t = raw.trim_start();
-                let doc = t
-                    .strip_prefix("//!")
-                    .or_else(|| t.strip_prefix("///").filter(|r| !r.starts_with('/')));
-                let Some(doc) = doc else {
-                    if let Some((rust, body)) = fence.take() {
-                        scan(rust, &body, &mut blocks);
-                    }
-                    continue;
-                };
-                let d = doc.strip_prefix(' ').unwrap_or(doc);
-                let dt = d.trim_start();
-                if dt.starts_with("```") || dt.starts_with("~~~") {
-                    match fence.take() {
-                        Some((rust, body)) => scan(rust, &body, &mut blocks),
-                        None => fence = Some((is_rust_fence(dt[3..].trim()), String::new())),
-                    }
-                } else if let Some((_, body)) = fence.as_mut() {
-                    body.push_str(d);
-                    body.push('\n');
-                }
+            let line = |at: usize| code[..at].matches('\n').count() + 1;
+            for at in doc_value_attributes(&code) {
+                offenders.push(format!(
+                    "{rel}:{}: a `doc` attribute with a value",
+                    line(at)
+                ));
             }
-            if let Some((rust, body)) = fence.take() {
-                scan(rust, &body, &mut blocks);
+            for l in lits
+                .iter()
+                .filter(|l| is_path_attribute_value(&code, l.start))
+            {
+                offenders.push(format!("{rel}:{}: a `#[path]` module", line(l.start)));
+            }
+            let scan = doctest_lines(&text);
+            fences += scan.fences;
+            lines += scan.code.len();
+            for (n, why) in scan.refused {
+                offenders.push(format!("{rel}:{n}: {why}"));
+            }
+            for (n, code_line) in &scan.code {
+                for needle in doctest_line_needles(code_line) {
+                    offenders.push(format!("{rel}:{n}: a doctest line reads {needle:?}"));
+                }
             }
         }
     }
-    assert!(blocks > 0, "the doctest scan found no Rust fence at all");
+    assert!(fences > 0, "the doctest scan found no fence at all");
+    assert!(lines > 0, "the doctest scan found no code line at all");
     assert!(
         offenders.is_empty(),
-        "a doctest reads a repository file, which the `Docs` gate does not run: {offenders:?}"
+        "a doctest may read a repository file, which the `Docs` gate does not run, or a doc \
+         comment takes a shape the doctest model does not follow: {offenders:?}"
     );
+}
+
+/// [`doctest_lines`] and [`is_rust_fence`] on every block shape of the probe
+/// crate that `cargo test --doc -- --list` measured (rustc 1.98 nightly,
+/// 2026-09-27): every shape rustdoc compiles puts the read on a code line or
+/// is refused, and a shape it leaves out stays out (a `text` fence) or costs
+/// one superset line (`foo,should_panic`, a list continuation). Each case
+/// holds one read of `NOTES.md`.
+#[test]
+fn the_doctest_scan_holds_every_block_rustdoc_compiles() {
+    const READ: &str = r#"let t = std::fs::read_to_string("NOTES.md").unwrap();"#;
+    // (case, doc lines, the READ line is a code line, a shape is refused)
+    let cases: [(&str, &[&str], bool, bool); 23] = [
+        ("rust,foo", &["```rust,foo", READ, "```"], true, false),
+        ("foo,rust", &["```foo,rust", READ, "```"], true, false),
+        (
+            "should_panic,foo",
+            &["```should_panic,foo", READ, "```"],
+            true,
+            false,
+        ),
+        (
+            "foo,should_panic (text to rustdoc)",
+            &["```foo,should_panic", READ, "```"],
+            true,
+            false,
+        ),
+        ("{.bar}", &["```{.bar}", READ, "```"], true, false),
+        (
+            "ignore-windows",
+            &["```ignore-windows", READ, "```"],
+            true,
+            false,
+        ),
+        (
+            "compile_fail,E0308,foo",
+            &["```compile_fail,E0308,foo", READ, "```"],
+            true,
+            false,
+        ),
+        ("edition2021", &["```edition2021", READ, "```"], true, false),
+        ("tilde fence", &["~~~", READ, "~~~"], true, false),
+        ("text fence", &["```text", READ, "```"], false, false),
+        (
+            "four backticks around three",
+            &["````", "```", READ, "````"],
+            true,
+            false,
+        ),
+        (
+            "indented after a blank line",
+            &["x", "", &format!("    {READ}")],
+            true,
+            false,
+        ),
+        (
+            "indented after a heading",
+            &["# Examples", &format!("    {READ}")],
+            true,
+            false,
+        ),
+        (
+            "indented in a blockquote",
+            &["", &format!(">     {READ}")],
+            true,
+            false,
+        ),
+        (
+            "indented opening a list item",
+            &["", &format!("-     {READ}")],
+            true,
+            false,
+        ),
+        ("space and tab", &["", &format!("\t{READ}")], true, false),
+        (
+            "list continuation (text to rustdoc)",
+            &["1. x", "", &format!("    {READ}")],
+            true,
+            false,
+        ),
+        (
+            "fence in a list item",
+            &["- ```", &format!("  {READ}"), "  ```"],
+            true,
+            true,
+        ),
+        (
+            "fence in a blockquote",
+            &["> ```", &format!("> {READ}"), "> ```"],
+            true,
+            true,
+        ),
+        (
+            "fence at four columns",
+            &["   ```", READ, "   ```"],
+            true,
+            true,
+        ),
+        ("fence left open", &["```", READ], true, true),
+        (
+            "html block before a fence",
+            &["<details>", "```text", "```", READ],
+            false,
+            true,
+        ),
+        (
+            "html block at four columns",
+            &["   <div>", "```", "```", READ],
+            false,
+            true,
+        ),
+    ];
+    for (case, doc, code, refused) in cases {
+        let text: String = doc
+            .iter()
+            .map(|l| format!("/// {l}\n"))
+            .chain(["pub fn f() {}\n".to_string()])
+            .collect();
+        let scan = doctest_lines(&text);
+        let read_is_code = scan.code.iter().any(|(_, l)| l.contains("NOTES.md"));
+        assert_eq!(read_is_code, code, "{case}: the read line is a code line");
+        assert_eq!(
+            !scan.refused.is_empty(),
+            refused,
+            "{case}: refused {:?}",
+            scan.refused
+        );
+        if read_is_code {
+            let line = scan
+                .code
+                .iter()
+                .find(|(_, l)| l.contains("NOTES.md"))
+                .unwrap();
+            assert_eq!(
+                doctest_line_needles(&line.1),
+                ["NOTES.md"],
+                "{case}: the needle"
+            );
+        }
+    }
+    let split = "/// ```\n#[allow(unused)]\n/// let x = 1;\n/// ```\npub fn f() {}\n";
+    assert!(
+        !doctest_lines(split).refused.is_empty(),
+        "a fence split by an attribute line (one block to rustdoc) is refused"
+    );
+    let (code, _) = lex_rust(
+        "#[doc = \"x\"]\n#![doc = include_str!(\"a\")]\n#[cfg_attr(x, doc = \"y\")]\n#[doc(hidden)]\nfn f() { let doc = 1; }\n",
+    );
+    assert_eq!(
+        doc_value_attributes(&code).len(),
+        3,
+        "the three doc values, not doc(hidden) or a binding"
+    );
+    for (line, needles) in [
+        (r##"let s = r#"a"b.md"#;"##, vec!["b.md"]),
+        (
+            r#"let e = "md"; let f = file!(); std::fs::read_dir(".");"#,
+            vec!["md", "file!", "read_dir"],
+        ),
+        (r#"let s = "a b.md";"#, vec![]),
+    ] {
+        assert_eq!(doctest_line_needles(line), needles, "{line}");
+    }
+}
+
+/// [`manifest_deps`] and [`location_hooks`] on the spellings the premise rail
+/// must see (settlement round 2: SA-2): a `LOCATION_CRATES` dependency spelt as
+/// a dotted key, a table, an inline table, a rename and a workspace entry, and
+/// a panic hook that formats its argument, next to the delegate-only shape the
+/// tree holds.
+#[test]
+fn the_premise_scan_reads_every_dependency_and_hook_spelling() {
+    for manifest in [
+        "[dependencies]\nlog.workspace = true\n",
+        "[dev-dependencies]\ntracing . workspace = true\n",
+        "[dependencies]\nlog = { workspace = true }\n",
+        "[dependencies.log]\nversion = \"0.4\"\n",
+        "[target.'cfg(windows)'.dependencies]\nlogger = { package = \"log\", version = \"0.4\" }\n",
+        "[dependencies]\nlogger.package = \"log\"\n",
+        "[workspace.dependencies]\nlog = \"0.4\"\n",
+    ] {
+        let deps = manifest_deps(manifest);
+        assert!(
+            LOCATION_CRATES.iter().any(|d| deps.contains(*d)),
+            "{manifest:?} depends on a location crate: {deps:?}"
+        );
+    }
+    assert!(
+        !manifest_deps("[dependencies]\nlogos.workspace = true\n").contains("log"),
+        "a crate whose name only starts with log is not log"
+    );
+    let delegate = "fn f() { let prev = std::panic::take_hook();\n std::panic::set_hook(Box::new(move |info| { if X { prev(info); } })); }\n";
+    let ignore = "fn f() { std::panic::set_hook(Box::new(|_| {})); }\n";
+    let miette = "fn f() { let _ = miette::set_hook(Box::new(|d| Box::new(H::new(d)))); }\n";
+    for src in [delegate, ignore, miette] {
+        let (code, lits) = lex_rust(src);
+        assert!(location_hooks(&code, &lits).is_empty(), "{src}");
+    }
+    for src in [
+        "fn f() { std::panic::set_hook(Box::new(|info| *S.lock().unwrap() = info.to_string())); }\n",
+        "fn f() { std::panic::set_hook(Box::new(|info| eprintln!(\"{info}\"))); }\n",
+        "fn f() { std::panic::set_hook(Box::new(|i: &std::panic::PanicHookInfo<'_>| log(format!(\"{:?}\", i)))); }\n",
+        "fn f() { let prev = std::panic::take_hook();\n std::panic::set_hook(Box::new(move |info| { record(info); prev(info); })); }\n",
+        "fn f() { std::panic::set_hook(Box::new(hook)); }\n",
+        "fn f() { std::panic::update_hook(|prev, info| prev(info)); }\n",
+        "fn f() { miette::set_panic_hook(); }\n",
+    ] {
+        let (code, lits) = lex_rust(src);
+        assert!(!location_hooks(&code, &lits).is_empty(), "{src}");
+    }
 }
 
 /// The names the RF-I00-05 texts cite, each with the documents that name it:
@@ -8658,13 +9306,15 @@ const RF_I00_05_TOOL_DOCS: [&str; 3] = [
 ];
 
 /// The rails the step record names, each defined exactly once.
-const RF_I00_05_PINS: [&str; 6] = [
+const RF_I00_05_PINS: [&str; 8] = [
     "gate_rails_are_exactly_the_measured_readers",
     "every_directory_walk_is_classified",
     "the_gate_kind_premises_hold_across_files",
     "no_member_builds_with_a_script_or_as_a_proc_macro",
     "no_doctest_reads_a_repository_file",
     "the_rf_i00_05_names_the_docs_cite_exist_exactly_once",
+    "the_doctest_scan_holds_every_block_rustdoc_compiles",
+    "the_premise_scan_reads_every_dependency_and_hook_spelling",
 ];
 
 /// A rename, a deletion or a second copy of a name or a rail the RF-I00-05
@@ -8690,7 +9340,8 @@ fn the_rf_i00_05_names_the_docs_cite_exist_exactly_once() {
         assert_eq!(
             defs,
             1,
-            "`{decl}` is declared {defs} times in the tree, expected exactly once — {}              name it",
+            "`{decl}` is declared {defs} times in the tree, expected exactly once — {} \
+             name it",
             docs.join(" / ")
         );
         for rel in docs {
@@ -8708,7 +9359,8 @@ fn the_rf_i00_05_names_the_docs_cite_exist_exactly_once() {
     for rel in RF_I00_05_TOOL_DOCS {
         assert!(
             read(rel).contains("tools/gate-kind"),
-            "{rel} no longer names `tools/gate-kind`: re-point it or drop it from              RF_I00_05_TOOL_DOCS"
+            "{rel} no longer names `tools/gate-kind`: re-point it or drop it from \
+             RF_I00_05_TOOL_DOCS"
         );
     }
     let record = read("docs/phase-records/retro-fixes.md");
