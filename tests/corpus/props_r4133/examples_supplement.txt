@@ -49,13 +49,16 @@
 #     answers the `PropertyValue[23]` store while the port renders the live
 #     signed threshold). What that store holds depends on the deck: where no
 #     deck writes the property it is the `InitPropertyValues` default `'100'`
-#     (`:1448`) against the live -100 of `Create` (`:627`), an `EchoDefault`
-#     (864 cells); where a deck writes `revThreshold=800` the `Edit` loop
-#     stores the parsed token `'800'` (`:420`, arm `:451-454`) while
-#     `:500-507` negates the live value to -800, an `EchoParse` of the deck's
-#     own token (24 cells). Measured by RP2.1 part A's disposition probe;
-#     absent from the census only because `SKIP_PROPS` hid it on both channels.
-#     Declared for RP2.3's echo row + pin.
+#     (`:1448`) against the live -100 of `Create` (`:627`), an `EchoDefault`;
+#     where a deck writes it the `Edit` loop stores the deck's own token
+#     (`:420`, arm `:451-454`) while `:500-507` negates the live value, an
+#     `EchoParse`. The `'-100' | '100'` row holds both: 861 default cells and
+#     3 deck-written `revThreshold=100` tokens of the default's spelling
+#     (ADiakoptics `IEEE_123_Bus-G/Torn_Circuit/zone_2`: `creg3c`, `creg4b`,
+#     `creg4c`); the `'-800' | '800'` row is `regcontrol_reverse.dss`'s
+#     `revThreshold=800` (24 cells). Measured by RP2.1 part A's disposition
+#     probe; absent from the census only because `SKIP_PROPS` hid it on both
+#     channels. Declared for RP2.3's echo row + pin.
 # Both regcontrol pairs are in scope (their sibling `regcontrol.idle` carries 732
 # in-scope cells of 887); the exact in-scope split is not in any frozen extract
 # and RP2.3 re-derives it with the knob when it writes the pins.
