@@ -274,7 +274,19 @@ pub(crate) fn oracle_timeout() -> Duration {
 
 /// The `oracle_server.py` `run` request for a case — the single builder both
 /// transports share (byte-compatible with the pre-Phase-B request).
-pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
+///
+/// `deck` is what the producer compiles — its own scratch copy of the case
+/// (`scratch::ScratchCopy`, RETRO_FIXES RF-I00-01) — while `case_path`, the
+/// VENDORED deck, keys the gate's sidecars (`run_file_contents_dir`, and the
+/// DI sidecar through the gate-side `sidecar_key` field the transports never
+/// read), so a sidecar's location is the same for every copy of one case.
+///
+/// RF-I00-01 part 2: `deck`'s folder is what each transport's corpus guard
+/// (`dss_epri::guard::CorpusGuard`, `corpus_guard.py::CorpusGuard`) brackets,
+/// so a vendored `deck` is refused here, before any transport sees it
+/// ([`crate::scratch::not_vendored`]).
+pub(crate) fn build_run_request(deck: &str, case_path: &str, c: &SolvableCase) -> Value {
+    crate::scratch::not_vendored(std::path::Path::new(deck), "engines::build_run_request");
     // G1.5: the six short-circuit arms are appended to the ONE per-bus walk
     // `buses` drives on BOTH transports, so `zsc` alone would ship an empty
     // surface that `require_capture` — not the comparator — would have to
@@ -292,7 +304,8 @@ pub(crate) fn build_run_request(case_path: &str, c: &SolvableCase) -> Value {
         .collect();
     json!({
         "cmd": "run",
-        "case_path": case_path,
+        "case_path": deck,
+        "sidecar_key": case_path,
         "post": c.post,
         "n_steps": c.n_steps,
         "selected_elements": c.selected_elements,
@@ -559,11 +572,15 @@ impl Oracle {
 
     /// Run one case and return the oracle's per-step model.
     pub(crate) fn run_case(&self, case_path: &str, c: &SolvableCase) -> CaseResult {
+        // RF-I00-01: the oracle compiles its own fresh scratch copy of the case,
+        // removed (or the case failed naming the producer) before this returns.
+        let copy = crate::scratch::ScratchCopy::new(case_path, CAPI_TAG);
         // This one-shot is the `capi_v0145` transport, so the DI sidecar is the
         // capi one — the same attachment [`Channel::call`] performs for the
         // scheduler's four transports.
-        let req = attach_di_sidecar(&build_run_request(case_path, c), CAPI_TAG);
+        let req = attach_di_sidecar(&build_run_request(copy.deck(), case_path, c), CAPI_TAG);
         let r = self.call(&req);
+        copy.finish();
         assert!(r.ok, "oracle case {case_path} failed: {:?}", r.error);
         let v = r.result.expect("ok response missing result");
         serde_json::from_value(v)
@@ -1327,13 +1344,7 @@ fn gate_scratch_root() -> PathBuf {
 /// directories happen to share a name never share a sidecar.
 fn case_key(case_path: &str) -> String {
     let folded = case_path.replace('\\', "/").to_ascii_lowercase();
-    // FNV-1a 64, spelled out: the key must be stable across processes, which
-    // `DefaultHasher` does not promise.
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in folded.as_bytes() {
-        hash ^= u64::from(*b);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
+    let hash = case_digest(&folded);
     let mut name = String::new();
     let path = std::path::Path::new(&folded);
     for part in [path.parent().and_then(|d| d.file_name()), path.file_stem()]
@@ -1352,12 +1363,20 @@ fn case_key(case_path: &str) -> String {
     format!("{name}{hash:016x}")
 }
 
+/// FNV-1a 64 of a (folded) case path — the one implementation is
+/// `harness::scratch::case_digest`, shared by [`case_key`] and the scratch
+/// copies' directory key (`scratch::ScratchCopy::new`).
+pub(crate) fn case_digest(folded: &str) -> u64 {
+    crate::harness::scratch::case_digest(folded)
+}
+
 /// Where one (case, channel) DI capture is copied to:
 /// `<target>/corpus_gate/di/<case key>/<channel>` (coordinator decision D42(5)).
 ///
-/// The demand-interval tree is run-created, so the channel's `CorpusGuard`
-/// sweeps it away at the end of the run — while the comparison happens here,
-/// later, after the port has re-run the same case in the same directory. The
+/// The demand-interval tree is run-created, so the channel's guard sweeps it
+/// away at the end of the run (inside the channel's scratch copy, which is then
+/// removed — RF-I00-01) — while the comparison happens here, later, after the
+/// port has re-run the same case in its own copy. The
 /// transport therefore COPIES the selected files into this directory (never
 /// moves them: the guard must still sweep the original and G1.10a must still see
 /// its name).
@@ -1369,7 +1388,7 @@ fn case_key(case_path: &str) -> String {
 /// in the two one-shot handles' own calls ([`Oracle::run_case`],
 /// [`EpriOneShot::call`]) so a request built by hand carries one too (finding
 /// AT3-5); the attachment is idempotent. The
-/// runner removes it inside its own `CorpusGuard` bracket after a SUCCESSFUL
+/// runner removes it after a SUCCESSFUL
 /// compare (`runner.rs`, [`remove_di_sidecar`]). A case that FAILED keeps its
 /// copies deliberately, for triage, and the next run of that case empties them.
 /// No guard ever sweeps this tree — it lives under the gate's own scratch root,
@@ -1413,8 +1432,12 @@ fn attach_di_sidecar(req: &Value, channel: &str) -> Value {
     if req.get("di").and_then(Value::as_bool) != Some(true) || req.get("di_dir").is_some() {
         return req.clone();
     }
+    // Keyed by the VENDORED deck (`sidecar_key`, set by `build_run_request`),
+    // not by the scratch copy the producer compiles (RF-I00-01); a request
+    // built by hand without it keys by its `case_path`, as before.
     let case_path = req
-        .get("case_path")
+        .get("sidecar_key")
+        .or_else(|| req.get("case_path"))
         .and_then(Value::as_str)
         .expect("a run request that asks for the DI tree carries its case_path");
     let dir = prepare_di_sidecar(case_path, channel);
@@ -1630,5 +1653,134 @@ mod di_sidecar_tests {
             );
             remove_di_sidecar("/corpus/x/master.dss", channel);
         }
+    }
+
+    /// RF-I00-01: a request that names a scratch copy as its `case_path` and the
+    /// vendored deck as its `sidecar_key` is given the sidecar keyed by the
+    /// VENDORED deck, where the runner reads it back — never one keyed by the
+    /// copy, which the runner would not read (so a stale sidecar a failed run
+    /// kept for triage could be compared as this run's output).
+    ///
+    /// Its own fixture key: nextest runs every test in its own process, and
+    /// `only_a_request_that_asks_for_the_di_tree_is_given_a_sidecar` creates
+    /// `/corpus/x/master.dss`'s sidecar and asserts it exists, so a shared key
+    /// would let this rail's removal race that assert (RF-I00-01 settlement
+    /// audit SA-3).
+    #[test]
+    fn the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy() {
+        let (copy, vendored) = (
+            "/scratch/0123/port/run/keyed/master.dss",
+            "/corpus/keyed/master.dss",
+        );
+        let req = json!({"cmd": "run", "case_path": copy, "sidecar_key": vendored, "di": true});
+        for channel in [CAPI_TAG, "r4133"] {
+            let sent = attach_di_sidecar(&req, channel);
+            let dir = sent["di_dir"]
+                .as_str()
+                .expect("the sidecar travels in the request");
+            assert_eq!(
+                std::path::Path::new(dir),
+                di_sidecar_dir(vendored, channel),
+                "keyed by the vendored deck"
+            );
+            assert_ne!(
+                std::path::Path::new(dir),
+                di_sidecar_dir(copy, channel),
+                "never keyed by the copy"
+            );
+            remove_di_sidecar(vendored, channel);
+        }
+    }
+}
+
+/// RF-I00-01 (coordinator ruling 2026-09-26 14:30, answer 2): the one duty the
+/// two persistent transports keep in the copy protocol — step back to their
+/// startup directory before they reply — each with its own rail.
+#[cfg(all(test, windows))]
+mod transport_cwd_tests {
+    use super::*;
+    use crate::scratch::ScratchCopy;
+
+    /// A light `both` case with no `post` block and one step.
+    const CASE: &str = "Version8/Distrib/IEEETestCases/4Bus-OYOD-Bal/4Bus-OYOD-Bal.DSS";
+
+    /// Run [`CASE`] on a live, persistent `worker` in a fresh copy, then remove
+    /// the copy WHILE the worker still runs, then ping it. Both engines leave
+    /// the process working directory in the compiled deck's folder (r4133
+    /// `Executive/ExecHelper.pas:752-754`, dss_capi `SetCurrentDSSDir`), and
+    /// Windows refuses to remove a directory that is a live process's working
+    /// directory, so a transport that replied from inside the copy fails the
+    /// removal here. The gate itself cannot see it: its pooled workers are
+    /// recycled after every case by default ([`recycle_after`]) and its one-shot
+    /// transports exit, and either way the process is gone before the removal.
+    fn steps_out(mut worker: Worker, tag: &'static str) {
+        let abs = crate::manifest::corpus_file(CASE);
+        let case = crate::manifest::load_solvable()
+            .into_iter()
+            .find(|c| c.path == CASE)
+            .unwrap_or_else(|| panic!("{CASE} is no longer a solvable_now case"));
+        let copy = ScratchCopy::new(&abs, tag);
+        let req = build_run_request(copy.deck(), &abs, &case);
+        let r = worker
+            .request(&req, oracle_timeout())
+            .unwrap_or_else(|| panic!("[{tag}] {CASE}: no reply from the worker"));
+        assert!(r.ok, "[{tag}] {CASE}: {:?}", r.error);
+        let removed = copy.remove();
+        let ping = worker.request(&json!({"cmd": "ping"}), oracle_timeout());
+        worker.close();
+        if let Err(e) = removed {
+            panic!(
+                "[{tag}] {CASE}: the worker replied from inside its copy (it must \
+                 step back to its startup directory first): {e}"
+            );
+        }
+        assert!(
+            ping.is_some_and(|p| p.ok),
+            "[{tag}] the worker died after its reply, so the removal proves nothing"
+        );
+    }
+
+    #[test]
+    fn the_capi_transport_steps_out_of_the_copy_before_replying() {
+        let python = std::env::var("DSS_ORACLE_PYTHON").unwrap_or_else(|_| "python".to_string());
+        steps_out(spawn_worker(&python, &oracle_server_path()), CAPI_TAG);
+    }
+
+    #[test]
+    fn the_r4133_transport_steps_out_of_the_copy_before_replying() {
+        steps_out(spawn_epri_worker(&epri_worker_bin()), "r4133");
+    }
+
+    /// RF-I00-01 part 2 — the request builder never hands a transport's corpus
+    /// guard a vendored deck: the request for [`CASE`] names its copy (and keys
+    /// its sidecars by the vendored deck), and the vendored deck itself is
+    /// refused before any transport could see it. Only the second call may
+    /// panic (settlement: a `should_panic` on the whole body also passed a
+    /// builder that refused the copy).
+    #[test]
+    fn a_request_for_a_vendored_deck_is_refused() {
+        let abs = crate::manifest::corpus_file(CASE);
+        let case = crate::manifest::load_solvable()
+            .into_iter()
+            .find(|c| c.path == CASE)
+            .unwrap_or_else(|| panic!("{CASE} is no longer a solvable_now case"));
+        let copy = ScratchCopy::new(&abs, crate::scratch::PORT);
+        let req = build_run_request(copy.deck(), &abs, &case);
+        assert_eq!(req["case_path"], copy.deck(), "the request names the copy");
+        assert_eq!(
+            req["sidecar_key"],
+            abs.as_str(),
+            "keyed by the vendored deck"
+        );
+        copy.finish();
+        let refused = std::panic::catch_unwind(|| build_run_request(&abs, &abs, &case));
+        let msg = crate::runner::panic_msg(
+            refused.expect_err("a request for the vendored deck must be refused"),
+        );
+        assert!(
+            msg.contains("engines::build_run_request")
+                && msg.contains("lies inside the vendored corpus"),
+            "{msg}"
+        );
     }
 }

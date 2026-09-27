@@ -19,7 +19,7 @@ use dss_core::exec::Dss;
 use dss_core::report::export::json::JsonOpts;
 use serde::Deserialize;
 
-mod harness;
+use dss_test_harness::harness;
 use harness::lane;
 
 /// The generator's `Circuit_ToJSON` bits: SkipTimestamp only (bit 9).

@@ -17,7 +17,7 @@
 //!
 //! Regenerate only manually: `python tools/golden/gen_reports.py`.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::path::{Path, PathBuf};
 

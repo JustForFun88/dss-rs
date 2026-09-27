@@ -12,7 +12,7 @@
 //! - the event log normalized per line (numeric-skeleton comparison) — this
 //!   pins every control action of the trajectory exactly.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

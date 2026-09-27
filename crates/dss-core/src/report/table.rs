@@ -26,7 +26,7 @@
 //! # Why the default kernel cannot lose a token
 //!
 //! The default-lane goldens are compared **parsed-numeric** against the same
-//! committed oracle captures (`tests/harness/lane.rs`), which tokenizes on
+//! committed oracle captures (`crates/dss-test-harness/src/harness/lane.rs`), which tokenizes on
 //! whitespace and commas. A table renderer that dropped a field, or merged two,
 //! would fail that compare — but only on whichever report a fixture happens to
 //! cover. The model closes the hole structurally instead:

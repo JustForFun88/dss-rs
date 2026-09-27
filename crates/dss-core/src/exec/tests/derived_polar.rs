@@ -28,7 +28,7 @@
 use crate::exec::{Dss, ElementSnapshot};
 use crate::support::complexutil::cdang;
 
-/// The `feeder` tolerance tier — `tests/harness/mod.rs::tol_for` (`"feeder"`,
+/// The `feeder` tolerance tier — `crates/dss-test-harness/src/harness/mod.rs::tol_for` (`"feeder"`,
 /// `:967-976`), the tier IEEE13 is gated at, restated here because a `src`
 /// unit test cannot reach the integration harness. Every band below is that
 /// tier's *derived* image (`tests/TOLERANCE_NOTES.md`), never a fresh number.

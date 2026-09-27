@@ -216,9 +216,9 @@ pub struct ElementSnapshot {
     /// (`git -C .inputs/DSS-Python show origin/fastdss:dss/ICktElement.py`).
     ///
     /// This is a **cache-aware** quantity (`ComputeIterminal`,
-    /// `Common/CktElement.pas:1090`) like `Powers`/`Losses`, so it is read from
-    /// the one fresh terminal current this snapshot computes and it shares their
-    /// `newton*` lane exclusion (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`).
+    /// `Common/CktElement.pas:1090`) like `Powers`/`Losses`, so it is read from the one
+    /// fresh terminal current this snapshot computes and it shares their `newton*` lane
+    /// exclusion (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`).
     pub phase_losses: Vec<num_complex::Complex64>,
     /// `CktElement.NumControls` — `ControlElementList.ListSize`, with **no**
     /// `Enabled` filter on either channel: r4133 `DDLL/DCktElement.pas:237-241`
@@ -1557,9 +1557,9 @@ impl Dss {
             // GATE NOTE: every oracle channel keeps the stale read, so the two gated
             // `newton.dss` / `newton_feeder.dss` decks' powers/losses stay dropped
             // from the oracle compare in both lanes
-            // (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`), and Newton dispatch
-            // plus the repaired values are carried by `exec::tests::newton`'s
-            // tripwire and expected-value pins.
+            // (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`),
+            // and Newton dispatch plus the repaired values are carried by
+            // `exec::tests::newton`'s tripwire and expected-value pins.
             // See investigations/issue-05-newton-stale-iterminal.md.
             //
             // The read below is a `refresh_iterminal` rather than the cache-aware
@@ -4310,7 +4310,7 @@ mod bus_sc_tests {
     use num_complex::Complex64;
 
     /// `micro`-tier band, the harness' own numbers for this kind of case
-    /// (`tests/harness/mod.rs::tol_for`: `v`/`y`/`i` = `1e-6` abs + `1e-9`
+    /// (`crates/dss-test-harness/src/harness/mod.rs::tol_for`: `v`/`y`/`i` = `1e-6` abs + `1e-9`
     /// rel — the abs/rel pair the corpus gate applies to this very deck, and
     /// the pair `harness::tol_for` is pinned to by
     /// `the_short_circuit_surface_adds_no_tolerance_constant`).
