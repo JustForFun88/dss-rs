@@ -142,7 +142,7 @@ English upstream-ready reports for all confirmed r4133 bugs live in
   normal fixed-point on the `newton*` gates and no oracle rev reports it
   correctly (r3723/r4088/r4133 all carry the bug), so **both** lanes now exclude
   those two decks' powers/losses
-  (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional) and the signal
+  (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional) and the signal
   is carried by the in-engine dispatch tripwire
   `exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
   plus the expected-value pin `newton_powers_match_the_normal_algorithm` (Newton
@@ -161,7 +161,7 @@ English upstream-ready reports for all confirmed r4133 bugs live in
   `exec/command.rs::create_object_no_edit` inherits `Fundamental` for every
   element, the Monitor included; the one oracle-compared observable
   (`Monitor.BaseFreq` on the 50 Hz LVTestCase) is excluded in both lanes
-  (`tests/harness/mod.rs::LANE_SKIP_PROPS`) and pinned by
+  (`crates/dss-test-harness/src/harness/mod.rs::LANE_SKIP_PROPS`) and pinned by
   `monitor_basefreq_inherits_the_fundamental`. In a 60 Hz circuit the two
   readings coincide, so no golden byte and no Pst number moves.
 
@@ -171,11 +171,16 @@ English upstream-ready reports for all confirmed r4133 bugs live in
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
-cargo test --workspace
-cargo test --workspace --features dss-core/oracle-parity
+cargo nextest run --workspace
+cargo nextest run --workspace --features dss-core/oracle-parity
+cargo test --workspace --doc
+cargo test --workspace --doc --features dss-core/oracle-parity
 ```
 
-Those five commands are the mandatory gate. Since DE_PASCALIZE **Stage F**
+Those seven commands are the mandatory gate (RETRO_FIXES RF-I00-01): commands
+4-5 run the pinned `cargo-nextest` of `.config/nextest.toml` (every test in its
+own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-7
+run the doctests, which nextest does not. Since DE_PASCALIZE **Stage F**
 (the `oracle-parity` feature split) the engine ships in **two lanes**, and both
 must be green:
 
@@ -191,7 +196,8 @@ must be green:
   discrete state still exact, iteration counts ±1, each deliberate divergence
   excluded field-by-field and pinned by its own expected-value test.
 
-The lane policy is implemented once in `crates/dss-core/tests/harness/lane.rs`;
+The lane policy is implemented once in `crates/dss-test-harness/src/harness/lane.rs`
+(the test-only harness crate `dss-test-harness`);
 `#[cfg(feature = "oracle-parity")]` may appear only inside the three `compat`
 modules and test code (gated by `oracle_parity_cfg_gate.rs`). Stage F
 introduces **no** tolerance anywhere — the default-lane report policy is
@@ -215,12 +221,12 @@ the default lane bit-identical to the parity lane and gives it precisely the
 parity lane's oracle standing. Read the second term back in the moment Δ stops
 being zero (expected at MULTITHREADING M3c and RESONANCE WP-R1).
 
-It is not part of `cargo test` (two release builds, ~215 MB of dumps per lane):
+It is not part of the gate's test run (two release builds, ~215 MB of dumps per lane):
 run it whenever a `compat` kernel, a lane alias or the solver changes.
 
 The unified live corpus gate
 (`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
-of `cargo test` and runs **unconditionally**: one scheduler-driven test
+of the gate's test run (commands 4-5) and runs **unconditionally**: one scheduler-driven test
 (`corpus_gate_all_cases_match_engines`) walks all 526 manifest cases — solving
 the 522 that are not abort-by-design
 (vendored `tests/corpus/electricdss-tst` decks + the three synthetic families)
@@ -230,7 +236,7 @@ DLL (`r4133`), partitioned by the divergence ledger `tests/corpus/ledger.json`
 (every entry must be hit; stale entries fail the gate). Prerequisites: the
 pinned dss-python (`tools/golden/PIN.txt`) must be installed — without it the
 gate fails rather than skipping; the r4133 DLL is git-tracked and its
-`epri-worker` bridge is built by `cargo test` itself (Windows-only —
+`epri-worker` bridge is built by the gate's own `cargo nextest run` (Windows-only —
 `crates/dss-epri` is `#[cfg(windows)]`, bar its DLL-free `guard` module, ungated
 since GOLDEN_REBASE G1.10a so all three producers share one classification). New tests read feeders from the
 vendored corpus, never from `.inputs/` at runtime.
@@ -288,8 +294,9 @@ branch deletion never touches `.inputs`.
   protocol (no behavior change; the test suite is the contract). Unit tests stay
   inline as `#[cfg(test)]` modules, extracted to a sibling `tests.rs` only when the
   file is large; the `#[cfg(test)] mod tests;` declaration goes right after the
-  module doc. Integration tests are thin drivers over the golden harness
-  (`crates/dss-core/tests/harness/`).
+  module doc. Integration tests are thin drivers over the golden harness, the
+  test-only workspace crate `dss-test-harness` (`crates/dss-test-harness/src/harness/`), which each
+  driver imports with `use dss_test_harness::harness;`.
 - Pascal is the spec: port algorithms loop-for-loop where numerics matter, and cite
   the Pascal unit/identifier in the doc comment (`Pascal \`TcMatrix.Invert\``).
 - 0-based indexing everywhere except the ground-node convention (`NodeRef == 0` =
@@ -333,7 +340,7 @@ branch deletion never touches `.inputs`.
   residual to 0 *diverges* from the oracle = a real port bug. (Documented at the
   `dSpeed` pins in `exec/tests/dynamics.rs`.)
 - **Never loosen a test tolerance to make a failing oracle comparison pass — no
-  fudging.** The tier floors in `tests/harness` (`Tolerances`/`tol_for`, see
+  fudging.** The tier floors in `crates/dss-test-harness/src/harness` (`Tolerances`/`tol_for`, see
   `tests/TOLERANCE_NOTES.md`) are calibrated to *proven* f64/f32/faer-vs-KLU
   reality. A Rust↔oracle gap above its floor is a porting **bug**: find and fix the
   root cause (per the two rules above), never widen the band to hide it. Tolerances
@@ -350,6 +357,19 @@ branch deletion never touches `.inputs`.
   reports) instead of restating it; no before/after tables, no narrative.
 
 <!-- code-review-graph MCP tools -->
+- **Never cite a gitignored or scratch file as provenance in committed text.**
+  `tmp/`, `tmp/retro_fix/state/...`, the session scratchpad, a worktree-local
+  transcript or probe script exist on one machine only and vanish, so a reader
+  of the pin, doc comment or record cannot follow the path (`tmp/rp37/`,
+  `tmp/g110c/` and two retro-fix probes already went that way — RF-D01-02).
+  Committed provenance is a dated sentence naming the tool and the recipe that
+  re-derives the numbers (epri-worker on the r4133 DLL, the pinned dss-python,
+  the corpus gate's own capture) and, when it is small, the tracked evidence
+  itself (a pin literal, a golden, a `tests/corpus` file). Local transcripts
+  stay local and are never copied into `docs/` as evidence directories
+  (RETRO_FIXES ruling R5). Keep the local path in your report to the
+  coordinator, not in the tree.
+
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the

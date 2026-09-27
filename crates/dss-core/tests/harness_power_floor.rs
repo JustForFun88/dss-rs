@@ -6,7 +6,7 @@
 //! directly (no oracle), in both directions: it loosens **with** voltage, never
 //! unconditionally. See tests/TOLERANCE_NOTES.md.
 
-mod harness;
+use dss_test_harness::harness;
 
 use harness::{ElementCap, assert_power_close};
 use num_complex::Complex64;
