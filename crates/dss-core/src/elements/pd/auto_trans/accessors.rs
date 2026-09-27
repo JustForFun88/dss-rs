@@ -651,7 +651,7 @@ impl DssObject for AutoTrans {
     /// `None` arm here is therefore only the degenerate `xfmrcode=` (empty
     /// name), which the port's parser routes here without a message: r4133 never
     /// reaches property 39 at all in that case — its `Edit` loop is
-    /// `WHILE Length(Param)>0 Do` (`AutoTrans.pas:472`), so an empty value ends
+    /// `WHILE Length(Param)>0 Do` (`AutoTrans.pas:474`), so an empty value ends
     /// the parse before the dispatch, and neither the property store nor the
     /// model moves. (Had it reached `FetchXfmrCode('')`, `SetActive('')` would
     /// have missed and logged #100180, so silence here is the match only because

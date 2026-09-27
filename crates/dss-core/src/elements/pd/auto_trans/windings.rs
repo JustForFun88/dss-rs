@@ -206,22 +206,43 @@ impl AutoTrans {
     /// `NumConductors = 4` and `MID.1 = 92 236 V` on a 69 kV winding, while the
     /// same deck with a trailing `phases=3` (which re-runs the correct side
     /// effect) reports 6 and 38 472 V. Upstream bugs are never reproduced
-    /// (CLAUDE.md), so the port keeps `2 * Fnphases` — via
-    /// [`CktElementData::set_nconds`](crate::elements::ckt::CktElementData::set_nconds),
-    /// which is what the Pascal statement does structurally (reallocate the
-    /// terminals, flag `BusNameRedefined`), just with the auto's count. Report:
+    /// (CLAUDE.md), so the port keeps the `2 * Fnphases` that `SetNumWindings`
+    /// has already written (`:1021`). Report:
     /// `investigations/to_opendss/37-autotrans-fetchxfmrcode-nconds.md`; the
     /// corpus deck `asymmetric:autotrans/autotrans_xfmrcode.dss` is single-phase
     /// precisely because `1 + 1 == 2 · 1` makes the two rules agree there, so the
     /// r4133 channel can gate the rest of this copy.
+    ///
+    /// **What `:2353` is for — "forces reallocation of terminals and
+    /// conductors" — is kept.** `SetNumWindings` re-creates the terminals
+    /// whenever the terminal shape (`NConds`, `NTerms`) changes (`Nterms :=`,
+    /// `Common/CktElement.pas:386-433`), which blanks every terminal's bus
+    /// reference, and `Set_NTerms` raises nothing. Only `Set_NConds` flags
+    /// `BusNameRedefined` (`CktElement.pas:359`), and with the correct count it
+    /// never fires here, because `SetNumWindings` wrote that same value first.
+    /// So the flag is raised here from the shape itself: a `xfmrcode=` that
+    /// changes the phase or winding count after a solve reprocesses the bus
+    /// definitions at the next Y build instead of leaving the auto on all-ground
+    /// node references (`exec::tests::autotrans_xfmrcode`). A same-shape code
+    /// keeps its terminals and raises nothing. r4133 raises the flag only through
+    /// its wrong `Fnphases + 1`, so a single-phase auto, where that value is
+    /// right, is left unflagged there.
     pub(super) fn fetch_xfmr_code(&mut self, code: &XfmrCodeObj) {
+        let shape = (self.cd.nconds, self.cd.nterms);
         // `Nphases := Obj.Fnphases; SetNumWindings(Obj.NumWindings);` (`:2351-2352`)
         // — `SetNumWindings` re-`Init`s the windings, resizes `puXSC`, sets
-        // `Nterms := NumWindings` and the impedance matrices.
-        self.cd.nphases = code.fnphases().max(0) as usize;
+        // `Nterms := NumWindings` and the impedance matrices. `Nphases :=` is
+        // the setter `Set_NPhases`, which drops a non-positive value
+        // (`If Value>0 Then Fnphases := Value`, `Common/CktElement.pas:365-368`),
+        // so a code with `phases=0` leaves the auto's phase count alone.
+        if code.fnphases() > 0 {
+            self.cd.nphases = code.fnphases() as usize;
+        }
         self.set_num_windings(code.num_windings());
         // `:2353`, with the auto's conductor count (see the doc comment).
-        self.cd.set_nconds(2 * self.cd.nphases);
+        if (self.cd.nconds, self.cd.nterms) != shape {
+            self.cd.signal_bus_name_redefined = true;
+        }
 
         let nw = self.num_windings.max(0) as usize;
         for (i, w) in self.windings.iter_mut().enumerate().take(nw) {
