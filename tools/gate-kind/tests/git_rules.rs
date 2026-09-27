@@ -195,9 +195,50 @@ fn a_cargo_lock_diff_is_code() {
 fn a_comment_only_edit_under_the_tool_is_code() {
     let repo = TempRepo::new("tool");
     repo.write("tools/gate-kind/src/lib.rs", LIB);
+    repo.write("tools/gate-kind/README.md", "# a\n");
     let base = repo.commit("base");
     repo.write("tools/gate-kind/src/lib.rs", LIB_COMMENT);
     let head = repo.commit("comment");
+    assert_eq!(repo.kind(&base, Some(&head)), GateKind::Code);
+    repo.write("tools/gate-kind/README.md", "# b\n");
+    let doc = repo.commit("doc");
+    assert_eq!(
+        repo.kind(&head, Some(&doc)),
+        GateKind::Code,
+        "a document under the tool"
+    );
+}
+
+/// A `.rs` side that is not UTF-8 is `Code`, never decoded lossily (a Latin-1
+/// byte gained by a comment would otherwise grade `Comments`).
+#[test]
+fn a_comment_gaining_a_non_utf8_byte_is_code() {
+    let repo = TempRepo::new("latin1");
+    let lib = repo.dir.join("src/lib.rs");
+    std::fs::create_dir_all(repo.dir.join("src")).expect("the src directory");
+    std::fs::write(&lib, b"// plain\npub fn f() {}\n").expect("the base is written");
+    let base = repo.commit("base");
+    std::fs::write(&lib, b"// caf\xe9 (latin-1)\npub fn f() {}\n").expect("the head is written");
+    let head = repo.commit("latin1");
+    assert_eq!(repo.kind(&base, Some(&head)), GateKind::Code);
+    assert_eq!(
+        repo.kind(&base, None),
+        GateKind::Code,
+        "the working-tree form"
+    );
+}
+
+/// A side that is a symlink (mode 120000) is `Code`, a `.md` included. The
+/// entry goes straight into the index, so no filesystem symlink is needed.
+#[test]
+fn a_document_turned_into_a_symlink_is_code() {
+    let (repo, base) = seeded("symlink");
+    repo.write("target.txt", "README.md\n");
+    let sha = repo.git(&["hash-object", "-w", "target.txt"]);
+    let entry = format!("120000,{sha},README.md");
+    repo.git(&["update-index", "--cacheinfo", &entry]);
+    repo.git(&["commit", "-q", "-m", "link"]);
+    let head = repo.git(&["rev-parse", "HEAD"]);
     assert_eq!(repo.kind(&base, Some(&head)), GateKind::Code);
 }
 

@@ -10,17 +10,24 @@
 //!
 //! - **Path rules.** A path under `tools/gate-kind/` is `Code` (the tool never
 //!   grades its own change), so is a path on [`ALWAYS_CODE`]. A `.md` is `Docs`.
-//!   A path that is neither `.md` nor `.rs` is `Code`: nothing tells "nothing
-//!   compiled changed" for a `.toml`, `.json`, `.dss`, `.py`, `Cargo.lock`, …
+//!   A path that is neither `.md` nor `.rs`, or is not UTF-8, is `Code`:
+//!   nothing tells "nothing compiled changed" for a `.toml`, `.json`, `.dss`,
+//!   `.py`, `Cargo.lock`, …
 //! - **File rules.** A `.rs` added, deleted, renamed or copied, with a mode or
-//!   type change, with a side that is not UTF-8, or with a side that
-//!   `syn::parse_file` rejects is `Code`. Any path whose side is a symlink or a
-//!   submodule is `Code` as well.
+//!   type change or an unmerged or unknown status, with a side that is not
+//!   UTF-8, with a side that `syn::parse_file` rejects, with a changed shebang
+//!   line, or whose source spells the strip sentinel is `Code`. Any path whose
+//!   side is a symlink or a submodule is `Code` as well.
 //! - **Premise rules.** Equal token streams mean equal behaviour only while
-//!   nothing reads docs or line numbers. A doc change in a file that carries a
-//!   derive outside [`DERIVE_ALLOW`] or an attribute macro is `Code`, and so is
-//!   any change to a file whose tokens hold `line!`, `column!` or
-//!   `Location::caller`.
+//!   nothing reads docs, line numbers or source spacing. A doc change in a
+//!   file that carries a derive outside [`DERIVE_ALLOW`] or an attribute macro
+//!   is `Code`, and so is any change to a file whose tokens hold `line!`,
+//!   `column!`, `Location::caller` or `stringify!` (its text keeps the source
+//!   spacing, which the token comparison cannot see). The rules read the edited
+//!   file only: the forms that move another file's value (a `macro_rules!` body
+//!   holding `line!`, `column!` or `stringify!`, a caller-location read) are
+//!   kept out of the workspace by the cfg gate's
+//!   `the_gate_kind_premises_hold_across_files`.
 //! - **The strip-compare** ([`classify_rs`]). Both sides are normalized as
 //!   rustc does before lexing (`\r\n` → `\n`, a leading BOM dropped). Equal
 //!   bytes are [`RsKind::Same`]. Otherwise every `doc` attribute the syntax
@@ -54,7 +61,8 @@ use syn::{Attribute, Meta, Token};
 pub enum RsKind {
     /// Both sides parse and are byte-identical after normalization.
     Same,
-    /// Only doc comments, plain comments or whitespace differ.
+    /// Only doc comments, plain comments or whitespace differ, and no premise
+    /// rule fires.
     Comments,
     /// Anything else, a side that does not parse, or a premise rule.
     Code,
@@ -288,7 +296,9 @@ fn normalize(text: &str) -> String {
         .replace("\r\n", "\n")
 }
 
-/// `line!`, `column!` or `Location::caller` anywhere in the tokens, macro
+/// `line!`, `column!` or `Location::caller` (the source's position) or
+/// `stringify!` (its spacing: `stringify!(a+b)` is `"a+b"`, `stringify!(a + b)`
+/// is `"a + b"`, while both lex to equal tokens) anywhere in the tokens, macro
 /// bodies included (comments are not tokens, doc text is a string literal).
 fn reads_its_position(tokens: &TokenStream) -> Option<&'static str> {
     let trees: Vec<TokenTree> = tokens.clone().into_iter().collect();
@@ -308,6 +318,9 @@ fn reads_its_position(tokens: &TokenStream) -> Option<&'static str> {
                 }
                 if bang && id == "column" {
                     return Some("column!");
+                }
+                if bang && id == "stringify" {
+                    return Some("stringify!");
                 }
                 let path_sep = matches!(
                     (trees.get(i + 1), trees.get(i + 2)),
