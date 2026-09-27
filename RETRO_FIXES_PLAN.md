@@ -4100,46 +4100,126 @@ the plan's findings are `(note)` rewrites of doc comments in `.rs` files.
   written, the uid closed or recorded with a reason.
 
 ### RF-I00-06 — Re-word the texts the harness move made false (R12 follow-up of RF-I00-04)
-<!-- RF-STEP {"step": "RF-I00-06", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "inline_shared": false, "after": ["RF-I00-05"], "n_uids": 1} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** the kind `gate-kind` prints (the
-three JSON data files make the diff `Code`, so expect the full seven commands). **After:**
-RF-I00-05, and scheduled by hand (§6) after the wave-1 and wave-2 landings: every lane branch edits
-harness files and merges `update` across the rename first, so these re-words never meet an in-flight
-hunk of the same lines. **Brief:** RF-I00-04's settlement, findings AC-4 and AT-7 (both RECORDED:
-frozen by that step's byte-identity and ledger-unchanged acceptance).
-**Files:** `crates/dss-test-harness/src/harness/mod.rs`, `inc_matrix.rs`, `scratch.rs`, `lane.rs`,
-`tests/corpus/ledger.json`, `tests/corpus/modes/manifest.json`,
-`tests/corpus/manifests/solvable_now.json`, `crates/dss-core/tests/golden_cim.rs`,
-`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (only when a register literal or an exact
-citation count moves, R10), `docs/phase-records/retro-fixes.md`, `RETRO_FIXES_PLAN.md`.
+<!-- RF-STEP {"step": "RF-I00-06", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "inline_shared": false, "after": ["RF-I00-05", "RF-D08-06", "RF-D00-01", "RF-D01-04", "RF-D07-07", "RF-D01-01", "RF-D00-05"], "n_uids": 1} -->
+**Tier:** executor opus/high; audits, settler per §3. `high` is §3's comment and citation row: the
+step moves no ledger entry, pin, golden or lock (its one ledger edit is the top-level `comment`
+array, and the one locked site is kept, see Findings). **Gate:** the kind `gate-kind` prints (the
+three JSON data files make the diff `Code`, so expect the full seven commands). No `lane_diff`: no
+compat kernel, lane alias or solver moves, and the `harness/lane.rs` edits are a doc line and an
+assertion message. **After:** RF-I00-05 and the six lane steps in flight across the harness move,
+run by the driver as its wave 1 (RF-D08-06, RF-D00-01, RF-D01-04) and wave 2 (RF-D07-07,
+RF-D01-01, RF-D00-05, which differs from the §6 table's wave 2). RF-D00-01 and RF-D07-07 edit moved
+files, and RF-D00-01 and RF-D01-01 add pre-move spellings the census must see. Scheduled by hand
+like every infra step (not in `wp_index.json`): one lane, no other lane in flight until it lands,
+and the next wave starts after it. **Brief:** the origin's state file
+`tmp/retro_fix/state/RF-I00-04.md` and its settlement `tmp/retro_fix/state/RF-I00-04/settle.md`
+(rows AC-4 and AT-7, coordinator item 4), plus this section's plan settlement
+`tmp/retro_fix/state/RF-I00-06-plan/settle.md` (the census at 35adac05, site by site), all read
+from the main checkout.
+**Files:** every file the two census probes of **Probes** list at the step base, less the §4 shared
+documents (they get notes entries). The coordinator writes that `rg -l` list into the run args at
+launch, and a false hit in a file the run args lack is `blocked: needs <file>`, never a skipped
+site. At 35adac05 the list holds 42 files, and the false sites sit in
+`crates/dss-test-harness/src/harness/mod.rs`, `crates/dss-test-harness/src/harness/inc_matrix.rs`,
+`crates/dss-test-harness/src/harness/scratch.rs`, `crates/dss-test-harness/src/harness/lane.rs`,
+`crates/dss-test-harness/src/harness/topology.rs`,
+`crates/dss-test-harness/src/harness/run_file_contents.rs`,
+`crates/dss-test-harness/src/harness/props_norm.rs`, `crates/dss-test-harness/src/harness/di.rs`,
+`crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`,
+`crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/manifest.rs`,
+`crates/dss-core/tests/corpus_manifest.rs`, `crates/dss-core/tests/props_r4133_pins.rs`,
+`crates/dss-core/tests/golden_cim.rs`, `crates/dss-core/examples/lane_dump.rs`,
+`tests/corpus/ledger.json`, `tests/corpus/modes/manifest.json` and
+`tests/corpus/manifests/solvable_now.json`. The landings add
+`crates/dss-core/src/elements/control/relay/tests.rs` (RF-D01-01) and
+`crates/dss-core/src/exec/view.rs` (RF-D00-01, unless its merge re-points the spelling). Always in
+Files: `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (kept hits, and a register literal if one
+moves), `docs/phase-records/retro-fixes.md`, `RETRO_FIXES_PLAN.md`.
+**Doc notes (§4):** `TESTING.md` gets one `### RF-I00-06 / INFRA|8` entry, for the `lane_dump`
+sentence of §"The parity↔default differential gate" ("an example cannot import the test harness",
+false since `dss-test-harness` became a dev-dependency of `dss-core`). The two other shared-document
+sites already carry unmarked `### RF-I00-04 / INFRA|6` entries (the D24 `record_seq_arm` sentence
+of TESTING.md, "run inside the same test binary", and the `collect_element_divergences` path of
+`tests/corpus/props_r4133/README.md`): the executor verifies them and adds no duplicate. All three
+are applied under §4 (RF-D04-01 takes TESTING.md's `INFRA|` entries).
 **Findings**
-- `INFRA|8` (note) - texts that still name the pre-move path `crates/dss-core/tests/harness/...`,
-  describe the harness as a `mod` of the driver binaries, or print a path through `..` (verified at
-  83aaa67f by the RF-I00-04 settlement, line numbers of that commit, re-locate by phrase):
-  `mod.rs:8`, `:46`, `:4737`, `:4922`, `:9485` (a panic message naming `tests/harness/mod.rs`),
-  `:9621`, `:11102` (the `PD_PINS_FILE` const, whose `:11624-11625` message prints
-  `crates/dss-core/../dss-core/tests/pd_elements_pins.rs`), `:12191`, `:12814`, `:12892`, `:14466`,
-  `:15879`, `:18031`; `inc_matrix.rs:573`, `:778-779`; `scratch.rs:56-57`; `lane.rs:1071`, `:1098`;
-  `tests/corpus/ledger.json:10` and `:1059` (`crates/dss-core/tests/harness/mod.rs::skip_whole_element`);
-  `tests/corpus/modes/manifest.json:539`; `tests/corpus/manifests/solvable_now.json:2`;
-  `crates/dss-core/tests/golden_cim.rs:49`. Fix: re-word each site to the crate and its path
-  (`crates/dss-test-harness/src/harness/<file>.rs`, "the `dss-test-harness` crate"), line-neutral
-  wherever a committed citation or register names the line (check TESTING.md,
-  `tests/TOLERANCE_NOTES.md`, `docs/phase-records/golden-rebase.md` and the `oracle_parity_cfg_gate.rs`
-  registers before each edit, re-measure any exact count the same commit). `PD_PINS_FILE` may be
-  joined from the repo root (the five `CARGO_MANIFEST_DIR/../..` sites show the pattern) so the
-  message prints a clean path. The ledger edits change note text only, never an entry's matching
-  fields: the corpus gate stays green with every entry hit and none stale. The `.json` files carry
-  no golden byte and no lock digest (verify: `golden_lock`, `population_lock` and
-  `props_r4133_evidence_lock` must not hash them; if one does, stop that site and record it, R8).
-**Probes:** `rg -n "crates/dss-core/tests/harness|tests/harness/" crates tests tools TESTING.md
-tests/TOLERANCE_NOTES.md CLAUDE.md` before and after: after the step the only hits outside
-`docs/phase-records/`, `docs/plans-archive/` and this plan are the ones this section lists as kept
-(expected none).
+- `INFRA|8` (note) - texts the harness move made false. Since RF-I00-04 the harness is the library
+  crate `dss-test-harness` (`crates/dss-test-harness/src/harness/<file>.rs`), a dev-dependency of
+  `dss-core` compiled once per lane, and its `#[cfg(test)]` code, the `unit:` fixtures included,
+  runs only in its own lib test binary, never beside the corpus gate. A text that names the
+  pre-move path, describes the harness as a `mod` or `#[path]` include of ~20 driver binaries, puts
+  its self-tests in the gate's binary or process, or prints a path through `..` is false. The scope
+  is the census of **Probes**, not a list. Its core, measured at 35adac05 (identical to 83aaa67f
+  under `crates/`, `tests/` and `tools/`, re-locate by phrase): `harness/mod.rs:7-8`, `:46`,
+  `:4737`, `:4922`, `:8926`, `:8996-8999`, `:9100`, `:9139`, `:9485` (a panic message naming
+  `tests/harness/mod.rs`), `:9620-9621`, `:11102` (the `PD_PINS_FILE` doc, whose `:11624-11625`
+  message prints `crates/dss-core/../dss-core/tests/pd_elements_pins.rs`), `:12191`, `:12814`,
+  `:12892`, `:13637`, `:14466`, `:15403`, `:15879`, `:17865-17870`, `:18031`;
+  `harness/inc_matrix.rs:573`, `:778-779`; `harness/scratch.rs:56-57`; `harness/lane.rs:1071`,
+  `:1098`; `harness/topology.rs:815-816`; `harness/run_file_contents.rs:812`, `:878`,
+  `:1385-1386`, `:1948`; `harness/props_norm.rs:2691-2695`, `:2809-2813`, `:4377`, `:5162`;
+  `harness/di.rs:579-582`; `corpus_gate.rs:160-161`, `:205`, `:271`;
+  `corpus_gate/scheduler.rs:1320-1321`, `:2062`, `:2101-2102` with its message `:2117`,
+  `:2190-2191`, `:2398`, `:2621-2622` with its message `:2639`; `corpus_gate/runner.rs:721-722`,
+  `:1165-1166`; `corpus_gate/manifest.rs:355-356`;
+  `corpus_manifest.rs:172-173`; `props_r4133_pins.rs:73-75`; `golden_cim.rs:49`;
+  `examples/lane_dump.rs:115-116`; `tests/corpus/ledger.json:10`;
+  `tests/corpus/modes/manifest.json:539`; `tests/corpus/manifests/solvable_now.json:2`.
+  Fix: text only, each false text re-worded to the present fact. A rationale whose premise the move
+  removed (the `unit:` fixture partition of `corpus_gate/scheduler.rs`, the D24 call-site counting,
+  the never-drive rule above `bus_reliability_walk_counters`, the hand-mirrored list of
+  `examples/lane_dump.rs`) keeps its code: it is re-worded to what still holds and why the code
+  stays, and listed in `part_1.md` for the coordinator (a code change it may invite is not this
+  step's). Assertion and panic messages are re-worded like comments (verify with `rg` that no test
+  asserts their text). `PD_PINS_FILE` becomes the repository path
+  `crates/dss-core/tests/pd_elements_pins.rs`, joined from the repository root in one line rustfmt
+  keeps (`Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")).join(PD_PINS_FILE)` is one), its
+  doc names the repository root as the base, and its message prints `{PD_PINS_FILE}` alone. Every
+  hunk keeps its line count (`git diff -U0 <base>`: equal old and new counts per hunk), because
+  committed citations in TESTING.md, `tests/TOLERANCE_NOTES.md`, the plans, the records and `.rs`
+  comments name lines below the sites, and only the first two are railed. A line a citation names
+  keeps what the citation names. A site whose true text does not fit its hunk is recorded in
+  `part_1.md`, never re-flowed into a longer hunk. The JSON sites are strings no lock reads:
+  `ledger.json:10` is the top-level `comment` array, `modes/manifest.json:539` a case `note` and
+  `solvable_now.json:2` the top-level `comment` (`population_lock`'s `Case` has no note field and
+  its ledger digest covers `entries` only, `golden_lock` walks `tests/golden` and the r3723
+  reference, `props_r4133_evidence_lock` the extracts and `triage.md`). The RP3.7 `source` of the
+  ledger entry `swtcontrol-per-phase-state-makeposseq-capi-props` (`ledger.json:1059`) stays
+  verbatim, a kept hit: it is a dated measurement's provenance, and `population_lock::ledger_tags`
+  digests each entry's full JSON, so re-wording it would move the digest `population.lock.json`
+  pins (`…@c3edbc40146704a3`) in a text-only step.
+**Probes:** the census, at the step base (the scope) and again at the head (the check), both over
+`crates tests tools TESTING.md tests/TOLERANCE_NOTES.md CLAUDE.md --glob '!tests/corpus/electricdss-tst/**' --glob '!tests/golden/**'`.
+(1) The path probe `rg -n -e 'tests/harness' -e 'mod harness\b'`, 16 hits at 35adac05.
+(2) The phrase probe `rg -n -i -e 'compile[sd]? into' -e '(same|this|including|gate|test) binar' -e 'cannot import' -e 'share[sd]? the process' -e 'same process' -e '#\[path\]' -e 'relative to .crates/dss-core.' -e 'crates/dss-core/\{'`,
+126 hits at 35adac05. Each hit is read with the doc or comment block around it, every false
+sentence of that block is a site, and `part_1.md` gives every base hit one disposition: re-worded,
+true as it stands (with a one-line reason), kept, or a shared document's notes entry. The kept
+hits, by phrase (35adac05 lines): the move's history in TESTING.md ("Where the harness lives",
+`:257` and `:261`, and the echo-pin rationale, `:3311`), `crates/dss-test-harness/src/lib.rs` (the
+crate doc naming the former module, `:9`, and `pub mod harness;`, `:21`), the comment of
+`crates/dss-test-harness/Cargo.toml` (`:9`), the cfg gate's `TEST_ONLY_CRATES` doc (`:233`),
+`cited_target` doc (`:3743`) and the pre-move negative case of
+`a_cited_path_resolves_only_among_its_own_matches` (`:3777`), and the RP3.7 `source` of
+`ledger.json` (`:1059`). The roots leave out the plans and `docs/` on purpose: records and archived
+plans keep the spelling of their date, and the pre-move paths in pending steps' Files lists (this
+plan, `wp_index.json`, GOLDEN_REBASE_PLAN.md) are the coordinator's to re-point.
 **Acceptance:**
-- No live text under `crates/`, `tests/`, `tools/` or the operational docs names the pre-move
-  path or the `mod harness;` inclusion; the sites above are re-worded, line-neutral where cited.
-- Ledger, manifests and locks unchanged in what they match or hash, the corpus gate green in both
-  lanes with every ledger entry hit.
-- Gate green by kind, record block written (5-10 lines: site count, commits, gate result), the uid
-  closed or recorded with a reason.
+- The head census holds only those dispositions: the path probe prints exactly the kept hits plus
+  the props README line while its notes entry is unapplied (11 lines at 35adac05), and every
+  phrase-probe hit of the base has its disposition in `part_1.md`, with the rationales whose
+  premise is gone listed there for the coordinator.
+- Every hunk of `git diff -U0 <base>` over the edited `.rs` and `.json` files has equal old and new
+  line counts, and the `PD_PINS_FILE` message prints `crates/dss-core/tests/pd_elements_pins.rs`
+  with no `..` while the const's doc names the repository root.
+- Each edited JSON file, loaded at the base and at the head with the ledger's top-level `comment`,
+  the case `note`s of `modes/manifest.json` and `solvable_now.json`'s top-level `comment` removed,
+  compares equal. `git diff --exit-code <base> -- tests/corpus/manifests/population.lock.json
+  tests/golden/golden.lock.json` is empty, and the corpus gate is green in both lanes with every
+  ledger entry hit and none stale.
+- Gate green by kind. Record block written (5-10 lines: what was re-worded and why, the census
+  counts per probe at the base and at the head, the kept hits by reference to this section, the
+  notes entry left and the two RF-I00-04 entries verified, the rationales listed for the
+  coordinator, the commits, the gate result), and RF-I00-04's audit line in the record names this
+  step ("one R12 follow-up step" becomes "the R12 follow-up step RF-I00-06", R12). The uid closed or
+  recorded with a reason.
