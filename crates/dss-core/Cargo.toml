@@ -62,6 +62,12 @@ sha2 = "0.10"
 # ONE created-entry classification on every platform instead of keeping a
 # compile-only twin of the same rule for the non-Windows build.
 dss-epri = { path = "../dss-epri" }
+# RETRO_FIXES RF-I00-04: the golden harness every driver under `tests/` imports
+# (`use dss_test_harness::harness;`), compiled once per lane instead of once per
+# driver. A dev-dependency cycle (it depends on this crate), which cargo allows:
+# the drivers and the harness link the ONE dss-core of the build, so both read
+# the same lane (pinned in `tests/golden_smoke.rs`).
+dss-test-harness = { path = "../dss-test-harness" }
 
 [[bench]]
 name = "snapshot_8500"

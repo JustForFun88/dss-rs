@@ -1,0 +1,2 @@
+#[cfg_attr(test, doc = "x", derive(Debug))]
+pub struct Probe;

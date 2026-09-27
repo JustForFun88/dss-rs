@@ -1,0 +1,2 @@
+pub const TEXT: &str = "first line
+second line";
