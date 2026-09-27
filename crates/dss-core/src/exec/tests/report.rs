@@ -2359,20 +2359,36 @@ fn save_moves_sized_arrays_behind_their_sizer_across_sizers_and_references() {
     assert!(rt.back.errors().is_empty(), "{:?}", rt.back.error_texts());
 }
 
-/// RF-D01-04 settlement (audit AC-1) — a Line impedance matrix set ahead of the
-/// line's last reference stays there. Lines typed with matrices and then a
-/// `LineCode=` that replaces them, `Phases=` last — in one `New`, by later
-/// edits, and through `like=`. Moved behind `Phases`, the matrices would land
-/// behind the LineCode, and on reload their parse clears it and resets the
+/// RF-D01-04 settlement (audit AC-1, settlement audit SA-1) — a Line impedance
+/// matrix set ahead of the line's last reference stays there, and the line's
+/// `Phases` is also written at the head of the line. Lines typed with matrices
+/// and then a `LineCode=` that replaces them, `Phases=` last — in one `New`, by
+/// later edits, and through `like=`. Moved behind `Phases`, the matrices would
+/// land behind the LineCode, and on reload their parse clears it and resets the
 /// length units (r4133 `PDElements/Line.pas:691-692`): the line comes back
 /// matrix-specified, `LineCode` dropped (the RF-D01-04 hoist did that until
 /// its settlement). The matrices stay where the deck set them, which is r4133's
-/// order too; every line is a byte fixed point that keeps its LineCode and
-/// units, and every node voltage reloads unchanged. r4133 on the same decks
-/// (epri-worker, rev r4133, RF-D01-04 settlement): `New "Line.l" bus1=src
-/// bus2=b rmatrix=[…] xmatrix=[…] linecode=cab Seasons=1 Ratings=[400,]
-/// normamps=400 emergamps=600 length=20 units=kft phases=3`, save 1 == save 2,
-/// and the reloaded node voltages equal the live ones.
+/// order too. Ahead of the trailing `Phases` they would parse at the default
+/// order 3, so a 2-phase line (`l2p` with a 2-phase LineCode, `x` with a
+/// spacing that has no wires and so leaves the typed matrices in force)
+/// rejects them on reload (`Parser/ParserDel.pas:786-790`); the rejected
+/// matrix arm still clears `SymComponentsModel` (`Line.pas:691`), so the
+/// trailing `phases=2` is then refused (`:673-682`) and `x` reloads the 3×3
+/// default. The leading `Phases=` makes each matrix parse at the live order,
+/// and the trailing one still follows the reference that may re-set it. Every
+/// line is a byte fixed point that keeps its references and units, the reload
+/// reports no error, and every node voltage reloads unchanged. r4133 on the
+/// 3-phase decks (epri-worker, rev r4133, RF-D01-04 settlement): `New "Line.l"
+/// bus1=src bus2=b rmatrix=[…] xmatrix=[…] linecode=cab Seasons=1
+/// Ratings=[400,] normamps=400 emergamps=600 length=20 units=kft phases=3`,
+/// save 1 == save 2, and the reloaded node voltages equal the live ones. On the
+/// 2-phase shapes (epri-worker, rev r4133, RF-D01-04 settlement audit,
+/// 2026-09-27: each deck run in a circuit of its own, `Save circuit`, the saved
+/// Master recompiled, `?` and the node voltages read back) r4133 writes the
+/// same order without the leading token: the LineCode line's recompile raises
+/// #18202 (the LineCode then rebuilds Z), and the spacing line's raises #18101
+/// and reloads `rmatrix` as the 3×3 default, its far bus moving from
+/// 7193.405041 V to 7199.559109 V.
 #[test]
 fn save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them() {
     let mut dss = Dss::new();
@@ -2388,9 +2404,19 @@ fn save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them() {
         "new line.a bus1=src bus2=b3 rmatrix=[0.1 | 0.01 0.1 | 0.01 0.01 0.1] \
          xmatrix=[0.2 | 0.02 0.2 | 0.02 0.02 0.2] length=1 units=kft",
         "new line.lk like=a bus1=src bus2=b4 linecode=cab length=2 units=kft phases=3",
+        "new linecode.lc2 nphases=2 r1=0.3 x1=0.2 r0=0.9 x0=0.3 c1=300 c0=250 units=mi",
+        "new line.l2p bus1=src.1.2 bus2=b5.1.2 phases=2 rmatrix=[0.1 | 0.01 0.1] \
+         xmatrix=[0.2 | 0.02 0.2] linecode=lc2 length=2 units=kft",
+        "edit line.l2p phases=2",
+        "new linespacing.sp2 nconds=2 nphases=2 x=[-1 1] h=[28 28] units=ft",
+        "new line.x bus1=src.1.2 bus2=b6.1.2 phases=2 rmatrix=[0.5 | 0.1 0.5] \
+         xmatrix=[1.0 | 0.3 1.0] spacing=sp2 length=1 units=mi",
+        "edit line.x phases=2",
         "new load.ld bus1=b kv=12.47 kw=3000 kvar=1000",
         "new load.ld2 bus1=b2 kv=12.47 kw=1000 kvar=300",
         "new load.ld4 bus1=b4 kv=12.47 kw=1000 kvar=300",
+        "new load.ld5 bus1=b5.1.2 kv=12.47 kw=500 kvar=100 phases=1",
+        "new load.ld6 bus1=b6.1.2 kv=12.47 kw=500 kvar=100 phases=1",
         "set voltagebases=[12.47]",
         "calcvoltagebases",
         "solve",
@@ -2398,19 +2424,47 @@ fn save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them() {
         dss.command(c);
     }
     assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
-    let lines = ["l", "l2", "lk"];
     let refs = |dss: &mut Dss| -> Vec<String> {
-        lines
-            .iter()
-            .flat_map(|l| [format!("line.{l}.linecode"), format!("line.{l}.units")])
-            .map(|q| query(dss, &q))
-            .collect()
+        [
+            "l.linecode",
+            "l.units",
+            "l2.linecode",
+            "l2.units",
+            "lk.linecode",
+            "lk.units",
+            "l2p.linecode",
+            "l2p.units",
+            "l2p.phases",
+            "x.spacing",
+            "x.units",
+            "x.phases",
+            "x.rmatrix",
+            "x.xmatrix",
+        ]
+        .iter()
+        .map(|q| query(dss, &format!("line.{q}")))
+        .collect()
     };
     let live_refs = refs(&mut dss);
     assert_eq!(
         live_refs,
-        ["cab", "kft", "cab", "kft", "cab", "kft"],
-        "each line ends LineCode-specified"
+        [
+            "cab",
+            "kft",
+            "cab",
+            "kft",
+            "cab",
+            "kft",
+            "lc2",
+            "kft",
+            "2",
+            "sp2",
+            "mi",
+            "2",
+            "[0.5 |0.1 0.5 ]",
+            "[1 |0.3 1 ]"
+        ],
+        "each line ends reference-specified; `x` keeps its typed 2-phase matrices"
     );
     let volts = |dss: &Dss| -> std::collections::BTreeMap<String, Vec<num_complex::Complex64>> {
         dss.all_bus_voltages()
@@ -2425,24 +2479,50 @@ fn save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them() {
     let x = "XMatrix=[0.0441919191919192 |0.00631313131313131 0.0441919191919192 |0.00631313131313131 0.00631313131313131 0.0441919191919192 ]";
     let c = "CMatrix=[53.6616161616162 |-3.15656565656566 53.6616161616162 |-3.15656565656566 -3.15656565656566 53.6616161616162 ]";
     let code = "LineCode=cab Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600";
+    let r2 = "RMatrix=[0.0946969696969697 |0.0378787878787879 0.0946969696969697 ]";
+    let x2 = "XMatrix=[0.0441919191919192 |0.00631313131313131 0.0441919191919192 ]";
+    let code2 = "LineCode=lc2 Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600";
     for (name, want) in [
         (
             "l",
-            format!("New \"Line.l\" Bus1=src Bus2=b {r} {x} {code} Length=20 Units=kft Phases=3"),
+            format!(
+                "New \"Line.l\" Phases=3 Bus1=src Bus2=b {r} {x} {code} Length=20 Units=kft \
+                 Phases=3"
+            ),
         ),
         (
             "l2",
-            format!("New \"Line.l2\" Bus1=src Bus2=b2 {c} Length=20 Units=kft {code} Phases=3"),
+            format!(
+                "New \"Line.l2\" Phases=3 Bus1=src Bus2=b2 {c} Length=20 Units=kft {code} \
+                 Phases=3"
+            ),
         ),
         (
             "lk",
-            format!("New \"Line.lk\" {r} {x} Bus1=src Bus2=b4 {code} Length=2 Units=kft Phases=3"),
+            format!(
+                "New \"Line.lk\" Phases=3 {r} {x} Bus1=src Bus2=b4 {code} Length=2 Units=kft \
+                 Phases=3"
+            ),
+        ),
+        (
+            "l2p",
+            format!(
+                "New \"Line.l2p\" Phases=2 Bus1=src.1.2 Bus2=b5.1.2 {r2} {x2} {code2} Length=2 \
+                 Units=kft Phases=2"
+            ),
+        ),
+        (
+            "x",
+            "New \"Line.x\" Phases=2 Bus1=src.1.2 Bus2=b6.1.2 RMatrix=[0.5 |0.1 0.5 ] \
+             XMatrix=[1 |0.3 1 ] Spacing=sp2 Length=1 Units=mi Phases=2"
+                .to_string(),
         ),
     ] {
         assert_eq!(
             rt.line(1, "Line", name),
             want,
-            "Line.{name}: the matrices stay ahead of the LineCode that replaced them"
+            "Line.{name}: the matrices stay ahead of the line's reference, behind a leading \
+             Phases"
         );
         assert_eq!(
             rt.line(2, "Line", name),
@@ -2453,7 +2533,7 @@ fn save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them() {
     assert_eq!(
         refs(&mut rt.back),
         live_refs,
-        "LineCode and units after the round trip"
+        "references, units, phases and the typed matrices after the round trip"
     );
     rt.back.command("solve");
     assert!(rt.back.errors().is_empty(), "{:?}", rt.back.error_texts());
