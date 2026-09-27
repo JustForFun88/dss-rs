@@ -1623,10 +1623,8 @@ fn assert_twin_matches_r4133(
 /// machine keeps `model` and its NCIM registry is per-phase.
 ///
 /// r4133 cannot answer a late deck itself: live `epri-worker` probe
-/// 2026-09-25 (OpenDSSDirect.dll r4133 "Version 11.0.0.1 (64-bit build)",
-/// the local-only, gitignored
-/// `tmp/retro_fix/state/RF-D00-05/probe_r4133_late_gen.py`; re-derive by
-/// sending the pins' decks through `epri-worker`) — the second
+/// 2026-09-25 (OpenDSSDirect.dll r4133 "Version 11.0.0.1 (64-bit build)";
+/// re-derive by sending the pins' decks through `epri-worker`) — the second
 /// `Solve` raises `DSS error #482 Error Encountered in Solve: Access violation
 /// … Read of address 0000000000000000` at iteration 1 on all four decks
 /// (created / enabled × model 3 / 4): the nil read of the late machine's empty
@@ -1675,9 +1673,8 @@ fn assert_late_generator_lands_on_the_twin(
 /// r4133's straight up-front `model=4` twin — `late_gen_network` with
 /// `late_gen_line(4, "")`, one NCIM solve: converged, 3 iterations, these node
 /// voltages, `Generator.g1` at -266.6666… kW and -143.93141923682322 kvar per
-/// phase (live `epri-worker` probe 2026-09-25, case `upfront_m4` of the
-/// local-only `tmp/retro_fix/state/RF-D00-05/probe_r4133_late_gen.py`; this
-/// deck through `epri-worker` re-derives it).
+/// phase (live `epri-worker` probe 2026-09-25 on the r4133 DLL; this deck
+/// through `epri-worker` re-derives it).
 const R4133_M4_TWIN: [(f64, f64); 6] = [
     (7199.557856794634, 0.0),
     (-3599.77892839732, -6234.999999999999),
@@ -1846,10 +1843,9 @@ fn ncim_generator_on_a_new_bus_after_first_solve_does_not_panic() {
 
 /// r4133 on the generator-free network (`late_gen_network(None)`) solved once
 /// under NCIM: converged, 3 iterations, these node voltages (live
-/// `epri-worker` probe 2026-09-25, case `nogen` of the local-only
-/// `tmp/retro_fix/state/RF-D00-05/probe2_r4133_sequences.py`, re-derived by
-/// sending this deck through `epri-worker`; the
-/// `EnergyMeter`-carrying variant `nogen_meter` answers bit-identically).
+/// `epri-worker` probe 2026-09-25 on the r4133 DLL, case `nogen`, re-derived
+/// by sending this deck through `epri-worker`; the `EnergyMeter`-carrying
+/// variant `nogen_meter` answers bit-identically).
 const R4133_NO_GEN: [(f64, f64); 6] = [
     (7199.557856794634, 0.0),
     (-3599.77892839732, -6234.999999999999),
@@ -2114,10 +2110,10 @@ const MIXED_G2: &str = "New Generator.g2 bus1=genbus phases=3 kv=12.47 kw=800 mo
 /// bus whose conductors do not line up (a 1-phase g1 on `genbus.1` first, a
 /// 3-phase g2 on `genbus`), declared up-front or g2 created after the first
 /// NCIM solve. r4133 reserves g1's one-row block for both and drops g2's
-/// phase-2/3 cells. Live `epri-worker` probe 2026-09-26 (local-only
-/// `tmp/retro_fix/state/RF-D00-05/settle/probe3_r4133_mixed_pv.py`; re-derive
-/// by sending these two decks through `epri-worker`): up-front converged in 3
-/// iterations with GENBUS.2/.3 at 7138.105769118706 / 7137.5977895458145 V,
+/// phase-2/3 cells. Live `epri-worker` probe 2026-09-26 on the r4133 DLL
+/// (re-derive by sending these two decks through `epri-worker`): up-front
+/// converged in 3 iterations with GENBUS.2/.3 at 7138.105769118706 /
+/// 7137.5977895458145 V,
 /// unregulated against the 7199.557856794634 V target; late raises #482 (g2's
 /// empty registry). The port asserted in its sparse set on both
 /// ("row < self.n"). With one row per PV node every GENBUS node is held at
@@ -2174,14 +2170,28 @@ fn ncim_pv_machine_with_a_grounded_conductor_regulates_its_live_nodes() {
     assert_genbus_pv_regulated(&mut dss, &["Generator.g1"], &[1, 2]);
 }
 
+/// r4133's warm re-solve of `pv_circuit("1.01")` (its second `Solve`, case
+/// `qlimit_warm` of the P20 probe): converged in 2 iterations at these node
+/// voltages, `Generator.g1` at -800 kW / -1500 kvar.
+const R4133_QLIMIT_WARM: [(f64, f64); 6] = [
+    (7199.557856794634, 0.0),
+    (-3599.77892839732, -6234.999999999999),
+    (-3599.778928397315, 6235.000000000001),
+    (7212.895598275793, -70.00930104534125),
+    (-3667.077632344357, -6211.546172429121),
+    (-3545.817965931437, 6281.555473474465),
+];
+
 /// **P22** (RF-D00-05 settlement, audit AT-2) — the kept-Q rule's observable:
 /// the machine of `pv_circuit("1.01")` (the corpus deck
 /// `modes/ncim/ncim_pv_pq.dss`) is converted PV->PQ at its 500 kvar/phase
 /// `maxkvar` limit on the first solve, and a warm re-solve resumes from that clamped
 /// registry: 2 Newton passes, as in r4133 (live `epri-worker` probe
-/// 2026-09-26, case `qlimit_warm` of the local-only
-/// `tmp/retro_fix/state/RF-D00-05/settle/probe3_r4133_mixed_pv.py`: 4, then
-/// 2 iterations). Re-seeding the registries on every solve takes 5.
+/// 2026-09-26, case `qlimit_warm` of the P20 probe, re-derived by sending
+/// this deck and a second `Solve` through `epri-worker`: 4, then 2
+/// iterations), onto r4133's warm node voltages ([`R4133_QLIMIT_WARM`])
+/// with the machine still at its -1500 kvar clamp (settlement round 2, SA-5).
+/// Re-seeding the registries on every solve takes 5.
 #[test]
 fn ncim_converted_machine_resolves_warm_from_its_clamped_q() {
     let mut dss = solve_ncim(&pv_circuit("1.01"));
@@ -2197,4 +2207,180 @@ fn ncim_converted_machine_resolves_warm_from_its_clamped_q() {
     let ckt = dss.circuit().expect("circuit");
     assert!(ckt.is_solved, "the warm re-solve converges");
     assert_eq!(ckt.solution.iteration, 2, "warm re-solve (r4133: 2)");
+    let expected: Vec<Complex64> = R4133_QLIMIT_WARM
+        .iter()
+        .map(|&(re, im)| cx(re, im))
+        .collect();
+    assert_nodes(&dss, &expected, V_TOL);
+    let s = term_power_kw(&mut dss, "Generator.g1", 1);
+    assert!(
+        (s - cx(-800.0, -1500.0)).norm() < KVAR_TOL,
+        "warm Generator.g1 = {s:?} kW/kvar vs r4133 (-800, -1500)"
+    );
+    let (model, _, _, _, dq, _) = gen_ncim_state(&dss, "g1");
+    assert_eq!(model, 4, "still PQ after the warm re-solve");
+    assert_eq!(dq, vec![500_000.0; 3], "the clamped registry is kept");
+}
+
+/// Per-phase reported kvar of an NCIM machine: `-deltaQNom / 1000`, what
+/// r4133's `element_powers` gives per conductor.
+fn gen_phase_kvar(dss: &Dss, name: &str) -> Vec<f64> {
+    let (_, _, _, _, dq, _) = gen_ncim_state(dss, name);
+    dq.iter().map(|q| -q / 1000.0).collect()
+}
+
+/// Per-phase kvar against expected values at the `KVAR_TOL` floor.
+fn assert_kvar(got: &[f64], want: &[f64], what: &str) {
+    assert_eq!(got.len(), want.len(), "{what}: phases {got:?}");
+    for (k, (g, w)) in got.iter().zip(want).enumerate() {
+        assert!(
+            (g - w).abs() < KVAR_TOL,
+            "{what} phase {}: {g} kvar vs {w}",
+            k + 1
+        );
+    }
+}
+
+/// r4133 on two identical 3-phase `model=3` machines on `genbus` (case
+/// `inorder_twin_a` of a live `epri-worker` probe 2026-09-26 on the r4133
+/// DLL; re-derive by sending the P23/P24 decks through `epri-worker`):
+/// converged in 3 iterations at these node voltages; g1, the first claimant
+/// of every row, at these kvar per phase and g2 at 0.
+const R4133_PV_PAIR: [(f64, f64); 6] = [
+    (7199.557856794634, 0.0),
+    (-3599.77892839732, -6234.999999999999),
+    (-3599.778928397315, 6235.000000000001),
+    (7199.525025039005, -21.742749836542995),
+    (-3618.5922862260827, -6224.100191947301),
+    (-3580.932738812924, 6245.842941783848),
+];
+/// [`R4133_PV_PAIR`]'s `Generator.g1` kvar per phase.
+const R4133_PV_PAIR_G1_KVAR: [f64; 3] =
+    [-312.5064124155081, -312.50641241551676, -312.50641241550346];
+
+/// **P23** (RF-D00-05 settlement round 2, SA-1) — a PV block in a different
+/// conductor order: g1 on `genbus`, then g2 on `genbus.2.3.1`, one NCIM solve.
+/// r4133 keys g2 at GENBUS.2's row, so GENBUS.1's equation lands past the
+/// block and its reserved row stays empty: not converged after 15 iterations,
+/// GENBUS.1 at 6989.634976382399 V, one g1 phase at 2.48e17 kvar (case
+/// `reordered_a` of the [`R4133_PV_PAIR`] probe; never adopted). Both
+/// machines inject the same P per phase whatever their conductor order, so
+/// with one row per PV node the reordered deck lands on the in-order pair,
+/// which r4133 answers: the in-order deck is r4133's answer row for row
+/// ([`R4133_PV_PAIR`], 3 iterations), and the reordered one lands on it.
+#[test]
+fn ncim_reordered_pv_block_lands_on_the_in_order_pair() {
+    let reordered = MIXED_G2.replace("bus1=genbus ", "bus1=genbus.2.3.1 ");
+    for (g2, what) in [(MIXED_G2.to_string(), "in-order"), (reordered, "reordered")] {
+        let mut dss = solve_ncim(&late_gen_deck(&[late_gen_line(3, ""), g2]));
+        assert_genbus_pv_regulated(&mut dss, &["Generator.g1", "Generator.g2"], &[1, 2, 3]);
+        assert_eq!(
+            dss.circuit().expect("circuit").solution.iteration,
+            3,
+            "{what}: Newton passes (r4133 in-order: 3)"
+        );
+        let expected: Vec<Complex64> = R4133_PV_PAIR.iter().map(|&(re, im)| cx(re, im)).collect();
+        assert_nodes(&dss, &expected, V_TOL);
+        assert_kvar(&gen_phase_kvar(&dss, "g1"), &R4133_PV_PAIR_G1_KVAR, what);
+        assert_kvar(&gen_phase_kvar(&dss, "g2"), &[0.0; 3], what);
+    }
+}
+
+/// r4133 on a 1-phase `model=3` machine on `genbus.2` declared before a
+/// 3-phase one on `genbus` (case `overlap_b` of the [`R4133_PV_PAIR`] probe):
+/// converged in 4 iterations at these node voltages, g1 at -1000 kvar and g2
+/// at [`R4133_OVERLAP_G2_KVAR`] per phase.
+const R4133_OVERLAP: [(f64, f64); 6] = [
+    (7199.557856794634, 0.0),
+    (-3599.77892839732, -6234.999999999999),
+    (-3599.778928397315, 6235.000000000001),
+    (7199.245766614274, -67.03525355964865),
+    (-3615.9447579049265, -6225.638669334515),
+    (-3541.9240872608734, 6268.046513341663),
+];
+/// [`R4133_OVERLAP`]'s `Generator.g1` kvar.
+const R4133_OVERLAP_G1_KVAR: f64 = -1000.0;
+/// [`R4133_OVERLAP`]'s `Generator.g2` kvar per phase.
+const R4133_OVERLAP_G2_KVAR: [f64; 3] =
+    [-393.95406783240844, 695.5547182367646, -425.59919572602564];
+/// The same two machines declared the other way round (case
+/// `overlap_b_swapped`): lined up in r4133, converged in 3 iterations with
+/// GENBUS.2 held at g1's 7200 V target (the node's last-written target), g1
+/// at 0 kvar and g2 at [`R4133_OVERLAP_SWAPPED_G2_KVAR`] per phase.
+const R4133_OVERLAP_SWAPPED: [(f64, f64); 6] = [
+    (7199.557856794634, 0.0),
+    (-3599.77892839732, -6234.999999999999),
+    (-3599.778928397315, 6235.000000000001),
+    (7199.24558159495, -67.05512075113256),
+    (-3616.3081947613955, -6225.938888272321),
+    (-3541.952649937933, 6268.030373165959),
+];
+/// [`R4133_OVERLAP_SWAPPED`]'s `Generator.g2` kvar per phase.
+const R4133_OVERLAP_SWAPPED_G2_KVAR: [f64; 3] =
+    [-394.1583813523667, -307.32203198516214, -425.55290348788816];
+
+/// **P24** (RF-D00-05 settlement round 2, SA-1) — overlapping PV blocks: a
+/// 1-phase g1 on `genbus.2` declared before a 3-phase g2 on `genbus`. g2's
+/// first node is new, so r4133 reserves it three rows, a second one for
+/// GENBUS.2; `PVBusIdx` is last-writer (`Common/Solution.pas` l.1319), so
+/// g1's row carries no equation. r4133 converges (4 iterations) at the port's
+/// node voltages and GENBUS.2's summed machine Q, but splits that Q badly: g1
+/// clamped at the node's summed 1000 kvar limit, twice its own 500 kvar, and
+/// g2's phase 2 absorbing 695.55 kvar against it ([`R4133_OVERLAP`]; never
+/// adopted). Here GENBUS.2 has one row and its first claimant, g1, takes the
+/// whole regulation step: r4133's own rule for a lined-up block (l.2106),
+/// which the swapped deck shows. Declared g2 first, r4133 lines the rows up
+/// and the port is its answer ([`R4133_OVERLAP_SWAPPED`], g1 at 0). On the
+/// overlap deck the node voltages, g2's phases 1 and 3 and GENBUS.2's summed
+/// Q are r4133's numbers; g1 carries that sum (-1000 + 695.55… kvar), g2's
+/// phase 2 is 0, and the port takes 3 Newton passes to r4133's 4 (port-only
+/// numbers).
+#[test]
+fn ncim_overlapping_pv_blocks_hold_r4133s_voltages_and_node_q() {
+    let g1_on_2 = MIXED_G1.replace("bus1=genbus.1", "bus1=genbus.2");
+    let gens = ["Generator.g1", "Generator.g2"];
+    let mut dss = solve_ncim(&late_gen_deck(&[g1_on_2.clone(), MIXED_G2.to_string()]));
+    assert_genbus_pv_regulated(&mut dss, &gens, &[1, 2, 3]);
+    assert_eq!(
+        dss.circuit().expect("circuit").solution.iteration,
+        3,
+        "Newton passes (port-only number: r4133 takes 4)"
+    );
+    let expected: Vec<Complex64> = R4133_OVERLAP.iter().map(|&(re, im)| cx(re, im)).collect();
+    assert_nodes(&dss, &expected, V_TOL);
+    let g2 = R4133_OVERLAP_G2_KVAR;
+    assert_kvar(
+        &gen_phase_kvar(&dss, "g2"),
+        &[g2[0], 0.0, g2[2]],
+        "overlap g2",
+    );
+    assert_kvar(
+        &gen_phase_kvar(&dss, "g1"),
+        &[R4133_OVERLAP_G1_KVAR + g2[1]],
+        "overlap g1",
+    );
+
+    let mut sw = solve_ncim(&late_gen_deck(&[MIXED_G2.to_string(), g1_on_2]));
+    let ckt = sw.circuit().expect("circuit");
+    assert!(ckt.is_solved, "the swapped deck converges");
+    assert_eq!(ckt.solution.iteration, 3, "swapped: r4133 3");
+    let expected: Vec<Complex64> = R4133_OVERLAP_SWAPPED
+        .iter()
+        .map(|&(re, im)| cx(re, im))
+        .collect();
+    assert_nodes(&sw, &expected, V_TOL);
+    assert_kvar(&gen_phase_kvar(&sw, "g1"), &[0.0], "swapped g1");
+    assert_kvar(
+        &gen_phase_kvar(&sw, "g2"),
+        &R4133_OVERLAP_SWAPPED_G2_KVAR,
+        "swapped g2",
+    );
+    let kcl = term_power_kw(&mut sw, "Generator.g1", 1)
+        + term_power_kw(&mut sw, "Generator.g2", 1)
+        + term_power_kw(&mut sw, "Load.ld1", 1)
+        + term_power_kw(&mut sw, "Line.l1", 2);
+    assert!(
+        kcl.norm() < 1e-6,
+        "swapped: KCL at genbus = {kcl:?} kW/kvar"
+    );
 }
