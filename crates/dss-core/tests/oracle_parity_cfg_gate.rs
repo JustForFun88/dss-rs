@@ -370,12 +370,35 @@ fn linked_test_only_deps(manifest: &str) -> Vec<String> {
     out
 }
 
+/// The string entries of the `const <name>` array declaration in `src`, in the
+/// one-line form and in rustfmt's one-entry-per-line form alike, or `None` when
+/// `src` declares no such const or its initializer holds no `[..]` literal. A
+/// quoted string in a comment inside the array reads as an entry, which fails
+/// the binding in [`no_product_crate_links_a_test_only_crate`] closed.
+fn str_list_const(src: &str, name: &str) -> Option<Vec<String>> {
+    let needle = format!("const {name}:");
+    let decl = &src[src.find(needle.as_str())?..];
+    let init = &decl[decl.find('=')? + 1..];
+    let init = &init[..init.find(';')?];
+    let list = init.get(init.find('[')? + 1..init.rfind(']')?)?;
+    Some(
+        list.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(String::from)
+            .collect(),
+    )
+}
+
 /// The premise of [`TEST_ONLY_CRATES`] and of `depascalize_metrics_gate.rs`'s
 /// list of the same name, enforced: no product crate of the workspace links a
-/// test-only package. Before RF-I00-04 the harness was a `mod` under
-/// `crates/dss-core/tests/`, structurally unlinkable. As a library crate it is
-/// one `[dependencies]` line away from the shipped engine, which both lists
-/// would then wave through (RF-I00-04 audit AC-8).
+/// test-only package, and every entry of either list is the directory of one.
+/// Before RF-I00-04 the harness was a `mod` under `crates/dss-core/tests/`,
+/// structurally unlinkable. As a library crate it is one `[dependencies]` line
+/// away from the shipped engine, which both lists would then wave through
+/// (RF-I00-04 audit AC-8), and an entry naming a product crate would exempt it
+/// from the lane-constant rail or from every engine metric (settlement audit
+/// SA-1).
 #[test]
 fn no_product_crate_links_a_test_only_crate() {
     let root = repo_root();
@@ -389,6 +412,7 @@ fn no_product_crate_links_a_test_only_crate() {
 
     let mut products = 0usize;
     let mut test_only = Vec::new();
+    let mut test_only_dirs = Vec::new();
     let mut offenders = Vec::new();
     for member in &members {
         let rel = format!("{member}/Cargo.toml");
@@ -400,6 +424,7 @@ fn no_product_crate_links_a_test_only_crate() {
             .unwrap_or_else(|| panic!("{rel} names no package"));
         if TEST_ONLY_PACKAGES.contains(&name) {
             test_only.push(name.to_string());
+            test_only_dirs.push(*member);
             continue;
         }
         products += 1;
@@ -417,16 +442,33 @@ fn no_product_crate_links_a_test_only_crate() {
     );
     // Non-vacuity: both test-only packages are members under these names, the
     // walk saw the product crates, and every path prefix [`TEST_ONLY_CRATES`]
-    // waves through belongs to one of the packages checked here.
+    // waves through is the directory of one of the packages checked here.
     test_only.sort();
     assert_eq!(test_only, TEST_ONLY_PACKAGES, "the test-only members moved");
     assert!(products >= 5, "only {products} product manifests were read");
     for prefix in TEST_ONLY_CRATES {
         assert!(
-            TEST_ONLY_PACKAGES
-                .iter()
-                .any(|p| *prefix == format!("crates/{p}/")),
+            test_only_dirs.iter().any(|d| *prefix == format!("{d}/")),
             "`{prefix}` is a TEST_ONLY_CRATES entry with no enforced test-only package"
+        );
+    }
+    // `depascalize_metrics_gate.rs` skips its own list of crates, by directory
+    // name under `crates/`, in every engine metric: bound the same way, read
+    // from its source (settlement audit SA-1).
+    let metrics_gate = "crates/dss-core/tests/depascalize_metrics_gate.rs";
+    let text = fs::read_to_string(root.join(metrics_gate))
+        .unwrap_or_else(|e| panic!("{metrics_gate}: {e}"));
+    let skipped = str_list_const(&text, "TEST_ONLY_CRATES")
+        .unwrap_or_else(|| panic!("{metrics_gate} declares no readable `TEST_ONLY_CRATES`"));
+    assert!(
+        !skipped.is_empty(),
+        "no entry read from {metrics_gate}'s `TEST_ONLY_CRATES`"
+    );
+    for dir in &skipped {
+        assert!(
+            test_only_dirs.iter().any(|d| *d == format!("crates/{dir}")),
+            "`{dir}` is a TEST_ONLY_CRATES entry of {metrics_gate} with no enforced \
+             test-only package: a product crate may not leave the engine metrics"
         );
     }
 }
@@ -461,6 +503,36 @@ fn the_test_only_link_scan_reads_every_linked_table_form() {
             linked_test_only_deps(exempt).is_empty(),
             "flagged:\n{exempt}"
         );
+    }
+}
+
+/// [`str_list_const`] reads every form rustfmt gives a string-list const and
+/// declines a missing or non-literal one, so the metrics-list binding in
+/// [`no_product_crate_links_a_test_only_crate`] never passes on an unread list.
+#[test]
+fn the_skip_list_parse_reads_every_declaration_form() {
+    for (src, want) in [
+        ("const X: &[&str] = &[\"a\"];", vec!["a"]),
+        (
+            "const X: &[&str] = &[\n    \"a\",\n    \"b\",\n];",
+            vec!["a", "b"],
+        ),
+        ("const X: [&str; 2] = [\"a\", \"b\"];", vec!["a", "b"]),
+        ("/// [`X`] lists none\nconst X: &[&str] = &[];", vec![]),
+        (
+            "const XY: &[&str] = &[\"z\"];\nconst X: &[&str] = &[\"a\"];",
+            vec!["a"],
+        ),
+    ] {
+        let got = str_list_const(src, "X").unwrap_or_else(|| panic!("unread:\n{src}"));
+        assert_eq!(got, want, "misread:\n{src}");
+    }
+    for src in [
+        "const Y: &[&str] = &[\"a\"];",
+        "static X: &[&str] = &[\"a\"];",
+        "const X: &[&str] = &OTHER;",
+    ] {
+        assert!(str_list_const(src, "X").is_none(), "read:\n{src}");
     }
 }
 
