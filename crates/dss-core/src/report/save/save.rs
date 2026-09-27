@@ -52,18 +52,39 @@
 //!   *sequence* witnesses, not render ones.
 //! * **structure and ordering guards** — the **union** of both upstreams'
 //!   `SaveWrite` overrides (see [`write_dss_object`]), because every one of them
-//!   exists to make the emitted deck re-compile; plus, where *neither* upstream
-//!   guards a class whose arrays are sized by a property, this port's own
-//!   sizing-property hoist ([`sizing_property`]) — same purpose, no upstream
-//!   counterpart, pinned as a deliberate divergence.
+//!   exists to make the emitted deck re-compile; plus this port's own
+//!   **sizing-property hoist** ([`save_order`]), same purpose. A property whose
+//!   text parse is sized by the live value of another property of the same
+//!   object ([`parse_sizer`]: curve `NPts`/`NumHarm`, Capacitor
+//!   `NumSteps`/`Phases`, every `Seasons` → `Ratings`, LineSpacing `NConds`,
+//!   Line/LineCode phases → matrices, Reactor/Fault phases → matrices, the
+//!   transformer `Windings`, the controllers' element lists → weights) is
+//!   written after that sizer — except a Line impedance matrix the deck set
+//!   ahead of one of the line's references, which stays there because its
+//!   parse would clear that reference, and ahead of which the line's `Phases`
+//!   is also written, at the head of the line. The relation is read off the
+//!   class property tables, not listed by class, and the hoist re-orders the
+//!   set-order chain itself for the duration of the write, so the generic walk
+//!   and every override see it. r4133 has three guards: `LoadShape`
+//!   (`General/DSSObject.pas:144-172`), `XYcurve` (`XYcurve.pas:978-1003`), and
+//!   the `PriceShape`/`TShape` set-time re-stamp — an `npts=` re-stamps `npts`
+//!   and then the last-set of `price`/`temp` and the three file properties
+//!   (`PriceShape.pas:303` + `:910-916`, `TempShape.pas:302` + `:909-915`), so
+//!   there only `hour=` is still written ahead of a re-set `npts`. On every
+//!   other class a sizer re-set after its arrays is written last and the line
+//!   reloads truncated — a 600 kvar four-step capacitor comes back as `4 × 37.5`
+//!   kvar on r4133 (measured). That shared upstream defect is not
+//!   reproduced; the divergence is pinned by
+//!   `exec::tests::report::save_hoists_numsteps_so_a_capacitor_bank_reloads_whole`
+//!   and the all-classes `save_writes_every_sizing_property_ahead_of_its_arrays`.
 //!
 //! [`DssObjData::next_property_set`]: crate::obj::base::DssObjData::next_property_set
 //! [`ClassProps::get_value`]: crate::obj::props::ClassProps::get_value
 
 use crate::exec::registry::DssClass;
-use crate::obj::base::DssObject;
+use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
-use crate::obj::props::ClassProps;
+use crate::obj::props::{ClassProps, PropDef, PropFlags, PropType};
 
 /// Context for one class's serialization: its prop table (names + the
 /// `get_value` renderer) and the enum registry `get_value` needs.
@@ -102,37 +123,26 @@ pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObje
 /// in the order they were actually set** (`GetNextPropertySet`), through
 /// [`save_write_token`].
 ///
-/// **The sizing-property-first branch** ([`sizing_property`]). A curve/shape
-/// class allocates its arrays from a *sizing* property (`npts`, `numharm`), so a
-/// line that emits `Mult=`/`C_Array=`/`Harmonic=` **before** that property
-/// reloads as a zero-filled array of the wrong length: the arrays parse against
-/// the reloaded object's default count, and the sizing property then
-/// re-allocates over whatever they did read.
-/// The walk therefore starts at the sizing property, restarts the chain from the
-/// beginning and ignores that index when it comes up again (Pascal
-/// `LShpFlag`/`NptsRdy`).
+/// The walk reads the chain as [`write_dss_object`] leaves it — already
+/// re-ordered by the sizing-property hoist ([`save_order`]) when a sizer was
+/// set after one of its arrays — so the only class rule left here is r4133's
+/// own.
 ///
-/// * **`LoadShape` — r4133's own branch** (RP3.11 P2,
-///   `R4133:General/DSSObject.pas:139-150` + `:163-172`, *"created to guarantee
-///   that the npts property will be the first to be declared when saving
-///   LoadShapes"*), written even when the deck never set `npts`. dss_capi 0.14.5
-///   reaches the same output by a different route — `TLoadShapeObj.SaveWrite`
-///   stamps `PrpSequence[npts] := -999` and calls `inherited`
-///   (`CAPI:General/LoadShape.pas:2376-2380`) — so on this class both upstreams
-///   agree and the port matches both.
-/// * **`TCC_Curve`, `GrowthShape`, `PriceShape`, `TShape`, `Spectrum` — this
-///   port's own guard** (RP3.11 settlement P7), *hoisted only when the deck set
-///   the sizing property*, so the emitted token set is unchanged and only the
-///   order moves. Neither upstream protects these five; measured on the live
-///   `OpenDSSDirect.dll` 11.0.0.1 rev r4133 for a deck whose sizing property is
-///   re-set last, r4133 emits
-///   `New "TCC_Curve.z" C_array=[ 1 2] T_array=[ 10 5] npts=2`,
-///   `New "GrowthShape.g" year=(1, 2, ) mult=(1.05, 1.06, ) npts=2` and
-///   `New "Spectrum.sp" harmonic=(1, 3, ) %mag=(100, 30, ) angle=(0, 0, )
-///   NumHarm=2` — three lines that reload as zeros. (On `PriceShape`/`TShape` it
-///   *does* come out safe, but through the re-stamp described below, not through
-///   a guard.) Pinned by
-///   `exec::tests::report::save_puts_the_sizing_property_first_for_every_curve_class`.
+/// **`LoadShape` — the npts-first branch** (RP3.11 P2,
+/// `R4133:General/DSSObject.pas:139-150` + `:163-172`, *"created to guarantee
+/// that the npts property will be the first to be declared when saving
+/// LoadShapes"*): the walk starts at `NPts` **even when the deck never set it**,
+/// restarts the chain from the beginning and ignores that index when it comes
+/// up again (Pascal `LShpFlag`/`NptsRdy`). dss_capi 0.14.5 reaches the same
+/// output by a different route — `TLoadShapeObj.SaveWrite` stamps
+/// `PrpSequence[npts] := -999` and calls `inherited`
+/// (`CAPI:General/LoadShape.pas:2376-2380`) — so on this class both upstreams
+/// agree and the port matches both. The hoist cannot give this rule, because it
+/// moves only a sizer the deck set. The five other curve classes (`TCC_Curve`,
+/// `GrowthShape`, `PriceShape`, `TShape`, `Spectrum`), which the RP3.11
+/// settlement P7 guarded here by name, are now covered by the table-derived
+/// hoist; their pinned lines are unchanged
+/// (`exec::tests::report::save_puts_the_sizing_property_first_for_every_curve_class`).
 ///
 /// **One deliberate deviation from the letter of the Pascal, measured against the
 /// live r4133 DLL.** Pascal tests `NptsRdy` only on the non-restart advance, so a
@@ -160,65 +170,239 @@ pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObje
 /// last. Both serializations are pinned by
 /// `exec::tests::report::save_write_puts_npts_first_for_loadshape`.
 pub fn save_write(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject) {
-    let sizing = sizing_property(cx.cls.class_name());
-    // Pascal `if ParentClass.Name = 'LoadShape' then iProp := 1` — the walk
-    // starts at the sizing property; the `hoist` classes only do so when the
-    // deck actually set it, so the emitted token *set* never changes.
-    let start_at_size = match sizing {
-        Some((i, always)) => always || obj.data().prp_specified(i),
-        None => false,
-    };
-    let size_idx = sizing.map(|(i, _)| i);
-    let mut iprop = if start_at_size {
-        size_idx // Pascal `iProp := 1`
-    } else {
-        obj.data().next_property_set(None)
+    // Pascal `if ParentClass.Name = 'LoadShape' then iProp := 1` — a
+    // case-sensitive compare on the registered class name; the ordinal comes
+    // from the class's own property table.
+    let npts = (cx.cls.class_name() == "LoadShape")
+        .then_some(crate::elements::general::load_shape::prop::NPTS);
+    let mut iprop = match npts {
+        Some(_) => npts, // Pascal `iProp := 1`
+        None => obj.data().next_property_set(None),
     };
     // Pascal `LShpFlag` / `NptsRdy`.
-    let mut lshp_flag = start_at_size;
-    let mut size_ready = false;
+    let mut lshp_flag = npts.is_some();
+    let mut npts_ready = false;
     while let Some(i) = iprop {
         save_write_token(out, cx, obj, i);
         if lshp_flag {
-            // Pascal: start the chain over, the sizing property is done.
+            // Pascal: start the chain over, `npts` is done.
             lshp_flag = false;
-            size_ready = true;
+            npts_ready = true;
             iprop = obj.data().next_property_set(None);
         } else {
             iprop = obj.data().next_property_set(Some(i));
         }
-        if size_ready && iprop == size_idx {
-            iprop = obj.data().next_property_set(size_idx);
+        if npts_ready && iprop == npts {
+            iprop = obj.data().next_property_set(npts);
         }
     }
 }
 
-/// The class's **allocation-sizing** property — the one whose value decides how
-/// many points the array properties of the same object hold on reload — and
-/// whether it is written even when the deck never set it.
+/// The property whose **live** value sizes the text parse of property `p` of
+/// the same object, if any — Pascal `PropertySizingPropertyIndex`
+/// (`getSizePropertyIndex`) restricted to what the port's parse reads
+/// (`obj/props/class_props/parse.rs`): the element count of a counted array,
+/// the order of a symmetric matrix, the struct count of a per-winding value.
+/// 1-based, like every property ordinal.
 ///
-/// `true` (write it always) is r4133's own rule for `LoadShape`
-/// (`General/DSSObject.pas:139-150`, the `ParentClass.Name = 'LoadShape'`
-/// test); `false` is this port's own guard for the five classes **neither**
-/// upstream protects — it only *hoists* a sizing property the deck did set, so
-/// the set of tokens is unchanged and only their order moves. See
-/// [`save_write`]'s doc for the measured r4133 lines it deliberately does not
-/// reproduce.
-fn sizing_property(class_name: &str) -> Option<(usize, bool)> {
-    use crate::elements::general::{
-        growth_shape, load_shape, price_shape, spectrum, tcc_curve, temp_shape,
+/// * a counted array or matrix (`DoubleArray`, `IntegerArray`, the three
+///   symmetric-matrix kinds, the `…OnStruct` arrays, a `DoubleVArray` that is
+///   not `ARRAY_MAX_SIZE`) and a `GLOBAL_COUNT` shape file property → its
+///   `size_prop`; a `StringList` sizer counts its entries (`get_i32` of a list
+///   is its length);
+/// * a per-winding cursor value (`BusOnStruct`, `ON_ARRAY`, the
+///   `INTEGER_STRUCT_INDEX` `Wdg`) and a singular with an
+///   [`array_alternative`](PropDef::array_alternative) (`kV` → `kVs`) → the
+///   class's struct count (`Windings`), which bounds the active winding;
+/// * everything else → `None`: a `Bus` (its `size_prop` is a terminal), a
+///   `DoubleFArray` (a fixed count), an `ARRAY_MAX_SIZE` array (a maximum) and
+///   the function-sized arrays (`size_prop == 0`).
+pub(crate) fn parse_sizer(cls: &ClassProps, p: usize) -> Option<usize> {
+    let pd = cls.prop(p);
+    let s = match own_sizer(cls, pd) {
+        0 if pd.array_alternative != 0 => own_sizer(cls, cls.prop(pd.array_alternative)),
+        s => s,
     };
-    // Pascal's own test is a case-sensitive compare on the registered class
-    // name. Each ordinal comes from the class's own property table, so a
-    // reordering of that table moves this guard with it.
-    match class_name {
-        "LoadShape" => Some((load_shape::prop::NPTS, true)),
-        "TCC_Curve" => Some((tcc_curve::prop::NPTS, false)),
-        "GrowthShape" => Some((growth_shape::prop::NPTS, false)),
-        "PriceShape" => Some((price_shape::prop::NPTS, false)),
-        "TShape" => Some((temp_shape::prop::NPTS, false)),
-        "Spectrum" => Some((spectrum::prop::NUM_HARM, false)),
-        _ => None,
+    (1..=cls.num_properties()).contains(&s).then_some(s)
+}
+
+/// [`parse_sizer`] without the one-level `array_alternative` indirection; `0`
+/// = not sized by a property.
+fn own_sizer(cls: &ClassProps, pd: &PropDef) -> usize {
+    match pd.ptype {
+        PropType::DoubleArray
+        | PropType::IntegerArray
+        | PropType::DoubleSymMatrix
+        | PropType::SymMatrixReal
+        | PropType::SymMatrixImag
+        | PropType::DoubleArrayOnStruct
+        | PropType::EnumArrayOnStruct
+        | PropType::BusesOnStruct => pd.size_prop,
+        PropType::DoubleVArray if !pd.flags.contains(PropFlags::ARRAY_MAX_SIZE) => pd.size_prop,
+        PropType::BusOnStruct => struct_count_prop(cls),
+        _ if pd.flags.contains(PropFlags::GLOBAL_COUNT) => pd.size_prop,
+        _ if pd.flags.contains(PropFlags::ON_ARRAY)
+            || pd.flags.contains(PropFlags::INTEGER_STRUCT_INDEX) =>
+        {
+            struct_count_prop(cls)
+        }
+        _ => 0,
+    }
+}
+
+/// The struct-array count property (Transformer / AutoTrans / XfmrCode
+/// `Windings`) — Pascal `PropertyStructArrayCountOffset`, which the port carries
+/// as the `size_prop` of every plural on-struct array. `0` for a class without
+/// one.
+fn struct_count_prop(cls: &ClassProps) -> usize {
+    (1..=cls.num_properties())
+        .map(|i| cls.prop(i))
+        .find(|pd| {
+            matches!(
+                pd.ptype,
+                PropType::DoubleArrayOnStruct
+                    | PropType::EnumArrayOnStruct
+                    | PropType::BusesOnStruct
+            )
+        })
+        .map_or(0, |pd| pd.size_prop)
+}
+
+/// What the sizing-property hoist ([`save_order`]) does to one object's line.
+#[derive(Default)]
+struct Hoist {
+    /// The order [`write_dss_object`] walks the object's set properties in, or
+    /// `None` when that is the set-order chain itself (the common case —
+    /// nothing of the line moves).
+    order: Option<Vec<usize>>,
+    /// The sizers also written at the head of the line, ahead of every member:
+    /// each one sizes a member the fence keeps ahead of it.
+    lead: Vec<usize>,
+}
+
+/// The **sizing-property hoist** (RF-D01-04): how [`write_dss_object`] writes
+/// an object's set properties ([`Hoist`]).
+///
+/// Every property is parsed against the **live** value of its sizer
+/// ([`parse_sizer`]), so a line that writes an array before its sizer reloads
+/// it against the default count — truncated, zero-filled, or rejected as a
+/// matrix of the wrong order. A set sizer `S` is hoisted when a property it
+/// sizes precedes it in the chain (a sizer re-set after its arrays), except a
+/// Line impedance matrix ahead of a reference (below):
+///
+/// 1. `S` moves to just behind its **anchor** — the last chain member ahead of
+///    it that is an object reference (`ObjectRef` / `ObjectRefArray`) or
+///    another sizing property of the class — or to the head of the line when
+///    there is none. A reference re-sets sizers on reload (r4133
+///    `PDElements/Line.pas:420` + `:436` `FetchLineCode`, `:2145` + `:2150`
+///    `FetchGeometryCode`, `:2000-2004` `FetchWireList`'s ratings,
+///    `General/LineGeometry.pas:575-580` the singular
+///    `wire`/`cncable`/`tscable` arm's ratings and `:383` the `wires` list
+///    arm's, `PDElements/Transformer.pas:2334` `FetchXfmrCode`'s
+///    `SetNumWindings`), so writing `S` ahead of it would let the reference
+///    clobber it; sizers never pass one another, so they keep their chain
+///    order. The anchor is a chain position: the `LineGeometry` override writes
+///    the singular `Wire`/`CNCable`/`TSCable` inside its conductor block
+///    (`elements/general/line_geometry/save.rs`), not at that position, so a
+///    `Seasons` anchored behind one of them still lands ahead of it.
+/// 2. Every property sized by `S` that is still ahead of it moves to directly
+///    behind `S`, keeping its chain order — which keeps the per-winding cursor
+///    tokens (`Wdg`, `Bus`, `kV`, …) in their relative order — crossing
+///    whatever lies between, a reference included: a Reactor matrix set ahead
+///    of its `RCurve=` must still reach its `Phases`, or the reload parses it at
+///    the default order.
+///
+/// The one exception is a member whose parse **clears** the references it would
+/// cross: a Line `RMatrix`/`XMatrix`/`CMatrix` drops the line code, geometry and
+/// spacing and resets the length units (r4133 `PDElements/Line.pas:691-692`).
+/// Written behind a `LineCode=` / `Geometry=` / `Spacing=` / conductor
+/// reference that rebuilt it, it would reload the line matrix-specified, the
+/// reference gone. Such a matrix never crosses a reference: set ahead of the
+/// last reference that precedes `S`, it stays where the deck put it and does
+/// not make `S` move, as in r4133's order. It still parses against `S`, which
+/// is written behind it, so on reload it would parse at the default order and
+/// a line of any other phase count would reject it
+/// (`Parser/ParserDel.pas:786-790`); r4133 does, and the rejected matrix arm
+/// still clears `SymComponentsModel` (`PDElements/Line.pas:691`), so the
+/// trailing phase re-set is refused too (`:673-682`). So `S` is also written
+/// at the head of the line ([`Hoist::lead`]), ahead of every member, and its
+/// chain token stays behind the reference that may re-set it. Nothing else
+/// moves, and no other token is added or dropped. Values are rendered live, so
+/// a property written behind a sizer it used to precede reloads the value the
+/// object holds now.
+fn save_order(cls: &ClassProps, data: &DssObjData) -> Hoist {
+    let chain: Vec<usize> = std::iter::successors(data.next_property_set(None), |&p| {
+        data.next_property_set(Some(p))
+    })
+    .collect();
+    // Fast path: most lines hold no sized property at all.
+    if chain.iter().all(|&p| parse_sizer(cls, p).is_none()) {
+        return Hoist::default();
+    }
+    let n = cls.num_properties();
+    let sizer_of: Vec<Option<usize>> = (0..=n)
+        .map(|p| if p == 0 { None } else { parse_sizer(cls, p) })
+        .collect();
+    let is_ref: Vec<bool> = (0..=n)
+        .map(|p| {
+            p != 0
+                && matches!(
+                    cls.prop(p).ptype,
+                    PropType::ObjectRef | PropType::ObjectRefArray
+                )
+        })
+        .collect();
+    let mut is_anchor = is_ref.clone();
+    for &s in sizer_of.iter().flatten() {
+        is_anchor[s] = true;
+    }
+    // The members whose parse clears the references they would cross (above).
+    let clears_refs = |p: usize| {
+        use crate::elements::pd::line::prop::{CMATRIX, RMATRIX, XMATRIX};
+        cls.class_name() == "Line" && matches!(p, RMATRIX | XMATRIX | CMATRIX)
+    };
+    let mut order = chain.clone();
+    let mut lead = Vec::new();
+    for &s in &chain {
+        let Some(pos) = order.iter().position(|&p| p == s) else {
+            return Hoist::default();
+        };
+        let fence = order[..pos]
+            .iter()
+            .rposition(|&p| is_ref[p])
+            .map_or(0, |r| r + 1);
+        // Whether the member at chain index `i` (< `pos`) moves behind `S`.
+        let moves = |i: usize, p: usize| sizer_of[p] == Some(s) && (i >= fence || !clears_refs(p));
+        // A member the fence keeps ahead of `S` still parses against it.
+        if order[..pos]
+            .iter()
+            .enumerate()
+            .any(|(i, &p)| sizer_of[p] == Some(s) && !moves(i, p))
+        {
+            lead.push(s);
+        }
+        if !order[..pos].iter().enumerate().any(|(i, &p)| moves(i, p)) {
+            continue;
+        }
+        order.remove(pos);
+        let at = order[..pos]
+            .iter()
+            .rposition(|&p| is_anchor[p])
+            .map_or(0, |a| a + 1);
+        let ahead: Vec<usize> = order[..at]
+            .iter()
+            .enumerate()
+            .filter(|&(i, &p)| moves(i, p))
+            .map(|(_, &p)| p)
+            .collect();
+        order.retain(|p| !ahead.contains(p));
+        let at = at - ahead.len();
+        order.insert(at, s);
+        order.splice(at + 1..at + 1, ahead);
+    }
+    Hoist {
+        order: (order != chain).then_some(order),
+        lead,
     }
 }
 
@@ -227,6 +411,22 @@ fn sizing_property(class_name: &str) -> Option<(usize, bool)> {
 /// [`save_write`] + ` ENABLED=NO` when the object is a **disabled** circuit
 /// element (`DSSObjType and ClassMask <> DSS_Object`), then mark the object
 /// `HasBeenSaved`.
+///
+/// **The sizing-property hoist** ([`save_order`]) is applied here, once, for the
+/// generic walk and every override alike: a sizer it leads with
+/// ([`Hoist::lead`]) is written right behind the object's name, and when it
+/// re-orders the line, the object's set-order chain is re-stamped in that order
+/// ([`DssObjData::set_as_next_seq`], each member once) for the duration of the
+/// `SaveWrite` dispatch and then restored exactly
+/// ([`DssObjData::copy_prp_sequence_from`] the snapshot, the counter slot
+/// included). It is dss_capi 0.14.5's own device — `TLoadShapeObj.SaveWrite`
+/// stamps `PrpSequence[npts] := -999` before calling `inherited`
+/// (`CAPI:General/LoadShape.pas:2376-2380`) — generalized to every sizer and
+/// made non-persistent: the chain a later `Save`, the JSON export or an
+/// `EndEdit` boundary test reads is the one the deck built.
+///
+/// [`DssObjData::set_as_next_seq`]: crate::obj::base::DssObjData::set_as_next_seq
+/// [`DssObjData::copy_prp_sequence_from`]: crate::obj::base::DssObjData::copy_prp_sequence_from
 pub fn write_dss_object(
     out: &mut String,
     cx: &SaveCtx,
@@ -240,6 +440,20 @@ pub fn write_dss_object(
     out.push('.');
     out.push_str(arena.obj(idx).data().name());
     out.push('"');
+    // The sizing-property hoist: the sizers it leads with, then the chain
+    // re-stamped in save order; restored right after the dispatch below.
+    let Hoist { order, lead } = save_order(cx.cls, arena.obj(idx).data());
+    for s in lead {
+        save_write_token(out, cx, arena.obj(idx), s);
+    }
+    let chain_snapshot = order.map(|order| {
+        let data = arena.obj_mut(idx).data_mut();
+        let snapshot = data.clone();
+        for p in order {
+            data.set_as_next_seq(p);
+        }
+        snapshot
+    });
     // Pascal models `SaveWrite` as a virtual method; `TTransfObj` overrides it
     // (the per-winding structure needs the array-property rewrite — see
     // `elements/pd/transformer/save.rs`). Every other class uses the generic
@@ -255,7 +469,7 @@ pub fn write_dss_object(
     // r4133 has none and drops every winding but the active one) plus DynEqPCE
     // (`CAPI:PCElements/DynEqPCE.pas:252-273`, the `UserDynInit` tail, appended
     // below because Pascal calls `inherited SaveWrite` first). 0.14.5's ninth,
-    // `TLoadShapeObj.SaveWrite`, is the `LoadShape` arm of [`sizing_property`].
+    // `TLoadShapeObj.SaveWrite`, is the `LoadShape` rule of [`save_write`].
     if let Some(xf) = arena.get::<crate::elements::pd::transformer::Transformer>(idx) {
         xf.save_write_body(out, cx);
     } else if let Some(at) = arena.get::<crate::elements::pd::auto_trans::AutoTrans>(idx) {
@@ -274,6 +488,12 @@ pub fn write_dss_object(
         xc.save_write_body(out, cx);
     } else {
         save_write(out, cx, arena.obj(idx));
+    }
+    if let Some(snapshot) = chain_snapshot {
+        arena
+            .obj_mut(idx)
+            .data_mut()
+            .copy_prp_sequence_from(&snapshot);
     }
     // Pascal `TDynEqPCE.SaveWrite` (`CAPI:PCElements/DynEqPCE.pas:252-273`):
     // `inherited SaveWrite(F)` and then every `UserDynInit` assignment — the
