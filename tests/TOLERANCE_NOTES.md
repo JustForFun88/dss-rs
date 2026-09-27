@@ -1374,7 +1374,7 @@ pinned oracle, an artifact, not an engine gap.
 
 ## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
 
-`harness::compare_pd_elements` (`crates/dss-core/tests/harness/mod.rs:11229`)
+`harness::compare_pd_elements` (`crates/dss-test-harness/src/harness/mod.rs:11229`)
 compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
 and takes no `Tolerances` argument at all. That is a derivation, not an
 optimism: on every gated case today each compared value is one of
@@ -1394,7 +1394,7 @@ optimism: on every gated case today each compared value is one of
 rounding to absorb and any difference at all is a bug, not a floor. The one
 divergence the corpus does measure is not numeric drift but an uninitialized read
 in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
-(`crates/dss-core/tests/harness/mod.rs:11043`) and pinned — an envelope over a
+(`crates/dss-test-harness/src/harness/mod.rs:11043`) and pinned — an envelope over a
 value that changes every process would not be a fact. See TESTING.md
 §"The `PDElements` walk".
 
@@ -2110,7 +2110,7 @@ EPRI-rev oracle **only after masking documented per-rev format deltas** — the
 sequence (order / hours / devices / actions) is never relaxed.
 
 The mask infra (created by **WP-U2.2**) is `EVENTLOG_MASKS` in
-`tests/harness/mod.rs`: a per-oracle-spec table of literal `(find → to)`
+`crates/dss-test-harness/src/harness/mod.rs`: a per-oracle-spec table of literal `(find → to)`
 substitutions applied to **both** the Rust and the oracle line before the
 skeleton comparison. A mask only folds a cosmetic text delta — it never drops or
 reorders a line (masks are applied *after* the length/order gate, and a
@@ -2262,7 +2262,7 @@ deliberately ported 0.15.x-added property (Rung-1: Line `EpsRMedium`/
 0.14.5 capture — it would break the count/order/name walk of nearly every
 default-oracle deck.
 
-`PROPS_015X` (in `tests/harness/mod.rs`) is a **named per-class allowlist** of
+`PROPS_015X` (in `crates/dss-test-harness/src/harness/mod.rs`) is a **named per-class allowlist** of
 those 0.15.x-only property names. In `compare_all_properties`, a Rust-side
 property whose `(class, name)` is in `PROPS_015X` **and** whose name is **absent**
 from the oracle capture's name list is excluded from the whole walk (count, order,
@@ -2379,7 +2379,7 @@ run whose capi artifacts are byte-identical). On the **r4133** channel the two
 engines legitimately *spell* the same value differently — FPC `Yes`/`No` vs
 eleven Delphi boolean spellings, `THashList`-lowercased names vs the as-declared
 case, `GetDSSArray`'s `[ 400]` vs r4133's per-class comma/paren forms — so a
-table of typed rows (`tests/harness/props_norm.rs`) re-spells the two sides
+table of typed rows (`crates/dss-test-harness/src/harness/props_norm.rs`) re-spells the two sides
 before the assert, per `(class, prop)`, by one of `BoolFold` / `CaseFold`
 (+trim) / `ArrayForm` / `EnumSynonym`.
 

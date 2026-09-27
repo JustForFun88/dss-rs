@@ -142,7 +142,7 @@ English upstream-ready reports for all confirmed r4133 bugs live in
   normal fixed-point on the `newton*` gates and no oracle rev reports it
   correctly (r3723/r4088/r4133 all carry the bug), so **both** lanes now exclude
   those two decks' powers/losses
-  (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional) and the signal
+  (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional) and the signal
   is carried by the in-engine dispatch tripwire
   `exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
   plus the expected-value pin `newton_powers_match_the_normal_algorithm` (Newton
@@ -161,7 +161,7 @@ English upstream-ready reports for all confirmed r4133 bugs live in
   `exec/command.rs::create_object_no_edit` inherits `Fundamental` for every
   element, the Monitor included; the one oracle-compared observable
   (`Monitor.BaseFreq` on the 50 Hz LVTestCase) is excluded in both lanes
-  (`tests/harness/mod.rs::LANE_SKIP_PROPS`) and pinned by
+  (`crates/dss-test-harness/src/harness/mod.rs::LANE_SKIP_PROPS`) and pinned by
   `monitor_basefreq_inherits_the_fundamental`. In a 60 Hz circuit the two
   readings coincide, so no golden byte and no Pst number moves.
 
@@ -196,7 +196,8 @@ must be green:
   discrete state still exact, iteration counts ±1, each deliberate divergence
   excluded field-by-field and pinned by its own expected-value test.
 
-The lane policy is implemented once in `crates/dss-core/tests/harness/lane.rs`;
+The lane policy is implemented once in `crates/dss-test-harness/src/harness/lane.rs`
+(the test-only harness crate `dss-test-harness`);
 `#[cfg(feature = "oracle-parity")]` may appear only inside the three `compat`
 modules and test code (gated by `oracle_parity_cfg_gate.rs`). Stage F
 introduces **no** tolerance anywhere — the default-lane report policy is
@@ -293,8 +294,9 @@ branch deletion never touches `.inputs`.
   protocol (no behavior change; the test suite is the contract). Unit tests stay
   inline as `#[cfg(test)]` modules, extracted to a sibling `tests.rs` only when the
   file is large; the `#[cfg(test)] mod tests;` declaration goes right after the
-  module doc. Integration tests are thin drivers over the golden harness
-  (`crates/dss-core/tests/harness/`).
+  module doc. Integration tests are thin drivers over the golden harness, the
+  test-only workspace crate `dss-test-harness` (`crates/dss-test-harness/src/harness/`), which each
+  driver imports with `use dss_test_harness::harness;`.
 - Pascal is the spec: port algorithms loop-for-loop where numerics matter, and cite
   the Pascal unit/identifier in the doc comment (`Pascal \`TcMatrix.Invert\``).
 - 0-based indexing everywhere except the ground-node convention (`NodeRef == 0` =
@@ -338,7 +340,7 @@ branch deletion never touches `.inputs`.
   residual to 0 *diverges* from the oracle = a real port bug. (Documented at the
   `dSpeed` pins in `exec/tests/dynamics.rs`.)
 - **Never loosen a test tolerance to make a failing oracle comparison pass — no
-  fudging.** The tier floors in `tests/harness` (`Tolerances`/`tol_for`, see
+  fudging.** The tier floors in `crates/dss-test-harness/src/harness` (`Tolerances`/`tol_for`, see
   `tests/TOLERANCE_NOTES.md`) are calibrated to *proven* f64/f32/faer-vs-KLU
   reality. A Rust↔oracle gap above its floor is a porting **bug**: find and fix the
   root cause (per the two rules above), never widen the band to hide it. Tolerances

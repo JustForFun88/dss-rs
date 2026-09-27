@@ -9,7 +9,7 @@
 //! Goldens are produced by `tools/golden/gen_feeders_controlsoff.py` with the pinned
 //! oracle (tools/golden/PIN.txt); regenerate only manually.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::path::PathBuf;
 

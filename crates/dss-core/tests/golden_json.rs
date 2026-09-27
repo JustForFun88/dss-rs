@@ -22,7 +22,7 @@ use dss_core::exec::Dss;
 use dss_core::report::export::json::JsonOpts;
 use serde::Deserialize;
 
-mod harness;
+use dss_test_harness::harness;
 use harness::lane;
 
 fn json_dir() -> PathBuf {
@@ -79,9 +79,9 @@ const CKT_MODEL_DEFAULT: &str = "\"Set CktModel=Positive\"";
 /// The AltDSS JSON export's deliberate divergences from the oracle capture, as
 /// an expected-value transform.
 ///
-/// The JSON goldens are byte-compared in *both* lanes (`tests/harness/lane.rs`:
-/// their writer renders numbers through its own `{:.16E}` helper, outside the
-/// F-FMT inventory).
+/// The JSON goldens are byte-compared in *both* lanes
+/// (`crates/dss-test-harness/src/harness/lane.rs`: their writer renders numbers through its
+/// own `{:.16E}` helper, outside the F-FMT inventory).
 ///
 /// **The `Set CktModel=` line — an oracle bug, rewritten in both lanes.**
 /// dss_capi renders `OrdinalToString(Integer(PositiveSequence))` from a

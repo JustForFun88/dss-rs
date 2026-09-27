@@ -36,7 +36,7 @@
 //! transport live in `dss_epri::guard`, and `dss-epri` is `#[cfg(windows)]`.
 #![cfg(windows)]
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

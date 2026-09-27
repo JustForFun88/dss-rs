@@ -107,8 +107,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use dss_core::exec::Dss;
 
 // RETRO_FIXES RF-I00-01: every deck compiles its own fresh scratch copy.
-#[path = "harness/scratch.rs"]
-mod scratch;
+// (RF-I00-04: the module is the harness crate's, not a `#[path]` include.)
+use dss_test_harness::harness::scratch;
 
 // ---------------------------------------------------------------------------
 // Deck plumbing

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-usermodel"]
+members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-test-harness", "crates/dss-usermodel"]
 
 [workspace.dependencies]
 # Stage F / F-FMT step 2 (DE_PASCALIZE Part IV.2): the default lane renders the
@@ -39,9 +39,11 @@ wasmi = { version = "=1.0.9", default-features = false, features = ["simd"] }
 # the live corpus — including yearly/8500-node/`large` decks — through the
 # engine, and at opt-level 0 a single yearly EPRI-feeder deck costs ~14 min
 # (~×10 vs optimized). Optimize the engine crates and all dependencies
-# (notably faer's sparse LU) while the test binaries themselves stay at opt 0
-# for fast incremental builds. Rust float semantics do not change with opt
-# level (no fast-math/reassociation), and the live gate's exact-iteration-count
+# (notably faer's sparse LU). A package override covers every target of its
+# package, test binaries included, so dss-core's integration tests build at
+# opt 3 too, and only members with no override (dss-cli, dss-metis) stay at
+# opt 0. Rust float semantics do not change with opt level (no
+# fast-math/reassociation), and the live gate's exact-iteration-count
 # contract across the whole corpus pins that empirically.
 #
 # Safety knobs are ORTHOGONAL to opt-level and pinned explicitly so a future
@@ -80,6 +82,17 @@ debug-assertions = true
 # with the engine crates so the `epri-worker` marshalling / ByteStream decode is
 # not opt-0 slow on the corpus sweep. Safety knobs kept at dev defaults.
 [profile.dev.package.dss-epri]
+opt-level = 3
+overflow-checks = true
+debug-assertions = true
+
+# The golden harness of the dss-core integration tests (RETRO_FIXES RF-I00-04).
+# While the drivers included it textually (`mod harness;`) it was compiled into
+# dss-core's own test targets, which the dss-core override above covers (a
+# package override applies to every target of the package, its test binaries
+# included), so its comparators always ran at opt-level 3 on the corpus sweep.
+# As its own crate it keeps that level. Safety knobs kept at dev defaults.
+[profile.dev.package.dss-test-harness]
 opt-level = 3
 overflow-checks = true
 debug-assertions = true

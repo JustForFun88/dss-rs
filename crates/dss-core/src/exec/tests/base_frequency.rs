@@ -108,7 +108,7 @@ fn all_elements_inherit_the_50hz_base_frequency() {
 ///
 /// Both lanes now inherit. The single oracle-compared observable that moves is
 /// `Monitor.BaseFreq` on the one 50 Hz gated deck (`LVTestCase`), excluded in
-/// both lanes by `tests/harness/mod.rs::LANE_SKIP_PROPS` and pinned here; no
+/// both lanes by `crates/dss-test-harness/src/harness/mod.rs::LANE_SKIP_PROPS` and pinned here; no
 /// golden byte and no Pst number moves, because every golden and every gated
 /// mode-4 deck runs at 60 Hz, where the two readings coincide.
 #[test]
