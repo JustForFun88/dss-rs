@@ -34,7 +34,13 @@ fn check_bus_reference(elem: &dyn CktElement, bus_idx: usize) -> Option<usize> {
 
 /// Build the `Show busflow` text. `bus_idx` is the 0-based bus index (already
 /// resolved; the dispatcher raises #219 for an unknown bus), `bus_name` the raw
-/// name, `opt` = 0 kVA / 1 MVA, `code` = 0 seq / 1 element.
+/// name, `opt` = 0 kVA / 1 MVA, `code` = 0 seq / 1 element. Each element is read
+/// through the cache-aware `compute_iterminal`, where r4133 calls an
+/// unconditional scratch-buffer `GetCurrents` (`Common/ShowResults.pas:1332`,
+/// `:1352`, `:1369`; `WriteTerminalPowerSeq` `:1159`, `WriteTerminalPower`
+/// `:1235`) — the same current after a solve, Newton included since RF-D00-01
+/// (why: the call site in `report::export::currents`; pinned by
+/// `exec::tests::newton::newton_reports_read_like_the_normal_algorithm`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn show_bus_powers(
     classes: &mut [DssClass],

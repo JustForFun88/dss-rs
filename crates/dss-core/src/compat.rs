@@ -42,7 +42,7 @@
 //! | Export SeqCurrents `Iresidual` | *torn down* (GOLDEN_REBASE G2.2a) — `report::export::seq_currents` sums the row's own terminal in both lanes | — |
 //! | multi-meter `Bus_Int_Duration` | *torn down* (GOLDEN_REBASE G2.2a) — `solution::meters::reliability` walks only its own zone in both lanes | — |
 //! | Monitor `BaseFrequency` 60.0 (CLAUDE.md bug 6) | *torn down* (GOLDEN_REBASE G2.2b) — `exec::command::create_object_no_edit` inherits `Fundamental` for every element, Monitor included, in both lanes | — |
-//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5) | *torn down* (GOLDEN_REBASE G2.3) — `exec::view::snapshot_elements` recomputes `Iterminal` at the converged `NodeV` for Powers, Losses and Currents alike, in both lanes | — |
+//! | Newton stale `Iterminal` in Powers/Losses (CLAUDE.md bug 5) | *torn down* — GOLDEN_REBASE G2.3 for the gate's reader (`exec::view::snapshot_elements`), `RETRO_FIXES_PLAN.md` RF-D00-01 for every other one: `solution::solution::power_flow::drop_stale_newton_iterminal_stamps` drops the stamps `do_newton_solution` formed at `NodeV_{n-1}`, so every cache-aware read (Export, Show, meters, monitors) recomputes at the converged `NodeV`, in both lanes | — |
 //! | report text rendering — number formats (`%g`, script fixed-point, JSON float + line break) | the *Report text rendering* section below | **yes** (F.4a) |
 //! | report text rendering — `Show` device-name column width | *torn down* (GOLDEN_REBASE G2.6) — [`crate::report::show::device_name_width`] sizes the column from its own content in both lanes; the reproduced `= 0` was a dss_capi-only **defect** (a shadowing `TDSSCircuit` field), not a rendering convention | — |
 //! | single-site upstream quirks (`PORTING_PLAN` §4.1 rule 4) | the *Single-site upstream quirks* section below | **partly** (F.3k, F.3l…, F.3w); the section shrinks row by row as `GOLDEN_REBASE_PLAN.md` WP-G2 tears them down — CapControl `Like=` was G2.1b, the `Export SeqCurrents` non-positive rating G2.1c, the short-line merge's parent-shunt scan G2.1d, the StorageController idle guard G2.1e, the Storage `/m` export prefix G2.1f, the CIM wye `grounded` flag G2.1g, the Line height-unit re-read G2.1h, the Isource `Bus2` latch G2.2b, the two CIM attribute names and the Fault `Dump` `MinAmps` reprint G2.2c, the two Relay event-log labels G2.2d, and the unflushed monitor-channel pad G2.4 — that last one mostly *reclassified* rather than fixed: the `[0.0]` it reproduced comes from the oracle clients' stream decoder, not from an engine (the engines' own answer there, `SampleCount` fabricated zeros, is a separate upstream defect this port declines, unobservable through either client) |
@@ -56,14 +56,16 @@
 //! a row per teardown, so an ordinal goes stale on its own. And CLAUDE.md's
 //! Newton bullet named no Stage F deferral until F.3j wrote one; the earlier
 //! claim that both were deferred "by name" overreached.) With them the
-//! named-bug set is closed, and since `GOLDEN_REBASE_PLAN.md` G2.3 it is closed
-//! in the strong sense — **no** CLAUDE.md upstream bug is reproduced in either
-//! lane. Of the six, two were never reproduced at all (VSConverter's
-//! self-aliased `MVMult`, harmonics `Powers`-after-`Currents`) — as is the
-//! out-of-range half of `Bus_Int_Duration`. The four that *were* reproduced are
-//! all gone: G2.2a tore down `Iresidual` and the in-range `Bus_Int_Duration`
-//! cross-zone overwrite, G2.2b tore down Monitor `BaseFrequency`, and G2.3 tore
-//! down the Newton stale `Iterminal`.
+//! named-bug set is closed, and since `RETRO_FIXES_PLAN.md` RF-D00-01 it is
+//! closed in the strong sense — **no** CLAUDE.md upstream bug is reproduced in
+//! either lane, on any reader. Of the six, two were never reproduced at all
+//! (VSConverter's self-aliased `MVMult`, harmonics `Powers`-after-`Currents`) —
+//! as is the out-of-range half of `Bus_Int_Duration`. The four that *were*
+//! reproduced are all gone: G2.2a tore down `Iresidual` and the in-range
+//! `Bus_Int_Duration` cross-zone overwrite, G2.2b tore down Monitor
+//! `BaseFrequency`, and G2.3 tore down the Newton stale `Iterminal` on the
+//! gate's snapshot reader only — every other cache-aware reader kept it until
+//! RF-D00-01 moved the repair into the solver.
 //!
 //! The last row is likewise not a new *kernel*. IV.2's table enumerates the
 //! shared arithmetic kernels — the primitives called from hundreds of sites —
@@ -539,27 +541,40 @@ pub fn etk_invert_partial_pivot_impl(a: &mut [f64], norder: usize) -> Result<(),
 /// shared implementation** for the same measured reasons (F.3i).
 pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
-// The **Newton stale `Iterminal`** row is gone (`GOLDEN_REBASE_PLAN.md` G2.3).
+// The **Newton stale `Iterminal`** row is gone (`GOLDEN_REBASE_PLAN.md` G2.3 on
+// the gate's reader, `RETRO_FIXES_PLAN.md` RF-D00-01 on every other one).
 // `DoNewtonSolution`'s final `SumAllCurrents` stamps every element's
 // `Iterminal` from the *pre-final* voltage guess `NodeV_{n-1}` and marks it
-// solved for the current `SolutionCount` (`Common/Solution.pas:944-948`, the
-// `NodeV -= dV` update at `:965-968`; r4133
-// `Version8/Source/Common/Solution.pas` is the same order), so upstream's
-// cache-aware `Get_Powers`/`Get_Losses` (`CktElement.pas:542-550`) return a
-// one-Newton-step-stale current while `CktElement.Currents` recomputes fresh at
-// `NodeV_n` — one read of one element reporting `S != V·conj(I)`, the identity
-// `Powers` is *defined* by. Both lanes now recompute all three reads at the
-// converged `NodeV` (`exec::view::snapshot_elements`), which is what every
-// other algorithm already got: after a fixed-point / direct / harmonic solve
-// the cache is invalid at read time, so nothing but a Newton solve moves.
+// solved for the current `SolutionCount` (r4133 `Common/Solution.pas:1199`,
+// the sum at `:1203`, the `NodeV -= dV` update at `:1221-1226`; capi 0.14.5
+// `src/Common/Solution.pas:944-948` / `:965-968`, same order), so upstream's
+// cache-aware `Get_Powers`/`Get_Losses` (r4133 `Common/CktElement.pas:632-640`
+// `ComputeIterminal`, called from `Get_Power` `:666` and `Get_Losses` `:707`;
+// capi `CktElement.pas:542-550`) return a one-Newton-step-stale current while
+// `CktElement.Currents` recomputes fresh at `NodeV_n` — one read of one element
+// reporting `S != V·conj(I)`, the identity `Powers` is *defined* by. G2.3
+// recomputed only the gate's snapshot reader
+// (`exec::view::snapshot_elements`); every other cache-aware reader (Export
+// Powers/Losses/Summary, Show Powers/Currents, meters, monitors) kept the stale
+// read until RF-D00-01 moved the repair to its source: `do_newton_solution`
+// drops, on exit, every `Yprim·V` stamp its last `SumAllCurrents` formed
+// (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`), so
+// the next cache-aware read recomputes at the converged `NodeV`, while a PC
+// element holding its own model state (`ITerminalUpdated`) keeps it exactly as
+// the normal algorithm leaves it. That is the cache every other algorithm
+// already leaves: after a fixed-point / direct / harmonic solve no `Yprim·V`
+// stamp is valid at read time, so nothing but a Newton solve moves.
 //
 // Its observable is the two gated `modes/newton/` decks' element
 // powers/losses, which no oracle channel reports correctly (the quirk is in
 // v9.8/r3723, v10.2/r4088 and v11.0/r4133 alike, fingerprint 0.478 kVA, checked
 // 2026-07-08): `harness::lane::LANE_SKIP_ELEM_POWERS` now excludes those two
 // channels in **both** lanes, and `exec::tests::newton` carries the replacement
-// — the in-engine dispatch tripwire plus the expected-value pin that Newton's
-// powers equal the normal algorithm's. See
+// — the in-engine dispatch tripwire (`SolutionCount` advancing once per Newton
+// iteration), the pin that a Newton solve leaves the `Iterminal` cache the
+// normal algorithm leaves, the expected-value pins that Newton's powers equal
+// the normal algorithm's, and the report-layer pins (Export and Show under
+// Newton print what they print under the normal algorithm). See
 // `investigations/issue-05-newton-stale-iterminal.md`.
 
 // ---------------------------------------------------------------------------

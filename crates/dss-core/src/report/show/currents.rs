@@ -19,9 +19,14 @@ use crate::support::complexutil::cdang;
 use crate::support::mathutil::SymComp;
 
 /// Build the `Show Currents` (code 0) text (Pascal `ShowCurrents` case 0). Walks
-/// Sources → PDElements → PCElements → Faults calling the mutating `GetCurrents`
-/// (`compute_iterminal`). `do_ratings` (PD only) enables the `%Normal`/
-/// `%Emergency` columns.
+/// Sources → PDElements → PCElements → Faults reading each element through the
+/// cache-aware `compute_iterminal`, where r4133 calls an unconditional
+/// scratch-buffer `GetCurrents` (`Common/ShowResults.pas:572`, `:594`, `:616`,
+/// `:639`; the code-1 form's `WriteTerminalCurrents`, `:492`) — the same current
+/// after a solve, Newton included since RF-D00-01 (why: the call site in
+/// `report::export::currents`; pinned by
+/// `exec::tests::newton::newton_show_currents_match_the_normal_algorithm`).
+/// `do_ratings` (PD only) enables the `%Normal`/`%Emergency` columns.
 pub(crate) fn show_currents(
     classes: &mut [DssClass],
     ckt: &Circuit,

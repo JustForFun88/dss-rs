@@ -1710,9 +1710,9 @@ pub fn assert_power_close(
 /// Which sub-channels of an element capture [`compare_element_channels`] checks.
 ///
 /// Exists for the lane policy: a *deliberate* divergence (the engine's
-/// post-Newton `Powers`/`Losses`, recomputed at the converged `NodeV` where
-/// every oracle channel reports the one-step-stale current — CLAUDE.md upstream
-/// bug 5, torn down in both lanes by `GOLDEN_REBASE_PLAN.md` G2.3) is excluded
+/// post-Newton `Powers`/`Losses`, read at the converged `NodeV` where every
+/// oracle channel reports the one-step-stale current — CLAUDE.md upstream bug
+/// 5, torn down in both lanes by G2.3 and, for every reader, RF-D00-01) is excluded
 /// **field-by-field**, never case-by-case — the element name set, terminal
 /// currents, node voltages, discrete state and iteration count of such a case
 /// stay fully oracle-gated.
@@ -1775,7 +1775,7 @@ impl ElemChannels {
         total_powers: true,
     };
     /// Currents only: the `S = V·conj(I)` channels are a deliberate divergence
-    /// in this lane and are pinned by their own expected-value test instead.
+    /// in both lanes and are pinned by their own expected-value tests instead.
     ///
     /// The three G1.3a derived channels stay **on** here, deliberately: the
     /// Newton staleness lives in the cache-aware read path

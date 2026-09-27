@@ -1074,7 +1074,9 @@ const DECLARED_NOT_WIRED: [&str; 2] = ["ITERATIVE_REFINEMENT", "PARALLEL_FACTORI
 /// the same function — a precision row, alive until G4.1 — stayed behind it.
 /// **13** after G2.3 tore down `POWERS_REUSE_STALE_NEWTON_ITERMINAL`, the last
 /// of the six CLAUDE.md upstream bugs still reproduced anywhere: both lanes
-/// recompute `Iterminal` at the converged `NodeV`, and the two `modes/newton/`
+/// recompute `Iterminal` at the converged `NodeV` — G2.3 on the gate's snapshot
+/// reader only, `RETRO_FIXES_PLAN.md` RF-D00-01 on every other reader (the
+/// solver drops the stale stamps) — and the two `modes/newton/`
 /// decks' powers/losses — which no oracle channel reports that way — became an
 /// unconditional harness exclusion instead of a lane split. **12** after G2.4
 /// *reclassified* `MONITOR_CHANNEL_PADS_THE_UNFLUSHED_STREAM`: the `[0.0]` an
@@ -2272,22 +2274,31 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
             "do_pending_reset_only_resets_opcount_d4",
         )),
     ),
-    // G2.3. `DoNewtonSolution` increments `SolutionCount` *before* its
-    // per-iteration `SumAllCurrents` ("SumAllCurrents Uses ITerminal So must
-    // force a recalc", `.inputs/dss_capi/src/Common/Solution.pas:944`, the sum
-    // at `:947-948`), so every element leaves that loop with `Iterminal`
-    // stamped from the pre-final guess `NodeV_{n-1}` and *marked solved for the
-    // live `SolutionCount`* (`CktElement.pas:542-550`, the mark at `:548`);
-    // only then does `NodeV -= dV` run (`:965-968`). A post-solve
+    // G2.3, finished by `RETRO_FIXES_PLAN.md` RF-D00-01. `DoNewtonSolution`
+    // increments `SolutionCount` *before* its per-iteration `SumAllCurrents`
+    // ("SumAllCurrents Uses ITerminal So must force a recalc", r4133
+    // `Common/Solution.pas:1199`, the sum at `:1203`; capi
+    // `.inputs/dss_capi/src/Common/Solution.pas:944`, the sum at `:947-948`), so
+    // every element leaves that loop with `Iterminal` stamped from the pre-final
+    // guess `NodeV_{n-1}` and *marked solved for the live `SolutionCount`*
+    // (r4133 `Common/CktElement.pas:632-640`; capi `CktElement.pas:542-550`, the
+    // mark at `:548`); only then does `NodeV -= dV` run (r4133 `:1221-1226`,
+    // capi `:965-968`). A post-solve
     // `Get_Powers`/`Get_Losses` therefore takes the cache-aware path, finds the
     // mark fresh, and multiplies the converged `NodeV_n` by the conjugate of
     // the *previous* step's current, while `CktElement.Currents` recomputes at
     // `NodeV_n` — one element, one read, `S != V·conj(I)`, which is the
     // identity `Powers` is defined by. Not escapable by bumping the oracle: the
     // EPRI channel reproduces it in v9.8 (r3723), v10.2 (r4088) and v11.0
-    // (r4133) alike, all fingerprint 0.478 kVA (checked 2026-07-08). Both lanes
-    // now call `refresh_iterminal` once and feed Powers, Losses and Currents
-    // from that one current. Its only oracle-compared observable is the two
+    // (r4133) alike, all fingerprint 0.478 kVA (checked 2026-07-08). G2.3 made
+    // both lanes call `refresh_iterminal` once in `snapshot_elements` and feed
+    // Powers, Losses and Currents from that one current — the gate's reader
+    // only: every other cache-aware reader (Export Powers/Losses/Summary, Show
+    // Powers/Currents, meters, monitors) kept the stale read until RF-D00-01
+    // moved the repair into the solver, where `do_newton_solution` drops the
+    // `Yprim·V` stamps of its last `SumAllCurrents` on exit
+    // (`solution::solution::power_flow::drop_stale_newton_iterminal_stamps`).
+    // Its only oracle-compared observable is the two
     // gated `modes/newton/` decks' element powers/losses (4.86e-4 and 2.46e-3
     // kVA on `Vsource.source` conductor 0, ~60x and ~35x their tier floors),
     // whose `LANE_SKIP_ELEM_POWERS` exclusion was default-lane-only and is now
@@ -2310,10 +2321,20 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         // candidate slice matches a reverted tree too. What holds it instead is
         // the row's now-unconditional pin (Newton powers == the normal
         // algorithm's, asserted in both lanes, ten orders of magnitude away from
-        // the stale reading) together with the tripwire next to it, which
-        // asserts in both lanes that a Newton solve really does leave that stale
-        // cache behind — so a re-split engine fails the pin whichever way its
-        // branch is written.
+        // the stale reading) together with two siblings in the same module since
+        // RF-D00-01: the dispatch tripwire
+        // `newton_dispatch_advances_the_solution_count_once_per_iteration` (a
+        // Newton solve advances `SolutionCount` once per iteration, 3 vs 1 on
+        // the pin deck, so the pin really ran Newton) and the cache pin
+        // `newton_leaves_the_iterminal_cache_the_normal_algorithm_leaves`
+        // (after a Newton solve every element's `Iterminal` cache is the one
+        // the normal algorithm leaves; red at 7.378e-2 A on `Line.l1` with the
+        // solver's stamp drop removed) — so a re-split that brings the stale
+        // read back, at the snapshot or at the solver, fails a pin in the lane
+        // it is split into. The row's pin alone cannot see the solver (it reads
+        // through that `refresh_iterminal`), so every Newton pin and the solver
+        // lines they guard are registered, with the module's exact test count,
+        // by `every_rf_d00_01_newton_pin_exists_and_the_solver_repair_is_wired`.
         Evidence::Exclusion(
             "crates/dss-test-harness/src/harness/lane.rs",
             &["\n    if LANE_SKIP_ELEM_POWERS.contains(&label) {"],
@@ -5926,6 +5947,104 @@ fn every_pin_the_g13c_record_names_exists_and_is_cited() {
     assert!(
         bad.is_empty(),
         "G1.3c pin registry is stale (rename/delete the pin AND its prose in one commit):\n  {}",
+        bad.join("\n  ")
+    );
+}
+
+/// `RETRO_FIXES_PLAN.md` RF-D00-01 (its settlement, audit AT-1): every pin that
+/// holds the solver-level repair of CLAUDE.md upstream bug 5 exists once, the
+/// list is the whole of `exec::tests::newton`, and the solver lines those pins
+/// guard sit in the functions that own them.
+///
+/// The `POWERS_REUSE_STALE_NEWTON_ITERMINAL` row of [`TORN_DOWN_ROWS`] carries a
+/// single pin, `newton_powers_match_the_normal_algorithm`, which reads through
+/// `snapshot_elements`' own `refresh_iterminal` and so cannot see the solver:
+/// with `drop_stale_newton_iterminal_stamps` removed it stays green while the
+/// cache census, the AutoAdd pin and the seven report pins red (the audit's
+/// mutation). Nothing executable named those, so deleting or renaming one, or
+/// the solver call itself, left every rail green. Here the module's `#[test]`
+/// count is EXACT (a new Newton pin is registered in the same commit), and the
+/// three solver lines — the stamp drop and the AutoAdd aux currents inside
+/// `do_newton_solution`, the direct-shortcut override inside `sum_all_currents`
+/// — are needled inside those function bodies.
+#[test]
+fn every_rf_d00_01_newton_pin_exists_and_the_solver_repair_is_wired() {
+    const NEWTON: &str = "crates/dss-core/src/exec/tests/newton.rs";
+    const SOLVER: &str = "crates/dss-core/src/solution/solution/power_flow.rs";
+    const PINS: &[&str] = &[
+        "newton_powers_match_the_normal_algorithm",
+        "newton_total_powers_match_the_normal_algorithm",
+        "newton_dispatch_advances_the_solution_count_once_per_iteration",
+        "newton_leaves_the_iterminal_cache_the_normal_algorithm_leaves",
+        "newton_after_a_direct_solve_matches_a_fresh_newton_solve",
+        "newton_iteration_limit_exit_leaves_the_iterminal_cache_the_normal_algorithm_leaves",
+        "newton_leaves_the_normal_iterminal_cache_on_every_element_class",
+        "newton_autoadd_scores_the_trial_generator_like_the_normal_algorithm",
+        "newton_export_powers_match_the_normal_algorithm",
+        "newton_export_losses_match_the_normal_algorithm",
+        "newton_export_summary_matches_the_normal_algorithm",
+        "newton_show_powers_match_the_normal_algorithm",
+        "newton_export_currents_match_the_normal_algorithm",
+        "newton_show_currents_match_the_normal_algorithm",
+        "newton_reports_read_like_the_normal_algorithm",
+    ];
+    // `(the function's signature prefix, a line its body must hold exactly once)`.
+    const SOLVER_LINES: &[(&str, &str)] = &[
+        (
+            "fn do_newton_solution(",
+            "drop_stale_newton_iterminal_stamps(ckt, env);",
+        ),
+        (
+            "fn do_newton_solution(",
+            "add_in_aux_currents(ckt, SolveAlgorithm::Newton);",
+        ),
+        (
+            "fn sum_all_currents(",
+            "sys.last_solution_was_direct = false;",
+        ),
+    ];
+    let root = repo_root();
+    let read = |file: &str| {
+        std::fs::read_to_string(root.join(file))
+            .unwrap_or_else(|e| panic!("read {file}: {e}"))
+            .replace("\r\n", "\n")
+    };
+    let mut bad = Vec::new();
+    let newton = read(NEWTON);
+    for pin in PINS {
+        let decl = format!("#[test]\nfn {pin}(");
+        let found = newton.matches(&decl).count();
+        if found != 1 {
+            bad.push(format!(
+                "{pin}: expected exactly one `#[test] fn {pin}(` in {NEWTON}, found {found}"
+            ));
+        }
+    }
+    let tests = newton.matches("#[test]").count();
+    if tests != PINS.len() {
+        bad.push(format!(
+            "{NEWTON} carries {tests} tests against {} registered here — register (or \
+             drop) the Newton pin in the same commit",
+            PINS.len()
+        ));
+    }
+    let solver = read(SOLVER);
+    for (func, line) in SOLVER_LINES {
+        let body = solver
+            .split_once(func)
+            .map(|(_, rest)| rest.split("\n}\n").next().unwrap_or(rest));
+        match body {
+            None => bad.push(format!("`{func}` is gone from {SOLVER}")),
+            Some(body) if body.matches(line).count() != 1 => bad.push(format!(
+                "`{func}` in {SOLVER} holds `{line}` {} times, expected exactly once",
+                body.matches(line).count()
+            )),
+            Some(_) => {}
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "RF-D00-01 Newton pin registry is stale:\n  {}",
         bad.join("\n  ")
     );
 }

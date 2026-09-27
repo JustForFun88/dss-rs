@@ -104,13 +104,13 @@ pub const ITER_SLACK: i32 = 1;
 /// lane oracle-compares — the drift model's "deliberate divergences … excluded
 /// field-by-field" row, and the only such exclusion in the suite.
 ///
-/// CLAUDE.md upstream bug 5, torn down in both lanes by
-/// `GOLDEN_REBASE_PLAN.md` G2.3: `DoNewtonSolution` leaves `Iterminal` stamped
-/// from the pre-final voltage guess, so upstream's cache-aware
-/// `Get_Powers`/`Get_Losses` report a one-step-stale current after
-/// `Set algorithm=Newton` while `Currents` recomputes fresh — one read of one
-/// element with `S != V·conj(I)`. The engine recomputes all three reads at the
-/// converged `NodeV`, which is deliberately *not* what any oracle reports
+/// CLAUDE.md upstream bug 5, torn down in both lanes (`GOLDEN_REBASE_PLAN.md`
+/// G2.3 on this gate's reader, `RETRO_FIXES_PLAN.md` RF-D00-01 on every one):
+/// `DoNewtonSolution` leaves `Iterminal` stamped from the pre-final voltage
+/// guess, so upstream's cache-aware `Get_Powers`/`Get_Losses` report a stale
+/// current after `Set algorithm=Newton` while `Currents` recomputes fresh. The
+/// solver drops those stamps on exit (`drop_stale_newton_iterminal_stamps`), so
+/// every read lands at the converged `NodeV` — deliberately *not* what any oracle reports
 /// (measured against `capi_v0145`: 4.86e-4 kVA on `newton.dss`, 2.46e-3 kVA on
 /// `newton_feeder.dss`, both on `Vsource.source` conductor 0 — ~60× and ~35×
 /// their tiers' floors, so this can never be mistaken for drift). Bumping the
