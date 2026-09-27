@@ -97,7 +97,8 @@ impl From<RsKind> for GateKind {
 /// The `.rs` files a lib unit test outside the RAILS register reads as text,
 /// so a comment-only edit of one can red a test only the full gate runs. The
 /// list is measured and railed by `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
-/// (RF-I00-05 part 2). Today one file: dss-core's
+/// (`gate_rails_are_exactly_the_measured_readers`, RF-I00-05 part 2). Today one
+/// file: dss-core's
 /// `exec::tests::in_show_results::the_export_bracket_has_no_early_exit_between_its_two_statements`
 /// reads `do_export_cmd`'s body, comments included.
 pub const ALWAYS_CODE: &[&str] = &["crates/dss-core/src/exec/report.rs"];
