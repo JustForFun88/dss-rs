@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-test-harness", "crates/dss-usermodel"]
+members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-test-harness", "crates/dss-usermodel", "tools/gate-kind"]
 
 [workspace.dependencies]
 # Stage F / F-FMT step 2 (DE_PASCALIZE Part IV.2): the default lane renders the

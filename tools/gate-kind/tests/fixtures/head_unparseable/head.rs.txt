@@ -1,0 +1,4 @@
+pub fn fine() {
+    // a comment
+}
+}

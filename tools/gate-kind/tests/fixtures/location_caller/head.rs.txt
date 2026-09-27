@@ -1,0 +1,5 @@
+#[track_caller]
+pub fn here() -> u32 {
+    // where the caller stands, reworded
+    std::panic::Location::caller().line()
+}

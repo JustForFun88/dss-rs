@@ -1,0 +1,4 @@
+# The fixture pairs are compared byte for byte: `crlf_head` needs its LF base
+# and CRLF head exactly as written, on every checkout (core.autocrlf is on in
+# the main checkout, off in CI). No EOL conversion, ever.
+* -text
