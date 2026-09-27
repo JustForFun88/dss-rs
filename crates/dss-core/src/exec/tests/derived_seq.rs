@@ -43,8 +43,8 @@ use crate::exec::{Dss, ElementSnapshot, SeqArm};
 use crate::support::mathutil::SymComp;
 use num_complex::Complex64;
 
-/// The `feeder` tolerance tier — `tests/harness/mod.rs::tol_for` (`"feeder"`),
-/// the tier IEEE13 is gated at, restated here because a `src` unit test cannot
+/// The `feeder` tolerance tier — `crates/dss-test-harness/src/harness/mod.rs::tol_for`
+/// (`"feeder"`), the tier IEEE13 is gated at, restated here because a `src` unit test cannot
 /// reach the integration harness. Every band below is that tier's *derived*
 /// image (`tests/TOLERANCE_NOTES.md`), never a fresh number.
 const FEEDER_I_ABS: f64 = 1e-5;

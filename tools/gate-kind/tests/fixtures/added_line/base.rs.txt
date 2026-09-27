@@ -1,0 +1,2 @@
+pub const A: u8 = 1;
+pub const B: u8 = 2;

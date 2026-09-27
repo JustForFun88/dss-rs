@@ -20,7 +20,7 @@
 //! goldens — no FPC, no native DLL, no wasm toolchain. Runs in every
 //! `cargo test`.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::BTreeMap;
 

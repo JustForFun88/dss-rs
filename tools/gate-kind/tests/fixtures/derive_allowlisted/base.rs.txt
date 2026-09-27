@@ -1,0 +1,16 @@
+#[derive(Debug, Clone, Default, serde::Serialize, thiserror::Error)]
+#[serde(rename_all = "lowercase")]
+#[rustfmt::skip]
+pub struct Row {
+    /// the name
+    #[serde(default)]
+    pub name: String,
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[should_panic(expected = "boom")]
+    fn boom() {
+        panic!("boom");
+    }
+}

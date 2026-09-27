@@ -1,0 +1,5 @@
+#[derive(Debug, Parser)]
+pub struct Args {
+    /// the input deck
+    pub deck: String,
+}
