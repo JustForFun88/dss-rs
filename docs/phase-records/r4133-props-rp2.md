@@ -191,7 +191,7 @@
        claimed, on `invcontrol.monbus`/`monbusesvbase`. Added by the audit
        settlement below (finding 8) — a row on `RP22_S6` is not proof RP2.1 left
        the pair alone.
-  - **Audit settlement (2026-08-23, one commit on top of `e96d9248`).** Two
+  - **Audit settlement (2026-08-23, one commit on top of `bd449c0a`).** Two
     audits (code, tests) raised **9** findings. **Raw count 9** = 5 (audit-code,
     all minor) + 4 (audit-tests: 1 major + 3 minor), i.e. 1 major + 8 minor.
     **Deduped count 9** — the two auditors overlap on exactly one substance, the
@@ -255,7 +255,7 @@
        against the pre-RP2.1 tree, where the five r4133 extracts move by exactly
        finding 3's pair. **Fixed:** the bullet now states both baselines
        separately and says which five files move and why; it also records that
-       the commit body of `e96d9248` carries the same imprecision and is
+       the commit body of `bd449c0a` carries the same imprecision and is
        superseded (history is not rewritten — the audited range stays intact).
     5. *(minor, code)* **The replay's evidence base is one spelling behind the
        live population, with no guard.** `autotrans.conn | 'series' | 'Series'`
@@ -575,7 +575,7 @@
     predicate) and "routed with a citation", with every routing row live, citing
     a `.pas:` line, and owning one of the two admissible outcomes. **The split,
     stated over the whole 27-pair input** (the audit settlement's correction —
-    this bullet and the commit subject `ab2bf041` quoted only the closed list's
+    this bullet and the commit subject `b137e397` quoted only the closed list's
     own 6/18 without saying so): `RP22_ROUTING` holds **20** rows (14 → RP2.3,
     6 → RP3.5+) and **7** pairs are claimed outright, i.e. 24 closed-list pairs
     = 18 routed + 6 claimed, plus the 3 `RP22_BEYOND_THE_CLOSED_LIST` pairs

@@ -310,7 +310,7 @@ mod tests {
         );
     }
 
-    /// Measured 2026-09-26 on `e5f48d53` (RF-I00-01 part 1, `part_1.md`).
+    /// Measured 2026-09-26 on `b4160348` (RF-I00-01 part 1, `part_1.md`).
     const EXTERNAL_CLOSURE_ROOTS: &[(&str, usize)] = &[
         ("electricdss-tst", 1),
         ("electricdss-tst/version8/distrib", 39),

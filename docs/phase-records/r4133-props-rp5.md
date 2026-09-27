@@ -104,9 +104,9 @@ the one edit tightened a description.
 
 **The two doc-comment fixes.** `NORM_ROWS` has been **168** since RP4.1
 (`props_norm.rs:742`), but two doc comments still called the table "the 157
-rows" — the **RP2.1**-era count. Both sentences entered at `1b93b91e` (RP2.1
+rows" — the **RP2.1**-era count. Both sentences entered at `6bd2cdd9` (RP2.1
 audit settlement) and one of them was *rewritten while still saying 157* by
-`59e521e5`, the very commit that set `NORM_ROWS = 168`; `ab2bf041` (RP2.2) is
+`c82d4fdc`, the very commit that set `NORM_ROWS = 168`; `b137e397` (RP2.2) is
 the commit that moved the table's OTHER "157 rows" mentions to 161 and missed
 these two. Both are the liveness guard's own prose, i.e. exactly the claim the new `TESTING.md` section cites, so
 they were corrected (`props_norm.rs:1429`, `:4359`) rather than cited stale. Doc
@@ -121,7 +121,7 @@ reporting `Checking dss-core` before `Finished` (so neither replayed a warm
 fingerprint) and each emitting zero diagnostics; both test lanes **0**. **4 497
 passed / 0 failed / 5 ignored / 0 filtered out** in each lane over 74
 result-reporting binaries — identical binary for binary, and a delta of exactly
-**0** against the RP3.10-settled baseline at `45f2ece3`, which is the predicted
+**0** against the RP3.10-settled baseline at `c3270f89`, which is the predicted
 outcome for a docs-only diff. `corpus_gate` ran whole (140 tests, 142.75 s
 default / 139.53 s parity): `corpus_gate_all_cases_match_engines` and
 `corpus_gate_props_census` **ok** in both lanes, all four ledger guards green,
@@ -146,17 +146,17 @@ CLAUDE.md:196-198's "Stage F introduces **no** tolerance anywhere", which RP2.4'
 display floor now qualifies. It is a documentation-consistency question with no
 gate, lane or test depending on it; **owner: RP5.2**.
 
-**Three commits.** RP5.1 landed as a single commit, `dd0b9e5b`, carrying the
+**Three commits.** RP5.1 landed as a single commit, `5acd0a49`, carrying the
 three documentation files together with this record and STATUS section 1's
-landed paragraph; the audit round added the settlement commit `8802fb6a` below;
+landed paragraph; the audit round added the settlement commit `d04f9d14` below;
 ritual step 6 added this settlement-record commit (STATUS + this file + the
 plan's dated lines + one `TESTING.md` sentence). Nothing under `tmp/` or
 `investigations/` was staged by any of them (the whole `tmp/rp51/` working set
 is gitignored).
 
-### RP5.1 — audit settlement (2026-09-04, `8802fb6a`)
+### RP5.1 — audit settlement (2026-09-04, `d04f9d14`)
 
-Two fresh auditors (`/audit-code`, `/audit-tests`) read `45f2ece3..dd0b9e5b`.
+Two fresh auditors (`/audit-code`, `/audit-tests`) read `c3270f89..5acd0a49`.
 Neither found a lost deliverable, a weakened test, a moved tolerance or a
 reproduced bug: the range is documentation plus two doc comments, and both
 auditors independently re-resolved every `file.rs:LINE` citation it landed and
@@ -168,7 +168,7 @@ settled below against the tree, never against plausibility.
 |---|---|---|
 | AC-2 / AT-1 (major) | the record claimed the executable doc-walk verifies RP5.1's citations | **FIXED, twice** — the sentence now says what that walk checks, and a twelfth test makes the claim true |
 | AC-1 / AT-2 | "Both halves skip a `DSS_GATE_ONLY` run by an explicit check" is false for the offline half | **FIXED** — only the live half reads the variable |
-| AC-3 | wrong provenance for the corrected "157 rows" doc comments | **FIXED** — 157 is the RP2.1-era count; `ab2bf041` is where the *other* mentions moved to 161 |
+| AC-3 | wrong provenance for the corrected "157 rows" doc comments | **FIXED** — 157 is the RP2.1-era count; `b137e397` is where the *other* mentions moved to 161 |
 | AC-4 / AT-3 | "42 citation rows over 7 files" is not a number the tree produces | **FIXED** — 46 tokens / 43 distinct targets / 6 code files, plus 9 bare continuations (record and `STATUS.md`) |
 | AC-5 | "every value link is a `PropsPolicy` method gated on `is_r4133()`" over-generalises link 1 | **FIXED** — the claim is now scoped to links 2–4, with link 1's exception stated |
 | AT-4 | the `SKIP_PROPS` disposition table invites summing to 18 | **FIXED** — the prose now spells 17 = 10 + 7 and separates the third list |
@@ -218,10 +218,10 @@ section had contradicted its own file. It now attributes the check to the live
 half alone and says the replay reads frozen census files, not the gate
 population.
 
-**AC-3, settled by `git show`.** `NORM_ROWS` was **157** at `e96d9248` (RP2.1)
-and at `1b93b91e` (RP2.1 audit settlement, which is where both prose sentences
-entered), **161** at `ab2bf041` (RP2.2, which moved the table's other "157 rows"
-mentions and missed these two) and **168** since `59e521e5` (RP4.1) — the commit
+**AC-3, settled by `git show`.** `NORM_ROWS` was **157** at `bd449c0a` (RP2.1)
+and at `6bd2cdd9` (RP2.1 audit settlement, which is where both prose sentences
+entered), **161** at `b137e397` (RP2.2, which moved the table's other "157 rows"
+mentions and missed these two) and **168** since `c82d4fdc` (RP4.1) — the commit
 that *rewrote one of the two sentences while leaving it at 157*. So the record's
 one git citation was wrong in both halves, and the more useful fact was the one
 it hid.
@@ -247,9 +247,9 @@ is partitioned by `SKIP_PROPS_CAPI_ONLY` (10) + `SKIP_PROPS_BOTH_CHANNELS` (7);
 correct and misreadable; the prose now says 17 = 10 + 7 and why the third row is
 shown anyway.
 
-**AC-6 — refuted as an error.** `ECHO_ROWS` was **81** from `e15435fb` ("RP2.3:
-the r4133 echo-exclusion table (81 rows)") through `cfca32a0`, and became **82**
-at `fb0e9e7f` (RP3.3, `generator.model`). The README sentence sits under the
+**AC-6 — refuted as an error.** `ECHO_ROWS` was **81** from `ac70e018` ("RP2.3:
+the r4133 echo-exclusion table (81 rows)") through `289c7515`, and became **82**
+at `c4514c57` (RP3.3, `generator.model`). The README sentence sits under the
 dated header "What RP2.3 moved (disposition census, 2026-08-23)", whose own
 opening says it "**supplements** the RP2.1 and RP2.2 numbers above; it does not
 rewrite them" — so 81 is true history, the same shape the plan's coordinator
@@ -284,8 +284,8 @@ Read end to end: `STATUS.md` (599 lines after this pass, from 602 — the
 under-600 discipline holds) and this file. What RP5.1 had left stale, and what
 moved:
 
-- **STATUS section 1, the WP-RP5 paragraph** named only `dd0b9e5b`. It now names
-  the settlement `8802fb6a` too and the post-settlement lane total (4 498 per
+- **STATUS section 1, the WP-RP5 paragraph** named only `5acd0a49`. It now names
+  the settlement `d04f9d14` too and the post-settlement lane total (4 498 per
   lane), and is back inside the 3–6-line record-placement budget; the detail it
   shed is above, unchanged.
 - **STATUS's "Next." paragraph** said RP5.2 owns "one handed-forward item". The
@@ -337,7 +337,7 @@ stale citations" below).
 
 #### Final counters
 
-Every number was re-measured on this tree at `64474762` (clean, branch
+Every number was re-measured on this tree at `1af27153` (clean, branch
 `r4133-props`); the command that produced each one is in `tmp/rp52/counters.md`.
 Nothing is transcribed from the plan text.
 
@@ -353,8 +353,8 @@ Nothing is transcribed from the plan text.
 | in-scope UNCLAIMED cells, r4133 channel | **521 841 → 889** (RP2.4) **→ 0** (RP4.1); 504 out-of-scope cells remain, each accounted to a named pin or record | the **→ 0** half is the live lock: an in-scope UNCLAIMED cell fails `corpus_gate`, and `assert_r4133_props_compare_ran` stops the walk going vacuous. The three census figures are *measurements* (`DSS_PROPS_CENSUS=claims`, both oracles), not constants in the tree — recorded at `r4133-props-rp4.md:96-124` (RP5.2 audit settlement, 2026-09-04) |
 | **the gating-case outcome** | **523** manifest cases; **464** r4133-gating = **367** `both` + **97** r4133-only (plus 59 capi-only); 80 `kind=large`; the population `force_properties` actually compares = **313** non-`large` `both` cases | derived from `tests/corpus/manifests/population.lock.json` rigor fingerprints; the 313 is pinned by `the_property_forcing_rule_is_every_live_non_large_case` |
 | RP3.x pin tables | `RP39_PINS` **27**, `RP310_WINDGEN_PINS` **5**, `RP311_SERIALIZATION_PINS` **11**, `RP312_UPSTREAM_BUG` **1** (plus 4 staged skips), `RP313_NCIM_PINS` **9**, `LEDGER_ENTRY_PINS` **8**, `LANDED_PROPERTY_ENTRY_PINS` **8** | `props_r4133_replay.rs:5572` / `:5315` / `:5109` / `:5751` / `:5220` / `:5428` / `:4983` (re-measured after the RP5.2 audit settlement moved lines below `:1341`) |
-| tests | **4 499 passed / 0 failed / 5 ignored — per lane** at the plan's close, over 74 binaries; `props_r4133_pins` 54, `props_r4133_replay` 152, `props_r4133_evidence_lock` 11, `oracle_parity_cfg_gate` **13** | the closing commit's own gate measured **4 498** with 12 `oracle_parity_cfg_gate` tests (§"Gate for this pass", reproducing RP5.1's `8802fb6a` figures to the unit); the audit settlement's thirteenth test is the +1 (§"Gate for the settlement"). The 5 ignored are the pre-existing set — **no `#[ignore]` was added anywhere in this plan** (settlement record, ritual step 6, 2026-09-04) |
-| commits | **26** sub-steps — 25 of them landed before this closing commit, which is the 26th — and **67** RP-titled commits at the plan's close: **64** in `f887f806..64474762`, plus RP5.2's `5a110653`, its audit settlement `bc16430b` and its settlement record (ritual step 6, 2026-09-04) (70 in the range; the other six are the plan's own round-2 hardening, GOLDEN_REBASE G1.2 and the STATUS round-2 archiving) | `git log --oneline f887f806..64474762`, the parent this record was measured at; `..HEAD` moves with every later commit and is *not* the range that yields these numbers (RP5.2 audit settlement, 2026-09-04) |
+| tests | **4 499 passed / 0 failed / 5 ignored — per lane** at the plan's close, over 74 binaries; `props_r4133_pins` 54, `props_r4133_replay` 152, `props_r4133_evidence_lock` 11, `oracle_parity_cfg_gate` **13** | the closing commit's own gate measured **4 498** with 12 `oracle_parity_cfg_gate` tests (§"Gate for this pass", reproducing RP5.1's `d04f9d14` figures to the unit); the audit settlement's thirteenth test is the +1 (§"Gate for the settlement"). The 5 ignored are the pre-existing set — **no `#[ignore]` was added anywhere in this plan** (settlement record, ritual step 6, 2026-09-04) |
+| commits | **26** sub-steps — 25 of them landed before this closing commit, which is the 26th — and **67** RP-titled commits at the plan's close: **64** in `f887f806..1af27153`, plus RP5.2's `6f5c7206`, its audit settlement `609e07ea` and its settlement record (ritual step 6, 2026-09-04) (70 in the range; the other six are the plan's own round-2 hardening, GOLDEN_REBASE G1.2 and the STATUS round-2 archiving) | `git log --oneline f887f806..1af27153`, the parent this record was measured at; `..HEAD` moves with every later commit and is *not* the range that yields these numbers (RP5.2 audit settlement, 2026-09-04) |
 
 **The "462-case outcome" the plan asked RP5.2 to publish is stale by two, and is
 published here as the measured 464.** The archived plan at `:266`, `:2616` and in
@@ -399,101 +399,101 @@ sub-step ran the full five-command gate green in **both** lanes before its
 commit, and every one was audited by two fresh independent auditors plus a
 dedicated fix agent — no batching, no shared fix agent across sub-steps.)*
 
-- **RP0.1** (`cbcfafeb`, fix `19fc68d7`, 2026-08-22) — the G1.1 census evidence
+- **RP0.1** (`6db7f202`, fix `821e76f0`, 2026-08-22) — the G1.1 census evidence
   vendored to `tests/corpus/props_r4133/`: five byte-identical copies of the
   gitignored `investigations/g1_1_r4133_props/` extracts (24 944 B) plus five
   derivations of the 270 MiB local census, with a `.gitattributes -text` rule so
   nothing is rewritten on checkout. The plan's load-bearing evidence stopped
   being local-only.
-- **RP0.2** (`fd79db48`, fix `23070130`, docs `8dde5802`, 2026-08-22) — the
+- **RP0.2** (`70f575e1`, fix `576fbc59`, docs `528e2aef`, 2026-08-22) — the
   census became a permanent knob: `DSS_PROPS_CENSUS=1` arms
   `corpus_gate_props_census`, a separate `#[test]` that walks every live
   non-`large` case on **both** channels with `all_properties` forced on, masks
   bypassed, collect-don't-panic, asserting nothing. It reproduced the vendored
   rows on 209 of 210 structural pairs and all 94 numeric ones over the full
   438-case re-census.
-- **RP1.1** (`e2415376`, fix `9fb45c6c`, docs `fccd7915`, 2026-08-22) — the three
+- **RP1.1** (`b4d72fe4`, fix `1b1d25c9`, docs `91b984bb`, 2026-08-22) — the three
   r4133 **upstream-stub** rows: Generator `Rneut`/`Xneut` (display slots 16/17)
   and Sensor `Action` (slot 13). Two shape gaps closed (generator 48 → 50 names,
   sensor 15 → 16) via one new property flag and one new `PropDef` field.
-- **RP1.2** (`8a221016`, fix `0a23443d`, 2026-08-22) — AutoTrans `XfmrCode`, a
+- **RP1.2** (`c47624b7`, fix `ef51ee9f`, 2026-08-22) — AutoTrans `XfmrCode`, a
   **real behavioral port** (r4133 `AutoTrans.pas:329`, help `:414`,
   `FetchXfmrCode` `:520` → `:2339-2396`; dss_capi 0.14.5 deleted the row
   outright). Third shape gap closed, autotrans 52 → 53 names. `lane_diff` PASS,
   max abs Δ = 0.
-- **RP1.3** (`c345434c`, fix `bdbdc63f`, docs `9b641a18`, 2026-08-23) — WindGen
+- **RP1.3** (`57122e24`, fix `41946af2`, docs `ae327cd6`, 2026-08-23) — WindGen
   `UserModel`/`UserData`, a **real behavioral port over the WASM user-model
   host** (r4133 `WindGen.pas:391-395`, Edit arms `:641-642`, `MakeLike` `:829` +
   `:834-835`, getter `:2903`), with the whole `Model=6` behavior they feed.
   Fourth shape gap closed. `lane_diff` PASS, max abs Δ = 0, both lane dumps
   byte-identical to the pre-edit baselines. Models **3** and **7** were
   explicitly out of scope and handed to `ORPHANED_GAPS.md` §1.11 (below).
-- **RP1.4** (`d3077994`, fix `d404ff30`, 2026-08-23) — GenDispatcher `weights`:
+- **RP1.4** (`a88e9396`, fix `ae204c80`, 2026-08-23) — GenDispatcher `weights`:
   the allowlist row plus an upstream report. **Zero engine change** — the port is
   right and matches dss_capi; the fifth and last `shape.txt` row is the only one
   that runs *backwards*, a property the port has and r4133's own table loses.
   **WP-RP1 COMPLETE: r4133 shape classes 5 → 0.**
-- **RP2.1** (`e96d9248`, fix `1b93b91e`, 2026-08-23) — channel threading, the
+- **RP2.1** (`bd449c0a`, fix `6bd2cdd9`, 2026-08-23) — channel threading, the
   normalization engine, the replay accounting and the census's **disposition**
   mode (`DSS_PROPS_CENSUS=claims`). Zero engine change: the whole sub-step is
   harness + tests + vendored evidence + docs, and no ledger entry (the §1.1(e)
   staging rule).
-- **RP2.2** (`ab2bf041`, fix `94db1542`, 2026-08-23) — enum synonyms and the S6
+- **RP2.2** (`b137e397`, fix `b873c309`, 2026-08-23) — enum synonyms and the S6
   dossier. Zero engine change; the dossier is what opened RP3.5, RP3.6 and RP3.7.
-- **RP2.3** (`e15435fb`, fix `d7881fd4`, 2026-08-23) — the echo-exclusion table
+- **RP2.3** (`ac70e018`, fix `e556577c`, 2026-08-23) — the echo-exclusion table
   and its pins. Zero engine change, `R4133_DISPLAY_FLOOR` still `None`; the kill
   ruling taken here re-routed five pairs to RP3.8.
-- **RP2.4** (`256e33e6`, fix `cfca32a0`, 2026-08-23) — **the r4133 props display
+- **RP2.4** (`f118b966`, fix `289c7515`, 2026-08-23) — **the r4133 props display
   floor; WP-RP2 closes with it.** The 2e-4 value is a *measurement*, not the
   plan's paragraph: worst display rel confirmed at 6.431124e-05 (`load.pf`,
   33 cells, in scope) against a nearest genuine value jump of 1.374769e-03
   (`storagecontroller.kwneed`, 6.874× the floor). Zero engine change, zero
   product-crate bytes, no `Tolerances` field or tier touched. In-scope UNCLAIMED
   cells **521 841 → 889**, every survivor attributed to an open RP3.x sub-step.
-- **RP3.1** (`9319d427`, fix `3e878d30`, 2026-08-24) — `swtcontrol.delay`: a
+- **RP3.1** (`30e235ea`, fix `82a1b8fe`, 2026-08-24) — `swtcontrol.delay`: a
   wired property that **r4133 silently ignores**. Zero product-crate bytes (the
   port already behaves correctly) and zero `ledger.json` bytes in this commit —
   the §1.1(e) **staging rule**: pins land in the sub-step, the entries themselves
   in RP4.1's unmask commit, because an entry landed earlier would fail
   `assert_all_hit` as NEVER APPLIED while the r4133 props compare is still masked.
-- **RP3.2** (`c46bca42`, fix `24a3298f`, 2026-08-24) — `windgen.kvar`: a wired
+- **RP3.2** (`89f18067`, fix `3ebaf051`, 2026-08-24) — `windgen.kvar`: a wired
   property whose **r4133 getter reads the wrong live field**. Zero product-crate
   bytes, staged entry. Its audit settlement opened **RP3.10** and made RP3.10's
   closure a precondition of RP5.2 itself.
-- **RP3.3** (`fb0e9e7f`, fix `52770c5f`, 2026-08-24) — `generator.model`: a
+- **RP3.3** (`c4514c57`, fix `723a68cd`, 2026-08-24) — `generator.model`: a
   getter with no arm, echoing the deck's own token past a live conversion. Zero
   product-crate bytes (both engines' live state is identical). Its settlement
   opened **RP3.11**.
-- **RP3.4** (`cab2e667`, fix `6821639a`, 2026-08-24) — `gictransformer.r2`: the
+- **RP3.4** (`9863908a`, fix `7f97f5d5`, 2026-08-24) — `gictransformer.r2`: the
   r4133 twin of an already-fixed, already-pinned divergence (GOLDEN_REBASE G2.5
   fixed the engine in both lanes on 2026-08-06). Zero product-crate bytes.
-- **RP3.5** (`9daff660`, fix `de2c179d`, docs `feea6a6a`, 2026-08-28) —
+- **RP3.5** (`2e0f7b61`, fix `d6dc4095`, docs `b84a7559`, 2026-08-28) —
   `line.units`: outcome **`FIX` in both lanes** for three independent defects in
   one routine (`TLineObj.MergeWith`), plus one upstream report for a fourth that
   is r4133's alone. The first RP3 sub-step whose fix moves the port's own render.
   `lane_diff` PASS ×2, max abs Δ = 0.
-- **RP3.6** (`f0837aca` part (a) + `4b146ab9` part (b), fix `bb467974`,
+- **RP3.6** (`616068d3` part (a) + `0866a3bc` part (b), fix `705ed518`,
   2026-08-29) — `switch=yes` must not clear the linecode flag: the second
   **`FIX`**, and the one RP4.1 actually waits on (r4133 `Line.pas:694-700`), plus
   the `FLineCodeSpecified`/`CondCode` split and the CIM-units follow-on. Fourteen
   audit findings settled. `lane_diff` PASS ×3 — the settlement run reports max
   abs Δ = 0.000e0 **and** max rel = 0.000e0.
-- **RP3.7** (`82022dab`, fix `1273cf14`, docs `d0718fb0`, 2026-09-02) — per-phase
+- **RP3.7** (`fc9179cc`, fix `e578d971`, docs `78547a99`, 2026-09-02) — per-phase
   switch and relay state: **`FIX` in both lanes for all three parts**, and the
   widest RP3 sub-step — 50 engine/test/golden/ledger files, the two control
   classes rebuilt on r4133's `pStateArray` model, ten overlaid golden cells, five
   live pins. Eleven audit findings, all minor, all settled. It also spun out four
   `ORPHANED_GAPS.md` rows (§1.13–§1.16). `lane_diff` PASS, 523 cases.
-- **RP3.8** (`17a165c4`, fix `6b9b115d`, docs `16edbc2f`, 2026-09-02) — the five
+- **RP3.8** (`ba6adbf0`, fix `be9676ba`, docs `fb8f3113`, 2026-09-02) — the five
   read-only text surfaces r4133 renders live (`indmach012.pf`,
   `storagecontroller.kwhtotal`/`kwtotal`/`kwhactual`, …): **`FIX` in both lanes**,
   one engine flag, 25 files, **zero golden bytes moved**. The settlement found
   `Save` as a fifth `get_value` reader and fixed it.
-- **RP3.9** (`648ce284`, fix `d8ccc954`, docs `b2ca9c11`, 2026-09-02) — the r4133
+- **RP3.9** (`5d0d1f6b`, fix `eddf60dc`, docs `151fd2f2`, 2026-09-02) — the r4133
   round-trip residue: **`PRECISION_ROUNDTRIP` on all 27 pairs**, in one commit,
   with zero product-crate lines, zero golden bytes and zero census cells moved.
   Its P0 open item is what opened **RP3.12**.
-- **RP3.10** (`9f55095b`, fix `9f067c19`, docs `45f2ece3`, 2026-09-04) — the
+- **RP3.10** (`8c22e898`, fix `34591f24`, docs `c3270f89`, 2026-09-04) — the
   reproduced `QMode=0` dispatch: verdict **`FIX`**, and the kill criterion did
   **not** fire. The last reproduced upstream bug this plan uncovered is gone from
   **both** lanes — `TWindGenObj.SetNominalGeneration` gains the constant-Q arm
@@ -501,23 +501,23 @@ dedicated fix agent — no batching, no shared fix agent across sub-steps.)*
   `variables` ledger `match` field and five pins behind a citation guard. Zero
   golden bytes; `lane_diff` PASS, Δ = 0. Ten findings settled; it opened one
   standing follow-up (AT-1, the two WindGen decks' thinned solved-state coverage).
-- **RP3.11** (`97107e54`, fix `0194b086`, docs `9fbb0abf`, 2026-09-03) — the
+- **RP3.11** (`ae2617a9`, fix `a7c86d45`, docs `fe65f802`, 2026-09-03) — the
   `Save`/`Dump` re-serialization surface: **`KEEP_LIVE_PINNED` on both surfaces**
   — the kill criterion fires on the one cell that decides it, so the divergence
   from r4133's serializer is recorded and pinned rather than reproduced. Eight
   pins, one golden; the settlement shipped the `SaveWrite` union it had only
   written. Its P0 findings opened **RP3.13**.
-- **RP3.12** (`09e70233`, fix `c2a8b68c`, docs `28f37e4c`, 2026-09-03) —
+- **RP3.12** (`bb852e92`, fix `e6ae214c`, docs `9139f2d4`, 2026-09-03) —
   `autotrans.wdgcurrents` on the regulator decks: **`UPSTREAM_BUG` in r4133,
   never reproduced**, with zero product-crate lines. One pair, cause
   `regcontrol-autotrans-typecast`, minimum gap ratio 153.0 over 2 witnessed rows,
   plus four staged skips.
-- **RP3.13** (`2ce1a66e`, fix `217355da`, docs `185e8648`, 2026-09-03) — the two
+- **RP3.13** (`a029b5df`, fix `ccaecfba`, docs `4edcb52b`, 2026-09-03) — the two
   NCIM port bugs: verdict **`PORT_BUG` × 2, both fixed lane-unconditionally**,
   with zero `ledger.json` entries, zero golden bytes and zero tolerances moved
   (nine pins). Three further r4133 NCIM defects were proven and **not** reproduced
   (`docs/upgrade/DIVERGENCES.md:1995`). **WP-RP3 COMPLETE, 13/13.**
-- **RP4.1** (`59e521e5`, fix `6d787a8f`, docs `762df50b`, 2026-09-03) —
+- **RP4.1** (`c82d4fdc`, fix `396fef68`, docs `9659e3f1`, 2026-09-03) —
   **`all_properties` unmasked on the r4133 channel: WP-RP4's single sub-step and
   G1.1's deliverable**, in one commit, with zero product-crate lines, zero golden
   bytes and zero tolerances moved. The per-channel `compare_all_properties =
@@ -530,7 +530,7 @@ dedicated fix agent — no batching, no shared fix agent across sub-steps.)*
   in-scope UNCLAIMED **0**, 504 out-of-scope accounted per owner, and the capi
   channel A/B **bit-identical** (8/8 artifacts byte-equal to the pre-flip
   baseline).
-- **RP5.1** (`dd0b9e5b`, fix `8802fb6a`, docs `64474762`, 2026-09-04) — the
+- **RP5.1** (`5acd0a49`, fix `d04f9d14`, docs `1af27153`, 2026-09-04) — the
   operational docs: the four-link claim chain (normalize → echo → floor →
   assert), the property-divergence triage procedure, the `SKIP_PROPS` r4133
   disposition table, 46 `file.rs:LINE` citations. Its settlement turned those
@@ -662,7 +662,7 @@ are disposed here, neither is deleted:
 Documentation only — seven `.md` files (one of them the `git mv`-ed plan itself)
 plus **two doc comments** in one test file, `props_r4133_replay.rs` at +5/-4, all
 of it `///` prose; **not one line under any crate's `src/`**. The five-command
-gate was nonetheless run in full on the tree as it stood at 08:11 (`64474762` +
+gate was nonetheless run in full on the tree as it stood at 08:11 (`1af27153` +
 the working copy — see the settlement note under the table for the four `.md`
 files written after it), each command's exit code read individually:
 
@@ -676,7 +676,7 @@ files written after it), each command's exit code read individually:
 
 **Both lanes: 4 498 passed / 0 failed / 5 ignored / 0 filtered out over 74
 binaries** — identical binary for binary, and a delta of **0** against the RP5.1
-baseline at `8802fb6a`, which is the predicted outcome for a documentation-only
+baseline at `d04f9d14`, which is the predicted outcome for a documentation-only
 sub-step. `corpus_gate` ran its whole 140-test binary at full population on both
 oracle channels (155.3 s default / 146.7 s parity) with all four ledger guards
 `ok`: **no ledger entry stale, none NEVER-APPLIED**, zero reds on either channel.
@@ -716,7 +716,7 @@ the "no fix commit" half of that sentence stops being true.
 
 ### RP5.2 — audit settlement (2026-09-04)
 
-Two fresh auditors (`/audit-code`, `/audit-tests`) read `64474762..5a110653` —
+Two fresh auditors (`/audit-code`, `/audit-tests`) read `1af27153..6f5c7206` —
 the closing commit. Neither found a lost deliverable, a weakened test, a moved
 tolerance or a reproduced bug, and both re-derived **every** counter the closing
 record publishes off the tree independently (normalization 168, echo 82, ledger
@@ -738,7 +738,7 @@ fixed, and none is dropped.
 | AC-2 / AT-4 (minor) | `GOLDEN_REBASE_PLAN.md:404` — an **active** root plan — still said "the 96 r4133-only cases", six lines above the paragraph this commit inserted, against RP5.2's own "no doc disagrees on counts" acceptance | **FIXED** — a dated as-executed correction to **97**, derived here from `population.lock.json` (523 = 367 `both` + 97 `r4133` + 59 `capi_v0145`, i.e. 464 gating) |
 | AC-3 (minor) | "25 sub-steps" contradicts the record's own 26-bullet list, in four documents | **FIXED** — the plan defines **26** (`grep -c '^### RP'` = 26); every place now reads 26, with the record's counters cell spelling out that 25 landed before the closing commit |
 | AC-4 (minor) | the plan-move diffstat is recorded as +26/−0; `git diff --numstat` says +27/−0 | **FIXED** — +27/−0 |
-| AT-3 (minor) | the commit counter cites `f887f806..HEAD`, a range that now yields 71 / 65 / 26 rather than the stated 70 / 64 / 25 | **FIXED** — re-spelled `f887f806..64474762`, matching `era-summaries.md`, with a note that `..HEAD` moves |
+| AT-3 (minor) | the commit counter cites `f887f806..HEAD`, a range that now yields 71 / 65 / 26 rather than the stated 70 / 64 / 25 | **FIXED** — re-spelled `f887f806..1af27153`, matching `era-summaries.md`, with a note that `..HEAD` moves |
 | AC-5 (note) | the "600-line ceiling" cited to justify condensing three WP paragraphs exists in no binding document | **FIXED** — re-worded as the working-length habit it is; the condensation itself stands (the removed specifics survive in `-rp0-rp1.md` and `-rp2.md`, spot-checked) |
 | AC-6 (note) | the archived-plan record's WP-RP3 sentence says "closed all thirteen genuine jumps" but enumerates nine | **FIXED** — the four excluded-and-pinned divergences (RP3.1–RP3.4) are named, and the sentence closes 6 + 4 + 1 + 1 + 1 = 13 |
 | AC-7 (note) | the repaired "still at the repo root" list still omits `UNIFIED_GATE_PLAN.md` | **FIXED for the list** (added, with its record named); the plan's own stale `Status: PLANNED` banner is **RECORDED** in `STATUS.md` §2 — flipping another plan's lifecycle belongs to its owner |
@@ -823,22 +823,22 @@ settlement touches three test files and eight `.md`, and no product crate).
 Read end to end: `STATUS.md` (**595** lines after this pass, from 616 — the
 under-600 working length restored) and this file, plus the archived plan's
 §RP5.2, `PLAN_SEQUENCE.md` row 5b, `era-summaries.md` §1a and `ORPHANED_GAPS.md`
-§1.11. The sub-step's own two commits are `5a110653` (closing record + archive
-move) and `bc16430b` (audit settlement); this is the third. What RP5.2 and its
+§1.11. The sub-step's own two commits are `6f5c7206` (closing record + archive
+move) and `609e07ea` (audit settlement); this is the third. What RP5.2 and its
 settlement had left stale, and what moved:
 
 - **The plan's final counters were one commit out of date in four documents.**
-  The closing record published the tree at `5a110653` — **4 498** tests per lane
+  The closing record published the tree at `6f5c7206` — **4 498** tests per lane
   over 74 binaries with 12 `oracle_parity_cfg_gate` tests, and 64 RP-titled
-  commits through `64474762`. The settlement then added a thirteenth test and two
+  commits through `1af27153`. The settlement then added a thirteenth test and two
   more commits, so the plan's *close* is **4 499 / 0 / 5** per lane and **67**
-  RP-titled commits (64 + `5a110653` + `bc16430b` + this record). Both figures now
+  RP-titled commits (64 + `6f5c7206` + `609e07ea` + this record). Both figures now
   read the same in `STATUS.md` §1, `PLAN_SEQUENCE.md` row 5b, this file's counters
   table and `era-summaries.md` §1a, each stating the 4 498 measurement and what
   the +1 is — the closing gate's own numbers are not overwritten, they are dated.
 - **The archived plan's §RP5.2 landed line carried no shas** while every other
   landed line in the plan (§RP5.1 included) names its commits. It now names
-  `5a110653`, `bc16430b` and this settlement record, with the post-settlement
+  `6f5c7206`, `609e07ea` and this settlement record, with the post-settlement
   lane totals. The edit sits at the file's foot, ~1 660 lines below the
   `:1148-1151` range the two `props_r4133_replay.rs` doc comments cite, so the
   thirteenth guard's targets did not move — verified by re-running it, not
@@ -862,7 +862,7 @@ settlement had left stale, and what moved:
   section 7's `r4133-props-rp5.md` row already forwards §RP5.1/§RP5.2. The ~40
   bare-name `R4133_PROPS_PLAN.md` §-citations in Rust comments stay unrewritten
   under section 7's forwarding rule — they name a section, not a path, and the
-  two that *were* line-cited were repointed at `5a110653`.
+  two that *were* line-cited were repointed at `6f5c7206`.
 
 **Gate for this pass.** Documentation only — five `.md` files, not one line of
 Rust, no test logic, no golden, no ledger, no tolerance. `cargo fmt --all
@@ -871,7 +871,7 @@ passed / 0 failed** in **both** lanes — the executable check that covers exact
 what moved, since its thirteenth test reads the archived plan and its twelfth
 walks `TESTING.md`'s citations. The five-command gate was not re-run for a
 `.md`-only diff (the settlement ran it green on the final content at
-`bc16430b`), and `lane_diff` does not apply: `git diff --stat -- 'crates/*/src'`
+`609e07ea`), and `lane_diff` does not apply: `git diff --stat -- 'crates/*/src'`
 is empty. **WP-RP5, and with it `R4133_PROPS_PLAN.md`, is closed**; the frontier
 returns to `GOLDEN_REBASE_PLAN.md` WP-G1 with G1.1 satisfied and G3.4/G3.5
 unblocked.

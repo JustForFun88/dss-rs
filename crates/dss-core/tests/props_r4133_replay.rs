@@ -10593,7 +10593,7 @@ fn an_example_row_no_mechanism_and_no_marker_claims_is_caught() {
 ///   `ArrayForm` ones;
 /// * **routed** by `RP22_ROUTING`, with a citation, to RP2.3 or an RP3.5+
 ///   sub-step — **20 rows**. 7 + 20 = the 24 closed-list pairs plus the 3
-///   beyond it. (The commit subject of `ab2bf041` says "18 cited routings",
+///   beyond it. (The commit subject of `b137e397` says "18 cited routings",
 ///   counting only the closed list's own 18; the audit-settlement commit
 ///   records the corrected split.)
 ///

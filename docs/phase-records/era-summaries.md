@@ -112,8 +112,8 @@ dedicated successor GOLDEN_REBASE **G1.1**'s kill criterion demanded (user
 decision 2026-08-22, after G1.1 fired on 2026-08-08: unmasking r4133 properties
 diverged on 433 of the 438 walked live cases). All six work packages landed
 gate-green in **both** lanes over **26 sub-steps / 67 RP-titled commits** on
-branch `r4133-props` (64 through RP5.1's `64474762`, plus RP5.2's `5a110653`,
-its audit settlement `bc16430b` and its settlement record), each one implement
+branch `r4133-props` (64 through RP5.1's `1af27153`, plus RP5.2's `6f5c7206`,
+its audit settlement `609e07ea` and its settlement record), each one implement
 + two fresh independent auditors + a dedicated fix agent. **WP-RP0** vendored the census
 evidence and made re-measurement a permanent knob (`DSS_PROPS_CENSUS`);
 **WP-RP1** closed the property-table shape gap **5 → 0** with two real

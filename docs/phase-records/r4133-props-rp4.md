@@ -24,7 +24,7 @@ a regression.) ~24 stale doc claims asserting that the r4133 channel never
 property-compares were corrected, or left with a dated "superseded by
 R4133_PROPS RP4.1" note where the file is a historical record
 (`docs/phase-records/`, `UNIFIED_GATE_PLAN.md`). The commit is **23 files
-(+2 576 / −536)** (`59e521e5`; the first draft of this paragraph said 22 files
+(+2 576 / −536)** (`c82d4fdc`; the first draft of this paragraph said 22 files
 / +2 305 / −515 and missed `tools/oracle/README.md` — corrected by the audit
 settlement); the only `src/` diffs are comment-only, in a `#[cfg(test)]` module
 (`exec/tests/controls.rs`) and in the `publish = false` bridge
@@ -265,7 +265,7 @@ against evidence rather than plausibility).*
   citations of a Pascal getter arm, and turning them into a machine-checkable
   shape is an RP5-sized invention, not a settlement; what protects the 20 pairs
   meanwhile is that an unlisted spelling is now COMPARED.
-* **STATUS's own commit-size line was wrong (audit-code 3) — FIXED.** `59e521e5`
+* **STATUS's own commit-size line was wrong (audit-code 3) — FIXED.** `c82d4fdc`
   is **23 files, +2 576 / −536**, not 22 / +2 305 / −515; the missing file was
   `tools/oracle/README.md`.
 * **The census artifacts a reader opens first still report a non-zero

@@ -1507,7 +1507,7 @@ fn force_run_files(c: &mut SolvableCase) {
 /// [`the_run_files_forcing_rule_is_every_live_non_large_case`] on every run:
 /// 526 cases -> 522 live -> **443** forced once the live `kind=large*` decks come
 /// off, of which 312 are `both`, 87 r4133-only and 44 capi-only (measured
-/// 2026-09-05 on lane `lane-s`, synced with `update` at `44c1d51f`). Identical to
+/// 2026-09-05 on lane `lane-s`, synced with `update` at `17bd04dc`). Identical to
 /// [`FORCED_INC_MATRIX_POPULATION`], [`FORCED_TOPOLOGY_POPULATION`] and
 /// [`FORCED_PROPS_POPULATION`] by construction, and the test asserts those
 /// equalities instead of leaving them a comment.
@@ -1796,7 +1796,7 @@ fn force_di(c: &mut SolvableCase) {
 /// Re-derived from the four manifests by
 /// [`the_di_forcing_rule_is_every_live_case`] on every run: 526 cases -> **522**
 /// live, of which 366 are `both`, 101 r4133-only and 55 capi-only (measured
-/// 2026-09-11 on lane `lane-e` at `update` `6987133a`). Bigger than
+/// 2026-09-11 on lane `lane-e` at `update` `d2c7dd34`). Bigger than
 /// [`FORCED_RUN_FILES_POPULATION`] by exactly the live `kind=large*` decks,
 /// which is the whole point of the rule (see [`force_di`]).
 ///
@@ -2532,7 +2532,7 @@ pub(crate) fn assert_run_file_contents_census_is_the_pinned_population() {
 /// a producer nobody triaged.
 ///
 /// **Measured `(5, 883, 72, 9_793_064)` on 2026-09-11** (lane `lane-e`, base
-/// `6987133a`), read off COMPLETED full 526-case drives in both lanes — never
+/// `d2c7dd34`), read off COMPLETED full 526-case drives in both lanes — never
 /// guessed, because the epilogue that calls the assertion below
 /// (`corpus_gate.rs`) runs only after the per-case failure report, so a drive
 /// with ANY red case never reaches it and a partial run cannot found a
