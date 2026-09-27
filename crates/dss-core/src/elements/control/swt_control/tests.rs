@@ -241,7 +241,10 @@ fn interpreter_per_phase_caps_at_five_tokens() {
     // r4133 loop bound `i < SWTCONTROLMAXDIM` (:461): at most FIVE tokens are
     // honored, a 6th is silently dropped (probe §11.2 — the plan's reading of
     // :453-480 did not call this out). Reverting the bound to `<=` writes the
-    // 6th slot and fails the final assert.
+    // 6th slot and fails the final assert. That bound is a reproduced r4133
+    // off-by-one (upstream report 75): RETRO_FIXES RF-D01-01 AC3-1 flips this
+    // pin to the 6th slot written (see
+    // `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
     let mut sw = SwtControl::new("sw1");
     sw.interpret_switch_state(
         SwtStateProp::State,
@@ -280,7 +283,10 @@ fn interpreter_tokens_match_first_char_only() {
         ControlAction::Close,
         "'bogus' leaves the slot"
     );
-    // 6th token ('closed') dropped by the 5-token cap — slot 6 untouched.
+    // 6th token ('closed') dropped by the 5-token cap — slot 6 untouched. It
+    // equals `Create`'s slot 6, so this line holds with or without the cap
+    // (the cap's pin is `interpreter_per_phase_caps_at_five_tokens`).
+    // RETRO_FIXES RF-D01-01 AC3-1 turns the token to `open` with the fix.
     assert_eq!(sw.present_state[6], ControlAction::Close);
 }
 
@@ -860,7 +866,9 @@ fn ask(dss: &mut Dss, q: &str) -> String {
 /// array for `Normal` too — `Create` initializes it (`:299-307`) — which is
 /// where the pre-RP3.7 port's `''` (scalar `None`) was wrong against BOTH
 /// oracles (probe §11.5). Reverting the array render, the trailing `', '`, or
-/// the `Create` initialization each breaks a literal here.
+/// the `Create` initialization each breaks a literal here. One token per phase
+/// holds up to six phases; past six the port clips
+/// (`a_seven_phase_controlled_element_renders_six_tokens`).
 #[test]
 fn render_is_one_token_per_controlled_element_phase() {
     let mut dss = micro_dss(3);
@@ -903,6 +911,132 @@ fn render_is_one_token_per_controlled_element_phase() {
         "[open, closed, closed, closed, ]",
         "the first state write latches Normal per phase"
     );
+}
+
+/// RP3.7 retro audit AT2-1 — past six phases the render stops at six tokens
+/// where r4133 does not. `GetPropertyValue` 6/7 loop
+/// `ControlledElement.NPhases` uncapped (`SwtControl.pas:591`/`:602`), so the
+/// 7th token reads `FPresentState^[7]` past `StateArray =
+/// Array[1..SWTCONTROLMAXDIM]` (`:14`/`:19`, six slots) and past `Create`'s
+/// 3-entry allocation (`:299-300`): an out-of-bounds read, never reproduced
+/// (2026-08-02 policy), so [`SwtControl::state_size`] clips at six.
+///
+/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 probe (b), deck
+/// `b_swtcontrol7.dss`, whose circuit/line/control lines this test replays;
+/// identical with and without a `solve`): State and Normal render SEVEN
+/// tokens fresh, all `closed`; after the ganged `state=open` (slots
+/// `1..SWTCONTROLMAXDIM` only, `:435`) State reads
+/// `[open, open, open, open, open, open, closed, ]`, the 7th token being the
+/// never-written slot; `state=closed` then gives seven `closed` and Normal
+/// keeps the first write's six `open` plus a 7th `closed`. Each of those edits
+/// also raised warning #384 "Number of phases > Max SwtControl dimension"
+/// (`:334`); the port's missing warning is `ORPHANED_GAPS.md` §1.15 and is
+/// deliberately not asserted here either way. The port answers six tokens at
+/// every step, each assert naming the r4133 bytes.
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus the deck's
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=1`,
+/// `set voltagebases=[115]` and `calcvoltagebases` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
+#[test]
+fn a_seven_phase_controlled_element_renders_six_tokens() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l7 bus1=src.1.2.3.1.2.3.1 bus2=b1.1.2.3.1.2.3.1 phases=7 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new swtcontrol.s7 switchedobj=line.l7 switchedterm=1",
+    ] {
+        dss.command(c);
+    }
+    let closed6 = "[closed, closed, closed, closed, closed, closed, ]";
+    let open6 = "[open, open, open, open, open, open, ]";
+    let r4133_closed7 = "r4133: [closed, closed, closed, closed, closed, closed, closed, ]";
+    let r4133_open6_closed = "r4133: [open, open, open, open, open, open, closed, ]";
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.state"),
+        closed6,
+        "{r4133_closed7}"
+    );
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.normal"),
+        closed6,
+        "{r4133_closed7}"
+    );
+
+    dss.command("edit swtcontrol.s7 state=open");
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.state"),
+        open6,
+        "{r4133_open6_closed}"
+    );
+    dss.command("edit swtcontrol.s7 state=closed");
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.state"),
+        closed6,
+        "{r4133_closed7}"
+    );
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.s7.normal"),
+        open6,
+        "{r4133_open6_closed}"
+    );
+}
+
+/// RF-D01-01 settlement round 2 (SA-1) — r4133's `Else`-without-`Begin`
+/// fall-through (defect 1 of [`SwtControl::interpret_switch_state`]'s doc) is
+/// not reproduced. Only `AuxParser.CmdString := param` (`:455`) sits under the
+/// `Else` (`:453`); the reads and the per-phase `While` (`:457-480`) run on the
+/// unquoted path too and re-read the GLOBAL AuxParser, and the quoted branch
+/// stops without applying a list's sixth token (`:461`). So a 7-token quoted
+/// list leaves its seventh token behind, and the NEXT bare `state=` write
+/// applies it to slot 1 after its ganged fill.
+///
+/// Measured on the r4133 DLL 11.0.0.1 (RF-D01-01 part 2 residue probe, a
+/// 3-phase line so every read is in bounds): from the ganged `state=closed`
+/// baseline, `state=(closed, closed, closed, closed, closed, closed, open)`
+/// reads `[closed, closed, closed, ]`, the next `state=closed` reads
+/// `[open, closed, closed, ]` and a second one `[closed, closed, closed, ]`
+/// (the AuxParser drained). The port parses every write with a fresh parser,
+/// so it reads `[closed, closed, closed, ]` at every step; the assert on the
+/// divergent step names r4133's bytes. The pin holds across the pending
+/// sixth-token fix (AC3-1): a 5- or a 6-token bound drops the seventh token
+/// alike.
+///
+/// The probe transcript is local-only (gitignored `tmp/retro_fix/`). To
+/// re-derive it, compile this test's four commands plus
+/// `new load.ld bus1=b1 phases=3 kv=115 kw=2000 pf=0.95 model=2`,
+/// `set voltagebases=[115]`, `calcvoltagebases` and `solve` in a fresh
+/// `tools/opendss/epri_worker.py` worker on the r4133 DLL, then send the edits
+/// and `?` reads below.
+#[test]
+fn a_seven_token_list_leaves_no_residue_for_the_next_bare_write() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.p basekv=115 pu=1.0 phases=3 bus1=src",
+        "new line.l3 bus1=src bus2=b1 phases=3 r1=0.25 x1=0.6 c1=3 length=1 units=km",
+        "new swtcontrol.sw switchedobj=line.l3 switchedterm=1",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "setup: {:?}", dss.errors());
+    let closed3 = "[closed, closed, closed, ]";
+    dss.command("edit swtcontrol.sw state=closed");
+    assert_eq!(ask(&mut dss, "? swtcontrol.sw.state"), closed3);
+    dss.command("edit swtcontrol.sw state=(closed, closed, closed, closed, closed, closed, open)");
+    assert_eq!(ask(&mut dss, "? swtcontrol.sw.state"), closed3);
+    dss.command("edit swtcontrol.sw state=closed");
+    assert_eq!(
+        ask(&mut dss, "? swtcontrol.sw.state"),
+        closed3,
+        "r4133: [open, closed, closed, ] (the residual 7th token lands in slot 1)"
+    );
+    dss.command("edit swtcontrol.sw state=closed");
+    assert_eq!(ask(&mut dss, "? swtcontrol.sw.state"), closed3);
+    assert!(dss.errors().is_empty(), "errors: {:?}", dss.errors());
 }
 
 /// `ControlledElement = NIL` renders the bare `'[]'` — r4133's getters skip
@@ -990,10 +1124,24 @@ fn per_phase_write_renders_the_r4133_bytes_through_both_seams() {
 
 /// The per-phase parse honors at most FIVE tokens (`:461`
 /// `While (Length(DataStr2)>0) and (i<SWTCONTROLMAXDIM)`) while the render
-/// loops up to `Min(6, NPhases)` — the two bounds are deliberately different.
+/// prints one token per controlled-element phase: r4133's getters loop
+/// `NPhases` uncapped (`:591`/`:602`); the six-token ceiling is the port's own
+/// clip ([`SwtControl::state_size`], pinned by
+/// `a_seven_phase_controlled_element_renders_six_tokens`).
 /// Driven through the property seam (`was_quoted = true`), so a regression that
 /// re-routed the write to the generic `array_size`-bounded tokenizer would let
 /// the sixth token through.
+///
+/// **A reproduced upstream bug, pending its fix.** The five-token bound is an
+/// r4133 off-by-one — the ganged arm (`:435`) and `StateArray` (`:19`) span
+/// six slots — reported upstream in
+/// `investigations/to_opendss/75-per-phase-state-list-drops-the-sixth-phase.md`
+/// (local-only), and the 2026-08-02 policy says it is not reproduced. The port
+/// still reproduces it in `interpret_switch_state` and in the ordinal twin
+/// `set_enum_array`, which must move together
+/// (`the_ordinal_array_setter_matches_the_interpreter` asserts they agree):
+/// RETRO_FIXES RF-D01-01 AC3-1 flips this pin, that test's row 2 and
+/// `interpreter_per_phase_caps_at_five_tokens` to the sixth token landing.
 #[test]
 fn the_property_seam_caps_the_per_phase_parse_at_five_tokens() {
     let mut sw = sw_with_snap(6);
@@ -1107,7 +1255,10 @@ fn the_ordinal_array_setter_matches_the_interpreter() {
             "open, keep, open",
             "[open, closed, open, ]",
         ),
-        // The five-slot cap on both paths (`take(SW_MAX - 1)` vs `:461`).
+        // The five-slot cap on both paths (`take(SW_MAX - 1)` vs `:461`): a
+        // reproduced r4133 off-by-one (upstream report 75) that RETRO_FIXES
+        // RF-D01-01 AC3-1 flips (see
+        // `the_property_seam_caps_the_per_phase_parse_at_five_tokens`).
         (
             6,
             false,
