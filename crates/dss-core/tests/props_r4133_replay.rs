@@ -1798,9 +1798,13 @@ const RP32_SKIPPED_TAG: &str = "capi015_multistep_limitation";
 ///   and the `GetPropertyValue` override re-renders only PD-tail slots 1 and 2
 ///   (`:1885-1888`), so slots 4 and 5 fall through to the `PropertyValue[]`
 ///   store (`General/DSSObject.pas:112-115`);
-/// * `regcontrol.revthreshold` — `RegControl.pas:820-827` overrides only TapNum
-///   and `:1448` freezes `PropertyValue[23] := '100'`, the sibling of
-///   `remoteptratio` (`:1452`), measured at 888 cells by RP2.1 part A.
+/// * `regcontrol.revthreshold` — `RegControl.pas:820-827` overrides only TapNum,
+///   so the getter answers the `PropertyValue[23]` store, the sibling of
+///   `remoteptratio` (`:1452`), measured at 888 cells by RP2.1 part A: the
+///   `InitPropertyValues` default `'100'` (`:1448`) where no deck writes the
+///   property (864 cells), the deck's own token `'800'` stored by the `Edit`
+///   loop (`:420`) where one does (24 cells), while the live value is -100 /
+///   -800 (`:627`, `:500-507`).
 const BIN7_ECHO_SUPPLEMENT: &[&str] = &[
     "autotrans.pctperm",
     "autotrans.repair",
