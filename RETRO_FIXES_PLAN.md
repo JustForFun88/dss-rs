@@ -39,19 +39,44 @@ Before wave 1: land the finished, audited `lane-e` (`0240372a`, GOLDEN_REBASE G1
    `tmp/retro_fix/state/<step>.md`). Scope = exactly the step's uids and `files`. Shared
    documents (§4) are NOT edited by code/test steps: the executor appends the needed doc change
    to `tmp/retro_fix/notes/<doc-slug>.md` (`### <step> / <uid>` + the exact text to change).
-2. **Gate green** — the seven commands of CLAUDE.md "## Gate" (fmt, clippy ×2,
+2. **Gate green** — the gate kind of the diff picks the commands (RF-I00-05, user decision
+   2026-09-27: by what the diff can change at compile time, not by file extension alone).
+   Before the Commit stage the stage runs `cargo run -p gate-kind -- --base <step base>` in the
+   working-tree form (no `--head`: `<step base>` against the working tree, every untracked file
+   graded as added) and quotes its per-file lines (`<kind>\t<path>\t<reason>`) and its final
+   `GATE_KIND=<kind>` line in the stage report. The kinds are ordered `None < Docs < Comments <
+   Code` and the diff's kind is the maximum over its files: a `.md` is `Docs`, a `.rs` whose
+   `syn` token streams are equal once its doc comments are stripped is `Comments` (plain or doc
+   comments, whitespace), everything else is `Code` (the rules: TESTING.md "Which gate to run").
+
+   | kind | commands |
+   |---|---|
+   | `None` | nothing, the stage says so |
+   | `Docs` | `cargo fmt --all --check`, RAILS (each entry in the lanes it names) |
+   | `Comments` | `Docs` + clippy both lanes + doctests both lanes (commands 2, 3, 6, 7): a comment moves lines and may contain a rail's needle, clippy lints comments, doctests live in them |
+   | `Code` | the full seven commands, plus `lane_diff` when this paragraph asks for it |
+
+   The full gate is the seven commands of CLAUDE.md "## Gate" (fmt, clippy ×2,
    `cargo nextest run --workspace` in both lanes, `cargo test --workspace --doc` in both lanes:
-   RF-I00-01 replaced the five-command set of c67782d2); plus
+   RF-I00-01 replaced the five-command set of c67782d2), plus
    `pwsh -File tools/lanes/lane_diff.ps1` when a compat kernel, a lane alias or the solver is
-   touched. Steps whose diff is documentation only (`needs_gate: no`) run `cargo fmt --all
-   --check` plus, in both lanes, `cargo test -p dss-core --test oracle_parity_cfg_gate` (the
-   citation rails), `--test reliability_pins` (reads `TESTING.md` / `TOLERANCE_NOTES.md` /
-   `golden-rebase.md`) and `--test props_r4133_replay` (reads the rp3 record and the props
-   README) instead of the full gate; a diff that touches any `.rs`/`.json`/`.dss`/`.py` file
-   runs the full gate regardless of the flag. Commands 4 and 5 (the two nextest runs) run with
-   `DSS_ORACLE_TIMEOUT_SECS=600` (the CI value of `.github/workflows/ci.yml`; it lengthens only
-   the per-request oracle deadline, never the comparison — user decision 2026-09-26, after the
-   120 s default produced 1–4 infra-red re-runs per step while six lanes gated at once).
+   touched (`lane_diff` belongs to the `Code` row only). Commands 4 and 5 (the two nextest runs)
+   run with `DSS_ORACLE_TIMEOUT_SECS=600` (the CI value of `.github/workflows/ci.yml`, which
+   lengthens only the per-request oracle deadline, never the comparison — user decision
+   2026-09-26, after the 120 s default produced 1–4 infra-red re-runs per step while six lanes
+   gated at once). RAILS is the `GATE_RAILS` register of `oracle_parity_cfg_gate.rs` as it
+   stands in the tree under test. Each entry runs under `cargo nextest run` with exactly the
+   package, target and filterset it names, in the lanes it names: both, or once without the
+   lane feature, which cargo does not resolve for a package that does not depend on `dss-core`.
+   Entries of one package and lane may share one run whose `-E` is their union. The stage report
+   gives each entry's executed test count per lane, and an entry or a filterset term that
+   executes no test in a lane it runs in is red (counted from the run's per-test lines). No
+   document or script keeps a copy of the list or adds a filter. A tree without
+   `tools/gate-kind/`, a tool that does not build or prints no `GATE_KIND=` line, and a diff that
+   touches `tools/gate-kind/` run the full gate, and in doubt the gate is full. The per-step
+   `gate` flag (index `needs_gate`) and the **Gate:** lines of the step sections then decide no
+   gate (the driver only prints the flag): a command a step section asks for beyond its row
+   still runs, and a row is never lowered by one. Landing (stage 7) stays the full gate.
 3. **Record + commit** — the step's 5–10 line record goes to
    `docs/phase-records/retro-fixes.md` (owned by this plan; appended by the settler at the end
    of the step, so parallel lanes never collide in it); `STATUS.md` is synced once per wave by
@@ -63,14 +88,19 @@ Before wave 1: land the finished, audited `lane-e` (`0240372a`, GOLDEN_REBASE G1
    against the lane HEAD before they are reported.
 5. **Settle** — a fresh settler settles every finding against evidence (r4133 source, live
    probe), fixes what is real, commits, writes the record, then re-runs **the gate whose kind
-   matches the settlement diff** (user decision 2026-09-26): `git diff --stat <step commit>..HEAD`
-   touching any `.rs`/`.toml`/`.json`/`.dss`/`.py`/`Cargo.lock` file → the full gate of stage 2;
-   documentation only → the docs gate of stage 2; in doubt → full. `settle.md` names the kind and
-   the diff --stat list. Audits clean → no empty commit, record "audits clean".
+   matches the settlement diff** (user decisions 2026-09-26 and 2026-09-27): the kind
+   `cargo run -p gate-kind -- --base <step commit>` prints after the stage's commit, in the
+   working-tree form, picks the row of stage 2's table, and `settle.md` quotes its per-file lines
+   and the `GATE_KIND` line. After that commit the tree holds no tracked change
+   (`git diff --quiet HEAD`), else the stage runs the full gate and reports the leftover, which
+   can revert committed work and lower the kind. Untracked files can only raise it. The
+   full-gate fallbacks of stage 2 apply unchanged (no tool, a tool that does not build or prints
+   no `GATE_KIND=` line, a `tools/gate-kind/` path, doubt). Audits clean → no empty commit,
+   record "audits clean", and the record's commit runs the kind the same call prints.
 6. **Settlement audit** — a fresh agent audits the settlement commit(s) (same split rule). A
    confirmed finding goes back to a second settle round (max 2 rounds; leftovers are reported
-   to the coordinator, never dropped). Round 2 gates by the same diff rule as stage 5, over its
-   own commits (`<settle sha>..HEAD`).
+   to the coordinator, never dropped). Round 2 gates by the same rule as stage 5, over its own
+   commits: `cargo run -p gate-kind -- --base <settle sha>` after its commit.
 7. **Land** — the coordinator merges the lane into `update` (ff where possible), runs the
    full gate on the merge result once per wave, pushes `origin/update` immediately.
 
