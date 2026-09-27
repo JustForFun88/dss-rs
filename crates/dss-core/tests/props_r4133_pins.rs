@@ -15,10 +15,10 @@
 //! cases), `Pin(name)` (no capi coverage at all — the capture has no such
 //! property under `PROPS_015X`, a `SKIP_PROPS` row masks it, the capi walk skips
 //! the element whole, or every covered cell sits on a capi-only case), or
-//! `CapiAndPin(n, name)`. **Thirty of the tests below are those `name`s**
+//! `CapiAndPin(n, name)`. **Thirty-two of the tests below are those `name`s**
 //! — the twenty RP2.3 landed, the nine its audit settlement added for the rows
-//! exposed on `engines: "r4133"` cases, and RP3.3's `generator.model` — together
-//! covering 64 of the 82 rows — and two more are the deck guard's own
+//! exposed on `engines: "r4133"` cases, RP3.3's `generator.model` and RF-D07-07's
+//! two GIC rows — together covering 66 of the 82 rows — and two more are the deck guard's own
 //! self-tests. The literal list is
 //! pinned from the table's side by
 //! `harness::props_norm::tests::every_live_semantics_row_names_a_pin`, so a row
@@ -584,6 +584,68 @@ fn generator_model_renders_the_live_pv2pq_conversion() {
     }
 }
 
+/// `gicsource.spectrum` — `EchoDefault`, capi-witnessed on `gicsource_gic.dss`
+/// and pinned for the 2 cells it masks on `asymmetric:gic/gic_midi.dss`, an
+/// `engines: "r4133"` case since GOLDEN_REBASE G1.4a (RF-D07-07).
+///
+/// r4133 freezes the wrong value by ORDER: `TGICSourceObj.Create` runs
+/// `InitPropertyValues(0)` at `Version8/Source/PCElements/GICsource.pas:327`,
+/// while `Spectrum` still holds `TPCElement.Create`'s `'default'`
+/// (`PCElements/PCElement.pas:119`, copied into the store at `:328`), and only
+/// then forbids the spectrum with `Spectrum := ''` (`GICsource.pas:332`). The
+/// getter has arms 1..3 only (`:567-578`), so the property answers the frozen
+/// `'default'` (vendored census: `gicsource.spectrum | '' | 'default' | 4`,
+/// `examples_full.txt:150`). The port renders the live, forbidden-empty field.
+///
+/// The discriminator is a typed `spectrum=`: the port stores it for the dump
+/// round trip (it never resolves to a live spectrum), so the same getter then
+/// answers the typed name — the `''` above is the field, not a constant.
+#[test]
+fn gicsource_spectrum_renders_the_live_empty_spectrum() {
+    let mut deck = Deck::compile("asymmetric/gic/gic_midi.dss");
+    for src in ["seg45", "seg56"] {
+        assert_eq!(
+            deck.get(&format!("GICsource.{src}.spectrum")),
+            "",
+            "GICsource.{src}: the class forbids a spectrum; r4133 renders the frozen 'default'"
+        );
+    }
+    deck.cmd("edit GICsource.seg45 spectrum=default");
+    assert_eq!(deck.get("GICsource.seg45.spectrum"), "default");
+    assert_eq!(deck.get("GICsource.seg56.spectrum"), "");
+}
+
+/// `gictransformer.pctperm` — `EchoDefault`, pinned for all 22 cells it masks:
+/// every GICTransformer of the corpus sits on an `engines: "r4133"` case since
+/// GOLDEN_REBASE G1.4a (`gic_midi`, `gictransformer_gic`, `makeposseq_gic`,
+/// `GIC_Example`), so no capi channel compares one (RF-D07-07).
+///
+/// `TGICTransformerObj.Create` starts `PctPerm := 100.0`
+/// (`Version8/Source/PDElements/GICTransformer.pas:467`), but its
+/// `InitPropertyValues` overrides the PD tail's slot with `'0'` (`:708`) and the
+/// getter (`:713-734`) has no PD-tail arm, so the property answers that store
+/// through `General/DSSObject.pas:112-115` (vendored census:
+/// `gictransformer.pctperm | '100' | '0' | 22`, `examples_full.txt:1438`). The
+/// port renders the live 100 — the value `CalcFltRate` multiplies
+/// (`elements/pd/gic_transformer/solve.rs`).
+///
+/// The edit is the discriminator: the same getter follows a typed `pctperm=`,
+/// and a sibling on the same deck keeps the `Create` default.
+#[test]
+fn gictransformer_pctperm_renders_the_live_rating() {
+    let mut deck = Deck::compile("asymmetric/gic/gictransformer_gic.dss");
+    for xf in ["tg1", "tg2", "tg3"] {
+        assert_eq!(
+            deck.get(&format!("GICTransformer.{xf}.pctperm")),
+            "100",
+            "GICTransformer.{xf}: Create's live PctPerm; r4133 renders its frozen '0'"
+        );
+    }
+    deck.cmd("edit GICTransformer.tg2 pctperm=42");
+    assert_eq!(deck.get("GICTransformer.tg2.pctperm"), "42");
+    assert_eq!(deck.get("GICTransformer.tg1.pctperm"), "100");
+}
+
 /// `line.conductors` — `EchoDefault`, **pin-only** (`PROPS_015X`'s multi-line
 /// `Line` row drops `Conductors` from the 0.14.5 capture, so capi never compares
 /// it on any of its 75 162 in-scope cells) — **and, since the RP2.3 audit
@@ -597,10 +659,14 @@ fn generator_model_renders_the_live_pv2pq_conversion() {
 /// overwrite. The port renders the live conductor list from all four.
 ///
 /// The three siblings carry a capi witness (233 cases) as well, but that witness
-/// is silent about the 6 231 (`wires`) / 6 232 (`cncables`, `tscables`) cells
+/// is silent about the 6 234 (`wires`) / 6 235 (`cncables`, `tscables`) cells
 /// each row masks on `engines: "r4133"` cases, where the capi channel does not
 /// run at all — the largest exposure in
 /// `props_norm::ECHO_ROWS_ON_R4133_ONLY_CASES` — so they name this pin too.
+/// The two counts come from different days: the 233 from the 2026-08-23 claims
+/// census, the cells from RF-D07-07's 2026-09-26 re-census. `gic/gic_midi.dss`
+/// gated capi at the first and is `r4133` since G1.4a, so that one case may be
+/// counted on both sides.
 ///
 /// Decks: `modes/upgrade/upgrade_spacing_ratings.dss` (`Line.l1`, defined with
 /// `wires=[big small big neut]`) for the populated render — itself one of the
@@ -1219,8 +1285,11 @@ fn invcontrol_defaults_render_the_live_values() {
     assert_eq!(combi.get("InvControl.vv_drc.Mode"), "Voltvar");
 }
 
-/// `load.zipv` — `EmptyCollectionRender`, capi-witnessed on 221 cases and pinned
-/// for the 4 070 cells it masks on 58 r4133-only cases.
+/// `load.zipv` — `EmptyCollectionRender`, capi-witnessed on 221 cases (the
+/// 2026-08-23 claims census) and pinned for the 4 071 cells it masks on 59
+/// r4133-only cases (RF-D07-07's 2026-09-26 re-census). None of the three decks
+/// G1.4a moved off the capi channel between the two counts is among the 59, so
+/// no case is counted on both sides.
 ///
 /// r4133's arm 33 is live but loops `nZIPV` (`Version8/Source/PCElements/
 /// Load.pas:2354-2357`), so a load that never typed `zipv=` renders `''` where
@@ -1285,8 +1354,12 @@ fn pd_element_perm_and_repair_render_the_live_ratings() {
     assert_eq!(flt.get("Fault.f.pctperm"), "13");
 }
 
-/// `reactor.kvar` — `EchoDefault`, capi-witnessed on 65 cases and pinned for the
-/// 94 cells it masks on six r4133-only cases.
+/// `reactor.kvar` — `EchoDefault`, capi-witnessed on 65 cases (the 2026-08-23
+/// claims census) and pinned for the 110 cells it masks on nine r4133-only cases
+/// (RF-D07-07's 2026-09-26 re-census). G1.4a moved `gic/gic_midi.dss`,
+/// `gic/gictransformer_gic.dss` and `GIC_Example.dss` from `both` to `r4133`
+/// between the two counts, and all three are among the nine, so up to three
+/// cases may be counted on both sides.
 ///
 /// r4133 has no getter arm for index 4 (`Version8/Source/PDElements/
 /// Reactor.pas:1090-1103`), so the property answers the `'1200'` its
