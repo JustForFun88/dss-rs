@@ -278,7 +278,7 @@ fn corpus_gate_all_cases_match_engines() {
     // It runs BEFORE the two per-row guards (RP4.1 audit settlement,
     // 2026-09-03): "did the compare run at all" is the precondition that makes
     // their per-row verdicts mean anything, and running it first keeps a
-    // wholesale re-mask reporting as one line instead of 19 rows of
+    // wholesale re-mask reporting as one line instead of 20 rows of
     // "narrowed row never visited".
     let (props_walks, props_elements) = harness::props_norm::r4133_props_walk_counters();
     eprintln!("corpus_gate r4133 props: {props_walks} gating walk(s), {props_elements} element(s)");
@@ -286,14 +286,14 @@ fn corpus_gate_all_cases_match_engines() {
     // And for the RP2.1 r4133 property-normalization rows, for the first
     // reason: each row lets the engine spell a property value differently from
     // r4133, so one that stops folding anything must fail rather than sit in
-    // the table. **Live since RP4.1** (2026-09-03) — the r4133 props path is
-    // no longer masked (`corpus_gate/scheduler.rs::force_properties`), so a full
-    // gate run visits these rows for real; it was wired dormant at RP2.1 so the
-    // flip would arm it instead of having to remember it. It skips a
-    // `DSS_GATE_ONLY` run by an explicit check rather than by zero visits, which
-    // is where it parts company with the two above: a row spans cases, so a
-    // filtered run can visit one without reaching the case that makes it fold
-    // (RP4.1 measured exactly that).
+    // the table. **Live since RP4.1** (2026-09-03): the r4133 props path is no
+    // longer masked (`corpus_gate/scheduler.rs::force_properties`), so a full
+    // run visits every row that has an r4133-gating cell — all but the eight
+    // gendispatcher/sensor rows no such case declares, which it never visits and
+    // so can never report (`props_norm::NORM_ROWS_WITH_NO_IN_SCOPE_CELL`, the
+    // hole declared and pinned offline). It skips a `DSS_GATE_ONLY` run by an
+    // explicit check, not by zero visits: a row spans cases, so a filtered run
+    // can visit one without reaching the case that makes it fold (RP4.1).
     harness::props_norm::assert_norm_rows_are_live();
     // And for the RP2.3 r4133 property-ECHO rows, for the same reason with a
     // sharper edge: each row stops the r4133 value compare of a whole pair, so
@@ -301,7 +301,7 @@ fn corpus_gate_all_cases_match_engines() {
     // there. Live on the same schedule (it was zero-visit until RP4.1's unmask),
     // skipping a `DSS_GATE_ONLY` run the same explicit way, plus silent for the
     // two rows whose cited cells sit on capi-only cases
-    // (`props_norm::ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`). For the 20 rows narrowed
+    // (`props_norm::ECHO_ROWS_WITH_NO_IN_SCOPE_CELL`). For the 21 rows narrowed
     // to measured spellings the staleness signal is inverted — visits == 0 while
     // the seam ran (RP4.1 audit settlement) — because a narrowed row can only
     // ever count a divergent cell.
