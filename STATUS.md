@@ -123,7 +123,8 @@ sub-steps and the 13+ `max |Δ| = 0` `lane_diff` runs:
 (`6e7ee691` / `77e1799a` / `4d3fc2d7`, all pushed): G2.0, G2.1a–h, G2.2a–d, G2.3, G2.4, G2.5
 and G2.6 landed, `SPLIT_ALIAS_POPULATION` **31 → 11**, `Escape::WholeCase` **4 → 1**, zero
 golden bytes over the whole WP, and none of the six CLAUDE.md §"Known upstream bugs"
-reproduced in any lane. Full record:
+reproduced in any lane (the Newton one only on the gate's snapshot reader until
+RETRO_FIXES RF-D00-01 moved the repair into the solver). Full record:
 [`golden-rebase.md`](docs/phase-records/golden-rebase.md) section "GOLDEN_REBASE WP-G0 /
 WP-G2 — condensed records" (full session records precede it there).
 
@@ -192,7 +193,10 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 
 **RETRO_FIXES (settle the live findings of the 2026-09 retro audits) — OPEN**, run in waves of up to three lanes per
 [`RETRO_FIXES_PLAN.md`](RETRO_FIXES_PLAN.md), one record block per step in
-[`retro-fixes.md`](docs/phase-records/retro-fixes.md). Landed: RF-I00-01 `257b8603`, RF-I00-03 `0278ed0a`, RF-I00-04 `e45d5abf`, RF-I00-05 `967a3fef`. Next: wave 104.
+[`retro-fixes.md`](docs/phase-records/retro-fixes.md). Landed: RF-I00-01 `257b8603`, RF-I00-03 `0278ed0a`, RF-I00-04 `e45d5abf`, RF-I00-05 `967a3fef`;
+wave 1: RF-D07-07 `c41148f6`, RF-D01-01 `24cd6f37`, RF-D00-05 `5d934d40`, RF-D08-06 `540cba7d`, RF-D00-01 `16455d01` (Newton stale `Iterminal` repaired
+at the solver for every reader, no ledger/golden/lock change), RF-D01-04 `f8327474` (`Save` sizing-property hoist derived from the property tables for
+every class, 0 golden bytes, 0 ledger rows; its leftovers are listed in its record). Next: wave 2.
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
