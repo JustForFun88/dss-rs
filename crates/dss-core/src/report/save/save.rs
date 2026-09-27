@@ -59,14 +59,20 @@
 //!   `NumSteps`/`Phases`, every `Seasons` → `Ratings`, LineSpacing `NConds`,
 //!   Line/LineCode phases → matrices, Reactor/Fault phases → matrices, the
 //!   transformer `Windings`, the controllers' element lists → weights) is
-//!   written after that sizer. The relation is read off the class property
-//!   tables, not listed by class, and the hoist re-orders the set-order chain
-//!   itself for the duration of the write, so the generic walk and every
-//!   override see it. r4133 guards only `LoadShape`
-//!   (`General/DSSObject.pas:144-172`) and `XYcurve` (`XYcurve.pas:978-1003`);
-//!   on every other class a sizer re-set after its arrays is written last and
-//!   the line reloads truncated — a 600 kvar four-step capacitor comes back as
-//!   `4 × 37.5` kvar on r4133 (measured). That shared upstream defect is not
+//!   written after that sizer — except a Line impedance matrix the deck set
+//!   ahead of one of the line's references, which stays there because its
+//!   parse would clear that reference. The relation is read off the class
+//!   property tables, not listed by class, and the hoist re-orders the set-order
+//!   chain itself for the duration of the write, so the generic walk and every
+//!   override see it. r4133 has three guards: `LoadShape`
+//!   (`General/DSSObject.pas:144-172`), `XYcurve` (`XYcurve.pas:978-1003`), and
+//!   the `PriceShape`/`TShape` set-time re-stamp — an `npts=` re-stamps `npts`
+//!   and then the last-set of `price`/`temp` and the three file properties
+//!   (`PriceShape.pas:303` + `:910-916`, `TempShape.pas:302` + `:909-915`), so
+//!   there only `hour=` is still written ahead of a re-set `npts`. On every
+//!   other class a sizer re-set after its arrays is written last and the line
+//!   reloads truncated — a 600 kvar four-step capacitor comes back as `4 × 37.5`
+//!   kvar on r4133 (measured). That shared upstream defect is not
 //!   reproduced; the divergence is pinned by
 //!   `exec::tests::report::save_hoists_numsteps_so_a_capacitor_bank_reloads_whole`
 //!   and the all-classes `save_writes_every_sizing_property_ahead_of_its_arrays`.
@@ -269,7 +275,8 @@ fn struct_count_prop(cls: &ClassProps) -> usize {
 /// ([`parse_sizer`]), so a line that writes an array before its sizer reloads
 /// it against the default count — truncated, zero-filled, or rejected as a
 /// matrix of the wrong order. A set sizer `S` is hoisted when a property it
-/// sizes precedes it in the chain (a sizer re-set after its arrays):
+/// sizes precedes it in the chain (a sizer re-set after its arrays), except a
+/// Line impedance matrix ahead of a reference (below):
 ///
 /// 1. `S` moves to just behind its **anchor** — the last chain member ahead of
 ///    it that is an object reference (`ObjectRef` / `ObjectRefArray`) or
@@ -277,17 +284,34 @@ fn struct_count_prop(cls: &ClassProps) -> usize {
 ///    there is none. A reference re-sets sizers on reload (r4133
 ///    `PDElements/Line.pas:420` + `:436` `FetchLineCode`, `:2145` + `:2150`
 ///    `FetchGeometryCode`, `:2000-2004` `FetchWireList`'s ratings,
-///    `General/LineGeometry.pas:383` the `wire` arm's ratings,
-///    `PDElements/Transformer.pas:2334` `FetchXfmrCode`'s `SetNumWindings`),
-///    so writing `S` ahead of it would let the reference clobber it; sizers
-///    never pass one another, so they keep their chain order.
+///    `General/LineGeometry.pas:575-580` the singular
+///    `wire`/`cncable`/`tscable` arm's ratings and `:383` the `wires` list
+///    arm's, `PDElements/Transformer.pas:2334` `FetchXfmrCode`'s
+///    `SetNumWindings`), so writing `S` ahead of it would let the reference
+///    clobber it; sizers never pass one another, so they keep their chain
+///    order. The anchor is a chain position: the `LineGeometry` override writes
+///    the singular `Wire`/`CNCable`/`TSCable` inside its conductor block
+///    (`elements/general/line_geometry/save.rs`), not at that position, so a
+///    `Seasons` anchored behind one of them still lands ahead of it.
 /// 2. Every property sized by `S` that is still ahead of it moves to directly
 ///    behind `S`, keeping its chain order — which keeps the per-winding cursor
-///    tokens (`Wdg`, `Bus`, `kV`, …) in their relative order.
+///    tokens (`Wdg`, `Bus`, `kV`, …) in their relative order — crossing
+///    whatever lies between, a reference included: a Reactor matrix set ahead
+///    of its `RCurve=` must still reach its `Phases`, or the reload parses it at
+///    the default order.
 ///
-/// Nothing else moves, and no token is added or dropped. Values are rendered
-/// live, so writing an array after a reference or a sizer it used to precede
-/// reloads the value the object holds now.
+/// The one exception is a member whose parse **clears** the references it would
+/// cross: a Line `RMatrix`/`XMatrix`/`CMatrix` drops the line code, geometry and
+/// spacing and resets the length units (r4133 `PDElements/Line.pas:691-692`).
+/// Written behind a `LineCode=` / `Geometry=` / `Spacing=` / conductor
+/// reference that rebuilt it, it would reload the line matrix-specified, the
+/// reference gone. Such a matrix never crosses a reference: set ahead of the
+/// last reference that precedes `S`, it stays where the deck put it and does
+/// not make `S` move — the reference rebuilds it on reload as it did live
+/// (r4133's order, which round-trips there). Nothing
+/// else moves, and no token is added or dropped. Values are rendered live, so a
+/// property written behind a sizer it used to precede reloads the value the
+/// object holds now.
 fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
     let chain: Vec<usize> = std::iter::successors(data.next_property_set(None), |&p| {
         data.next_property_set(Some(p))
@@ -301,7 +325,7 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
     let sizer_of: Vec<Option<usize>> = (0..=n)
         .map(|p| if p == 0 { None } else { parse_sizer(cls, p) })
         .collect();
-    let mut is_anchor: Vec<bool> = (0..=n)
+    let is_ref: Vec<bool> = (0..=n)
         .map(|p| {
             p != 0
                 && matches!(
@@ -310,13 +334,25 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
                 )
         })
         .collect();
+    let mut is_anchor = is_ref.clone();
     for &s in sizer_of.iter().flatten() {
         is_anchor[s] = true;
     }
+    // The members whose parse clears the references they would cross (above).
+    let clears_refs = |p: usize| {
+        use crate::elements::pd::line::prop::{CMATRIX, RMATRIX, XMATRIX};
+        cls.class_name() == "Line" && matches!(p, RMATRIX | XMATRIX | CMATRIX)
+    };
     let mut order = chain.clone();
     for &s in &chain {
         let pos = order.iter().position(|&p| p == s)?;
-        if !order[..pos].iter().any(|&p| sizer_of[p] == Some(s)) {
+        let fence = order[..pos]
+            .iter()
+            .rposition(|&p| is_ref[p])
+            .map_or(0, |r| r + 1);
+        // Whether the member at chain index `i` (< `pos`) moves behind `S`.
+        let moves = |i: usize, p: usize| sizer_of[p] == Some(s) && (i >= fence || !clears_refs(p));
+        if !order[..pos].iter().enumerate().any(|(i, &p)| moves(i, p)) {
             continue;
         }
         order.remove(pos);
@@ -326,8 +362,9 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Option<Vec<usize>> {
             .map_or(0, |a| a + 1);
         let ahead: Vec<usize> = order[..at]
             .iter()
-            .copied()
-            .filter(|&p| sizer_of[p] == Some(s))
+            .enumerate()
+            .filter(|&(i, &p)| moves(i, p))
+            .map(|(_, &p)| p)
             .collect();
         order.retain(|p| !ahead.contains(p));
         let at = at - ahead.len();

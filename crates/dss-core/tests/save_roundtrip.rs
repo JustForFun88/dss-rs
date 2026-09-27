@@ -192,6 +192,9 @@ struct SizedArrays {
     sizer: &'static str,
     /// Properties whose text parse is sized by `sizer`'s live value.
     arrays: &'static [&'static str],
+    /// Object references that re-set `sizer` on reload, so it must be written
+    /// behind them (the hoist's anchor).
+    behind: &'static [&'static str],
 }
 
 /// The `?` values of `w.sizer` then `w.arrays`, keyed by the names as listed.
@@ -330,6 +333,15 @@ fn round_trip_watch(
             line.find(&format!(" {}=", name.to_ascii_lowercase()))
                 .unwrap_or_else(|| panic!("{tag}: no `{name}=` token in {line:?}"))
         };
+        for reference in w.behind {
+            assert!(
+                at(reference) < at(w.sizer),
+                "{tag}: {}: `{}=` is written ahead of `{reference}=`, which re-sets it on \
+                 reload: {line:?}",
+                w.element,
+                w.sizer
+            );
+        }
         for array in w.arrays {
             assert!(
                 at(w.sizer) < at(array),
@@ -614,11 +626,13 @@ fn save_roundtrip_capacitor_numsteps_hoist() {
                 element: "capacitor.cstep",
                 sizer: "NumSteps",
                 arrays: &["kvar", "States"],
+                behind: &[],
             },
             SizedArrays {
                 element: "capacitor.cmat",
                 sizer: "Phases",
                 arrays: &["CMatrix"],
+                behind: &[],
             },
         ],
     );
@@ -635,8 +649,12 @@ fn save_roundtrip_capacitor_numsteps_hoist() {
 /// `[ x 0]`. One generic-walk class (LineCode) and one override class (Line,
 /// whose `Seasons` must also stay behind its `LineCode=` reference, which
 /// re-fetches the season count on reload — r4133 `PDElements/Line.pas:420-421`).
-/// Ratings move no solve observable, so the watch is the only compare that sees
-/// them.
+/// The watch asserts that order on the emitted line (`behind`): the reloaded
+/// values cannot show it here, because `mtx601` carries the line's own season
+/// count (`exec::tests::report::
+/// save_hoists_a_sizer_only_to_behind_the_reference_that_resets_it` pins a
+/// reference with a smaller one). Ratings move no solve observable, so the
+/// watch is the only compare that sees them.
 #[test]
 fn save_roundtrip_seasons_ratings_hoist() {
     round_trip_watch(
@@ -653,11 +671,13 @@ fn save_roundtrip_seasons_ratings_hoist() {
                 element: "linecode.mtx601",
                 sizer: "Seasons",
                 arrays: &["Ratings"],
+                behind: &[],
             },
             SizedArrays {
                 element: "line.632670",
                 sizer: "Seasons",
                 arrays: &["Ratings"],
+                behind: &["LineCode"],
             },
         ],
     );
