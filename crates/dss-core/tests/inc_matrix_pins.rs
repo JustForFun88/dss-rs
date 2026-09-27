@@ -6,7 +6,7 @@
 //! port-vs-oracle divergence — both oracles advance the incidence row cursor for
 //! every reactor, the port emits dense rows — is settled as settlement
 //! **S-INC**: a *positive assertion* of upstream's cursor rule inside the live
-//! comparator (`crates/dss-core/tests/harness/inc_matrix.rs`), the shape D15 and
+//! comparator (`crates/dss-test-harness/src/harness/inc_matrix.rs`), the shape D15 and
 //! D16 gave G1.7. CLAUDE.md's discipline applies unchanged — every divergence
 //! from an oracle channel is pinned by an expected-value test naming BOTH
 //! numbers — and the pins here are those tests.
@@ -30,7 +30,7 @@
 //! in this file**, so each pin carries one literal and names a channel only
 //! where they genuinely differ (the raw lengths).
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;

@@ -1,0 +1,5 @@
+# The fixture pairs are compared byte for byte: `crlf_head` needs its LF base
+# and CRLF head exactly as written, on every checkout (Git for Windows turns
+# core.autocrlf on in its system config, here and on the windows-latest CI
+# runner). No EOL conversion, ever.
+* -text

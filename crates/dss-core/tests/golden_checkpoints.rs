@@ -21,7 +21,7 @@
 //! generator writes one per `SCENARIOS` entry). Regenerate only manually:
 //! `python tools/golden/gen_checkpoints.py [scenario...]`.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
