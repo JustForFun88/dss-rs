@@ -20,7 +20,7 @@
 //!
 //! Regenerate only manually: `python tools/golden/gen_der_lines_harmonics.py`.
 
-mod harness;
+use dss_test_harness::harness;
 
 #[test]
 fn line_constants_scenarios_match_oracle() {
