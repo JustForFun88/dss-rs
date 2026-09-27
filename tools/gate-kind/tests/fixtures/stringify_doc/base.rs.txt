@@ -1,0 +1,4 @@
+pub const SOURCE: &str = stringify! {
+    /// shown as data
+    fn shown() {}
+};

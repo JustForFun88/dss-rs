@@ -29,7 +29,7 @@
 //! Hermetic (plan §2.6): needs only the committed `.wasm` + the committed golden —
 //! no FPC, no native DLL, no wasm toolchain. Runs in every `cargo test`.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::BTreeMap;
 

@@ -1,0 +1,6 @@
+pub const TEXT: &str = "first line
+second line";
+// one comment, reworded
+pub fn len() -> usize {
+    TEXT.len()
+}

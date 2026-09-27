@@ -1,0 +1,3 @@
+/// shown to JS, reworded
+#[wasm_bindgen]
+pub fn f() {}

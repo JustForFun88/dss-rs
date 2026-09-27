@@ -1,0 +1,5 @@
+#[cfg_attr(feature = "cli", derive(Parser))]
+pub struct A {
+    /// the deck, in --help
+    pub deck: String,
+}

@@ -4,7 +4,7 @@
 //!
 //! Both settlements write **zero** `tests/corpus/ledger.json` rows: instead of
 //! excluding a field they state upstream's mechanism and make the live gate
-//! assert it (`crates/dss-core/tests/harness/topology.rs`). CLAUDE.md's
+//! assert it (`crates/dss-test-harness/src/harness/topology.rs`). CLAUDE.md's
 //! discipline still applies — every divergence from an oracle channel is pinned
 //! by an expected-value test naming BOTH numbers — and these two are those
 //! tests.
@@ -23,7 +23,7 @@
 //! dss-python 0.15.7 (`tmp/g17/capi_topo_merged.json`), both read after a forced
 //! `FreeTopology` where a fresh tree was wanted.
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;

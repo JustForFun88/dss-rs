@@ -1,0 +1,18 @@
+[package]
+name = "gate-kind"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Picks the RETRO_FIXES stage gate for a diff by what the diff can change at compile time"
+
+# RETRO_FIXES_PLAN RF-I00-05 (user decision 2026-09-27). A development tool of
+# the per-step ritual, never linked by the engine: it links no workspace crate,
+# so it builds without dss-core and `cargo` refuses the lane feature for it
+# (`-p gate-kind` runs once, not per lane). syn lexes strings, raw strings,
+# byte strings, lifetimes and nested block comments the way rustc does, which a
+# regex comment stripper cannot; `visit-mut` strips the doc attributes on the
+# syntax tree and `quote` renders both sides for the comparison.
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "visit-mut"] }

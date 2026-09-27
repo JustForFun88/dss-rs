@@ -30,7 +30,7 @@ use dss_core::report::export::json::schema;
 use dss_core::report::export::json::{FPJSON_SPELLING, Json, write_pretty_with};
 use serde_json::Value;
 
-mod harness;
+use dss_test_harness::harness;
 use harness::lane;
 
 fn golden_path() -> PathBuf {

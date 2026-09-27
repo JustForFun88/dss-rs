@@ -15,7 +15,7 @@
 //! `ieee34mod1` is the stretch goal — attempted as its own test.
 //! Do **not** regenerate these goldens (Phase-0, pinned oracle).
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::path::PathBuf;
 

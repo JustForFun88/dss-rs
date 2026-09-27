@@ -22,7 +22,8 @@
 //! * the reports that are recorded and never compared (D40(5)).
 //!
 //! Every pin takes the port's side from the port itself — the very
-//! `RunFileProbe` the corpus gate uses, over the vendored corpus deck (never
+//! `RunFileProbe` the corpus gate uses, over a fresh scratch copy of the
+//! vendored corpus deck (`harness::scratch`, RETRO_FIXES RF-I00-01; never
 //! `.inputs/`, CLAUDE.md) — so no port literal can rot: if the engine's own
 //! render of a pinned cell moves, the pin reds before the claim in the docs goes
 //! stale. The ORACLE side of every pair is the literal the gate's own capture
@@ -35,7 +36,7 @@
 //! transport live in `dss_epri::guard`, and `dss-epri` is `#[cfg(windows)]`.
 #![cfg(windows)]
 
-mod harness;
+use dss_test_harness::harness;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -46,6 +47,7 @@ use harness::run_file_contents::{
     CONTENTS_NOT_SELECTED, CellTally, ReportKind, compare_run_file_cells, trace_tail_census,
 };
 use harness::run_files::{MatchedRunFile, RunFileProbe};
+use harness::scratch::{PORT, ScratchCopy};
 use harness::tol_for;
 
 // ---------------------------------------------------------------------------
@@ -89,10 +91,10 @@ fn corpus_deck(rel: &str) -> PathBuf {
 /// in `tests/corpus/manifests/solvable_now.json`) inside the gate's own
 /// run-file probe, and return the CONTENTS of the members the gate selects.
 ///
-/// Memoized behind a `Mutex`, which serializes the runs as well: two of these
-/// decks share one case directory (`8500-Node/`), and the gate's own rule is one
-/// producer per case directory at a time (D33(2)/D35(2)). The probe removes
-/// everything the run created, so the vendored corpus is left as it was found.
+/// Memoized behind a `Mutex`, which serializes the runs as well. Each run
+/// compiles the port's own fresh scratch copy of the case (`harness::scratch`,
+/// RETRO_FIXES RF-I00-01), never the vendored tree: the probe removes
+/// everything the run created in it, then the copy goes.
 fn port_contents(rel: &str) -> BTreeMap<String, String> {
     static RUNS: OnceLock<Mutex<BTreeMap<String, BTreeMap<String, String>>>> = OnceLock::new();
     let mut runs = RUNS
@@ -102,7 +104,8 @@ fn port_contents(rel: &str) -> BTreeMap<String, String> {
     if let Some(hit) = runs.get(rel) {
         return hit.clone();
     }
-    let deck = corpus_deck(rel);
+    let copy = ScratchCopy::new(&corpus_deck(rel).to_string_lossy(), PORT);
+    let deck = PathBuf::from(copy.deck());
     let probe = RunFileProbe::start(&deck.to_string_lossy());
     let mut dss = Dss::new();
     dss.command("clear");
@@ -121,6 +124,7 @@ fn port_contents(rel: &str) -> BTreeMap<String, String> {
     // Drop the engine BEFORE the probe reads, exactly as the runner does.
     drop(dss);
     let report = probe.finish_and_clean(&format!("run_file_contents_pins:{rel}"), true);
+    copy.finish();
     runs.insert(rel.to_string(), report.contents.clone());
     report.contents
 }
