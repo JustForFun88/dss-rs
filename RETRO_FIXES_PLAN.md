@@ -19,7 +19,7 @@ STOP); `(Get-Command cargo).Source` under `.cargo\bin`; r4133 is the behavioural
 upstream bugs are never reproduced in any lane; every deliberate divergence is excluded
 field-by-field and pinned by an expected-value test; tolerances are never loosened; no
 `#[ignore]`, no filter that greens on zero matches; commit messages and records stay short.
-Coordinator rulings R1–R13 (§5) are part of this plan.
+Coordinator rulings R1–R17 (§5) are part of this plan.
 
 A finding is closed only by evidence: the fix, or a recorded reason why it is not fixed
 (never silently dropped). A finding the executor proves wrong at HEAD is recorded as
@@ -221,6 +221,43 @@ Derived from binding project policy (CLAUDE.md); the user may overrule any of th
   under `crates/dss-core/tests/` keep their paths. The driver's index and run arguments are
   re-pointed by script, the section texts are not rewritten (a landed record keeps the spelling
   of its day), and the executor's scope check reads the re-pointed list.
+- **R14 — the gate of a record-completion commit (coordinator, 2026-09-27, after RF-D07-07 round 2).** A stage
+  that writes its own gate's totals into the record commits them after the gated commit. That later commit is
+  graded by `cargo run -p gate-kind -- --base <gated commit>` in the working-tree form, after the commit, with
+  `git diff --quiet HEAD` holding (the gated commit is the HEAD on which the stage's row ran green in full). The row
+  it prints runs: `Docs` (fmt + RAILS) for a record-only commit, as the RF-I00-05 settlement did for `773db9cc`
+  (`--base ec11b63b`). The stage verdict (`--base <step commit>` or `<settle sha>`) already graded every byte up to
+  the gated commit and is neither re-run nor lowered. A post-gate file above `Docs`, a `tools/gate-kind/` path or
+  doubt runs its row (in doubt, full). The report quotes both calls, and landing (§2.7) stays the full gate.
+- **R15 — a notes entry whose fix has not landed (coordinator, 2026-09-27, after RF-D01-01).** An entry whose first
+  body line reads **CONDITIONAL** is applied by no owner, whatever §4's order says. The step that lands the fix
+  owns it. In its own run it rewrites the entry with its commit and pin names, re-heads it
+  `### <fixing step> / <uid>` (old header kept as `<!-- re-homed from <old header> -->`) and drops the CONDITIONAL
+  line, so §4's "author has landed" test applies unchanged. In the same run it amends every other unapplied notes
+  entry whose text its fix makes false (conditional or not), marking each `<!-- amended by <fixing step> -->`, and
+  it leaves a new entry for any applied one. The coordinator adds the fixing step to the `after` list of every
+  owner of those documents. An owner that still meets a CONDITIONAL entry leaves it untouched and names it in its
+  record. The last owner stops with `blocked: CONDITIONAL entry <header>` instead of asserting §4's "no unmarked
+  entry", and the coordinator routes the entry to its fixing step, or to an R12 step when that step has landed
+  without re-homing it. RF-D01-01's three AC3-1 entries and the last sentence of its L10 entry belong to RF-D01-21.
+- **R16 — scope added by a settlement round 2 (coordinator, 2026-09-27, after RF-D01-01 and RF-D00-05).** §2.6
+  audits the settlement, not round 2. Round 2 fixes the SA findings. Anything it commits beyond them (a new test, pin,
+  code path, provenance re-wording or document claim) is listed in `settle2.md` under "not audited", and the
+  coordinator routes it before the step's record calls it audited. It goes either to the audits of the R12 step
+  whose Files hold it (their brief names the round-2 commit and the items, which they verify like their own diff)
+  or, when no such step exists, to one fresh opus/xhigh audit agent on the round-2 commit. That agent's confirmed
+  findings become an R12 step. A round-2 edit to an uncommitted notes file is checked by R17 instead. Routed at
+  2026-09-27: RF-D01-01 round 2 (`97973c80`: both `a_seven_token_list_leaves_no_residue_for_the_next_bare_write`
+  pins and the `ctrl_snap` wording) to RF-D01-21's audits, and RF-D00-05 round 2 (`d5e44d47`, E1: the provenance
+  re-wording in `exec/tests/ncim.rs` and `solution/solution/ncim.rs`) to RF-D00-18's audits.
+- **R17 — commit ids in notes after a history rewrite (coordinator, 2026-09-27, after RF-D00-05 round 2).** A SHA
+  in a `tmp/retro_fix/notes/` entry becomes committed text when an owner applies it, so it must name a commit
+  reachable from `update`. After every history rewrite the coordinator re-points each notes SHA by script, the same
+  day. The script applies every rewrite map (`rewrite_sha_map.json`, `rewrite_sha_map_lanes_cab.json`,
+  `RF-I00-05/strip_sha_map.json` and any later one) repeatedly until no key matches, because a map can chain within
+  itself. The coordinator checks each result with `git merge-base --is-ancestor <sha> update`. A SHA of a lane that
+  has not landed is re-checked at that lane's landing. An owner runs the same check on every SHA it copies into a
+  document, and it stops the entry (`blocked: unresolvable <sha>`) rather than copy one that fails.
 
 ## 6. Schedule (computed by schedule.py from wp_index.json — 137 steps, 54 waves of up to 3 lanes; never edited by hand)
 
@@ -745,13 +782,149 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 - No golden byte moves, no ledger change.
 - The uid above is closed or recorded with a reason.
 
+### RF-D00-18 — NCIM after the first solve: rebuild the Y on a same-size PD edit, seed a late-born bus, refresh an edited born-PQ seed (R12 follow-up of RF-D00-05)
+<!-- RF-STEP {"step": "RF-D00-18", "effort": "max", "parts": 3, "gate": "full", "oracle": true, "after": ["RF-D00-01", "RF-D00-05", "RF-D00-06"], "n_uids": 5} -->
+**Tier:** executor opus/max (plan §3: behaviour changes in the solver, one major). Audits and settler per §3, and the
+audits also review RF-D00-05 round 2's unaudited E1 (R16). **Gate:** the kind `gate-kind` prints (`Code`: the seven
+commands) plus `lane_diff.ps1` (§2.2: the solver moves). **After:** RF-D00-01 (edits `power_flow.rs`), RF-D00-05
+(origin), RF-D00-06 (rewrites the swing-source doc of `ncim.rs`, which holds one scratch citation). **Brief:** the
+origin's state file `tmp/retro_fix/state/RF-D00-05.md` (O2, O3, O4) and its settlements `RF-D00-05/settle.md` (AC-2,
+AC-4, AC-5, AT-1, AT-4) and `RF-D00-05/settle2.md` (E1, and the round-2 commit `d5e44d47` for R16), read from the
+main checkout.
+**Files:** `crates/dss-core/src/solution/solution/ncim.rs`, `crates/dss-core/src/solution/solution/power_flow.rs`,
+`crates/dss-core/src/solution/solution/state.rs`, `crates/dss-core/src/solution/ymatrix.rs` (only if the rebuild
+marker is set at the build site), `crates/dss-core/src/exec/tests/ncim.rs`, `tests/corpus/ledger.json` (only for a
+gated NCIM cell proven to move, each entry with its pin), `investigations/to_opendss/` (R1: main checkout, local-only)
+**Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md` (only where an
+RP3.13 sentence calls one of the three open), `docs/upgrade/DIVERGENCES.md` (one entry that replaces the "Not closed"
+paragraph of the unapplied RF-D00-05 section and the coordinator's follow-up sentence after it, and names this step
+and its pins in full)
+**Findings**
+- `R12|RF-D00-05|AC-5` (note, O3) - a PD edit that keeps the node count between two NCIM solves leaves the NCIM Y
+  stale on both engines. `solve_circuit`'s WHOLEMATRIX rebuild clears `system_y_changed` (`solution/ymatrix.rs`, the
+  two `system_y_changed = false` sites) before `do_ncim_solution` tests it
+  (`if ckt.solution.system_y_changed || !ckt.solution.ncim_ready || node_space_stale`), so `ncim_init` does not rerun.
+  r4133 has the same order: `SolveCircuit` l.2805-2808, `Ymatrix.pas` l.271, `DoNCIMSolution` l.1123
+  (`Common/Solution.pas`). Recorded numbers (2026-09-25/26, re-measure): r4133 `genbus.1` after
+  `Line.l1.length=5` between solves 7199.26175142393-65.29600154522572j, fresh deck 7198.733596581597-108.94006967468113j.
+  The audit's port probe gives 7126.102075 V against 7075.706596 V fresh. A shared upstream wrong answer, so R3
+  applies. Fix: rebuild when a WHOLEMATRIX build ran since the last `ncim_init`, the same rule `check_controls`
+  already applies under NCIM (`power_flow.rs`, "Pascal `CheckControls` ... flag `NCIM_Ready = false`"), for example
+  by clearing `ncim_ready` where `solve_circuit` rebuilds the whole matrix under NCIM. Pin (name indicative)
+  `ncim_same_size_pd_edit_between_solves_rebuilds_the_ncim_y`: the edited second solve equals the fresh deck with the
+  edit at `V_TOL`, and the doc quotes r4133's stale number as the divergent one.
+- `R12|RF-D00-05|AC-2` (minor, O2, = AT-4) - a `model=4` machine or any constant-power load on a bus born after the
+  first NCIM solve enters the Newton loop at `NodeV = 0`. The solve ends non-converged after 15 iterations with NaN
+  node voltages and an empty `errors()`. r4133 raises #482 (the new-bus `NodeV` is uninitialised: FPC `ReAllocMem`
+  without a zero fill, `Ymatrix.pas` l.245, `SolutionInitialized` not reset) or returns a garbage "converged" answer
+  for a load. CLAUDE.md policy decides it: the circuit has a correct solution (the same state solved from a direct
+  start converges), and r4133's fault is never reproduced. The mechanism is r4133's own re-seed: `SolutionInitialized
+  := False` (`generator.pas` l.702, quoted in P13's doc) makes `DoPFLOWsolution` run a direct solve
+  (`power_flow.rs::do_pflow_solution` -> `solve_y_direct`), which is why P13's `model=3` case converges. Fix: take
+  that path whenever the node space grew after the first NCIM solve, or seed only the new nodes from a direct solve.
+  Choose, and state the choice and the r4133 lines in the function doc. Pins (names indicative)
+  `ncim_pq_machine_on_a_bus_born_after_the_first_solve_converges` and
+  `ncim_load_on_a_bus_born_after_the_first_solve_converges`: converged, finite voltages, empty `errors()`, equal to
+  the direct-start twin at `V_TOL`, KCL at the new bus, r4133's outcome quoted. Rail: an NCIM solve that ends with a
+  non-finite node voltage names it in `errors()`, never NaN with an empty error list. P13's doc stops calling O2 open.
+- `R12|RF-D00-05|AT-1` (major, O4, = AC-4) - a `kvar` edit of a born-PQ machine (`model=4`, `ncim_expv = false`)
+  between NCIM solves is ignored on both engines, because the seed is taken only under `InitGenQ`
+  (`ncim_init_pq_gen`, r4133 `InitPQGen` l.1115-1118 / l.1662-1684). Recorded numbers: r4133 after the edit
+  7161.086907692253-52.204706849838445j, fresh deck 7144.8223541364205-46.67444052710604j, port equal to r4133's
+  edited value to about 1e-13. Fix: refresh the seed of a never-switched PQ machine to `Qnominalperphase` on every
+  NCIM solve. A machine the PV->PQ conversion clamped keeps its converged Q (P22 stays green unchanged). First measure
+  the reach into time-series NCIM (loadshape-driven `kvar` on a PQ machine, daily or yearly mode, on r4133 and the
+  port) and over the five gated NCIM decks. A gated cell that moves gets a field-level ledger exclusion plus an
+  expected-value pin (R8 otherwise). Pin (name indicative) `ncim_born_pq_kvar_edit_between_solves_takes_the_new_kvar`:
+  equal to the fresh deck with the edited `kvar`, r4133's stale number quoted.
+- `R12|RF-D00-05|E1` (note) - scratch provenance the 2026-09-27 CLAUDE.md rule forbids, left by RP3.11/RP3.13 in this
+  step's files: `exec/tests/ncim.rs` cites `tmp/rp313/repro_pq2pv.dss`, `tmp/rp311/repro_panic.dss` and
+  `tmp/rp313/repro_1ph_nogen.dss` (about l.591 / :702 / :763), and `solution/solution/ncim.rs` cites
+  `tmp/rp313/repro_pq2pv.dss` (about l.669) and `tmp/rp313/settle/swing_pc.dss` (about l.917, the swing-source doc
+  RF-D00-06 may rewrite first). Re-locate them by `rg -n 'tmp/' <both files>` at the step base. Replace each path
+  with the dated sentence naming the tool and the recipe that re-derives the numbers, as RF-D00-05 round 2 did for
+  its own text (E1). No evidence directory.
+- `R12|RF-D00-05|R16` (note) - RF-D00-05 round 2 (`d5e44d47`) re-worded, beyond its SA findings, the provenance
+  claims of its own text in both NCIM files (settle2.md "Extra corrections", E1: the late-deck probe, `R4133_M4_TWIN`,
+  `R4133_NO_GEN`, P20, P22, `R4133_PV_PAIR`, the `ncim_init_pq_gen` probe paragraph). No settlement audit covered it.
+  This step's audits verify each re-worded sentence (date, tool, recipe, no path, the numbers it quotes).
+**Parts:**
+1. O3: the probe (below), the rebuild trigger, its pin, the NCIM module and the five gated NCIM decks re-run in both
+   lanes. Gate green by kind, commit, then hand over through `tmp/retro_fix/state/RF-D00-18.md`: the numbers, the
+   pin name, the trigger site.
+2. O2: the probes, the re-seed, the two pins, the non-finite rail, P13's doc. Gate green by kind, commit, hand over.
+3. O4: the time-series reach probe first, then the seed refresh and its pin. Then E1, the §4 notes, the upstream
+   reports (R1, house format from one neighbouring report), the full gate and `lane_diff`. Commit.
+**Probes:** epri-worker on the r4133 DLL and the port, one deck per item, each numbers into the state file and the
+pin docs (date, tool, recipe, no local path). (O3) `Line.l1.length=5` between two NCIM solves against the fresh deck
+with the edit. (O2) a `model=4` machine and a constant-power load on a bus added after a first `Set algorithm=NCIM`
+solve, plus the direct-start twin (bus present from the start, same state). Record r4133's answer or its fault
+verbatim. (O4) a `kvar` edit between solves against the fresh deck, then a loadshape-driven PQ machine under NCIM in
+daily mode over a few steps on both engines. Decides whether a gated deck moves.
+**Ruling:** R3 (O3 and O4 are shared r4133 wrong answers: fixed in both lanes, pinned with both numbers, DIVERGENCES
+row with r4133 evidence). O2 is decided by the same policy: the engine computes the correct value and r4133's #482
+is never reproduced (no user question). R8 for any gated cell that would need an exclusion without a pin. R1 for
+the upstream reports. R16 for the round-2 re-wording.
+**Acceptance:**
+- The O3, O2 (both) and O4 pins exist, fail at the step base (O2 with NaN, O3 and O4 with the stale value) and pass
+  after the fix in both lanes, each naming the port's value and r4133's.
+- No NCIM solve in the NCIM module leaves a non-finite node voltage with an empty `errors()`. P10-P24 stay green.
+- The five gated NCIM decks stay green on both channels with exact iteration counts. A moved cell carries a
+  field-level ledger entry and its pin. No golden byte or tolerance moves, and the `lane_diff` result is recorded.
+- `rg -n 'tmp/' crates/dss-core/src/exec/tests/ncim.rs crates/dss-core/src/solution/solution/ncim.rs` shows no
+  scratch path cited as provenance. The audits report on the `d5e44d47` re-wording (R16).
+- Upstream reports for O3 and O4 (and O2 unless report 51 already covers it) exist locally under their next free
+  numbers and are named in the record. The DIVERGENCES notes entry is written as described above.
+- Every uid above is closed or recorded with a reason.
+
+### RF-D00-19 — Register the NCIM late-generator pins in an existence + citation guard and re-word the RP3.13 P1 row (R12 follow-up of RF-D00-05)
+<!-- RF-STEP {"step": "RF-D00-19", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D00-18", "RF-D05-05"], "n_uids": 2} -->
+**Tier:** executor opus/xhigh (a pin register with a count lock). Audits and settler per §3. **Gate:** the kind
+`gate-kind` prints (`Code`: the seven commands). No `lane_diff`. **After:** RF-D00-18 (its pins join the register)
+and RF-D05-05, the first owner of `docs/upgrade/DIVERGENCES.md`, which applies the RF-D00-05 and RF-D00-18 entries
+that name the pins (the coordinator spells `_model4` out in the RF-D00-05 entry before any owner runs). If an entry
+is still unapplied at the step base, the step stops (`blocked: the pin names are not in DIVERGENCES.md`) rather than
+cite a notes file. **Brief:** `tmp/retro_fix/state/RF-D00-05/settle.md` (AT-3, AT-8) and `RF-D00-05/settle2.md`,
+read from the main checkout.
+**Files:** `crates/dss-core/tests/props_r4133_replay.rs`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (only if
+the `GATE_RAILS` register or a cited line moves). The new table sits beside `RP313_NCIM_PINS`, below
+`props_r4133_replay.rs:565`, the only line `tests/TOLERANCE_NOTES.md` cites in that file, so no cited line shifts.
+**Doc notes (§4):** -
+**Findings**
+- `R12|RF-D00-05|AT-8` (note) - pins P10-P24 of `crates/dss-core/src/exec/tests/ncim.rs` have no existence or citation
+  guard: `ncim_generator_added_after_first_solve_does_not_panic_model3`,
+  `ncim_generator_added_after_first_solve_does_not_panic_model4`,
+  `ncim_generator_enabled_between_solves_does_not_panic`, `ncim_generator_on_a_new_bus_after_first_solve_does_not_panic`,
+  `ncim_generator_disabled_between_solves_resolves_without_it`,
+  `ncim_generator_reenabled_between_solves_resumes_from_its_kept_q`,
+  `ncim_generator_removed_with_its_branch_resolves_on_the_fresh_deck`,
+  `ncim_generator_rephased_between_solves_does_not_panic`, `ncim_generator_rephased_between_solves_model4_matches_r4133`,
+  `ncim_late_zero_limit_pv_machine_is_logged_as_converted`, `ncim_mixed_phase_pv_machines_on_one_bus_regulate_every_node`,
+  `ncim_pv_machine_with_a_grounded_conductor_regulates_its_live_nodes`,
+  `ncim_converted_machine_resolves_warm_from_its_clamped_q`, `ncim_reordered_pv_block_lands_on_the_in_order_pair`,
+  `ncim_overlapping_pv_blocks_hold_r4133s_voltages_and_node_q` (15). RF-D00-18 adds its O2/O3/O4 pins. A rename or a
+  deletion orphans the DIVERGENCES section that lists them by name. Fix: a `(pin, role)` table beside
+  `RP313_NCIM_PINS` (`props_r4133_replay.rs`, "The RP3.13 NCIM pins"), exact count lock, and a guard in the shape of
+  `every_rp313_ncim_pin_exists_and_is_cited`: each row is a `#[test]` in `exec/tests/ncim.rs` and is named in
+  `docs/upgrade/DIVERGENCES.md`. Mutations (not committed): rename one pin, drop one name from the document. Each reds.
+- `R12|RF-D00-05|AT-3` (minor, the settlement's severity) - `RP313_NCIM_PINS` row 1 says
+  `ncim_pq2pv_promotion_does_not_panic_and_closes_kcl` guards "no panic (deltaQNom sized per phase)". Since RF-D00-05's
+  checked writes, P1 cannot see the sizing any more. The sizing guard is `assert_twin_matches_r4133`'s
+  `dq.len() == 3` (`exec/tests/ncim.rs`). Re-word the role string to what P1 still guards and name the new guard.
+  The RP3.13 count lock (9) does not move.
+**Acceptance:**
+- The new table and guard exist and pass in both lanes. Both mutations red it (shown in the record).
+- The P1 role string names what P1 guards. `every_rp313_ncim_pin_exists_and_is_cited` stays green with 9 rows.
+- No pin, ledger entry or golden byte moves, and no line cited by `LINE_CITED_DOCS` shifts. Every uid above is closed
+  or recorded with a reason.
+
 ### RF-D01-01 — Fix Relay/SwtControl per-phase state parse off-by-one and pin the >6-phase render clip
-<!-- RF-STEP {"step": "RF-D01-01", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 8} -->
+<!-- RF-STEP {"step": "RF-D01-01", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": [], "n_uids": 7} -->
 **Tier:** executor opus/max; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
 **Files:** `crates/dss-core/src/elements/control/relay/mod.rs`, `crates/dss-core/src/elements/control/relay/tests.rs`, `crates/dss-core/src/elements/control/swt_control/mod.rs`, `crates/dss-core/src/elements/control/swt_control/tests.rs`, `investigations/to_opendss/` (R1: main checkout, local-only)
 **Doc notes (§4):** `ORPHANED_GAPS.md`, `docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`, `docs/upgrade/DIVERGENCES.md`
 **Findings**
-- `RP|RP3.7|AC3|AC3-1` (major) - `relay/mod.rs` `interpret_relay_state` (`while !token.is_empty() && i < RCMAX`) and `swt_control/mod.rs` `interpret_switch_state` (`... && i < SW_MAX`): both lanes reproduce the r4133 per-phase parse off-by-one (Relay.pas:1286 `i<RELAYCONTROLMAXDIM`, SwtControl.pas:461 `i<SWTCONTROLMAXDIM` - twin confirmed at source; the ganged arms loop `1 to MAXDIM`, the array is `Array[1..6]`), so the 6th per-phase token is silently dropped and two pins assert the bug. Fix: loop `i <= RCMAX` / `i <= SW_MAX` in both lanes; flip the two relay pins (the "6th token must be dropped" pin and row 2 of the ordinal/interpreter differential, currently `[open, open, open, open, open, closed, ]`) and any SwtControl twin pin into expected-value pins that the 6th token lands; fix the "silently dropped" site comments. Zero corpus exposure, so no ledger row: leave a record note and a `DIVERGENCES.md` note citing both Pascal lines. Author the upstream-ready report for the off-by-one (R1: `E:/RustProject/dss-rs/investigations/to_opendss/`, main checkout, local-only, the next free number listed at execution time, house format of the neighbouring reports, both Pascal lines `Relay.pas:1286` / `SwtControl.pas:461` quoted) and name its recorded id in the record and in the `DIVERGENCES.md` note. Triage evidence slip: it says the r4133 render bound is `Min(MAXDIM, NPhases)` at Relay.pas:1409/:1420 - those getters are uncapped (see next bullets); do not copy that sentence.
+- `RP|RP3.7|AC3|AC3-1` (major, moved to RF-D01-21 by the coordinator 2026-09-27, R12) - `relay/mod.rs` `interpret_relay_state` (`while !token.is_empty() && i < RCMAX`) and `swt_control/mod.rs` `interpret_switch_state` (`... && i < SW_MAX`): both lanes reproduce the r4133 per-phase parse off-by-one (Relay.pas:1286 `i<RELAYCONTROLMAXDIM`, SwtControl.pas:461 `i<SWTCONTROLMAXDIM` - twin confirmed at source; the ganged arms loop `1 to MAXDIM`, the array is `Array[1..6]`), so the 6th per-phase token is silently dropped and two pins assert the bug. Fix: loop `i <= RCMAX` / `i <= SW_MAX` in both lanes; flip the two relay pins (the "6th token must be dropped" pin and row 2 of the ordinal/interpreter differential, currently `[open, open, open, open, open, closed, ]`) and any SwtControl twin pin into expected-value pins that the 6th token lands; fix the "silently dropped" site comments. Zero corpus exposure, so no ledger row: leave a record note and a `DIVERGENCES.md` note citing both Pascal lines. Author the upstream-ready report for the off-by-one (R1: `E:/RustProject/dss-rs/investigations/to_opendss/`, main checkout, local-only, the next free number listed at execution time, house format of the neighbouring reports, both Pascal lines `Relay.pas:1286` / `SwtControl.pas:461` quoted) and name its recorded id in the record and in the `DIVERGENCES.md` note. Triage evidence slip: it says the r4133 render bound is `Min(MAXDIM, NPhases)` at Relay.pas:1409/:1420 - those getters are uncapped (see next bullets); do not copy that sentence.
 - `RP|RP3.7|AT2|AT2-1` (minor) - `swt_control/mod.rs` `state_size()` clips at `min(6, phases)` while r4133 SwtControl.pas:591/:602 loop `1 to ControlledElement.NPhases` uncapped; the token-count divergence on a >=7-phase element is recorded nowhere. Keep the clip (R4): r4133 token 7 is `FPresentState^[7]` on `StateArray = Array[1..6]` (SwtControl.pas:19), an OOB read that is never reproduced. Add an expected-value pin (7-phase switched line renders six tokens; r4133 measured seven plus warning 384) beside `render_is_one_token_per_controlled_element_phase`, fix that test's doc that credits `Min(6,NPhases)` to r4133's getter, and leave the `DIVERGENCES.md` + `ORPHANED_GAPS.md` notes.
 - `RP|RP3.7|AT3|AT3-1` (minor) - plan `R4133_PROPS_PLAN.md` RP3.7 "As executed" says r4133 getters "render up to min(6, NPhases)"; that cap is the port's. Precondition settled at source: both state arrays are 6 slots (Relay.pas:62, SwtControl.pas:19), so the cap is a non-reproduced OOB and needs pin + registration only, no code change. State the reason in both `state_size` docs (relay and swt_control), add the Relay twin of the 7-phase pin in `relay/tests.rs`, and leave notes: plan text correction (getters uncapped: SwtControl.pas:591/:602, Relay.pas:1409/:1420; `MAXDIM` bounds only the parse loops :461/:1286) and an `ORPHANED_GAPS.md` 1.15 width sentence next to the missing warning. `exec/tests/swt_control.rs` does not exist at HEAD; the triage path is indicative - put pins in the two `tests.rs` files and do not create it unless needed (a new file also needs a `mod` line in `exec/tests/mod.rs`, outside this step's files: report instead).
 - `RP|RP3.7|AC2|AC2-5` (note) - `swt_control/mod.rs` `ganged_view` + `sample` / `do_pending_action`: the retained 0.14.5 glue reads slot 1 and ganged-writes all slots (`set_all`), discarding a heterogeneous per-phase state (repro `state=(open, closed, closed)` then `normal=closed`); r4133 comments both bodies out (SwtControl.pas:396-408, :484-507). Registration only: leave an `ORPHANED_GAPS.md` 1.16 note with this second symptom and add a one-line cross-reference to 1.16 in the `ganged_view` doc. Retiring the glue stays with 1.16.
@@ -772,8 +945,8 @@ Order inside the step: do the two `examples_supplement.txt` edits (AT2-3, AT2-4 
 - Notes left for all four §4 documents; every uid above is closed or recorded with a reason.
 
 ### RF-D01-02 — Re-point the RP3.7 tmp/rp37 and G1.10c tmp/g110c pin provenance and clean the civanlar comments in controls.rs
-<!-- RF-STEP {"step": "RF-D01-02", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-01"], "n_uids": 5} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-01.
+<!-- RF-STEP {"step": "RF-D01-02", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "after": ["RF-D01-01", "RF-D01-21"], "n_uids": 5} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-01, RF-D01-21 (its sweep then runs once over the final text of the docs RF-D01-21 rewrites).
 **Files:** `crates/dss-core/src/elements/control/control_elem.rs`, `crates/dss-core/src/elements/control/relay/accessors.rs`, `crates/dss-core/src/elements/control/relay/mod.rs`, `crates/dss-core/src/elements/control/relay/tests.rs`, `crates/dss-core/src/elements/control/swt_control/accessors.rs`, `crates/dss-core/src/elements/control/swt_control/mod.rs`, `crates/dss-core/src/elements/control/swt_control/tests.rs`, `crates/dss-core/src/exec/tests/controls.rs`, `crates/dss-core/src/obj/dss_enum/registry/control.rs`, `crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`, `crates/dss-core/tests/di_pins.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`
 **Doc notes (§4):** `docs/phase-records/r4133-props-rp3.md`, `docs/phase-records/golden-rebase.md`, `tests/TOLERANCE_NOTES.md`
 **Findings**
@@ -1143,6 +1316,114 @@ Rules for the whole step: editing a ledger entry (even its `source`) changes its
 - The Auto3bus own-terminal residual pin exists and passes; `tol_for` and `residual_band` are byte-unchanged; no ledger entry or golden moves; `population.lock.json` does not move (notes only).
 - `rg "ckt\.rs:\d|circuit\.rs:\d" crates/dss-core/src/exec/view.rs crates/dss-core/src/exec/tests/derived_polar.rs` is empty; the RF-D06-10 `.rs`-comment rail's allow-list holds no row tagged `RF-D01-20` and the rail is green in both lanes; the literal-vs-literal leg is gone.
 - Notes left for GOLDEN_REBASE_PLAN.md and golden-rebase.md; every uid above is closed or recorded with a reason.
+
+### RF-D01-21 — Stop reproducing the per-phase sixth-token drop in Relay/SwtControl and pin the Fuse/Recloser divergence (R12 follow-up of RF-D01-01)
+<!-- RF-STEP {"step": "RF-D01-21", "effort": "max", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D01-01"], "n_uids": 7} -->
+**Tier:** executor opus/max (plan §3: a major-severity engine change in both lanes). Audits and settler per §3, and
+the audits also review RF-D01-01 round 2's unaudited additions (R16). **Gate:** the kind `gate-kind` prints (`Code`:
+the seven commands). No `lane_diff`: no compat kernel, lane alias or solver moves. **After:** RF-D01-01 (origin,
+landed `24cd6f37`). RF-D09-14 and RF-D01-02 gain `after: RF-D01-21`. RF-D09-14's Ordering assumes this fix, and
+RF-D01-02 re-points the `tmp/rp37` citations in the docs this step rewrites, so its sweep runs once over the final
+text. **Brief:** the origin's state file `tmp/retro_fix/state/RF-D01-01.md` (coordinator questions 1-4, "AC3-1
+patch", "Handoff to part 2") and its settlements `RF-D01-01/settle.md` (AC-1, AT-1, AT-2, AC-4) and
+`RF-D01-01/settle2.md` (SA-1 and its round-2 scope), read from the main checkout.
+**Files:** `crates/dss-core/src/elements/control/relay/mod.rs`, `crates/dss-core/src/elements/control/relay/accessors.rs`,
+`crates/dss-core/src/elements/control/relay/tests.rs`, `crates/dss-core/src/elements/control/swt_control/mod.rs`,
+`crates/dss-core/src/elements/control/swt_control/accessors.rs`, `crates/dss-core/src/elements/control/swt_control/tests.rs`,
+`crates/dss-core/src/elements/pd/fuse/accessors.rs` (doc lines only), `crates/dss-core/src/elements/pd/fuse/tests.rs`,
+`crates/dss-core/src/elements/control/recloser/accessors.rs` (doc lines only),
+`crates/dss-core/src/elements/control/recloser/tests.rs`, `crates/dss-core/tests/props_r4133_replay.rs` (the two
+history comments only, below the line `tests/TOLERANCE_NOTES.md` cites at :565, so no cited line shifts),
+`investigations/to_opendss/` (R1: main checkout, local-only)
+**Doc notes (§4):** `ORPHANED_GAPS.md` (only if §1.14 needs more than RF-D01-01's `settlement AC-4` entry),
+`docs/phase-records/r4133-props-rp3.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`, `docs/upgrade/DIVERGENCES.md` (the
+three CONDITIONAL AC3-1 entries re-homed under R15, the L10 entry's last sentence amended under R15, plus a notes
+entry for any shared sentence they do not cover)
+**r4133 bytes (applies to every pin below).** r4133 has no defined byte past slot 3 of a Relay, SwtControl, Fuse or
+Recloser. `Create` sets `NPhases := 3` and allocates the state arrays with `FNPhases` entries
+(`Controls/SwtControl.pas:287/:299-300`, `fuse.pas:376/:402`, `Recloser.pas:548/:607`, `Relay.pas:829-843`), and
+`RecalcElementData` raises `NPhases` to the controlled element's count without re-allocating (`SwtControl.pas:333`,
+`fuse.pas:444`, `Recloser.pas:674`). Slots 4-6 of a 6-phase control are heap (report 75, relay B1(3b) doc). Each pin
+asserts the port's bytes and names r4133's behaviour in words: the sixth token is dropped by `i<MAXDIM`, and the slot
+holds no defined value. No pin, doc or note quotes `[open, open, open, open, open, closed, ]` or any slot-4..6 read-back
+as an r4133 byte (RF-D09-14 AT7's rule, now owned here).
+**Findings**
+- `RP|RP3.7|AC3|AC3-1` (major, re-homed from RF-D01-01, where it was blocked on Files) - both lanes reproduce r4133's
+  per-phase parse off-by-one: `relay/mod.rs` `interpret_relay_state` (`i < RCMAX`), `swt_control/mod.rs`
+  `interpret_switch_state` (`i < SW_MAX`), and the ordinal twins `relay/accessors.rs` `set_enum_array`
+  `.take(RCMAX - 1)` and `swt_control/accessors.rs` `.take(SW_MAX - 1)`. r4133 `Relay.pas:1286` / `SwtControl.pas:461`
+  (`i<MAXDIM`, `MAXDIM = 6`) against the ganged arms `1 to MAXDIM` over `Array[1..6]` (Relay `:1260`/`:62`,
+  SwtControl `:435`/`:19`) is an upstream bug (report 75). The differential pins assert ordinal == interpreter, so
+  all four sites move together. Fix: the ready patch of the brief ("AC3-1 patch", re-located by symbol, since its
+  line numbers predate the settlement). Loops `i <= RCMAX` / `i <= SW_MAX`, twins `.take(RCMAX)` / `.take(SW_MAX)`,
+  the docs (relay module doc, interpreter doc, accessor doc; swt module doc, PropDef comment, interpreter doc,
+  accessor doc) re-worded so the five-token bound is r4133's alone. The pins flip into expected-value pins that
+  assert the port's six tokens applied and name r4133's behaviour per the rule above: the relay seam pin (renamed from
+  `..._caps_the_per_phase_parse_at_five_tokens`, AT3-4's fresh-render assert kept), relay differential row 2, the
+  swt interpreter cap pin, the swt seam pin, swt differential row 2. The 13 markers go
+  (`rg "RF-D01-01 AC3-1" crates/`).
+- `RP|RP3.7|AT1|AT7` (note, moved from RF-D09-14) - the swt seam pin `the_property_seam_caps_the_per_phase_parse_at_five_tokens`
+  ("slot 6 still rendered") shows `[open, open, open, open, open, closed, ]` as if it were an r4133 byte. When this
+  step flips and renames it, its doc says that r4133 drops the sixth token (`i < SWTCONTROLMAXDIM`, `SwtControl.pas:461`)
+  and renders uninitialised heap in slot 6 (`SwtControl.pas:299-305`, measured flipping between runs). The port keeps
+  all NPhases tokens (R3), and the pin never asserts a dropped or heap-valued sixth slot.
+- `R12|RF-D01-01|AT-2` (minor) - swt `interpreter_tokens_match_first_char_only`: its sixth token `closed` equals
+  `Create`'s slot 6, so the line cannot see the cap. With the fix the sixth token lands as `open`. The assert names the
+  port's `Open`, and the message names r4133's behaviour (sixth token dropped, slot 6 past the 3-entry block, no
+  defined byte), not a `Close`.
+- `R12|RF-D01-01|AC-4` (minor, coordinator question 3) - Fuse (`pd/fuse/accessors.rs` `set_enum_array`,
+  `values.len().min(FUSEMAXDIM)`) and Recloser (`control/recloser/accessors.rs` `set_enum_array`, `take(n)`) apply a
+  quoted list's sixth token, and r4133 drops it (`Controls/fuse.pas:577` `i<FUSEMAXDIM`, `Recloser.pas:992`
+  `i<RECLOSERCONTROLMAXDIM`, both measured on the r4133 DLL). The port is right, but the divergence has no pin and
+  no DIVERGENCES line. Fix: one six-token expected-value pin per class in its `tests.rs` (a 6-phase element, a quoted
+  six-token list, the port's slot 6 written, r4133's behaviour named per the rule above), one doc line per
+  `set_enum_array` naming the non-reproduced bound, and a DIVERGENCES notes entry citing both Pascal lines. The
+  ORPHANED_GAPS §1.14(a) correction is already the notes entry `### RF-D01-01 / settlement AC-4`: verify it, no
+  duplicate.
+- `R12|RF-D01-01|Q2` (note) - `props_r4133_replay.rs` "SETTLED 2026-09-02" history comments (about :2161 and :2244)
+  list "the five-token cap" among the r4133 behaviours RP3.7 adopted. Keep them as history of their date and add a
+  dated line that the cap was an r4133 off-by-one the port stopped reproducing in RF-D01-21.
+- `R12|RF-D01-01|R16` (note) - RF-D01-01 round 2 (`97973c80`) added two pins beyond its SA finding:
+  `relay::tests::a_seven_token_list_leaves_no_residue_for_the_next_bare_write` and its `swt_control` twin (the
+  non-reproduced `Else`-without-`Begin` residue), plus the `ctrl_snap` wording in both module docs. No settlement
+  audit covered them. Their test bodies (3-phase fixture) stay byte-unchanged across the fix. Their docs say the pin
+  "holds across the pending sixth-token fix (AC3-1)" (`relay/tests.rs` about l.1929, `swt_control/tests.rs` about
+  l.1005), and that sentence is re-worded to name the landed fix. This step's audits review the pins and the wording (R16).
+- `R12|RF-D01-01|E1` (note) - four pin docs cite the local path "gitignored `tmp/retro_fix/`": the two residue pins
+  (`97973c80`) and the two seven-phase pins of round 1 (`ea0bb37a`), at `relay/tests.rs` about :1878/:1931 and
+  `swt_control/tests.rs` about :937/:1008. The 2026-09-27 CLAUDE.md rule forbids that. Replace each with the dated
+  sentence naming the tool (epri-worker on the r4133 DLL) and the recipe (the pin's own commands), no path.
+**Parts:**
+1. The engine and its pins: both parse loops, both ordinal twins, the six flipped pins (AT7's doc rule included) and
+   the AT-2 flip, marker removal, the Fuse and Recloser pins. Gate green by kind in both lanes, commit, then hand over
+   through `tmp/retro_fix/state/RF-D01-21.md`: the pin names, the commit, the r4133 behaviour each pin names.
+2. The docs and comments (module, interpreter, accessor docs, the Fuse/Recloser doc lines, the two history comments,
+   the residue-pin sentence and the four `tmp/retro_fix/` sites), report 75 updated with the port status (R1,
+   local-only), the notes under R15 (the three CONDITIONAL entries re-homed and corrected per the r4133-bytes rule,
+   the L10 entry's last sentence amended, located by `rg -n 'AC3-1|five[- ]token|at most five' tmp/retro_fix/notes/`
+   at the step base), plus a notes entry for each committed shared sentence they miss (`rg -i "five[- ]token|at most
+   five" docs ORPHANED_GAPS.md` at the step base, for example DIVERGENCES §D12 "at most five tokens honored" and the
+   archived plan's RP3.7 "the five-token cap"). Full gate, commit.
+**Probes:** none new expected. The pins name r4133's behaviour from the Pascal and RF-D01-01's probes (a) and
+(sibling): the sixth token dropped on Relay, SwtControl, Fuse and Recloser. They quote no slot-4..6 byte. Those
+transcripts are local-only, so each pin doc carries the date, the tool (epri-worker on the r4133 DLL) and the recipe
+(the pin's own commands).
+**Ruling:** R3 (a proven r4133 bug is never reproduced: fixed in both lanes, pinned, DIVERGENCES row with r4133
+evidence). R4 keeps the `min(6, NPhases)` render clip, which this step does not touch. R15 for the CONDITIONAL entries
+and the L10 sentence, R16 for the round-2 scope, R1 for report 75.
+**Acceptance:**
+- `rg "RF-D01-01 AC3-1" crates/`, `rg -n 'AC3-1' crates/dss-core/src/elements/`, `rg "take\((RCMAX|SW_MAX) - 1\)" crates/`
+  and `git grep -n 'tmp/retro_fix' crates/` are empty. The step adds no `tmp/` path. No test asserts a dropped
+  sixth token on the port side, and no pin, doc or note quotes a slot-4..6 read-back as an r4133 byte.
+- The flipped pins fail at the step base and pass after the fix in both lanes, each naming the port's bytes and
+  r4133's behaviour. The Fuse and Recloser pins pass in both lanes.
+- Both `a_seven_token_list_leaves_no_residue_for_the_next_bare_write` test bodies are byte-unchanged and pass. Their
+  docs name the landed fix.
+- No golden byte, ledger entry or lock moves, and no line cited by `LINE_CITED_DOCS` shifts. Zero corpus exposure is
+  re-swept at the step base (no deck writes a quoted per-phase list of six or more tokens).
+- The three AC3-1 entries are re-homed under `### RF-D01-21 / RP|RP3.7|AC3|AC3-1` with the commit and the pin names,
+  and the L10 entry's last sentence is amended (R15). Report 75 names the port fix and is named in the record.
+- Every uid above is closed or recorded with a reason.
 
 ### RF-D02-01 — Fix AutoTrans xfmrcode fetch: phases guard, BusNameRedefined, honesty guards
 <!-- RF-STEP {"step": "RF-D02-01", "effort": "max", "parts": 1, "gate": "full", "oracle": true, "after": [], "n_uids": 7} -->
@@ -1669,8 +1950,8 @@ Every bullet is comment/docstring only: no executable line, assertion or rule li
 - Every uid above is closed or recorded with a reason.
 
 ### RF-D04-01 — Re-point and de-stale the GOLDEN_REBASE citations and counts in TESTING.md
-<!-- RF-STEP {"step": "RF-D04-01", "effort": "high", "parts": 2, "gate": "docs", "oracle": false, "after": ["RF-D00-01", "RF-D00-04", "RF-D00-16", "RF-D00-17", "RF-D01-16", "RF-D01-17", "RF-D01-18", "RF-D01-19", "RF-D02-13", "RF-D02-14", "RF-D02-21", "RF-D03-01", "RF-D03-05", "RF-D03-06", "RF-D03-07", "RF-D03-08", "RF-D06-01", "RF-D06-02", "RF-D06-03", "RF-D06-04", "RF-D06-06", "RF-D06-08", "RF-D06-09", "RF-D06-10", "RF-D07-01", "RF-D07-02", "RF-D07-03", "RF-D07-04", "RF-D07-05", "RF-D07-06", "RF-D08-01", "RF-D08-02", "RF-D08-03", "RF-D08-04", "RF-D08-05", "RF-D08-06", "RF-D08-07", "RF-D09-01", "RF-D09-03", "RF-D09-04", "RF-D09-05", "RF-D09-10", "RF-D09-11", "RF-D09-12", "RF-D10-01", "RF-D10-02", "RF-D10-04"], "n_uids": 17} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-04, RF-D00-16, RF-D00-17, RF-D01-16, RF-D01-17, RF-D01-18, RF-D01-19 … (47 steps, see the header).
+<!-- RF-STEP {"step": "RF-D04-01", "effort": "high", "parts": 2, "gate": "docs", "oracle": false, "after": ["RF-D00-01", "RF-D00-04", "RF-D00-16", "RF-D00-17", "RF-D01-16", "RF-D01-17", "RF-D01-18", "RF-D01-19", "RF-D02-13", "RF-D02-14", "RF-D02-21", "RF-D03-01", "RF-D03-05", "RF-D03-06", "RF-D03-07", "RF-D03-08", "RF-D06-01", "RF-D06-02", "RF-D06-03", "RF-D06-04", "RF-D06-06", "RF-D06-08", "RF-D06-09", "RF-D06-10", "RF-D07-01", "RF-D07-02", "RF-D07-03", "RF-D07-04", "RF-D07-05", "RF-D07-06", "RF-D07-12", "RF-D07-13", "RF-D08-01", "RF-D08-02", "RF-D08-03", "RF-D08-04", "RF-D08-05", "RF-D08-06", "RF-D08-07", "RF-D09-01", "RF-D09-03", "RF-D09-04", "RF-D09-05", "RF-D09-10", "RF-D09-11", "RF-D09-12", "RF-D10-01", "RF-D10-02", "RF-D10-04"], "n_uids": 17} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-04, RF-D00-16, RF-D00-17, RF-D01-16, RF-D01-17, RF-D01-18, RF-D01-19 … (49 steps, see the header).
 **Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `tests/TOLERANCE_NOTES.md` (only the G1.3a SA-4 verbatim-copy sentence below; that file is not in this step's files). This step is the TESTING.md doc-owner for the G-series. **Partition rule for the TESTING.md notes file** (`tmp/retro_fix/notes/TESTING.md`, the execution script's slug, the file every landed step wrote to, `testing-md.md` wherever this plan spells it means the same file; the rule refines §4's first-owner rule and is stated identically in RF-D04-02): an entry `### <step> / <uid>` is applied by RF-D04-01 iff its `<uid>` starts with `G|` or `INFRA|` (the RF-I00 steps' entries and the unmarked settlement items of RF-I00-01, added by the coordinator 2026-09-27), by RF-D04-02 iff it starts with `RP|`; a step that leaves both kinds is split by entry. Apply only entries still unmarked whose author has landed; mark each applied entry directly under its header with `<!-- applied by RF-D04-01 <commit> -->`; list the applied entries in the record by `<step> / <uid>`. RF-D04-02, RF-D04-03, RF-D04-07 and RF-D04-09 (the last TESTING.md owner, which asserts no unmarked entry remains) follow.
 **Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test reliability_pins` (TESTING.md's second runtime reader), each in both lanes; add both clippy lanes only if `oracle_parity_cfg_gate.rs` was edited. The full gate (§2.2) runs on the wave merge (§2 step 7).
@@ -1890,8 +2171,8 @@ This step edits shared documents directly (doc-owner step). Re-locate every site
 - No `.rs`, golden or ledger byte moves; every uid above is closed or recorded with a reason.
 
 ### RF-D04-11 — Fix stale cites and small factual slips in the RP3 phase record
-<!-- RF-STEP {"step": "RF-D04-11", "effort": "high", "parts": 2, "gate": "docs", "oracle": false, "after": ["RF-D00-02", "RF-D00-05", "RF-D00-06", "RF-D00-07", "RF-D00-08", "RF-D00-14", "RF-D00-15", "RF-D01-01", "RF-D01-02", "RF-D01-04", "RF-D01-06", "RF-D01-19", "RF-D02-09", "RF-D02-20", "RF-D03-08", "RF-D06-04", "RF-D07-07", "RF-D07-08", "RF-D07-10", "RF-D07-11", "RF-D08-08", "RF-D08-09"], "n_uids": 8} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-02, RF-D00-05, RF-D00-06, RF-D00-07, RF-D00-08, RF-D00-14, RF-D00-15, RF-D01-01 … (22 steps, see the header).
+<!-- RF-STEP {"step": "RF-D04-11", "effort": "high", "parts": 2, "gate": "docs", "oracle": false, "after": ["RF-D00-02", "RF-D00-05", "RF-D00-06", "RF-D00-07", "RF-D00-08", "RF-D00-14", "RF-D00-15", "RF-D00-18", "RF-D01-01", "RF-D01-02", "RF-D01-04", "RF-D01-06", "RF-D01-19", "RF-D01-21", "RF-D02-09", "RF-D02-20", "RF-D03-08", "RF-D06-04", "RF-D07-07", "RF-D07-08", "RF-D07-10", "RF-D07-11", "RF-D07-12", "RF-D08-08", "RF-D08-09"], "n_uids": 8} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-02, RF-D00-05, RF-D00-06, RF-D00-07, RF-D00-08, RF-D00-14, RF-D00-15, RF-D00-18 … (25 steps, see the header).
 **Files:** `docs/phase-records/r4133-props-rp3.md`
 **Doc notes (§4):** - (FIRST doc-owner step on this record: before the findings below, apply every entry of the `docs/phase-records/r4133-props-rp3.md` notes file that is unmarked and whose author has landed, under the note-consumption rule of RF-D05-01 (apply only entries still unmarked whose author has landed; mark each applied entry directly under its `### <step> / <uid>` header with `<!-- applied by RF-D04-11 <commit> -->`; list the applied entries in the record by `<step> / <uid>`) - 22 earlier steps leave them, all in this step's after list; RF-D01-06 (`inline_shared`) made its forced one-line record edit in-step and left the matching entry; a note that registers or cites a pin name must land verbatim so the `props_r4133_replay` citation guards, e.g. `every_rp311_serialization_pin_exists_and_is_cited`, go green. RF-D04-12 follows and RF-D04-13 is the last owner of this record.)
 **Gate (docs-only, §2.2 - index `needs_gate: no`):** `cargo fmt --all --check`, `cargo test -p dss-core --test oracle_parity_cfg_gate` and `cargo test -p dss-core --test props_r4133_replay` (the record's runtime reader - its citation guards), each in both lanes. The full gate (§2.2) runs on the wave merge (§2 step 7).
@@ -1988,8 +2269,8 @@ All edits are dated as-executed notes / dated corrections in the plan's existing
 - Every uid above is closed or recorded with a reason.
 
 ### RF-D05-02 — Correct the props_r4133 README, the RP0/RP1 record and ORPHANED_GAPS 1.14(b)
-<!-- RF-STEP {"step": "RF-D05-02", "effort": "high", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-05", "RF-D00-06", "RF-D00-10", "RF-D00-11", "RF-D00-16", "RF-D00-17", "RF-D01-01", "RF-D01-03", "RF-D01-04", "RF-D01-07", "RF-D01-09", "RF-D01-10", "RF-D02-01", "RF-D02-04", "RF-D02-12", "RF-D02-13", "RF-D02-15", "RF-D02-20", "RF-D03-05", "RF-D06-07", "RF-D06-08", "RF-D07-10", "RF-D09-04", "RF-D09-05", "RF-D10-02"], "n_uids": 12} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-05, RF-D00-06, RF-D00-10, RF-D00-11, RF-D00-16, RF-D00-17, RF-D01-01, RF-D01-03 … (25 steps, see the header).
+<!-- RF-STEP {"step": "RF-D05-02", "effort": "high", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-05", "RF-D00-06", "RF-D00-10", "RF-D00-11", "RF-D00-16", "RF-D00-17", "RF-D01-01", "RF-D01-03", "RF-D01-04", "RF-D01-07", "RF-D01-09", "RF-D01-10", "RF-D01-21", "RF-D02-01", "RF-D02-04", "RF-D02-12", "RF-D02-13", "RF-D02-15", "RF-D02-20", "RF-D03-05", "RF-D06-07", "RF-D06-08", "RF-D07-10", "RF-D07-13", "RF-D09-04", "RF-D09-05", "RF-D10-02"], "n_uids": 12} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-05, RF-D00-06, RF-D00-10, RF-D00-11, RF-D00-16, RF-D00-17, RF-D01-01, RF-D01-03 … (27 steps, see the header).
 **Files:** `ORPHANED_GAPS.md`, `crates/dss-core/tests/props_r4133_evidence_lock.rs`, `docs/phase-records/r4133-props-rp0-rp1.md`, `tests/corpus/props_r4133/README.md`
 **Doc notes (§4):** - (this step is the doc-owner of the three files: first apply every entry of `tmp/retro_fix/notes/` addressed to them, under the note-consumption rule of RF-D05-01 - only unmarked entries whose author has landed, each marked `<!-- applied by RF-D05-02 <commit> -->` afterwards; `ORPHANED_GAPS.md` and the README have later owners, RF-D04-08 / RF-D04-02).
 RF-D01-03 (`RP|RP0.1|SA1|SA-2`) makes a test in `crates/dss-core/tests/props_r4133_evidence_lock.rs` read the README's corrected data-trap numbers back. If that read-back reds on a number this step edits, update its expectation in the same commit (that file is in **Files** for exactly this purpose) - never weaken the read-back; name the moved expectation in the record.
@@ -2018,8 +2299,8 @@ The data files of `tests/corpus/props_r4133/` (`triage.md`, `numeric_pairs*.txt`
 - Full gate green in both lanes; every uid above is closed or recorded with a reason.
 
 ### RF-D05-03 — Fix stale pointers in R4133_PROPS_PLAN and the rp2/rp4/rp5/frontier records
-<!-- RF-STEP {"step": "RF-D05-03", "effort": "high", "parts": 1, "gate": "docs", "oracle": false, "after": ["RF-D00-05", "RF-D00-07", "RF-D00-15", "RF-D01-01", "RF-D01-06", "RF-D02-17", "RF-D06-07", "RF-D07-07", "RF-D07-11", "RF-D08-08", "RF-D08-09", "RF-D08-10", "RF-D09-01", "RF-D09-07", "RF-D10-02"], "n_uids": 8} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-05, RF-D00-07, RF-D00-15, RF-D01-01, RF-D01-06, RF-D02-17, RF-D06-07, RF-D07-07 … (15 steps, see the header).
+<!-- RF-STEP {"step": "RF-D05-03", "effort": "high", "parts": 1, "gate": "docs", "oracle": false, "after": ["RF-D00-05", "RF-D00-07", "RF-D00-15", "RF-D00-18", "RF-D01-01", "RF-D01-06", "RF-D01-21", "RF-D02-17", "RF-D06-07", "RF-D07-07", "RF-D07-11", "RF-D07-12", "RF-D07-13", "RF-D08-08", "RF-D08-09", "RF-D08-10", "RF-D09-01", "RF-D09-07", "RF-D10-02"], "n_uids": 8} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-05, RF-D00-07, RF-D00-15, RF-D00-18, RF-D01-01, RF-D01-06, RF-D01-21, RF-D02-17 … (19 steps, see the header).
 **Files:** `docs/phase-records/phase-6.md`, `docs/phase-records/phase-8.md`, `docs/phase-records/r4133-props-frontier-log.md`, `docs/phase-records/r4133-props-rp2.md`, `docs/phase-records/r4133-props-rp4.md`, `docs/phase-records/r4133-props-rp5.md`, `docs/plans-archive/R4133_PROPS_PLAN.md`
 **Doc notes (§4):** - (first doc-owner of `docs/plans-archive/R4133_PROPS_PLAN.md`: apply the pending `tmp/retro_fix/notes/` entries for it and for the listed records first, under the note-consumption rule of RF-D05-01 - only unmarked entries whose author has landed, each marked `<!-- applied by RF-D05-03 <commit> -->`; RF-D05-04, RF-D05-07 and RF-D04-12 edit the same plan file afterwards and apply what is still unmarked then).
 The archived plan and the phase records are history: every change is a dated correction beside the original sentence, not a silent rewrite. Phase records are outside `LINE_CITED_DOCS` by design, so prefer symbols/headings over line numbers.
@@ -2038,8 +2319,8 @@ The archived plan and the phase records are history: every change is a dated cor
 - Docs gate green in both lanes; every uid above is closed or recorded with a reason (SA-4: the D10-02 counts cross-referenced from the RP4.1 acceptance paragraph, or the dated "not recorded" note plus the coordinator note).
 
 ### RF-D05-04 — Refresh TOLERANCE_NOTES citations and stale present-tense claims
-<!-- RF-STEP {"step": "RF-D05-04", "effort": "high", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-03", "RF-D00-04", "RF-D00-05", "RF-D00-07", "RF-D00-15", "RF-D00-17", "RF-D01-01", "RF-D01-06", "RF-D01-08", "RF-D05-03", "RF-D06-02", "RF-D06-04", "RF-D06-05", "RF-D06-07", "RF-D06-08", "RF-D06-09", "RF-D07-01", "RF-D07-06", "RF-D07-11", "RF-D08-04", "RF-D08-08", "RF-D08-09", "RF-D09-01", "RF-D09-02", "RF-D09-05", "RF-D09-06"], "n_uids": 8} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-03, RF-D00-04, RF-D00-05, RF-D00-07, RF-D00-15, RF-D00-17, RF-D01-01, RF-D01-06 … (26 steps, see the header).
+<!-- RF-STEP {"step": "RF-D05-04", "effort": "high", "parts": 2, "gate": "full", "oracle": false, "after": ["RF-D00-03", "RF-D00-04", "RF-D00-05", "RF-D00-07", "RF-D00-15", "RF-D00-17", "RF-D01-01", "RF-D01-06", "RF-D01-08", "RF-D05-03", "RF-D06-02", "RF-D06-04", "RF-D06-05", "RF-D06-07", "RF-D06-08", "RF-D06-09", "RF-D07-01", "RF-D07-06", "RF-D07-11", "RF-D07-12", "RF-D07-13", "RF-D08-04", "RF-D08-08", "RF-D08-09", "RF-D09-01", "RF-D09-02", "RF-D09-05", "RF-D09-06"], "n_uids": 8} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D00-03, RF-D00-04, RF-D00-05, RF-D00-07, RF-D00-15, RF-D00-17, RF-D01-01, RF-D01-06 … (28 steps, see the header).
 **Files:** `docs/plans-archive/R4133_PROPS_PLAN.md`, `tests/TOLERANCE_NOTES.md`
 **Doc notes (§4):** - (doc-owner of `tests/TOLERANCE_NOTES.md`: apply every pending `tmp/retro_fix/notes/` entry for it first, under the note-consumption rule of RF-D05-01 - only unmarked entries whose author has landed, each marked `<!-- applied by RF-D05-04 <commit> -->`; RF-D04-03 and RF-D04-09 own the file later and apply what is still unmarked then; same for the archived plan, whose first owner is RF-D05-03).
 `tests/TOLERANCE_NOTES.md` is in `LINE_CITED_DOCS`: its `file:LINE` citations are walked by `oracle_parity_cfg_gate.rs`, which is why this step runs the full gate and runs after the steps that edit `harness/mod.rs` or `corpus_gate/runner.rs`. Re-measure every line number at the lane HEAD with `grep -n`; the numbers below are as of `09bfca05`. RF-D07-01 and RF-D07-06 (both in **After**) hardened the citation walker and, under their shared-doc clause, already made digits-only re-points in this file (listed in `tmp/retro_fix/notes/tolerance-notes-md.md`): read that list first and never re-edit a repaired line - the two citation bullets below are "verify closed, re-point only what is still stale at HEAD". Since RF-D07-01 the rail asserts, per `LINE_CITED_DOCS` document, the exact number of resolved citations that the document's own `<!-- line-citations: N -->` marker declares: if any edit of this step (a re-point that starts resolving, a symbol-only conversion from an applied note) moves that count for `tests/TOLERANCE_NOTES.md`, update the marker in the same commit - never drop or keep a citation to hold the number, and never touch `oracle_parity_cfg_gate.rs` (not in **Files**); the docs gate runs the rail, so its message names the document to re-measure.
@@ -2062,8 +2343,8 @@ The archived plan and the phase records are history: every change is a dated cor
 - Full gate green; every uid above is closed or recorded with a reason (the two citation bullets state whether RF-D07-01 had already closed them).
 
 ### RF-D05-05 — Fix DIVERGENCES, STATUS, DE_PASCALIZE_PLAN, Stage F record and tools/golden README drift
-<!-- RF-STEP {"step": "RF-D05-05", "effort": "high", "parts": 2, "gate": "docs", "oracle": false, "after": ["RF-D00-01", "RF-D00-05", "RF-D00-06", "RF-D00-08", "RF-D00-10", "RF-D00-11", "RF-D00-15", "RF-D00-17", "RF-D01-01", "RF-D01-04", "RF-D01-07", "RF-D01-10", "RF-D01-11", "RF-D01-19", "RF-D02-01", "RF-D02-02", "RF-D02-05", "RF-D02-08", "RF-D02-12", "RF-D02-13", "RF-D02-14", "RF-D02-15", "RF-D02-17", "RF-D03-01", "RF-D03-06", "RF-D03-07", "RF-D06-03", "RF-D06-07", "RF-D06-10", "RF-D07-03", "RF-D07-11", "RF-D08-05", "RF-D08-10", "RF-D09-02", "RF-D09-03", "RF-D09-06", "RF-D09-07", "RF-D09-12"], "n_uids": 11} -->
-**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-05, RF-D00-06, RF-D00-08, RF-D00-10, RF-D00-11, RF-D00-15, RF-D00-17 … (38 steps, see the header).
+<!-- RF-STEP {"step": "RF-D05-05", "effort": "high", "parts": 2, "gate": "docs", "oracle": false, "after": ["RF-D00-01", "RF-D00-05", "RF-D00-06", "RF-D00-08", "RF-D00-10", "RF-D00-11", "RF-D00-15", "RF-D00-17", "RF-D00-18", "RF-D01-01", "RF-D01-04", "RF-D01-07", "RF-D01-10", "RF-D01-11", "RF-D01-19", "RF-D01-21", "RF-D02-01", "RF-D02-02", "RF-D02-05", "RF-D02-08", "RF-D02-12", "RF-D02-13", "RF-D02-14", "RF-D02-15", "RF-D02-17", "RF-D03-01", "RF-D03-06", "RF-D03-07", "RF-D06-03", "RF-D06-07", "RF-D06-10", "RF-D07-03", "RF-D07-11", "RF-D08-05", "RF-D08-10", "RF-D09-02", "RF-D09-03", "RF-D09-06", "RF-D09-07", "RF-D09-12"], "n_uids": 11} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** docs gate (§2.2). **After:** RF-D00-01, RF-D00-05, RF-D00-06, RF-D00-08, RF-D00-10, RF-D00-11, RF-D00-15, RF-D00-17 … (40 steps, see the header).
 **Files:** `DE_PASCALIZE_PLAN.md`, `STATUS.md`, `docs/phase-records/depascalize-stagef.md`, `docs/upgrade/DIVERGENCES.md`, `tools/golden/README.md`
 **Doc notes (§4):** - (doc-owner of `docs/upgrade/DIVERGENCES.md` and the first owner of `STATUS.md`: apply the pending `tmp/retro_fix/notes/` entries for DIVERGENCES.md first - R3/R4/R6 rows left by engine steps land here; the index lists 22 note-leaving steps for it, all in **After** - and then every pending entry addressed to `STATUS.md` (fifteen steps leave one per the index, all in **After**: D00-01, D00-05, D00-08, D00-17, D01-04, D01-07, D01-19, D02-05, D03-01, D03-07, D06-07, D08-05, D09-02, D09-06, D09-12; list the notes file at execution time, do not trust this enumeration), each under the note-consumption rule of RF-D05-01 - only unmarked entries whose author has landed, marked `<!-- applied by RF-D05-05 <commit> -->` afterwards; RF-D04-08 and RF-D04-12 own STATUS.md / DIVERGENCES.md later and apply what is still unmarked then. The coordinator's per-wave STATUS sync records wave landings only and never substitutes for note application. `DE_PASCALIZE_PLAN.md`, `depascalize-stagef.md` and `tools/golden/README.md` are not §4 documents: edit them directly.)
 **Parts:**
@@ -3075,6 +3356,146 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 - Notes exist for all four shared documents with the exact replacement text per uid.
 - Every uid above is closed or recorded with a reason.
 
+### RF-D07-12 — Narrow the pair-scoped echo rows on r4133-only cases, check their exposure live, and give the capi witness counts a live source (R12 follow-up of RF-D07-07)
+<!-- RF-STEP {"step": "RF-D07-12", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": true, "after": ["RF-D06-09", "RF-D07-07", "RF-D09-01", "RF-D09-02"], "n_uids": 4} -->
+**Tier:** executor opus/xhigh (moves echo exclusions, their locks and pins). Audits and settler per §3. **Gate:** the
+kind `gate-kind` prints (`Code`: the seven commands). No `lane_diff`: harness and tests only. **After:** RF-D06-09 (the
+narrowed-row stale arm and ArrayForm folding), RF-D07-07 (origin), RF-D09-01 (the echo liveness rails and the
+narrowed-row justification of `fault.bus2`) and RF-D09-02 (the `ECHO_NARROWED` doc fixes). This step narrows more
+rows through what those steps build. **Brief:** the origin's state file `tmp/retro_fix/state/RF-D07-07.md` and its
+settlements `RF-D07-07/settle.md` (AC-4, AT-2, AT-3) and `RF-D07-07/settle2.md` ("For the coordinator"), read from
+the main checkout.
+**Files:** `crates/dss-test-harness/src/harness/props_norm.rs`, `crates/dss-test-harness/src/harness/mod.rs`,
+`crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs` (the skip decision
+that makes a `both` case r4133-only), `crates/dss-core/tests/corpus_gate/ledger.rs` (only for a side-effect-free skip
+query, because `channel_is_skipped` records a hit), `crates/dss-core/tests/corpus_gate.rs`,
+`crates/dss-core/tests/props_r4133_pins.rs`, `crates/dss-core/tests/props_r4133_replay.rs`,
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (only if a register literal or a cited line moves),
+`tests/corpus/ledger.json` (only for a cell the narrowing exposes as divergent, each entry with its pin), `TESTING.md`
+and `tests/TOLERANCE_NOTES.md` (R9, `inline_shared`: only the digits-only re-points of the file:LINE citations that
+the `LINE_CITED_DOCS` rail forces, each with its notes entry)
+**Doc notes (§4):** `TESTING.md`, `tests/TOLERANCE_NOTES.md`, `docs/phase-records/r4133-props-rp2.md` and
+`docs/phase-records/r4133-props-rp3.md` (only where a present-tense sentence goes stale)
+**Findings**
+- `R12|RF-D07-07|AT-3` + `R12|RF-D07-07|AC-4` (notes) - pair-scoped echo rows skip every cell of their pair on
+  r4133-only cases, agreeing cells included, and no channel compares those. Exposed rows: `gictransformer.pctperm`
+  (22 cells over 4 cases, all `('100','0')`, witness `Pin`) and `gicsource.spectrum` (2 cells, 1 case, all
+  `('','default')`, `CapiAndPin(1, …)`). Unexposed rows (`ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES`): `line.spacing`,
+  `monitor.mode` (`Capi(2)`), `regcontrol.remoteptratio` (`Capi(31)`), `storage.dynadll`,
+  `storagecontroller.modedischarge`, `vsource.yearly` (`Capi(2)`). Three of them have no pin at all. Fix, chosen
+  per CLAUDE.md (every divergence excluded field-by-field): narrow each row to its measured spellings through
+  `ECHO_NARROWED_PURE_PAIRS`, the `generator.model` precedent. The spellings are re-derived by
+  `the_narrowed_echo_rows_carry_exactly_the_spellings_the_typed_rules_leave` from the vendored census, and a claims
+  census re-run (TESTING.md procedure) decides any row the vendored evidence cannot. A row that cannot be narrowed
+  exactly stays pair-scoped with a pin and the reason in its doc. The locks move (`ECHO_NARROWED_PAIRS` 21,
+  `ECHO_NARROWED_SPELLINGS` 67, the pure-pair list, `UNEXPOSED_ROWS` if the list shrinks). The landed RF-D07-07 text
+  keeps its day's numbers, and this step's record states the new ones. A newly compared cell that diverges is R8: a
+  ledger entry with its pin, or a port fix, never a silent re-widening.
+- `R12|RF-D07-07|AT-2` (minor) - the zero-cell half of `ECHO_ROWS_UNEXPOSED_ON_R4133_ONLY_CASES` is a measurement
+  ("What the list does not say" in its doc): a deck edit that makes a covered cell differ on an r4133-only case keeps
+  every class count, and nothing reds. Fix: thread the case's gating class from the scheduler, which decides it
+  (`engines: "r4133"`, or a `both` case whose capi channel a ledger `skip` drops, per
+  `the_gating_buckets_follow_the_channels_that_really_run`), through `corpus_gate/runner.rs` and
+  `harness/mod.rs::PropsPolicy::echo_excluded` to `props_norm::echo_excluded_r4133`. Never re-query
+  `channel_is_skipped`, which counts a ledger hit. Count echo-row hits on r4133-only cases per row, and assert in the
+  gate epilogue (beside `assert_norm_rows_are_live`, `corpus_gate.rs`) on a complete run that each row with such a hit
+  is listed in `ECHO_ROWS_ON_R4133_ONLY_CASES` with no more cells than listed. Offline drives: a synthetic hit for an
+  unlisted row reds, and a listed row reds nothing.
+- `R12|RF-D07-07|W-1` (note, the origin's settlement items 7 and round-2 item 3) - every `EchoWitness::Capi(n)` /
+  `CapiAndPin(n, …)` count bar `gicsource.spectrum` is the 2026-08-23 claims census's. The enum doc says "A re-census
+  that moved n would not red anything". G1.4a (`ac192be6`) moved `gic_midi`, `gictransformer_gic` and `GIC_Example`
+  off capi, so counts for classes those decks declare can be high by up to three (`reactor.kvar` 65, the `line.*`
+  rows 233). Fix: at the same seam, count per echo pair the capi-gating cases whose capi channel value-compared one
+  or more of its cells. The epilogue asserts, on a complete run, at least one for every capi witness, and each `n`
+  is re-pinned to the live count. If an exact count cannot hold, drop `n` from the variant and keep the live
+  at-least-one assert, with the reason in the enum doc. The three dated pin docs of `props_r4133_pins.rs` follow.
+**Parts:**
+1. The narrowing (AT-3, AC-4): the eight rows, the locks, the derivation tests, any forced citation re-point (R9),
+   the live corpus gate green in both lanes. Commit, hand over through `tmp/retro_fix/state/RF-D07-12.md`: the
+   spellings per row and the census figures.
+2. The live exposure check (AT-2): the seam threading from the scheduler, the epilogue assert, the offline drives.
+   Gate green by kind, commit.
+3. The live capi witness counts (W-1), the doc and pin-doc updates, the §4 notes, full gate, commit.
+**Probes:** the claims census (`DSS_PROPS_CENSUS=claims`, TESTING.md) over the r4133-only cases before and after
+part 1: 0 `echo-row` cells for the six unexposed rows, and exactly the measured spellings for the two GIC rows.
+No oracle capture beyond the census and the gate.
+**Acceptance:**
+- The eight rows are narrowed, or each one that is not names its pin and its reason. The locks equal the derived
+  counts, and the corpus gate is green in both lanes with every ledger entry hit.
+- The epilogue check exists, runs on complete runs only, takes the gating class from the scheduler, and its offline
+  drives red as stated. The ledger hit counts are unchanged by the threading.
+- Every capi witness has a live count asserted at least once per complete run, and its `n` equals it (or `n` is
+  gone with the reason stated). No doc says a re-census cannot red a witness count.
+- `LINE_CITED_DOCS` is green, and each forced re-point in `TESTING.md` / `tests/TOLERANCE_NOTES.md` is digits-only
+  with its notes entry (R9).
+- No golden byte or tolerance moves. Every uid above is closed or recorded with a reason.
+
+### RF-D07-13 — Gate one Sensor deck and a new GenDispatcher deck on r4133 so the eight dormant norm rows go live (R12 follow-up of RF-D07-07)
+<!-- RF-STEP {"step": "RF-D07-13", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-D07-07", "RF-D09-01", "RF-D09-02"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh (moves manifests, population locks, ledger entries and pins, and adds one corpus deck).
+Audits and settler per §3. **Gate:** the kind `gate-kind` prints (`Code`: the seven commands). No `lane_diff`.
+**After:** RF-D07-07 (origin), RF-D09-01 (writes the "160 guarded + 8 dormant" wording this step changes), RF-D09-02
+(corrects the `(443, 312, 87, 44)` prose this step moves). Re-measure the population split at the step base
+(RF-D03-08 may move it first). **Brief:** the origin's state file `tmp/retro_fix/state/RF-D07-07.md` (Q4) and
+`RF-D07-07/settle.md` (AC-5), read from the main checkout, plus report 40
+(`investigations/to_opendss/40-gendispatcher-weights-registration-off-by-one.md`, local-only).
+**Files:** `tests/corpus/controls/manifest.json`, `tests/corpus/controls/gendispatcher/` (the new deck only),
+`tests/corpus/manifests/population.lock.json`, `tests/corpus/ledger.json`,
+`crates/dss-core/tests/corpus_gate/manifest.rs` (`CONTROLS_REQUIRED`), `crates/dss-core/tests/corpus_gate/scheduler.rs`
+(the `FORCED_*_POPULATION` locks and their docs), `crates/dss-test-harness/src/harness/props_norm.rs`,
+`crates/dss-test-harness/src/harness/mod.rs` (the GenDispatcher `weights` row's "Dormant until a gendispatcher deck
+gates r4133" comment), `crates/dss-core/tests/props_r4133_replay.rs`, `crates/dss-core/tests/props_r4133_pins.rs`
+(expected-value pins for divergences the flip exposes), `crates/dss-core/tests/props_r4133_evidence_lock.rs` and a
+dated correction file under `tests/corpus/props_r4133/` (only if the frozen-census half needs one, see Findings),
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (only if a register literal or a cited line moves), `TESTING.md`
+and `tests/TOLERANCE_NOTES.md` (R9, `inline_shared`: only the digits-only re-points of the file:LINE citations that
+the `LINE_CITED_DOCS` rail forces, each with its notes entry)
+**Doc notes (§4):** `TESTING.md`, `tests/TOLERANCE_NOTES.md`, `docs/phase-records/r4133-props-rp2.md`,
+`tests/corpus/props_r4133/README.md`
+**Findings**
+- `R12|RF-D07-07|Q4` (minor, AT1-1's hand-over) - the eight `NORM_ROWS_WITH_NO_IN_SCOPE_CELL` rows
+  (`gendispatcher.element/enabled/genlist`, `sensor.currents/element/enabled/kvars/kws`) are never visited by the live
+  anti-rot guard, because every deck that declares a Sensor or a GenDispatcher gates `capi_v0145` only.
+  - Sensor: flip one of the controls-manifest decks that declare one (`sensor/midi_sensor`, `sensor/sensor_map`,
+    `combo/combo_metering`, `combo/midi_controls`) to `engines: "both"`, chosen by probe.
+  - GenDispatcher: no existing deck can flip. r4133 registers no `weights` property (`Controls/GenDispatcher.pas:92`
+    `NumPropsThisClass = 6`, so `PropertyName^[7] := 'Weights'` at `:133` is overwritten by the inherited
+    `basefreq`). `weights=` raises #364, r4133 dispatches the equal split and the whole solved state moves (kW 48 %
+    apart, 54.5x at step 0, `harness/mod.rs` comment, report 40), which no property-scoped pin can cover. All three
+    `controls:gendispatcher/*` decks write `weights=` and stay `capi_v0145`. The route is a NEW controls deck under
+    `tests/corpus/controls/gendispatcher/` with neither `weights=` nor `basefreq=` (r4133's slot 7 is the weights
+    arm), gated `both`, registered in `controls/manifest.json` and `CONTROLS_REQUIRED`. The "Dormant until" comment
+    names it.
+  Triage each cell the r4133 channel reports: a port bug is fixed, an r4133 bug gets a ledger entry with its
+  expected-value pin, and a class that cannot gate r4133 is recorded with the evidence. Then shrink
+  `NORM_ROWS_WITH_NO_IN_SCOPE_CELL` and its count lock for the rows now visited.
+  `the_norm_rows_with_no_in_scope_cell_are_the_classes_no_r4133_gating_case_declares` reds until that is done. A
+  norm row the live guard then reports stale (visited, no hit, `check_rows_are_live`) is deleted in-step with its
+  lock and doc (fail-on-stale), with the probe evidence in the record. If the row must stay for another channel, that
+  class's deck is left unflipped and the record says why. The frozen half,
+  `the_norm_rows_with_no_in_scope_cell_are_exactly_the_declared_ones`, reads `bins.tsv` and `shape_in_scope.txt`,
+  which are never rewritten (README "Corrections measured after freezing"). Re-base it on a dated, tracked
+  correction it can read, with its digest in the evidence lock, and leave the README correction as a §4 note.
+**Parts:**
+1. The flip: probe the Sensor candidates and the new GenDispatcher deck on r4133 (below), flip or add the two chosen
+   decks, regenerate `population.lock.json` by the TESTING.md procedure, move the `FORCED_*_POPULATION` locks and
+   their docs, pin every exposed divergence. Corpus gate green in both lanes, commit, hand over through
+   `tmp/retro_fix/state/RF-D07-13.md`.
+2. The norm rows: the list and its lock, any stale row, the frozen-census correction, both replay tests, the §4 notes,
+   full gate, commit.
+**Probes:** the corpus gate with `DSS_GATE_ONLY` on each candidate deck with the r4133 channel enabled (a local
+manifest edit, not committed until chosen), then the claims census on the chosen decks. Decides which Sensor deck
+flips, confirms that the new GenDispatcher deck agrees on both channels, and names the cells that need a ledger
+entry.
+**Acceptance:**
+- One Sensor deck and one GenDispatcher deck gate on r4133 (or the record names why a class cannot, with evidence).
+  Every exposed divergence carries a field-level ledger entry and its pin, and the corpus gate is green in both lanes
+  with every entry hit.
+- `NORM_ROWS_WITH_NO_IN_SCOPE_CELL` holds only rows no r4133-gating case reaches. No norm row is stale. Both replay
+  tests and `assert_norm_rows_are_live` are green. The population locks equal the manifests.
+- `bins.tsv` and `shape_in_scope.txt` are unchanged in bytes. `LINE_CITED_DOCS` is green with digits-only forced
+  re-points (R9). No golden byte or tolerance moves. Every uid above is closed or recorded with a reason.
+
 ### RF-D08-01 — Drive the ledger envelope/rewrite rails and fix ledger.rs doc drift
 <!-- RF-STEP {"step": "RF-D08-01", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": [], "n_uids": 13} -->
 **Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
@@ -3552,18 +3973,18 @@ Comment/string-only step, run last so re-cited positions are final. Rule for eve
 - Every uid above is closed or recorded with a reason.
 
 ### RF-D09-14 — SwtControl tests: re-pin micro-deck currents on DLL f64, add New-path quoted-state pin, fix vacuous recalc test and stale docs
-<!-- RF-STEP {"step": "RF-D09-14", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-01", "RF-D01-02", "RF-D01-09", "RF-D03-04"], "n_uids": 7} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-01, RF-D01-02, RF-D01-09, RF-D03-04.
+<!-- RF-STEP {"step": "RF-D09-14", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-D01-01", "RF-D01-02", "RF-D01-09", "RF-D01-21", "RF-D03-04"], "n_uids": 6} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** RF-D01-01, RF-D01-02, RF-D01-09, RF-D01-21, RF-D03-04.
 **Files:** `crates/dss-core/src/elements/control/swt_control/tests.rs`
 **Doc notes (§4):** -
-**Ordering:** four earlier steps edit this same test file and landed before this one - RF-D01-01 (`RP|RP3.7|AC3|AC3-1`, R3: the per-phase parse keeps the 6th token in both lanes and every "dropped 6th token" pin became an expected-value pin that it lands), RF-D01-02 (pin provenance re-pointing / renames), RF-D01-09 (JSON-import per-phase pin) and RF-D03-04 (real JSON-import seam pin). Re-locate every pin named below by its landed name at lane HEAD (AT2 / AT5 / AT7 name pins that RF-D01-01 / RF-D01-02 may have renamed or reshaped).
+**Ordering:** five earlier steps edit this same test file and landed before this one - RF-D01-01 (the 7-phase render pins and the round-2 residue pin), RF-D01-21 (`RP|RP3.7|AC3|AC3-1`, re-homed there by the coordinator 2026-09-27, R3: the per-phase parse keeps the 6th token in both lanes and every "dropped 6th token" pin became an expected-value pin that it lands), RF-D01-02 (pin provenance re-pointing / renames), RF-D01-09 (JSON-import per-phase pin) and RF-D03-04 (real JSON-import seam pin). Re-locate every pin named below by its landed name at lane HEAD (AT2 / AT5 name pins that RF-D01-21 / RF-D01-02 may have renamed or reshaped).
 **Findings**
 - `RP|RP3.7|AC1|AC1-5` (note) - the locked-action test containing `sw.side_effects(prop::ACTION, 0); // early-return on locked`. `side_effects` (`swt_control/accessors.rs`) has had no lock branch since RP3.7 (a2); the asserts hold because the interpreter refused the write, leaving `present_state` unchanged. Replace the comment with that real reason.
 - `RP|RP3.7|AT1|AT1` (minor) - `per_phase_open_zeros_only_its_phase_currents_on_a_micro_deck` and `per_phase_state_write_through_the_executive_opens_only_its_phase`. The expected magnitudes `13.900155478555806` / `13.886231627361722` are |x| of a 6-decimal PRINT, not the DLL's f64, although the doc says "at full precision"; the whole recorded 3.66e-7 / 2.75e-7 "gap" is that print error and eats 37 % / 27 % of the abs 1e-6 band. Fix: re-probe (below), replace both constants with the DLL f64 magnitudes (audit measured 13.900155112381297 / 13.886231352883541 - re-measure, do not copy), re-measure the port's delta, tighten the band towards the tight tier of `tests/TOLERANCE_NOTES.md` (never loosen; keep a stated headroom over the new measured delta), and rewrite the "MEASURED on this tree" and "at full precision" comments with the probe recipe.
 - `RP|RP3.7|AT1|AT2` (note) - `interpreter_lock_guard_follows_the_property_name` comment ("the observable property seam keeps the scalar-era all-three refusal until A2 re-points it (the `locked_ignores_*` pins below)") and the module doc ("RP3.7 A1 pin set"). Stale since landing: A1 and A2 landed together, a locked `normal=` applies (`locked_normal_applies_locked_state_and_action_do_not`), and only `locked_ignores_action_write` remains. Rewrite the comment to the shipped state and retitle the module doc to cover A1 + A2.
 - `RP|RP3.7|AT1|AT4` (note) - `edit_prop` doc cites `exec/command.rs:1428` for the executive's WasQuoted capture; the line has drifted. Replace with a symbol citation: the `param_was_quoted = parser.is_quoted()` capture in the `exec/command.rs` edit loop (two sites), no line number.
 - `RP|RP3.7|AT1|AT5` (note) - coverage gap: the quoted per-phase write is exercised only through `Edit`, never through `New`, the spelling plan §RP3.7(a) names; safe today only because `do_new_cmd` -> `add_object` -> `edit_active` shares the loop that captures `param_was_quoted`. Fix: add an executive-level pin that `new swtcontrol.sw1 switchedobj=line.l1 switchedterm=1 state=(open, closed, closed)` renders `[open, closed, closed, ]`, and the same for `normal=(...)`, on the micro-deck the neighbouring executive pins use; confirm both renders on r4133 (below).
-- `RP|RP3.7|AT1|AT7` (note) - `the_property_seam_caps_the_per_phase_parse_at_five_tokens` ("slot 6 still rendered"). The literal `[open, open, open, open, open, closed, ]` reads as an r4133 byte but r4133's slot 6 there is uninitialised heap (`Create` allocates `FNPhases` = 3 entries, `Controls/SwtControl.pas:299-305`; measured flipping between runs). Since RF-D01-01 (R3) the port no longer drops the 6th token and no test asserts a dropped one, so this pin exists at HEAD only in the form RF-D01-01 left for the 6-token parse. Fix on THAT pin: make its doc say that r4133 drops the 6th token (`i < SWTCONTROLMAXDIM`, `SwtControl.pas:461`) and renders uninitialised heap in slot 6 (`Create` allocates `FNPhases` = 3 entries, `SwtControl.pas:299-305`; measured flipping between runs), while the port keeps all NPhases tokens per R3 with the divergence recorded by RF-D01-01 (DIVERGENCES note) — never re-assert a dropped or heap-valued 6th slot, and never restore the `[open, open, open, open, open, closed, ]` literal as an r4133 byte.
+- `RP|RP3.7|AT1|AT7` - moved to RF-D01-21 (coordinator 2026-09-27).
 - `RP|RP3.7|AT1|AT8` (note) - `recalc_redrives_after_a_phase_count_change`. It ends with `apply_ref_actions(&mut sw, &mut ms)` after `sw.take_ref_actions()` already drained the queue, so the `MockSwitch` is never written nor asserted. Fix: apply the already-taken `actions` to `ms` (or use `apply_ref_actions` instead of the manual take and assert on what it applied), assert the one-conductor open landed on `ms` and the other conductors did not move, drop the dead trailing call.
 **Probes:** epri-worker r4133 on the pins' own micro-decks. (a) `read('element_currents')` on `Line.swk` after `edit swtcontrol.sw1 state=(open, closed, closed)` + solve, and the same for the second pin's executive spelling - yields the f64 components whose magnitudes become the constants, and decides how far the band can tighten; (b) `new swtcontrol.sw1 ... state=(open, closed, closed)` and `normal=(open, closed, closed)` property read-back - confirms the two literals of the New-path pin. If the port's delta against the f64 values exceeds the tight-tier floor, that is a port finding: stop that bullet, record, report (R8) - do not widen.
 **Acceptance:**
@@ -3812,7 +4233,10 @@ part 1 is the path-embedding probe.
 RF-I00-01, RF-D09-06 (its SA-0 ships the transport-side named error with the one-shot's exit status
 and faulthandler output - the evidence this step reads). Scheduled by hand like every §6 step (not in
 `wp_index.json`). **Brief:** `tmp/retro_fix/state/RF-I00-01.md` (ruling Q4-1) and
-`tmp/retro_fix/state/RF-I00-01/part_4.md`.
+`tmp/retro_fix/state/RF-I00-01/part_4.md`, plus the four logged occurrences: `tmp/rp41/p5_ws_parity.log`
+(2026-09-03), `tmp/retro_fix/state/RF-I00-01/p4_gate_run3_nextest_default.log` (default lane),
+`tmp/retro_fix/state/RF-I00-05/step_gate_5_run1.log` (parity) and `tmp/retro_fix/state/land_w2/gate_5.log:3284-3292`
+(parity, the wave-2 landing gate on `5d934d40`, its one unmodified re-run green).
 **Files:** `crates/dss-core/tests/corpus_gate/engines.rs`, `tools/oracle/oracle_server.py`,
 `tests/corpus/ledger.json`, `tests/corpus/controls/manifest.json`, `TESTING.md` (notes),
 `docs/phase-records/retro-fixes.md`, `RETRO_FIXES_PLAN.md`.
