@@ -7,7 +7,7 @@
 
 ### R4133_PROPS WP-RP0 — condensed records
 
-> Plan: `R4133_PROPS_PLAN.md`. Branch `r4133-props` off `update` @ `2ee6bb00`.
+> Plan: `R4133_PROPS_PLAN.md`. Branch `r4133-props` off `update` @ `b87c01e9`.
 > Every sub-step runs the plan's per-sub-step ritual: full five-command gate
 > before the commit, then two fresh auditors and a fix agent.
 

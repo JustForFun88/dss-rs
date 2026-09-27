@@ -109,7 +109,7 @@
     here and land in RP4.1's unmask commit** — earlier they would fail
     `assert_all_hit` as NEVER APPLIED, the r4133 property compare being masked
     until then. Verbatim, to be copied into `tests/corpus/ledger.json` at RP4.1
-    (*copied verbatim and **landed 2026-09-03** in RP4.1's commit `59e521e5`,
+    (*copied verbatim and **landed 2026-09-03** in RP4.1's commit `c82d4fdc`,
     with the cause below; both entries hit — 24 in-scope cells — on the first
     unmasked run*):
 
@@ -366,7 +366,7 @@
     (one per diverging case; the fifth deck owes none) are **drafted here and
     land in RP4.1's unmask commit**. Verbatim, to be copied into
     `tests/corpus/ledger.json` at RP4.1 (*copied verbatim and **landed
-    2026-09-03** in RP4.1's commit `59e521e5`, with the cause below; all four
+    2026-09-03** in RP4.1's commit `c82d4fdc`, with the cause below; all four
     hit — 4 in-scope cells — on the first unmasked run*):
 
     ```json
@@ -631,7 +631,7 @@
       deck's `QMode=1` terminal Q is −414.8954549079094 kvar, not −985.69; the
       ≈ −986 reading belongs to the snap-mode capped-`Pg` configuration. Measured
       by §RP3.10's probe, recorded in its record below.)*
-    - **The commit message of `c46bca42` welded two probe steps.** It reads "a
+    - **The commit message of `89f18067` welded two probe steps.** It reads "a
       typed `kvar=500` renders 0 while PF moves to 0.968058"; at `kvar=500` r4133
       renders PF `0.986394` (= 3000/√(3000²+500²)), and `0.968058` is the result
       of the *later* `Edit kvar=777`. The tree's own records (this section, the
@@ -805,7 +805,7 @@
     `Solution.pas:1760` "takes it back to 3". It is dead code; the live reversion
     is `:2229`. The plan now carries the as-executed note that says so, and the
     settled verdict states it in the tree.
-  - **Audit settlement (2026-08-24, one commit over `fb0e9e7f`).** Seven minor
+  - **Audit settlement (2026-08-24, one commit over `c4514c57`).** Seven minor
     findings from the two audit agents, all settled — none waved off, and none
     touched the classification: both auditors re-derived the probe and ECHO
     stands. Still **zero product-crate bytes**, zero `ledger.json` / golden /
@@ -988,7 +988,7 @@
     `makeposseq` cases and **false as stated** for `line_spacing_asym.dss`; the
     mechanism above is what the record carries.
   - **The two drafted entries, VERBATIM — they land at RP4.1 per §1.1(e), NOT
-    here** (*landed 2026-09-03 in RP4.1's commit `59e521e5`, verbatim, on the
+    here** (*landed 2026-09-03 in RP4.1's commit `c82d4fdc`, verbatim, on the
     pre-existing `gic-pct-r2-ignored` cause; both hit — 2 in-scope cells*)**.** Both reuse the existing `gic-pct-r2-ignored` cause unchanged (it
     already names the r4133 lines), and the ids mirror the capi originals'
     `-props` suffix because plain `…-r4133` is taken by the G2.5 solved-model
@@ -1104,7 +1104,7 @@
     at 11. Both gate lanes green at 4 204 with 0 failed / 0 ignored / 0 filtered.
     No test deleted, `#[ignore]`d or loosened; no tolerance
     exists here to move (the pins compare rendered strings).
-  - **Audit settlement (2026-08-24, one commit over `cab2e667`).** Seven minor
+  - **Audit settlement (2026-08-24, one commit over `9863908a`).** Seven minor
     findings from the two audit agents, all settled — none waved off. The
     classification is untouched: both auditors re-derived the mechanism and
     `LEDGER` stands, the census still decomposes to 2 cells / 2 in scope, and the
@@ -1131,7 +1131,7 @@
       extending the classification. Measured both ways with one coordinated
       mutation (deck token `%R2=0.15`→`0.2` on `gic_midi.dss` `tg5`, its
       `RP34_GIC_ELEMENTS` row, and the frozen `bins.tsv`/`examples_full.txt`
-      counts 2→1, all reverted): at `cab2e667` it reds `21 != 22`, "nothing may
+      counts 2→1, all reverted): at `9863908a` it reds `21 != 22`, "nothing may
       fall between the two"; now it reds naming the coincidence and listing the
       element. The three classes (`ohms` / `coincident` / `diverging`) are each
       counted and each adjudicated — `coincident` empty, the classification
@@ -1326,7 +1326,7 @@
     measurement (`props_r4133_evidence_lock.rs` re-measures nothing), so they are
     **not** edited; the ledger entry's `source` says so, and later sub-steps that
     fix rather than exclude inherit the same rule.
-  - **Audit settlement (2026-08-29, one commit over `9daff660`).** Nine claims
+  - **Audit settlement (2026-08-29, one commit over `2e0f7b61`).** Nine claims
     across the two audit agents — eight headline findings, one of them raised by
     both, plus the two halves of the tests audit's Major. Both auditors
     re-derived the mechanism independently on live oracles and confirmed the
@@ -1831,7 +1831,7 @@ not r4133's — r4133's arm-3 side effect is a *plain* `SpacingSpecified := Fals
 (`:663`), so the spacing object survives the code and the statement is reached
 normally.** Ported, with the measurement, by the audit settlement below.
 
-**RP3.6 audit settlement (2026-08-29, one commit over `4b146ab9`).** Fourteen
+**RP3.6 audit settlement (2026-08-29, one commit over `0866a3bc`).** Fourteen
 findings across the two audit agents. Both re-derived the mechanism on the live
 oracles and confirmed the sub-step's own classification — outcome stays `FIX` in
 both lanes, the census still decomposes to 5 cells / 5 in scope, both
@@ -2343,7 +2343,7 @@ one subject, the retained 0.14.5 `Sample` glue). **Nine fixed, two fixed with a
 sub-claim refuted, none dropped.** Every claim was re-derived here: the r4133
 source read line-by-line, four probes replayed on the vendored EPRI DLL
 (11.0.0.1), three mutations run and restored, and the pre-commit test counts
-re-measured off `82022dab^`.
+re-measured off `fc9179cc^`.
 
 *Code fixes.* **(1) Relay's `ControlledElement = NIL → '[]'` render is ported.**
 r4133 puts that guard in the getters and nowhere else (`Relay.pas:1407`/`:1418`);
@@ -2389,7 +2389,7 @@ every one of the sixteen `New` lines declares `Action=c`, so the Edit supplement
 (`SwtControl.pas:219-228`) copies the closed Present into Normal and latches
 `NormalStateSet`, which is exactly why the three later `action=o` edits cannot
 move it. **(7)** The unit-pin deltas did not reproduce: the before-counts are 26
-and 63 (not 30 and 64), re-measured off `82022dab^` and against `--list`.
+and 63 (not 30 and 64), re-measured off `fc9179cc^` and against `--list`.
 **(8)** Three artifacts the commit itself edited still named the deleted pin
 `locked_ignores_normal_and_state_writes`; all three now name the rename
 (`props/swtcontrol.json`'s provenance block, `DIVERGENCES.md` ×2,
@@ -3023,7 +3023,7 @@ numbers rather than r4133's `Vsource.pas:1390` — product-doc cosmetics,
 unacted.
 
 **RP3.9 audit settlement (2026-09-03).** Two fresh auditors (`/audit-code`,
-`/audit-tests`, both read-only, over `16edbc2f..648ce284`) confirmed all 27
+`/audit-tests`, both read-only, over `fb8f3113..5d0d1f6b`) confirmed all 27
 verdicts independently on both live oracles — every r4133 literal is what the
 r4133 DLL prints, every port literal what the pinned 0.14.5 backend prints, and
 every chain reproduces arithmetically — and found **no port bug, no weakened
@@ -3044,8 +3044,8 @@ source and re-derivation, never against plausibility:
 * **FIXED — three stale or false prose numbers.** The pin block header said
   "all thirteen pairs" (the chains-A-C draft state) where 27 landed; the
   vendored README's count-delta table gave `RP39_PINS` a "before" of "13 rows"
-  for a constant that does not exist at `16edbc2f` (`git show
-  16edbc2f:…/props_r4133_replay.rs | grep -c RP39_PINS` → 0), now "— (new
+  for a constant that does not exist at `fb8f3113` (`git show
+  fb8f3113:…/props_r4133_replay.rs | grep -c RP39_PINS` → 0), now "— (new
   constant)"; and this record's mechanism paragraph said the port answers
   `400/9` and spelled r4133's `44.443` as one `%-.5g`, contradicting its own
   lane-trap paragraph and the pin. The port's double is `(400/3)/3 =
@@ -4058,7 +4058,7 @@ evidence for the race. Removed by exact name after every run, `git clean` never
 used, no tracked corpus or golden file moved.
 
 ***Audit settlement (2026-09-03).*** Both auditors ran at `opus-xhigh` over
-`9fbb0abf..2ce1a66e` and returned **twelve** findings (5 code + 7 tests); the
+`fe65f802..a029b5df` and returned **twelve** findings (5 code + 7 tests); the
 dedicated fix agent settled each one against evidence — a live `epri-worker`
 probe, the r4133 Pascal, or a recomputation — never against plausibility.
 **Six fixed, six recorded, none refuted.** Two were substantive.
@@ -4220,8 +4220,8 @@ untracked `tests/corpus/…` deck-written set behind — the `CorpusGuard`
 overlapping-guard race in §"Standing open follow-ups", **eighth** sighting —
 removed by exact name afterwards; `git clean` never used.
 
-*Commits.* `2ce1a66e` (the sub-step — the four fixes, eight pins and this
-record), `217355da` (the audit settlement — the PC-sign non-reproduction, pin P9,
+*Commits.* `a029b5df` (the sub-step — the four fixes, eight pins and this
+record), `ccaecfba` (the audit settlement — the PC-sign non-reproduction, pin P9,
 the `RP313_NCIM_PINS` citation guard and the corrected AC-1 symptom, 9 files
 +805/−132) and this docs commit (the §RP3.13 / plan / follow-up sync). Nothing
 else on `r4133-props` between them; the plan's §0 and §RP3.13 dated lines name
@@ -4565,7 +4565,7 @@ actually re-checked; `cargo test --workspace` and the same with
 0 filtered out** over 74 result-reporting targets, the two lanes identical binary
 for binary. The five ignored are the pre-existing set (the ckt24 `.graph`
 diagnostic, the three manual WASM/WM golden generators and one doc-test) — RP3.10
-added none. The whole delta against HEAD `08f91bbb`'s 4 449 is the library suite
+added none. The whole delta against HEAD `4a40e15f`'s 4 449 is the library suite
 (1 502 → **1 505**): the three new in-engine pins, the fourth being the rewrite
 of an existing test. `corpus_gate` ran **unfiltered** in both lanes over the whole
 523-case population (**138 passed**, 143.7 s / 139.0 s), which is the run that
@@ -4616,9 +4616,9 @@ re-run green in both lanes (`cargo test -p dss-core --test props_r4133_replay
 rp310` matches exactly this one test).
 
 *Commits.* The sub-step lands in **one** commit on `r4133-props`,
-**`9f55095b`** (the engine arm, the `variables` exclusion field, the four ledger entries and their cause, the
+**`8c22e898`** (the engine arm, the `variables` exclusion field, the four ledger entries and their cause, the
 lock, the five pins, the citation guard, `DIVERGENCES.md` §L7, the corpus and
-manifest prose and this record); the audit settlement below is **`9f067c19`**,
+manifest prose and this record); the audit settlement below is **`34591f24`**,
 and this docs sync (2026-09-04) is the third and last commit of the sub-step — it
 names both shas here, in `STATUS.md` §1, in `PLAN_SEQUENCE.md`'s row 5b and in
 the plan's §0 and §RP3.10 dated lines, as at §RP3.13. It moves `.md` bytes only,
@@ -4633,7 +4633,7 @@ ignored — plus `cargo fmt --all --check` and
 `clippy -p dss-core --test props_r4133_replay -- -D warnings`.
 
 **RP3.10 audit settlement (2026-09-04).** The `audit-code` + `audit-tests` pair
-over `08f91bbb..9f55095b` returned **ten** findings (1 major, 4 minor, 5 notes).
+over `4a40e15f..8c22e898` returned **ten** findings (1 major, 4 minor, 5 notes).
 Settled: **eight fixed, one recorded with its reason, one refuted on a
 re-measurement.** Every verdict below was taken against evidence — the r4133
 Pascal, a live `epri-worker` probe of the EPRI r4133 DLL 11.0.0.1, or a
@@ -4762,4 +4762,4 @@ iteration drifts — which is the required outcome for a single unconditional ar
 Nothing under `tmp/` or `investigations/` is staged; no `#[ignore]`, no name
 filter used to claim a green; the one `should_panic` added is the AT-4 negative
 drive, whose whole purpose is the panic; no tolerance touched. The settlement
-commit is **`9f067c19`** (12 files, +542/−74).
+commit is **`34591f24`** (12 files, +542/−74).

@@ -2574,7 +2574,7 @@ row against the pre-fix lock.
     106 `controls` + 70 `modes`). `CLAUDE.md` and `TESTING.md` both said
     **521 / 517** and were therefore *two* behind, not one: the other case is
     RP1.2's single-phase `asymmetric:autotrans/autotrans_xfmrcode.dss`
-    (`8a221016`, asymmetric 52 → 53), which regenerated the lock without
+    (`c47624b7`, asymmetric 52 → 53), which regenerated the lock without
     updating the two prose counts. Both files are corrected to **523 / 519**
     here — the G2.5 precedent, which updated the same two sentences when the
     population went 520 → 521. `TESTING.md`'s two other current-state count
@@ -2651,8 +2651,8 @@ row against the pre-fix lock.
        the claim is corrected here, **and** the observable proxy is now genuinely
        compared (finding 6).
     5. **`ledger.json` lost its trailing newline** — CONFIRMED at the byte level
-       (`git cat-file -p 727d2355:tests/corpus/ledger.json` ends `…]\n}`, where
-       `bb467974`'s ended `…]\n}\n`, and every sibling manifest ends with one).
+       (`git cat-file -p 48c90860:tests/corpus/ledger.json` ends `…]\n}`, where
+       `705ed518`'s ended `…]\n}\n`, and every sibling manifest ends with one).
        Fixed: newline restored, so the next hand-edit of this fail-on-stale file
        no longer carries a spurious closing-brace hunk. (Reported by both
        auditors — finding 10 is the same defect.)
@@ -2705,8 +2705,8 @@ row against the pre-fix lock.
   discharged for the whole WP** (96/96 `Served`). **0** ledger entries (57 / 30 causes unchanged),
   0 golden bytes, no floor, no `lane_diff` owed; mechanics, citations and the pin list in TESTING.md
   §"The unified corpus gate" and §"The r4133 bridge — entry points, mode capability, do-not-call".
-  **Commits** `c4b67a6e`, audit settlement `42454b64` + `14bb0f23`, + docs. **Gate**, both lanes:
-  fmt + clippy clean, **4 605 / 0 / 5** (4 601 at `c4b67a6e`; 4 499 before G1.0), corpus gate
+  **Commits** `abc6ee9d`, audit settlement `0297e2c0` + `d058e469`, + docs. **Gate**, both lanes:
+  fmt + clippy clean, **4 605 / 0 / 5** (4 601 at `abc6ee9d`; 4 499 before G1.0), corpus gate
   523/523, ledger 57 entries / 1 588 hits / 0 stale, goldens untouched, `lane_diff` max |Δ| = 0.
 
   **Audit settlement** (2026-09-04) — 16 findings: **15 fixed / 1 recorded / 0 refuted**, plus one
@@ -2748,12 +2748,12 @@ row against the pre-fix lock.
   `total_power_is_terminal_one_of_every_source`, `total_iterations_is_an_alias_of_iterations`,
   `all_element_losses_follow_creation_order`, `r4133_solution_flags_are_zero_one_ints`,
   `the_five_circuit_aggregate_rows_are_impure`, the three `capture_order.rs` cases.
-  Commits: `9757d26c` (surface) + `f27f9598` (settlement) + `44294de7` and this record (docs).
-  Gate at `9757d26c`: fmt/clippy clean, **4 678 / 0 / 5 ignored** per lane, 523 manifest cases
+  Commits: `8817f82a` (surface) + `ef932106` (settlement) + `c98dee35` and this record (docs).
+  Gate at `8817f82a`: fmt/clippy clean, **4 678 / 0 / 5 ignored** per lane, 523 manifest cases
   (519 compared) on both channels, 57 ledger entries / 0 stale, `population_lock` green without
   a regen, `lane_diff` **PASS**, max |Δ| = 0.
 
-  *Audit settlement (2026-09-04, `f27f9598`)* — 13 findings, **6 fixed / 5 recorded / 2
+  *Audit settlement (2026-09-04, `ef932106`)* — 13 findings, **6 fixed / 5 recorded / 2
   refuted**; no port bug, no ledger entry, no floor moved, no golden byte. **Fixed:**
   `TotalPower`'s value arm no longer drops when a source merely appears in the rewrite map (a
   `currents`-only scope killed a `powers` comparison nothing had excluded) but absorbs that
@@ -2799,18 +2799,18 @@ row against the pre-fix lock.
   **discharged there on 2026-09-05** (see its record below). Detail — the
   column list, the exactness derivation, `WP_G1_MODES` 96 → 99, the two deviations from the plan's
   letter: `GOLDEN_REBASE_PLAN.md` §G1.6b as-executed, `TESTING.md` §"The `PDElements` walk".
-  Commits: `06808a6d` (D9), `e1e18367` (surface), `c6a3c0a8` (audit settlement) + docs. Gate: five
+  Commits: `0a1f2d6c` (D9), `855f55ee` (surface), `4c2b9fab` (audit settlement) + docs. Gate: five
   commands exit 0 in both lanes, **4 792 passed / 0 failed / 5 ignored**; corpus gate 523/523, ledger
   57 / 1 588 hits / 0 stale, no golden byte and no lock content moved; `lane_diff` `VERDICT: PASS`,
   max |Δ| = 0 on all eight kinds.
-  *Audit settlement* (`c6a3c0a8`): 15 rows / 12 distinct findings — **9 fixed / 2 recorded / 1
+  *Audit settlement* (`4c2b9fab`): 15 rows / 12 distinct findings — **9 fixed / 2 recorded / 1
   refuted**. `PD_SKIP_FIELDS` is now scoped to the element the defect reaches, an in-zone shunt one
   (`harness::pd_skip_applies` over the port's `PdElementView::in_meter_zone`, pin
   `pd_elements_in_meter_zone_is_the_zone_membership_the_skip_rows_need`): ~350 clean cases per channel
   return to the compare and visits == hits on all eight rows. Every row's `pin` must now resolve to a
   `#[test]` (`every_pd_skip_row_pin_is_a_test_that_exists`, drive-proven); the cited `to_opendss`
-  report was written; three stale doc claims re-pointed. **Recorded:** `06808a6d` does not build alone
-  (its pin calls `pd_elements()`, landed in `e1e18367`) — **the merge agent squashes the pair or merges
+  report was written; three stale doc claims re-pointed. **Recorded:** `0a1f2d6c` does not build alone
+  (its pin calls `pd_elements()`, landed in `855f55ee`) — **the merge agent squashes the pair or merges
   `--no-ff`**; and `assert_pd_skip_rows_are_live`'s `hits == 0` arm stays heap-dependent by construction
   (it fails safe — spurious red, never false green — and its doc comment says so). **Refuted:** the
   `Show Isolated` reset is Pascal-faithful at both revs (capi `ShowResults.pas:2859-2860`, r4133
@@ -2832,7 +2832,7 @@ row against the pre-fix lock.
   `init_resets_the_default_base_frequency_to_sixty`, `clear_resets_the_default_base_frequency_to_sixty`,
   `the_worker_never_writes_the_opendss_registry_key`. 0 ledger entries, no floor, no golden byte; the
   rest of the D13/D14 prose (TESTING.md's one-gate-per-worktree rule, the G1.4a record) arrives with the
-  G1.4a merge. Commit: `6b0dbd32`. Gate on the merged tree: five commands exit 0 in both lanes,
+  G1.4a merge. Commit: `2158707a`. Gate on the merged tree: five commands exit 0 in both lanes,
   **4 924 passed / 0 failed / 5 ignored**, corpus gate 523/523 on both channels, ledger 57 / 1 588 hits
   / 0 stale, `population.lock.json` regenerated byte-identical, `golden.lock.json` unmoved; `lane_diff`
   `VERDICT: PASS`, max |Δ| = 0.
@@ -2853,9 +2853,9 @@ row against the pre-fix lock.
   `capcontrol_time_voltages_follow_the_monitored_elements_terminal`, plus **13** measured widenings of
   committed `element` scopes; pins `exec::tests::derived_polar::*` (6),
   `harness::derived_polar_floors::*` (15), two `ledger::*`, one `scheduler::*`. As executed:
-  `GOLDEN_REBASE_PLAN.md` §G1.3a. Commits: `d8e71991`, audit settlement `588e0bfe`, + docs (this
+  `GOLDEN_REBASE_PLAN.md` §G1.3a. Commits: `a8b556d0`, audit settlement `e6e1d4db`, + docs (this
   record). Gate after the settlement, both lanes: **4 959 / 0 / 5**, fmt + clippy clean, corpus gate
-  523/523, `lane_diff` PASS max |Δ| = 0 on every gated kind (4 956 / 0 / 5 at `d8e71991`).
+  523/523, `lane_diff` PASS max |Δ| = 0 on every gated kind (4 956 / 0 / 5 at `a8b556d0`).
 
   **Audit settlement** (2026-09-04) — 15 findings: **11 fixed / 3 recorded / 1 refuted**. Major 1: the
   new `voltages_mag_ang` block sliced `node_ref[..yorder]`, and a **disabled** element that grows
@@ -2920,13 +2920,13 @@ row against the pre-fix lock.
   `the_bus_capture_reads_in_one_fixed_order_on_both_transports`,
   `the_bus_forcing_rule_is_every_live_non_large_case`,
   `no_capi_gated_case_instantiates_a_gictransformer`.
-  Commits: `6b0dbd32` (D13 bridge) + `be01e413` (the surface) + `10417d99` (audit settlement)
-  + docs. Gate at `be01e413`: fmt + clippy clean in both lanes; `cargo test --workspace`
+  Commits: `2158707a` (D13 bridge) + `ac192be6` (the surface) + `07cd0fea` (audit settlement)
+  + docs. Gate at `ac192be6`: fmt + clippy clean in both lanes; `cargo test --workspace`
   **4 722 / 0 / 5 ignored** in both lanes, corpus gate 524/524, ledger 53 entries / 1 516 hits /
   0 stale, `tests/golden` untouched; `lane_diff` **PASS**, max |Δ| = 0 on all eight kinds.
   Final gate after the settlement: **4 835 / 0 / 5 ignored** per lane (below).
 
-  *Audit settlement (2026-09-05, this lane, `10417d99`):* **15** findings over the two reports
+  *Audit settlement (2026-09-05, this lane, `07cd0fea`):* **15** findings over the two reports
   (11 distinct) — **9 fixed, 1 fixed in part, 1 recorded, 0 refuted**. Fixed: the D11(2)
   predicate now honours only a **deck-wide**
   `voltages` exclusion (`LedgerView::bus_arrays_suppressed`, no `name_re`/`node_re`, driven both
@@ -2941,7 +2941,7 @@ row against the pre-fix lock.
   re-measured on the 13-element deck (13/13 elements, 3/3 nodes above floor). Recorded: the D14
   two-commit split (landed as one commit; its `population.lock.json` justification corrected — the
   lock moves for D12/D14 alone). No product code, tolerance, golden byte or ledger row moved
-  (`lane_diff` not owed); per-finding disposition in `10417d99`'s own diff.
+  (`lane_diff` not owed); per-finding disposition in `07cd0fea`'s own diff.
   Lock: the ledger `source` re-measurement moved ONE `population.lock.json` line (the entry's
   content hash), regenerated by the documented procedure. Gate (2026-09-05, this worktree quiet):
   fmt + clippy clean in both lanes, `cargo test --workspace` **4 835 / 0 failed / 5 ignored** in
@@ -2985,13 +2985,13 @@ row against the pre-fix lock.
   against this prose by `oracle_parity_cfg_gate::every_pin_the_g13d1_record_names_exists_and_is_cited`.
   Both G1.3d verdicts (`Lines.Yprim` already witnessed, residual 235/523 `selected_elements`;
   `LineGeometries.R/X/Zmatrix` dropped) and the two settled STOPs (D19/D19′ D9 cherry-pick; the
-  census↔live-gate file race) are recorded in TESTING.md and plan §G1.3d. Commits: `e4d99806`
-  (D19′ cherry-pick), `b7d7da2a`, audit settlement `c9c4ac09`, + docs (this record). Gate after the
+  census↔live-gate file race) are recorded in TESTING.md and plan §G1.3d. Commits: `f6a714c0`
+  (D19′ cherry-pick), `d8ad88f5`, audit settlement `badad4f9`, + docs (this record). Gate after the
   settlement, both lanes: **5 392 / 0 / 5**, fmt + clippy clean, `corpus_gate` 523/523, ledger 58
   entries / 0 stale, goldens + `population.lock.json` byte-untouched, `lane_diff` PASS max |Δ| = 0
-  on all eight gated kinds over 523 cases / 3 220 861 records (5 370 / 0 / 5 at `b7d7da2a`; the
+  on all eight gated kinds over 523 cases / 3 220 861 records (5 370 / 0 / 5 at `d8ad88f5`; the
   +22 are one new pin seen from the 22 harness-linking test binaries).
-- **G1.3d(i) audit settlement** (2026-09-05, `c9c4ac09`) — 15 findings: **12 fixed / 2 recorded /
+- **G1.3d(i) audit settlement** (2026-09-05, `badad4f9`) — 15 findings: **12 fixed / 2 recorded /
   1 refuted**. Fixed: 15 capi `NodeOrder` citations
   re-pointed from the Alt-API twin to `CAPI/CAPI_CktElement.pas:885-917` (`:900-906` = the 15013
   guard), the entry point dss-python really calls; `oracle_meter_name` folds only its own channel's
@@ -3004,8 +3004,8 @@ row against the pre-fix lock.
   → `Transformer.tr` = `em`).
 
   *On `update` after the merge (2026-09-05):* the lane's figures are its own. On the merged
-  tree the D19′ duplicate folds away — the four engine files of `e4d99806` are byte-identical
-  to G1.6b's `06808a6d` already on `update`, and the only conflict, the pin
+  tree the D19′ duplicate folds away — the four engine files of `f6a714c0` are byte-identical
+  to G1.6b's `0a1f2d6c` already on `update`, and the only conflict, the pin
   `makebuslist_keeps_the_meter_zones`, is resolved toward `update`'s `Dss::pd_elements()` walk
   (same three assertions, `Line.l2` parent identity included; lane-e's `branch_parent`/
   `branch_parent_name` helpers go with it, nothing else used them). `FORCED_ELEMENT_EXTRAS_POPULATION`
@@ -3051,9 +3051,9 @@ row against the pre-fix lock.
   note; **28** `file.rs:LINE` citations in `TESTING.md` / `tests/TOLERANCE_NOTES.md` were
   re-pointed after `harness/mod.rs` (+6) and `corpus_gate.rs` (+10) shifted under them
   (`operational_docs_line_citations_point_at_the_line_they_name` was red until they were).
-  Commits: `8fc32991` (surface, one commit carrying both port-gap fixes) + `898f8a86`
-  (audit settlement) + `434a6b51` and this record (docs).
-  Gate at `8fc32991`: fmt + clippy clean in both lanes, `cargo test
+  Commits: `9e891306` (surface, one commit carrying both port-gap fixes) + `82d3f44f`
+  (audit settlement) + `eade703c` and this record (docs).
+  Gate at `9e891306`: fmt + clippy clean in both lanes, `cargo test
   --workspace` **5 043 / 0 failed / 5 ignored** per lane (+317 on G1.9's 4 726 — 121 in the
   new `topology_pins` binary, 8 `harness::topology` cases in each of the other 22 of the
   23 binaries carrying `mod harness`, the rest in-engine and gate code), 523 manifest
@@ -3063,7 +3063,7 @@ row against the pre-fix lock.
   `solution/topology.rs`, `elements/ckt.rs`): **PASS**, max |Δ| = 0 on all eight gated kinds
   over 3 220 861 records, 0 iteration drifts.
 
-  **Audit settlement** (2026-09-05, `lane-s`, `898f8a86`) — 15 findings (13 distinct):
+  **Audit settlement** (2026-09-05, `lane-s`, `82d3f44f`) — 15 findings (13 distinct):
   **10 fixed / 3 recorded / 0 refuted**, no port bug, no behavior change, 0 ledger rows.
   Fixed: the "each in its own commit" claim in `TESTING.md` + the plan note (one commit);
   the missing sha; four `harness/mod.rs:A-B` citations, plus the rail that let a range END
@@ -3139,11 +3139,11 @@ row against the pre-fix lock.
   `controls:energymeter/midi_relcalc.dss` (523 → **524** cases); G1.6b's two deferrals are discharged
   (`pd_elements_relcalc_fields_are_live_after_relcalc`, `tests/TOLERANCE_NOTES.md:812`). Detail:
   `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (i), `TESTING.md` §"The `Meters` reliability surface".
-  Commits: `e343d9e8` (D11 hunk), `96d7540a` (surface), `bcc835b6` (audit settlement) **+ docs**. Gate:
+  Commits: `799fa7b8` (D11 hunk), `03689a00` (surface), `04b55771` (audit settlement) **+ docs**. Gate:
   five commands exit 0 in both lanes, **5 011 passed / 0 failed / 5 ignored** per lane; corpus gate
   524/524, ledger 57 entries / 0 stale, no golden byte and no lock content moved; `lane_diff`
   `VERDICT: PASS`, max |Δ| = 0 on all eight kinds (524 cases / 3 221 034 records).
-  *Audit settlement* (`bcc835b6`): 20 findings — **15 fixed / 3 recorded / 2 refuted**. Fixed: the
+  *Audit settlement* (`04b55771`): 20 findings — **15 fixed / 3 recorded / 2 refuted**. Fixed: the
   `alloc_factors` band gains the denominator floor its derivation always claimed (no band below `i_abs`,
   loud triage instead of a silent pass); `RelCalc` keeps every error line, not just the first; the
   accumulator pin's order claim is made true by a branch-point fixture whose 3-term sweep sum is
@@ -3189,12 +3189,12 @@ row against the pre-fix lock.
   (`modes/faultstudy/faultstudy_micro.dss`, the `micro`-band witness). Rules, floors and pins:
   `TESTING.md`, `tests/TOLERANCE_NOTES.md` §"Short-circuit surface", the plan's §G1.5 note, and the
   `exec::view::bus_sc_tests` / `harness::bus_short_circuit_tests` modules.
-  Commits: `7d920701` (surface) + `5d206bdb` (audit settlement) + docs. Gate at `7d920701`: fmt +
+  Commits: `13a76b02` (surface) + `7409c11c` (audit settlement) + docs. Gate at `13a76b02`: fmt +
   clippy clean and **5 130 / 0 / 5 ignored** per lane, `lane_diff` **PASS**, max |Δ| = 0 over
   4 825 571 values; final tree **5 134 / 0 / 5 ignored** per lane over 75 binaries (the settlement
   moves no executable product statement, so no second `lane_diff` is owed), corpus 525/525, ledger
   53 entries / 1 516 hits / 0 stale, D11(2) 8 (case, channel) pairs, `tests/golden` untouched.
-  *Audit settlement (2026-09-05, `5d206bdb`):* 14 findings, 11 distinct — **8 fixed, 2 recorded,
+  *Audit settlement (2026-09-05, `7409c11c`):* 14 findings, 11 distinct — **8 fixed, 2 recorded,
   1 refuted**. Fixed: the `bus_sc_tests` band had abs/rel transposed (now the `micro` tier's own
   `1e-6` + `1e-9`, deck header and manifest note with it); the surface's non-trivial half gained a
   fail-on-stale (`SC_STUDY_POPULATION = (10, 646)`, recorded from the runner, asserted in the gate
@@ -3241,10 +3241,10 @@ row against the pre-fix lock.
   owned by G1.6/G1.6b. Detail: plan §G1.3d part (ii), TESTING.md; **34** pins in
   `every_pin_the_g13d2_record_names_exists_and_is_cited` (`exec::tests::element_extras` 20,
   `harness::element_extras_pins` 26, `harness::phase_loss_bands` 10, 3 `ledger::*`, 1
-  `capture_order::*`, 1 `exec::tests::reliability::*`). Commits `e6d66d66` + settlement `43108993`
+  `capture_order::*`, 1 `exec::tests::reliability::*`). Commits `41d975ec` + settlement `df6e7222`
   + docs (this record); gate **5 784 / 0 / 5** per lane (five commands, exit 0, unfiltered),
   `lane_diff` PASS max |Δ| = 0.
-- **G1.3d(ii) audit settlement** (2026-09-05, `43108993`) — 18 findings (9 code / 9 tests, all
+- **G1.3d(ii) audit settlement** (2026-09-05, `df6e7222`) — 18 findings (9 code / 9 tests, all
   Minor/Note; 4 raised by both auditors, so 14 distinct): **13 fixed**, **1 recorded**, 0 refuted.
   The real one: the port re-attached every
   control during `MakePosSeq`, which r4133 never does — its control `MakePosSequence` overrides end
@@ -3302,13 +3302,13 @@ row against the pre-fix lock.
   divergence, unreachable on the corpus** (`docs/upgrade/DIVERGENCES.md` §D22). The pins, the Q4
   `Bus.Int_Duration` measurement and the exactness derivation: `TESTING.md` §"The per-bus
   reliability arm", `tests/TOLERANCE_NOTES.md` §"The per-bus columns (G1.6(ii))",
-  `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (ii). Commits: `3e65ae2d` (D20/D22) + `572954e6`
-  (surface) + `fc4dfa73` (audit settlement) **+ docs**. Gate (both lanes, after the settlement): the
+  `GOLDEN_REBASE_PLAN.md` §G1.6 as-executed (ii). Commits: `7f5566ec` (D20/D22) + `019ab9ee`
+  (surface) + `94797302` (audit settlement) **+ docs**. Gate (both lanes, after the settlement): the
   five commands exit 0, **6 307 passed / 0 failed / 5 ignored** over 78 binaries, corpus gate
   525/525, ledger 54 entries / 0 stale, no golden byte and no lock moved; `lane_diff` `VERDICT:
   PASS`, max |Δ| = 0 on all eight kinds (525 cases / 3 221 054 records).
 
-  *Audit settlement* (2026-09-05, `fc4dfa73`): 11 findings — **9 fixed / 2 recorded /
+  *Audit settlement* (2026-09-05, `94797302`): 11 findings — **9 fixed / 2 recorded /
   0 refuted**. Fixed: the roll-up guard's "dead code" comment (it is live — `RelCalc restore=y` takes
   it); the restore-regime per-bus columns, now asserted for the PORT exactly in both regimes; the
   `NaN`-agreement claim, corrected to what the transports do (a non-finite fails the decode loudly)
@@ -3348,9 +3348,9 @@ row against the pre-fix lock.
   sentinel (`:772` against `:567`) is the channel-scoped `na_seq_power` fold; the two 012 matrices
   cost the r4133-only `SEQ_C012 = 5.229590094302253e-10` (`Shared/mathutil.pas:302-303`+`:562-564`).
   Detail: plan §G1.3b, TESTING.md, TOLERANCE_NOTES §G1.3b; pins **8** `exec::tests::derived_seq` /
-  **35** `harness::seq_floors` (22 legs) / **7** `ledger::*`. `40a65ffd` / `3d350ce6` + docs;
-  gate **6 570 / 0 / 5** per lane after the settlement (6 547 at `40a65ffd`), `lane_diff` PASS max |Δ| = 0.
-- **G1.3b audit settlement** (2026-09-05, `3d350ce6`) — 15 findings: **12 fixed / 3 recorded / 0 refuted**. The
+  **35** `harness::seq_floors` (22 legs) / **7** `ledger::*`. `9dd79d74` / `7c3e35d5` + docs;
+  gate **6 570 / 0 / 5** per lane after the settlement (6 547 at `9dd79d74`), `lane_diff` PASS max |Δ| = 0.
+- **G1.3b audit settlement** (2026-09-05, `7c3e35d5`) — 15 findings: **12 fixed / 3 recorded / 0 refuted**. The
   arm census now pins the r4133 `0` exactly and rails the two measured counts at the documented
   `SEQ_ARM_CENSUS_FLOORS` (new leg `the_seq_arm_population_fires_when_the_capi_arm_collapses`);
   registry `every_pin_the_g13b_record_names_exists_and_is_cited` added; the plan's D-b1 population
@@ -3395,7 +3395,7 @@ row against the pre-fix lock.
   term `SEQ_C012` (deduped with G1.3b's at the merge, D21: the tight row sum, never the rounded-up `5.30e-10`),
   and r4133's `VLL` hang is refused per bus by the new `crates/dss-epri` register (**D2**). Details:
   `TESTING.md`, `tests/TOLERANCE_NOTES.md`, `DIVERGENCES.md` §G1.4c, the plan's §G1.4 note,
-  `investigations/to_opendss/` 64-66. Commits `74cb0ef6` (surface) + `6fc63848` (settlement) + docs; both
+  `investigations/to_opendss/` 64-66. Commits `e11f960d` (surface) + `a6034934` (settlement) + docs; both
   lanes **5 339 / 0 / 5 ignored** over 75 binaries, corpus **525/525**, ledger 53 / 0 stale, `lane_diff`
   **PASS** max |Δ| = 0.
   **Audit settlement** (15 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted):
@@ -3415,7 +3415,7 @@ row against the pre-fix lock.
   (54 → **55**) pinned by `the_reduced_midi_deck_reports_the_merged_lines_kft_distances`, and D9's
   `MakeBusList` fix is pinned live by
   `the_make_bus_list_decks_report_the_zone_distances_both_oracles_measure`. Details: `TESTING.md`, the
-  plan's §G1.4 note. Commits `1aa08d9c` (surface) + `03565bf7` (settlement) + docs; both lanes
+  plan's §G1.4 note. Commits `85557db4` (surface) + `69ba809e` (settlement) + docs; both lanes
   **7 741 / 0 / 5 ignored** over 79 binaries, corpus **526/526**, ledger **55** / **1 567** hits /
   0 stale, `lane_diff` **PASS** max |Δ| = 0.
   **Audit settlement** (2026-09-06; 15 findings, 12 distinct — 10 fixed / 2 recorded / 0 refuted): the
@@ -3455,9 +3455,9 @@ row against the pre-fix lock.
   `Common/CktElement.pas:1049`; ~20x the band on both channels); the `CplxSeq*` pair stays compared,
   stronger than fastdss. Detail: plan §G1.3c, TESTING.md, TOLERANCE_NOTES §G1.3c; **55** pins — 7
   `exec::tests::derived_totals` + 1 `exec::tests::newton`, 33 `harness::cplx_seq_and_total_power_floors`,
-  13 `ledger::*`, 1 `capture_order::*`. `548bc7b8` / `a15e2ae3` + docs; gate **7 319 / 0 / 5** per lane
-  after the settlement (**7 318** at `548bc7b8`), `lane_diff` PASS max |Δ| = 0 (523 cases / 3 220 861).
-- **G1.3c audit settlement** (2026-09-06, `a15e2ae3`) — 11 findings: **7 fixed / 4 recorded / 0
+  13 `ledger::*`, 1 `capture_order::*`. `23fdc5f9` / `5b9a8645` + docs; gate **7 319 / 0 / 5** per lane
+  after the settlement (**7 318** at `23fdc5f9`), `lane_diff` PASS max |Δ| = 0 (523 cases / 3 220 861).
+- **G1.3c audit settlement** (2026-09-06, `5b9a8645`) — 11 findings: **7 fixed / 4 recorded / 0
   refuted**. Fixed: the missing registry `every_pin_the_g13c_record_names_exists_and_is_cited`
   (55 pins, both group counts — the one **major**); a fourth `require_capture` rail on `cseq_v_re`
   (`runner.rs:718`) driven empty on **both** channels, plus the r4133 leg of the `CplxSeqCurrents`
@@ -3512,13 +3512,13 @@ row against the pre-fix lock.
   `*_flat_*` stems go, 20 `*_org_*` stay). Everything else: `TESTING.md` §"The unified corpus gate",
   `tests/TOLERANCE_NOTES.md` §G1.8, the plan's §G1.8 note, and the name registry
   `oracle_parity_cfg_gate::the_g1_8_pins_the_docs_cite_exist_exactly_once`.
-  Commits `2cadc808` (dense rows) + `f3436c77` (surface, lock regen and docs) + `166bae9b` (audit
-  settlement) + `24348239` and this record (docs). Gate, both lanes: fmt + clippy clean, `cargo test
-  --workspace` **5 434 / 0 failed / 5 ignored** per lane at `f3436c77` (+391 on G1.7's 5 043; **5 435**
+  Commits `7653e933` (dense rows) + `047b0837` (surface, lock regen and docs) + `cdf29e6e` (audit
+  settlement) + `860741ac` and this record (docs). Gate, both lanes: fmt + clippy clean, `cargo test
+  --workspace` **5 434 / 0 failed / 5 ignored** per lane at `047b0837` (+391 on G1.7's 5 043; **5 435**
   on the settled tree, the one new `capture_order` test), 523/523 on both channels, ledger 57 / 0
   stale, 3 314 compared triples / declines (4, 5), `DSS_GATE_DUMP` bit-identical three ways, no
   golden byte, `lane_diff` **PASS** max |Δ| = 0 over 3 220 861 records.
-  *Audit settlement* (`166bae9b`): 12 findings — **8 fixed / 4 recorded / 0 refuted**, detail in the
+  *Audit settlement* (`cdf29e6e`): 12 findings — **8 fixed / 4 recorded / 0 refuted**, detail in the
   commit and in `tests/harness/inc_matrix.rs`'s census doc. The load-bearing fix: the S-INC census
   arms off the manifests (`scheduler::inc_matrix_requested_channels`, per channel), so a deleted or
   one-channel-narrowed comparator call site reds instead of self-silencing; also the capi transport's
@@ -3527,7 +3527,7 @@ row against the pre-fix lock.
   added to the registry, and three Pascal citations plus the Q2 row numbers corrected (both oracles
   emit row 5, the port's dense row is 4). Recorded: Q2/Q3 stay WP-G2 rows with the teardown's exit
   value now in their pins; `large*` stays out; six `harness/mod.rs:LINE` citations in other WPs' text
-  are left alone — five already pointed at unrelated content at `1314431a`, so the +7 shift is not
+  are left alone — five already pointed at unrelated content at `fa4b9593`, so the +7 shift is not
   what broke them (the two operational docs' own citations did move, +7 / +9).
 
   **Merged-tree checks** (merge into `update`, 2026-09-05).
@@ -3617,8 +3617,8 @@ row against the pre-fix lock.
   directory without a claim, the same `CorpusGuard`, after which F4f measured the intermittent
   single-case capi red absent in four consecutive default-lane drives — it did recur once later, on
   a loaded machine (see the gate note below).
-  Commits `11386d96` (F4a, Storage `DebugTrace`), `48af5a74` (D35), `9029ec42` (F0, bridge
-  editor), `8a6f2e73` (F2a, in-memory event log), `a6d7f1fd` (the surface), `728332b6` (the audit
+  Commits `e83f3558` (F4a, Storage `DebugTrace`), `487abef9` (D35), `4205433f` (F0, bridge
+  editor), `10b18523` (F2a, in-memory event log), `dc3458d0` (the surface), `dfa55fe4` (the audit
   settlement below) + docs. Gate at step 2, both lanes: `cargo fmt --all --check` rc 0,
   clippy clean, **8 366 passed / 0 failed / 5 ignored** per lane over 81 binaries;
   `corpus_gate` **308 / 0 failed / 0 ignored** per lane with **526/526** cases green
@@ -3638,7 +3638,7 @@ row against the pre-fix lock.
   the gate stage and passed: max |Δ| = **0.000e0** on all eight gated kinds (errs 522, iter 2 165, loss
   366 496, pow 1 170 182, v 375 842, y 1 738 268; 0 iteration counts drifted), and again after the
   settlement below.
-  **Audit settlement** (2026-09-06, `728332b6`) — 15 rows (11 distinct): **9 fixed / 5 recorded / 1 refuted**
+  **Audit settlement** (2026-09-06, `dfa55fe4`) — 15 rows (11 distinct): **9 fixed / 5 recorded / 1 refuted**
   (`tmp/g110a/settle.md`). Fixed: the two rails that could pass vacuously (the D30(1) protocol test
   `expect`s its `run_files` key; `CaseResult::sweep_failed` is an `Option` behind the presence rail,
   negative-driven by `a_transport_reply_without_a_sweep_report_fails_the_case` and
@@ -3703,7 +3703,7 @@ row against the pre-fix lock.
   merge: lane lane-s -> update, see git log
 
   **+ F0′** (2026-09-11, lane `lane-m`, **D39**/**D41** — a follow-up commit, not a sub-step; commits
-  `6a987289` + settlement `a5a272e2` + docs `468c608e` + docs) — the bridge gags report auto-display with
+  `9f0fb8b0` + settlement `6664a73c` + docs `1bdb61e4` + docs) — the bridge gags report auto-display with
   r4133's own switches (`Set AllowForms=No`, then `Set ShowReports=No`/`Set ShowExport=No` behind a throwaway
   circuit, options 138/71 answering `#301` without one, `Executive/ExecOptions.pas:645-649`), leaving D25's
   editor no-op only as the safety net for the **12** of **55** `FireOffEditor` sites upstream leaves
@@ -3713,7 +3713,7 @@ row against the pre-fix lock.
   `report_switches_survive_a_compile_and_gag_every_guarded_editor_site`,
   `the_editor_safety_net_covers_the_sites_no_switch_guards` (`G1_10_PINS` 40 → 44 with the settlement's two).
 
-  **Audit settlement** (`a5a272e2`): 13 findings — **10 fixed / 3 recorded / 0 refuted**. The one with teeth:
+  **Audit settlement** (`6664a73c`): 13 findings — **10 fixed / 3 recorded / 0 refuted**. The one with teeth:
   `ShowExport` is a unit global five live corpus decks set themselves, so it leaked into every later case of
   a pooled worker — `Engine::clear` now re-asserts both switches per case (the D13 shape; pin
   `clear_re_asserts_the_report_switches`, `Yes`/`Yes` measured before the fix). Also fixed: the created-file
@@ -3733,7 +3733,7 @@ row against the pre-fix lock.
   merge: lane lane-m -> update, see git log
 
 - **G1.4d** (2026-09-06, lane `lane-b`, bus chain — **D7**, split out of G1.4b by **D26**; commits
-  `62c616eb` the two r4133 mode rows `Pure` → **Impure**, `1acc1f53` the surface, `dff755b5` the
+  `dd60d1a8` the two r4133 mode rows `Pure` → **Impure**, `572e58f2` the surface, `0e3ea8a2` the
   settlement, + docs) — the bus **at-bus lists** (`Bus.AllPCEatBus`/`AllPDEatBus`) live on both channels
   on G1.4a's per-bus walk. The port answers **S4**, neither oracle's criterion (r4133
   `Common/Circuit.pas:1513`/`:1559`, capi `:1746-1767`): `Dss::all_bus_elements` publishes the answer AND
@@ -3746,7 +3746,7 @@ row against the pre-fix lock.
   **7 892 / 0 / 5 ignored** over 79 binaries, corpus **526/526**, ledger **55** / **1 567** hits / 0
   stale, `lane_diff` **PASS** max |Δ| = 0.
 
-  **Audit settlement** (2026-09-06, `dff755b5`; 13 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted): the
+  **Audit settlement** (2026-09-06, `0e3ea8a2`; 13 findings, 12 distinct — 7 fixed / 5 recorded / 0 refuted): the
   comparator gained the one direction no channel assertion can state (`assert_port_at_bus_is_s4` — each
   oracle's walk is a projection of the same facts, so a silently shortened port list vanished from both
   sides of it; armed in a scratch copy it now reds 3/3 cases, where the same corruption left F4's full run
@@ -3798,12 +3798,12 @@ row against the pre-fix lock.
   (`to_opendss/74`); both states are corpus-unreachable, hence no row. Surface, pins and declines are
   described in `TESTING.md` §"G1.10b — the CONTENTS of the selected run files", the derivation in
   `tests/TOLERANCE_NOTES.md` §"G1.10b run-file contents", the names in `G1_10_PINS` (40 → **63**, **72** after the settlement) and
-  `G1_10_CONSTS` (3 → **6**). Commits `4bbc6405` (F0) + `9b07466a` (F2b) + `934a4275` (surface) +
-  `a4bbfd32` + `f93eb4ec` (the two settlement rounds) + docs; five-command gate green in both lanes,
+  `G1_10_CONSTS` (3 → **6**). Commits `3c5fc74f` (F0) + `b9a4abfa` (F2b) + `02a4b3a9` (surface) +
+  `fd1dcd50` + `42c86549` (the two settlement rounds) + docs; five-command gate green in both lanes,
   identical per lane: **12 442 passed / 0 failed / 5 ignored** at the surface commit, **12 574 / 0 / 5**
   after the settlements (`corpus_gate` 493 → 498 / 0, 526/526 cases, ledger 57 entries / 1 573 hits /
   0 stale), and `lane_diff` **PASS, max |Δ| = 0.000e0** on all eight kinds over 3 221 146 records.
-  **Audit settlement** (2026-09-12, `a4bbfd32`; ten reports — 8 split + 2 first-pass — per-finding
+  **Audit settlement** (2026-09-12, `fd1dcd50`; ten reports — 8 split + 2 first-pass — per-finding
   table in `tmp/g110b/settle.md`): **32 findings — 28 fixed / 4 recorded / 0 refuted**, none a
   behavioural regression, every fix a tightening of the proof layer. The substantive ones: the cell
   rule is pinned AT its boundary (±0.1 %, value and angle); a group row must be `head + k·group`
@@ -3821,7 +3821,7 @@ row against the pre-fix lock.
   `crates/*/src` only comment lines and `#[cfg(test)]` code. Three earlier default-lane gate
   attempts died on the two documented environmental classes (**D23**/**D33(2)**,
   `tmp/g110b/settle_gate_4{,b,c,d}.log`).
-  **Round 2** (2026-09-12, `f93eb4ec` on top of `a4bbfd32`; report `tmp/g110b/audit_settle/report.md`,
+  **Round 2** (2026-09-12, `42c86549` on top of `fd1dcd50`; report `tmp/g110b/audit_settle/report.md`,
   table in `tmp/g110b/settle2.md`): the settlement audit raised **5 findings — 5 fixed / 0 recorded /
   0 refuted**, all record accuracy — the surface pin count (`G1_10_PINS` 40 → **63**, not 67), this
   block's length, the five-command gate re-run AFTER the record edit so it covers the prose the doc
@@ -3832,7 +3832,7 @@ row against the pre-fix lock.
 
   merge: lane lane-s -> update, see git log
 
-- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `f9b995b7` + `7818868c` + `e2d2a83d` + docs) — the
+- **G1.10c** (2026-09-12, lane `lane-e` — **D7**/**D41**; commits `1f77b145` + `015d2c4f` + `ac7aab89` + docs) — the
   demand-interval tree's CONTENTS compare live on both channels behind `compare_di`: each transport copies the
   run-created tree into a per-(case, channel) sidecar read before `created()` and before the capi teardown `clear`
   (slot asserted from both sources by `check_run_tail_order`, **D43(2)**); each column is banded at the gate's
@@ -3842,14 +3842,14 @@ row against the pre-fix lock.
   **35** causes — two ckt7 columns, one entry per channel, each with a both-numbers pin (**D44(1)**). Details:
   `TESTING.md` §"G1.10c", `tests/TOLERANCE_NOTES.md` §G1.10c. Gate (`tmp/g110c/gate.md`): five commands exit 0,
   **11 966 / 0 / 5** per lane, corpus 526/526; no PRODUCT crate's `src` moved → `lane_diff` not owed (**D41**).
-  **Audit settlement** (`7818868c`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**, none
+  **Audit settlement** (`015d2c4f`; 8 reports, 34 distinct findings — **27 fixed / 7 recorded / 0 refuted**, none
   major; per-finding table `tmp/g110c/settle.md`, effects in the two documents above and in `G1_10_PINS`): six new
   drives — `the_masked_kvarh_column_is_pinned_whole` (AT-1, the masked column pinned whole; row-scoping refused as
   measured), `a_truncated_di_sidecar_copy_is_reported`, `a_di_member_name_that_escapes_its_sidecar_is_refused`,
   `a_register_file_of_an_unknown_width_fails`, `the_channel_tags_are_the_gates_one_vocabulary`,
   `the_di_pin_cases_are_the_manifest_rows`. Gate: **11 997 / 0 / 5** per lane, 526/526 (one **D23** foreign-`.tmp`
   red, green on the unmodified re-run; `tmp/g110c/settle2_gate_*.log`).
-  **Round 2** (`e2d2a83d`; the settlement's own audit, 6 findings — **4 fixed / 2 recorded**, table
+  **Round 2** (`ac7aab89`; the settlement's own audit, 6 findings — **4 fixed / 2 recorded**, table
   `tmp/g110c/settle2.md`): `TIE_MAGNITUDES_HEX` records all three tied buses and asserts their bit-identity (SA-5),
   three wrapped assertion messages regain their continuations (SA-1), the whole-column pin's sensitivity is restated
   at its real scope (SA-3); SA-6 (those 8 736 rows are watched port-side only, neither narrowing existing in the

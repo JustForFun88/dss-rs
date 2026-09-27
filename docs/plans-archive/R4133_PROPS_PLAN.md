@@ -185,7 +185,7 @@ preconditions met — the 20 mixed echo rows narrowed per cell, the eight staged
 before it. §RP3.11 followed on 2026-09-03 (`KEEP_LIVE_PINNED`, both surfaces);
 §RP3.10 followed on 2026-09-04 — outside this rule, as the next paragraph
 says, and now executed.)*
-*(**§RP5.1 landed 2026-09-04** — `dd0b9e5b` + `8802fb6a`, docs only, gate green
+*(**§RP5.1 landed 2026-09-04** — `5acd0a49` + `d04f9d14`, docs only, gate green
 in both lanes; see the dated line in §RP5.1. Only §RP5.2 and the closeout
 remain.)*
 **Two RP3 sub-steps are deliberately outside that rule** — three since
@@ -197,13 +197,13 @@ solve-side fix with no property cell of its own — our `kvar` render reads
 closing record, and not the unmask; it also runs only on the user's go-ahead
 (§RP3.10). *(**Executed 2026-09-04** — verdict `FIX`, the constant-Q arm
 implemented in both lanes with four r4133 `exclusion` entries and five pins over
-zero golden bytes, `9f55095b` + `9f067c19`; see the dated line in §RP3.10. That
+zero golden bytes, `8c22e898` + `34591f24`; see the dated line in §RP3.10. That
 leaves **§RP5.2 with no open blocker**.)* **§RP3.11** (the `Save`/`Dump` re-serialization surface, opened by
 RP3.3's audit settlement) is the mirror image: no *compared* channel reads it at
 all, so it cannot block a gate flip — it blocks **§RP5.2** too, and it ran after
 RP4.1 had fixed which pairs are echoes, because that list is exactly the list of
 properties where the two serializers disagree. *(**Executed 2026-09-03** —
-`KEEP_LIVE_PINNED` on both surfaces, `97107e54` + `0194b086`; see the dated
+`KEEP_LIVE_PINNED` on both surfaces, `ae2617a9` + `a7c86d45`; see the dated
 lines in §RP3.11. That §RP5.2 precondition is therefore **discharged**, leaving
 §RP3.10 as the closing record's only open blocker — itself discharged the next
 day, as the §RP3.10 note above records.)* **§RP3.13** (the two NCIM
@@ -211,8 +211,8 @@ port bugs, opened by RP3.11's own P0 findings) is the third: it moves no
 property cell at all — both defects are in the NCIM solve and its reporting arms
 — so it blocks neither the unmask nor §RP5.2, and it ran on the user's go-ahead
 straight after RP3.11. *(**Executed 2026-09-03** — verdict `PORT_BUG` × 2, fixed
-in both lanes with zero ledger entries and zero golden bytes, `2ce1a66e` +
-`217355da`; see §RP3.13.)*
+in both lanes with zero ledger entries and zero golden bytes, `a029b5df` +
+`ccaecfba`; see §RP3.13.)*
 Execution is on a **single branch only — never in parallel
 worktrees**: `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`
 and `tests/golden/golden.lock.json` are fail-on-stale and are rewritten by this
@@ -1318,7 +1318,7 @@ in-scope numeric jump (rel 9.86e+2) is explained.
 > r4133's `0`**" was never measured and does not even share the mechanism (both
 > type `QMode=2` with a real `VV_Curve=`, i.e. the volt-var arm), and a promotion
 > would add `WindGens × steps` cells, not "a cell"; and the commit message
-> `c46bca42` welded two probe steps (`kvar=500` renders PF `0.986394`; PF
+> `89f18067` welded two probe steps (`kvar=500` renders PF `0.986394`; PF
 > `0.968058` is the later `Edit kvar=777`) — the tree's own records were already
 > right, so the correction is recorded in STATUS. Guards: `element_scope` now
 > accepts the quoted declaration form and treats `Edit`/`BatchEdit` as the same
@@ -1489,7 +1489,7 @@ pins hold on both channels where both channels look.
 > not-the-kill-criterion in-lane and the settlement escalates that reading to the
 > user, the substance being independently confirmed twice.
 >
-> **Audit settlement (2026-08-24, one commit over `cab2e667`).** Seven minor
+> **Audit settlement (2026-08-24, one commit over `9863908a`).** Seven minor
 > findings, all settled, no classification or count moved (STATUS §WP-RP3 carries
 > the per-finding record): the ring pin gained the `R1 = 1.587` control it was
 > missing (the audit proved a no-op `%R9=0.4` edit left it green); the census's
@@ -1746,7 +1746,7 @@ out of reach: PASS, `max |Δ| = 0` on every kind. Four adjacent divergences are 
 (the object-ref miss path, `MakeLike`'s copy set, the switch-unreachable
 `Conductor.length` branch, name casing). Full record in STATUS §RP3.6.
 
-**Audit settlement — 2026-08-29 (one commit over `4b146ab9`).** Both auditors
+**Audit settlement — 2026-08-29 (one commit over `0866a3bc`).** Both auditors
 re-derived the mechanism on the live oracles and confirmed the outcome: `FIX` in
 both lanes, 5 cells / 5 in scope, both ledger entries and their cause unchanged,
 no bug reproduced, no golden regenerated. Three real defects were fixed here, all
@@ -2134,7 +2134,7 @@ STATUS §WP-RP3 carries the verdict and this section is marked as executed.
 Outcome: the last reproduced upstream bug this plan uncovered stops living in
 prose.
 
-**As executed (2026-09-04, `9f55095b` + the audit settlement `9f067c19`) —
+**As executed (2026-09-04, `8c22e898` + the audit settlement `34591f24`) —
 verdict `FIX`; the kill criterion did NOT fire.**
 Refuted both halves: a complete 20-hit `Qnominalperphase` write census leaves no
 other site that fills it for mode 0, and the live r4133 DLL dispatches exactly 0
@@ -2284,8 +2284,8 @@ hoist for the five curve classes neither upstream guards (`TCC_Curve`,
 bytes and **0** ledger rows; pins 8 → **11**, all registered in
 `props_r4133_replay.rs::RP311_SERIALIZATION_PINS`. Every finding's disposition is
 in STATUS §RP3.11 ("audit settlement").
-**Landed 2026-09-03** — `97107e54` (sub-step: P1–P4, eight pins, one golden
-content line + one lock digest), `0194b086` (audit settlement: 14 raw findings,
+**Landed 2026-09-03** — `ae2617a9` (sub-step: P1–P4, eight pins, one golden
+content line + one lock digest), `a7c86d45` (audit settlement: 14 raw findings,
 12 distinct — 10 fixed, 2 recorded, 0 refuted; P5–P7 and three more pins) and
 this docs commit. Gate green in both lanes, each exit code read individually —
 **4 439 passed / 0 failed / 5 ignored** per lane over 74 binaries, the corpus
@@ -2339,7 +2339,7 @@ in `docs/upgrade/DIVERGENCES.md`, `docs/upgrade/sweeps/capi015_vs_r4088.md`,
 none of them and RP4.1 gains no precondition. Tier as executed: `opus-high+`
 (exec and both audits).
 
-**Landed 2026-09-03** — `09e70233` (sub-step), `c2a8b68c` (audit settlement:
+**Landed 2026-09-03** — `bb852e92` (sub-step), `e6ae214c` (audit settlement:
 12 findings, 11 distinct — 9 fixed, 2 recorded, 0 refuted) and this docs
 commit. Gate green in both lanes, 4 290 tests per lane; `lane_diff` not owed (no
 `src/` line moved). Full record: STATUS §RP3.12.
@@ -2474,8 +2474,8 @@ report `54-ncim-calcinjcurratbus-pc-sign.md`.
 
 **Blocks nothing** — no property cell moves, so neither the unmask (landed) nor
 §RP5.2 gains a precondition. Tier as executed: `opus-xhigh` (exec and both
-audits). **Landed 2026-09-03** — `2ce1a66e` (the sub-step: the four fixes, eight
-pins, the record), `217355da` (the audit settlement: 12 findings — 6 fixed,
+audits). **Landed 2026-09-03** — `a029b5df` (the sub-step: the four fixes, eight
+pins, the record), `ccaecfba` (the audit settlement: 12 findings — 6 fixed,
 6 recorded, 0 refuted; the `CalcInjCurrAtBus` PC-sign non-reproduction, pin P9
 and the `RP313_NCIM_PINS` citation guard) and this docs commit. Gate green in
 both lanes, each exit code read individually — **4 449 passed / 0 failed /
@@ -2758,10 +2758,10 @@ walks — the new tables are harness code, not compat aliases). **Acceptance:**
 every doc claim added here cites the landed code line; doc tests green.
 Outcome: the machinery is discoverable without reading this plan.
 
-**Landed 2026-09-04** — `dd0b9e5b` (the sub-step: the new `TESTING.md` claim-chain
+**Landed 2026-09-04** — `5acd0a49` (the sub-step: the new `TESTING.md` claim-chain
 section and the r4133 triage procedure, the `tests/TOLERANCE_NOTES.md`
 cross-check, two stale doc comments in `props_norm.rs`; 46 `file.rs:LINE`
-citations over 6 code files), `8802fb6a` (audit settlement: 8 findings — 6
+citations over 6 code files), `d04f9d14` (audit settlement: 8 findings — 6
 fixed, 2 refuted and recorded for RP5.2) and this docs commit. Documentation
 only: zero product-crate lines, zero table rows, zero tolerances, zero golden
 bytes, zero ledger entries. Gate green in both lanes — **4 498 passed / 0 failed
@@ -2811,8 +2811,8 @@ doc comments that cited it were repointed (their line range was already wrong).
 The five-command gate ran green in **both** lanes on this tree — **4 498
 passed / 0 failed / 5 ignored** each, zero delta against the RP5.1 baseline, all
 four ledger guards `ok`; `lane_diff` not owed (no `src/` line moved).
-**Acceptance met.** Shas: `5a110653` (the closing record and the archive move),
-`bc16430b` (audit settlement, 2026-09-04 — 14 findings, 12 fixed, 1 recorded,
+**Acceptance met.** Shas: `6f5c7206` (the closing record and the archive move),
+`609e07ea` (audit settlement, 2026-09-04 — 14 findings, 12 fixed, 1 recorded,
 1 superseded, 0 refuted: the record's own counters corrected against the tree,
 `GOLDEN_REBASE_PLAN.md`'s stale 96 r4133-only cases → 97, and both
 citation-guard gaps closed) and this sub-step's settlement-record docs commit

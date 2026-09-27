@@ -769,7 +769,7 @@ transform.
 >   collapses to nothing. Both are admitted by two-sided emptiness predicates and pinned.
 
 > **2026-09-06 — AS LANDED on `update`.** The numbers above are the lane's own tree
-> (`ef110b71`). On the merged tree: the `compare_derived` population is
+> (`64d03c6c`). On the merged tree: the `compare_derived` population is
 > `FORCED_DERIVED_POPULATION` **(445, 314, 87, 44)** (the other lanes' micro decks), the
 > **31** widenings land as **25** over **9** `element` scopes — D12/D14 had already deleted
 > the two `gic-pct-r2-honoured-*-capi` entries the lane also widened, and their r4133 twins
@@ -1216,7 +1216,7 @@ only; manifest-flagged).
 > and `TDSSClass.Get_First`/`Get_Next` assign `ActiveCircuit.ActiveCktElement`
 > (`Common/DSSClass.pas:342-371`), measured live to move on **199 of 199** decks probed. The
 > two mode rows go `ModeEffect::Pure` → `Impure` in their own commit ahead of the surface
-> (`crates/dss-epri/src/modes.rs`, commit `62c616eb`); neither read moves `ActiveBusIndex`
+> (`crates/dss-epri/src/modes.rs`, commit `dd60d1a8`); neither read moves `ActiveBusIndex`
 > or any `Iterminal`, so the surface stays capture-group `'C'` and the placement is a
 > cross-transport contract, asserted by
 > `the_at_bus_capture_reads_last_in_one_fixed_order_on_both_transports` and
@@ -1232,7 +1232,7 @@ only; manifest-flagged).
 > tolerances (`tests/TOLERANCE_NOTES.md` §"Bus at-bus lists" records why there is no floor:
 > the wire carries element names). Gate **7 892 / 0 / 5 ignored in both lanes** over 79
 > binaries, corpus **526/526**, ledger 55 entries / 1567 hits; `lane_diff` **PASS**, max
-> |Δ| = 0 (`exec/view.rs` moved); the audit settlement `dff755b5` — test and doc code only,
+> |Δ| = 0 (`exec/view.rs` moved); the audit settlement `0e3ea8a2` — test and doc code only,
 > so no `lane_diff` owed — took both lanes to **7 940 / 0 / 5**. Three upstream reports:
 > `investigations/to_opendss/69-getpdeatbus-misses-windings-past-the-second.md`,
 > `70-allpdeatbus-fast-path-names-an-element-at-a-foreign-bus.md`,
@@ -1681,7 +1681,7 @@ fastdss itself never compares this surface, so this is strictly stronger).
 > 0-based rather than nudge DE_PASCALIZE **P14**'s ceiling — it stays 106 — and the two
 > cross-transport `#[test]`s, the last producers running in a case directory without a claim, take
 > the `CorpusGuard` too).
-> **The audit settlement** (`728332b6`, 15 findings — 9 fixed / 5 recorded / 1 refuted) closed a
+> **The audit settlement** (`dfa55fe4`, 15 findings — 9 fixed / 5 recorded / 1 refuted) closed a
 > second port gap in (4) — `exec/json_import.rs` never drained the queued trace header, so a
 > Storage imported from JSON with `DebugTrace: true` traced nothing — and, on its own gate run,
 > the root cause of the `Test/AutoTrans/*` residue: a guard on a PARENT case directory restored a

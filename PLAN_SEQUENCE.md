@@ -122,9 +122,9 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               the dedicated successor G1.1's kill criterion
                               demanded. All six work packages landed, both lanes
                               gate-green: **26 sub-steps / 67 RP-titled commits**
-                              (RP0.1 `cbcfafeb` … RP5.2 `bc16430b` + its
+                              (RP0.1 `6db7f202` … RP5.2 `609e07ea` + its
                               settlement record; 64 of them through RP5.1's
-                              `64474762`), each one implement + two fresh
+                              `1af27153`), each one implement + two fresh
                               auditors + fix agent.
                               **Final counters** — normalization table **168** rows
                               (77 BoolFold / 65 CaseFold / 21 ArrayForm / 5

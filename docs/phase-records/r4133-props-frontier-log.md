@@ -16,7 +16,7 @@ and upstream bugs are never reproduced in any lane** — the `oracle-parity` lan
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `R4133_PROPS_PLAN.md` on branch **`r4133-props`** (forked
-from `update` @ `2ee6bb00`) — **WP-RP0 COMPLETE**: RP0.1 vendored the G1.1
+from `update` @ `b87c01e9`) — **WP-RP0 COMPLETE**: RP0.1 vendored the G1.1
 census to `tests/corpus/props_r4133/`, RP0.2 made re-measurement a permanent
 knob (`DSS_PROPS_CENSUS=1` on the corpus gate; both channels, masks bypassed,
 collect-don't-panic, `tmp/props_census.json` + the RP0.1 extracts, asserts
@@ -542,7 +542,7 @@ injected the clamped one, so `Export Powers`/`Currents` violated KCL). Both
 `PORT_BUG`, fixed lane-unconditionally in one commit with zero ledger entries and
 zero golden bytes, plus two more defects of the same family found and fixed on
 the way (the flat-start clamp, the swing-`VSource` NCIM arm). Its audit
-settlement the same day (`217355da`, 12 findings — 6 fixed, 6 recorded, 0
+settlement the same day (`ccaecfba`, 12 findings — 6 fixed, 6 recorded, 0
 refuted) added a ninth pin and stopped reproducing a **fourth** r4133 defect,
 `CalcInjCurrAtBus`' PC-element sign, which is the only one of the four that
 changes a reported number; §RP3.13 record above. **Next: RP3.10** (the reproduced `QMode=0` dispatch, user
