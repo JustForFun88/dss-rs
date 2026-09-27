@@ -208,12 +208,12 @@ mod tests;
 /// `false` in the default product build.
 ///
 /// Not read by the engine — it exists so a *consumer* can tell the lanes apart.
-/// Its one use today is the Stage F test harness (`tests/harness/lane.rs`),
-/// which asserts that its own lane const equals this one: if the feature ever
-/// stopped propagating into the integration-test crate, every lane branch in
-/// the suite would silently run the default policy against a parity engine and
-/// the parity gate would evaporate. F.5's differential job reads it to label
-/// its two builds.
+/// Its test-harness reader is `crates/dss-test-harness/src/harness/lane.rs`'s
+/// `PARITY`, which `golden_smoke.rs` pins to each driver's own lane feature: if
+/// the feature ever stopped reaching the harness's `dss-core`, every lane
+/// branch in the suite would silently run the default policy against a parity
+/// engine and the parity gate would evaporate. F.5's differential job reads it
+/// to label its two builds.
 #[cfg(feature = "oracle-parity")]
 pub const ORACLE_PARITY: bool = true;
 
@@ -811,7 +811,7 @@ pub use profile_ll_pu_divisor_truncated_impl as profile_ll_pu_divisor;
 //
 // **Why the default lane's goldens still gate.** §F-FMT step 3: the byte-golden
 // families are compared through the already-existing parsed-numeric tokenizer
-// (`tests/harness/lane.rs::compare_report`) against the *same committed
+// (`crates/dss-test-harness/src/harness/lane.rs::compare_report`) against the *same committed
 // goldens*, at `rel = abs = 0`. So a re-spelled number passes only while it
 // parses to the identical `f64`; a changed value, a changed column count or a
 // changed row order fails in both lanes. F.4 opens no re-baseline event.

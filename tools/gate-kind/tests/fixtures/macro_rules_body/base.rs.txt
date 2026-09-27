@@ -1,0 +1,7 @@
+macro_rules! make {
+    () => {
+        /// generated doc
+        pub struct Made;
+    };
+}
+make!();

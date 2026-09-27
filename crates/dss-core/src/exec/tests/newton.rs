@@ -14,8 +14,8 @@
 //!
 //! **Why the deck is the corpus feeder.** `modes/newton/newton.dss` is the gated
 //! case whose Powers/Losses channel both lanes now exclude
-//! (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional since G2.3 —
-//! no oracle channel reports it correctly), so the fix is pinned here on exactly
+//! (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional since
+//! G2.3 — no oracle channel reports it correctly), so the fix is pinned here on exactly
 //! the model that stopped being oracle-compared there. Its content is inlined
 //! rather than read from `tests/corpus/` because these are `src` unit tests.
 
@@ -147,10 +147,10 @@ fn newton_powers_match_the_normal_algorithm() {
 // `tools/oracle/oracle_server.py:612-632`) the same stale read is
 // 4.5155082046702575e-4 / 5.213217790400988e-3 kVA off the port on
 // `Vsource.source` terminal 0 — still ~20x the comparator's band on BOTH
-// channels (G1.3c F5, 2026-09-06; `tests/harness/lane.rs::elem_channels_for`).
-// Both lanes
+// channels (G1.3c F5, 2026-09-06;
+// `crates/dss-test-harness/src/harness/lane.rs::elem_channels_for`). Both lanes
 // therefore exclude the field on those two decks
-// (`tests/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and this pin is what the
+// (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`) and this pin is what the
 // exclusion owes.
 /// The Newton run's `TotalPowers` are the *normal* algorithm's — the surface no
 /// oracle channel reports correctly after `Set algorithm=Newton`.

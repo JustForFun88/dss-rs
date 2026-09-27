@@ -1,0 +1,4 @@
+declare! {
+    /// the declared type, reworded
+    pub struct Declared;
+}
