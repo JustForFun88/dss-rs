@@ -529,7 +529,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   `let allowed = abs_floor + rel * mag;` — it bands the **modulus** of the
   complex difference, `|Δz| ≤ abs + rel·|z|`. Node voltages reach the same
   function through `harness::assert_complex_close`
-  (`corpus_gate/runner.rs:927,930`). So the admitted error set is the closed
+  (`corpus_gate/runner.rs:928,931`). So the admitted error set is the closed
   **disc** `D(z, ρ)` with `ρ = abs + rel·|z|`, and derivations 1, 2 and 4 below
   are images of that disc.
   *Had* the gate banded `re` and `im` separately at `abs + rel·|component|`, the
@@ -3395,3 +3395,4 @@ pin and the default lane taking the clean fix. Consequences for tolerance work:
 - A marker still spelled `TODO(compat)` in the tree is one Stage F **escaped**
   with a measured blocker, and every survivor is registered in
   `oracle_parity_cfg_gate::ESCAPE_REGISTER` with its owner.
+<!-- line-citations: 21 -->

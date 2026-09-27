@@ -4542,3 +4542,4 @@ gate instead of leaving a documented claim with no prover.
 - `tools/opendss/README.md` — the r4133 binary artifact + the `dss-epri` bridge.
 - `tools/oracle/README.md` — the pinned capi oracle server protocol.
 - `UNIFIED_GATE_PLAN.md` — the unified-gate design decisions (D1–D10) + phases.
+<!-- line-citations: 176 -->
