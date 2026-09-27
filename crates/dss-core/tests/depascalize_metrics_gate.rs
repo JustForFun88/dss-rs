@@ -42,6 +42,8 @@ fn repo_root() -> PathBuf {
 /// the dss-core integration tests (moved out of `crates/dss-core/tests/
 /// harness/` by RETRO_FIXES RF-I00-04; `publish = false`, a dev-dependency
 /// only), whose seam counters and panic silencers are `thread_local!`s.
+/// `oracle_parity_cfg_gate.rs::no_product_crate_links_a_test_only_crate` reads
+/// this list and reds on an entry that is not a test-only package's directory.
 const TEST_ONLY_CRATES: &[&str] = &["dss-test-harness"];
 
 /// Every `.rs` file under `crates/<crate>/src/`, for the crates named by
