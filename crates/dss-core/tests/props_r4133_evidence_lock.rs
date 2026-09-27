@@ -11,19 +11,29 @@
 //! quietly edited row would not fail that test, it would only shrink what it
 //! proves. Nothing else guards these bytes: the tree is deliberately outside
 //! `golden_lock.rs`'s scope (recorded there in `EXCLUDED_TREES`, reasoned in the
-//! directory's `README.md`), so this file is the guard.
+//! directory's `README.md`), so this file is the guard — and what stops a quiet
+//! edit is the **digest** of item 1, not the structural checks of items 2-3: an
+//! in-place rewrite of a value in `examples_full.txt`'s 2 203 numeric-only rows
+//! keeps every count, sum and bin of those items (RETRO_FIXES RF-D00-16).
 //!
 //! # What is locked
 //!
-//! 1. **Bytes** — SHA-256 + length over the five verbatim copies. They are
-//!    hashed **raw**: `.gitattributes` marks the directory `-text` (asserted
-//!    below), so the committed bytes and the working-tree bytes are the same
-//!    on every platform, CRLF files and the one LF file (`triage.md`) alike.
+//! 1. **Bytes** — SHA-256 + length over the five verbatim copies
+//!    ([`VERBATIM`]) and over the four derived files the replay consumes
+//!    ([`DERIVED`]: `examples_full.txt`, `examples_supplement.txt`, `bins.tsv`,
+//!    `shape_in_scope.txt`). They are hashed **raw**: `.gitattributes` marks
+//!    the directory `-text` (asserted below), so the committed bytes and the
+//!    working-tree bytes are the same on every platform, CRLF and LF files
+//!    alike.
 //! 2. **Row counts** of the derived files (the acceptance criterion of WP-RP0).
 //! 3. **Cross-file equalities** — `bins.tsv` ↔ the pair files ↔
-//!    `examples_full.txt` ↔ the in-scope pair files ↔ `shape_in_scope.txt`.
-//!    These catch a partial regeneration or a hand edit that byte-locks alone
-//!    would let through on a derived file.
+//!    `examples_full.txt` ↔ the in-scope pair files ↔ `shape_in_scope.txt`,
+//!    including every value column: both `max_rel` columns against their pair
+//!    files and against the numeric bin rule (`bin = 7` iff `max_rel >= 1e-4`),
+//!    and every `(pair, rust-example, r4133-example)` triple of the two
+//!    in-scope extracts as a row of the digest-locked `examples_full.txt`.
+//!    These catch a partial regeneration, and they are the only guard of the
+//!    two in-scope extracts, which carry no digest of their own.
 //! 4. **The two counted claims the README's data traps make** — the 17
 //!    heterogeneous structural pairs and bin 1's nine echo-carrying pairs (four
 //!    mixed, five pure echo). Both are re-derived here from
@@ -33,8 +43,9 @@
 //!    spelling inventory of the 26 pairs no frozen row can carry (24 created by
 //!    the WP-RP1 shape closures, plus the pair the 2026-08-08 walk missed and
 //!    the pair a `SKIP_PROPS` row hid). Row/pair/cell counts, a unique
-//!    `(pair, rust, r4133)` triple, disjointness from `bins.tsv`, and the
-//!    presence of the provenance header that IS those pairs' bin assignment.
+//!    `(pair, rust, r4133)` triple, disjointness from `bins.tsv`, the
+//!    presence of the provenance header that IS those pairs' bin assignment,
+//!    and its machine-readable `# BIN <pair> <bin>` lines ([`SUPPLEMENT_BINS`]).
 //!
 //! Nothing here needs an oracle, a solve or a feature flag: it is a data lock,
 //! green in both lanes.
@@ -84,6 +95,36 @@ const VERBATIM: &[(&str, &str, usize)] = &[
     ),
 ];
 
+/// The four derived files the replay consumes: name, SHA-256 over the raw
+/// bytes, byte length. Unlike [`VERBATIM`] they have no local source to be a
+/// copy of — `examples_full.txt`, `bins.tsv` and `shape_in_scope.txt` are
+/// WP-RP0's derivations of the 2026-08-08 census, `examples_supplement.txt` is
+/// RP2.1's measurement — so the digest is the only thing that pins their value
+/// text: the structural checks below hold across an in-place value rewrite
+/// (RETRO_FIXES RF-D00-16, finding `RP|RP0.1|AC1|AC1-1`).
+const DERIVED: &[(&str, &str, usize)] = &[
+    (
+        "examples_full.txt",
+        "921e37d5c9b8e8ccc6be9b877e68bb4d176be77435cca59aef45da227cd72e43",
+        173_902,
+    ),
+    (
+        "examples_supplement.txt",
+        "3969ee4a44c6b10e7bd93055dfcf624434d1d10e68006c51334435d33636aab5",
+        11_511,
+    ),
+    (
+        "bins.tsv",
+        "6125a554a033fa5527abebaaae86a0fb408ed202f8a11bbcba885e562910f40f",
+        13_921,
+    ),
+    (
+        "shape_in_scope.txt",
+        "cb0c7e068dfc01a0d5bca4dbcb024e7f0dc1a7b72146018dc69034724593deb4",
+        382,
+    ),
+];
+
 /// Data-row counts (headers excluded) of every row-shaped file.
 const ROW_COUNTS: &[(&str, usize)] = &[
     ("structural_pairs.txt", 209),
@@ -105,6 +146,18 @@ const ROW_COUNTS: &[(&str, usize)] = &[
 const SUPPLEMENT_PAIRS: usize = 26;
 /// Cells behind those 76 rows (the file's own `count` column).
 const SUPPLEMENT_CELLS: usize = 4541;
+/// The supplement header's `# BIN <pair> <bin>` lines: the two pairs whose bin
+/// no README table records, declared by the file itself:
+/// `regcontrol.fwdthreshold` echoes prop 36
+/// (`Version8/Source/Controls/RegControl.pas:294`), which `InitPropertyValues`
+/// never writes (`:1423-1459` initialises 1..32 only);
+/// `regcontrol.revthreshold` echoes the `PropertyValue[23]` store through the
+/// getter's fallthrough (`:820-827`) — `:1448`'s default `'100'`, or the
+/// deck's own token stored by the `Edit` loop at `:420`.
+const SUPPLEMENT_BINS: &[(&str, u8)] = &[
+    ("regcontrol.fwdthreshold", 5),
+    ("regcontrol.revthreshold", 7),
+];
 
 /// `R4133_PROPS_PLAN.md` §1.1: bin → (pairs, cells) over the full census.
 const BIN_TOTALS: &[(u8, usize, usize)] = &[
@@ -265,6 +318,7 @@ struct Bin {
     subbin: String,
     cells: usize,
     cells_in_scope: usize,
+    max_rel: String,
     max_rel_in_scope: String,
 }
 
@@ -289,6 +343,7 @@ fn bins() -> Vec<Bin> {
                 subbin: f[3].to_string(),
                 cells: f[4].parse().expect("cells"),
                 cells_in_scope: f[5].parse().expect("cells_in_scope"),
+                max_rel: f[6].to_string(),
                 max_rel_in_scope: f[7].to_string(),
             }
         })
@@ -314,29 +369,85 @@ fn classify(rust: &str, r4133: &str) -> u8 {
     }
 }
 
+/// A `max_rel` cell of `bins.tsv` (`%.2e`, README §"Known data traps"):
+/// finite, >= 0.
+fn parse_max_rel(pair: &str, column: &str, cell: &str) -> f64 {
+    let v: f64 = cell
+        .parse()
+        .unwrap_or_else(|e| panic!("bins.tsv: {pair} {column} {cell:?}: {e}"));
+    assert!(
+        v.is_finite() && v >= 0.0,
+        "bins.tsv: {pair} {column} {cell:?} is not a relative error"
+    );
+    v
+}
+
+/// The `(pair, rust, r4133)` join keys of the digest-locked
+/// `examples_full.txt` (unique — [`examples_full_carries_every_pair_and_every_cell`]).
+fn examples_full_triples() -> BTreeSet<(String, String, String)> {
+    data_rows(
+        "examples_full.txt",
+        Some("class.prop | rust | r4133 | count"),
+    )
+    .iter()
+    .map(|line| {
+        let (pair, rust, r4133, _) = parse_row("examples_full.txt", line);
+        (pair, rust, r4133)
+    })
+    .collect()
+}
+
+/// Raw bytes of one file of [`DIR`]: `(length, SHA-256 hex)`.
+fn digest(name: &str) -> (usize, String) {
+    let path = repo_root().join(DIR).join(name);
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    (bytes.len(), format!("{:x}", Sha256::digest(&bytes)))
+}
+
 #[test]
 fn verbatim_copies_keep_their_bytes() {
     let mut total = 0usize;
     for (name, want, len) in VERBATIM {
-        let path = repo_root().join(DIR).join(name);
-        let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let (got_len, got) = digest(name);
         assert_eq!(
-            bytes.len(),
-            *len,
-            "{name}: {} bytes, expected {len} — this is a verbatim copy of a local-only source; \
-             it is never edited in place",
-            bytes.len()
+            got_len, *len,
+            "{name}: {got_len} bytes, expected {len} — this is a verbatim copy of a local-only \
+             source; it is never edited in place"
         );
-        let got = format!("{:x}", Sha256::digest(&bytes));
         assert_eq!(
             got, *want,
             "{name}: content digest moved. The five copies in {DIR} are byte-identical to the \
              G1.1 extracts in the (gitignored) investigations/g1_1_r4133_props/; if a \
              re-measurement legitimately replaced them, update VERBATIM in the same commit."
         );
-        total += bytes.len();
+        total += got_len;
     }
     assert_eq!(total, 24_944, "the five copies total 24 944 bytes");
+}
+
+/// **The digest is what stops a quiet edit of a derived file** ([`DERIVED`]).
+/// The row counts, sums and bins below hold across an in-place rewrite of a
+/// value; one moved byte anywhere — a value, a count, a comment line of the
+/// supplement's header — moves the digest. The two in-scope extracts carry no
+/// digest: every column of theirs is cross-checked against digest-locked files
+/// in [`bins_tsv_agrees_with_the_pair_files`].
+#[test]
+fn derived_files_keep_their_bytes() {
+    for (name, want, len) in DERIVED {
+        let (got_len, got) = digest(name);
+        assert_eq!(
+            got_len, *len,
+            "{name}: {got_len} bytes, expected {len} — a derived evidence file moves only \
+             together with DERIVED"
+        );
+        assert_eq!(
+            got, *want,
+            "{name}: content digest moved. A deliberate re-measurement (the RP0.2 knob, or a \
+             supplement re-measure) that legitimately replaces this file updates DERIVED in the \
+             same commit — that diff is the review artifact; a hand edit of a value is what \
+             this assertion exists to stop."
+        );
+    }
 }
 
 /// The byte lock above is only as good as the `-text` attribute that keeps git
@@ -404,6 +515,11 @@ fn bins_tsv_agrees_with_the_pair_files() {
         );
     }
 
+    // The in-scope extracts' example columns must name a spelling the
+    // digest-locked census extract recorded, on the same side (RF-D00-16).
+    let full = examples_full_triples();
+    let (mut max_rel_full, mut max_rel_in_scope, mut triples) = (0usize, 0usize, 0usize);
+
     for (file, kind, rows_idx, in_scope) in [
         ("structural_pairs.txt", "structural", 0usize, false),
         ("numeric_pairs.txt", "numeric", 1, false),
@@ -417,8 +533,21 @@ fn bins_tsv_agrees_with_the_pair_files() {
         };
         let mut seen = BTreeSet::new();
         for line in data_rows(file, Some(header)) {
-            let (pair, _, _, tail) = parse_row(file, &line);
-            let cells = rows_field(file, &tail);
+            let (pair, rust, r4133, tail) = parse_row(file, &line);
+            // Numeric files carry `max_rel | rows`, structural ones `rows`.
+            let (max_rel, rows) = if rows_idx == 1 {
+                let (m, r) = tail
+                    .split_once(" | ")
+                    .unwrap_or_else(|| panic!("{file}: {pair} has no max_rel column: {tail:?}"));
+                (Some(m), r)
+            } else {
+                (None, tail.as_str())
+            };
+            assert!(
+                !rows.contains(" | "),
+                "{file}: {pair} carries an extra column: {tail:?}"
+            );
+            let cells = rows_field(file, rows);
             let b = by_key
                 .get(&(pair.clone(), kind.to_string()))
                 .unwrap_or_else(|| panic!("{file}: {pair} has no {kind} row in bins.tsv"));
@@ -427,6 +556,31 @@ fn bins_tsv_agrees_with_the_pair_files() {
                 cells, want,
                 "{file}: {pair} carries {cells} rows, bins.tsv says {want}"
             );
+            if let Some(max_rel) = max_rel {
+                let (column, want) = if in_scope {
+                    ("max_rel_in_scope", &b.max_rel_in_scope)
+                } else {
+                    ("max_rel", &b.max_rel)
+                };
+                assert_eq!(
+                    max_rel, want,
+                    "{file}: {pair} max_rel {max_rel}, bins.tsv {column} says {want}"
+                );
+                if in_scope {
+                    max_rel_in_scope += 1;
+                } else {
+                    max_rel_full += 1;
+                }
+            }
+            if in_scope {
+                assert!(
+                    full.contains(&(pair.clone(), rust.clone(), r4133.clone())),
+                    "{file}: {pair}'s example ('{rust}' | '{r4133}') is no row of \
+                     examples_full.txt — the extract names a spelling the census never recorded, \
+                     or has its rust/r4133 sides swapped"
+                );
+                triples += 1;
+            }
             assert!(seen.insert(pair.clone()), "{file}: {pair} appears twice");
         }
         // Both directions: every bins.tsv row of this kind must be present
@@ -447,6 +601,72 @@ fn bins_tsv_agrees_with_the_pair_files() {
             );
         }
     }
+    // Non-vacuous: every numeric row of both files and every in-scope row was
+    // value-checked (94 + 53 max_rel cells, 198 + 53 example triples).
+    assert_eq!(
+        (max_rel_full, max_rel_in_scope, triples),
+        (94, 53, 251),
+        "value columns checked (numeric max_rel, in-scope max_rel, in-scope triples)"
+    );
+}
+
+/// `R4133_PROPS_PLAN.md` §1.1's numeric rule on the numbers that carry it
+/// (README §"Numeric pairs (bins 6–7)"): `bin = 7` iff the pair's full-census
+/// `max_rel` is `>= 1e-4`, else `bin = 6`. The in-scope maximum is taken over a
+/// subset of the same cells, so it never exceeds the full one, and it is `-`
+/// exactly when the pair has no in-scope cell; structural rows carry `-` in
+/// both columns. The replay reads both columns as ceilings
+/// (`props_r4133_replay.rs`: `max_rel_in_scope` through `PairEvidence`, the
+/// full `max_rel` through `frozen_max_rel`), so an inflated cell would loosen a
+/// comparison silently: the pair files agree with them cell for cell
+/// ([`bins_tsv_agrees_with_the_pair_files`]), this rule pins the bin, and the
+/// digest ([`DERIVED`]) pins the bytes.
+#[test]
+fn numeric_bins_follow_their_max_rel() {
+    let (mut numeric, mut in_scope) = (0usize, 0usize);
+    for b in bins() {
+        if b.kind == "structural" {
+            assert_eq!(
+                (b.max_rel.as_str(), b.max_rel_in_scope.as_str()),
+                ("-", "-"),
+                "bins.tsv: structural {} carries a max_rel",
+                b.pair
+            );
+            continue;
+        }
+        numeric += 1;
+        let max_rel = parse_max_rel(&b.pair, "max_rel", &b.max_rel);
+        assert_eq!(
+            b.bin == 7,
+            max_rel >= 1e-4,
+            "bins.tsv: {} is bin {} with max_rel {} — bin 7 iff max_rel >= 1e-4, else bin 6",
+            b.pair,
+            b.bin,
+            b.max_rel
+        );
+        if b.cells_in_scope == 0 {
+            assert_eq!(
+                b.max_rel_in_scope, "-",
+                "bins.tsv: {} has no in-scope cell but a max_rel_in_scope",
+                b.pair
+            );
+        } else {
+            in_scope += 1;
+            let m = parse_max_rel(&b.pair, "max_rel_in_scope", &b.max_rel_in_scope);
+            assert!(
+                m <= max_rel,
+                "bins.tsv: {} max_rel_in_scope {} exceeds its full-census max_rel {}",
+                b.pair,
+                b.max_rel_in_scope,
+                b.max_rel
+            );
+        }
+    }
+    assert_eq!(
+        (numeric, in_scope),
+        (94, 53),
+        "numeric pairs (all, in scope)"
+    );
 }
 
 #[test]
@@ -548,6 +768,31 @@ fn the_supplement_carries_only_pairs_no_frozen_row_can() {
             "examples_supplement.txt lost its provenance header ({marker:?})"
         );
     }
+
+    // Its machine-readable form: one `# BIN <pair> <bin>` line per pair the
+    // README does not bin, each naming a pair with data rows in the file.
+    let declared: Vec<(String, u8)> = text
+        .lines()
+        .filter_map(|l| l.trim_end_matches('\r').strip_prefix("# BIN "))
+        .map(|rest| {
+            let (pair, bin) = rest
+                .split_once(' ')
+                .unwrap_or_else(|| panic!("examples_supplement.txt: bad `# BIN` line {rest:?}"));
+            let bin: u8 = bin
+                .parse()
+                .unwrap_or_else(|e| panic!("examples_supplement.txt: `# BIN {rest}`: {e}"));
+            assert!(
+                (1..=7).contains(&bin) && pairs.contains_key(pair),
+                "examples_supplement.txt: `# BIN {rest}` names no bin or no data-row pair"
+            );
+            (pair.to_string(), bin)
+        })
+        .collect();
+    let want: Vec<(String, u8)> = SUPPLEMENT_BINS
+        .iter()
+        .map(|(pair, bin)| (pair.to_string(), *bin))
+        .collect();
+    assert_eq!(declared, want, "examples_supplement.txt `# BIN` lines");
 }
 
 #[test]

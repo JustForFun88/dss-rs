@@ -44,22 +44,34 @@
 #     `RegControl.pas:1423-1459` initialises only `PropertyValue[1..32]` and
 #     `GetPropertyValue` overrides only index 28, so props 33-36 echo an empty
 #     string like the three `idle*` siblings). Declared for RP2.3's echo row.
-#   * `regcontrol.revthreshold` — **bin 7** (`EchoDefault`, the sibling of
-#     `remoteptratio`: r4133 `RegControl.pas:820-827` overrides only TapNum and
-#     `:1448` freezes `PropertyValue[23] := '100'` while the port renders the
-#     live signed threshold). Measured by RP2.1 part A's disposition probe;
+#   * `regcontrol.revthreshold` — **bin 7** (the sibling of `remoteptratio`:
+#     r4133 `RegControl.pas:820-827` overrides only TapNum, so the getter
+#     answers the `PropertyValue[23]` store while the port renders the live
+#     signed threshold). What that store holds depends on the deck: where no
+#     deck writes the property it is the `InitPropertyValues` default `'100'`
+#     (`:1448`) against the live -100 of `Create` (`:627`), an `EchoDefault`
+#     (864 cells); where a deck writes `revThreshold=800` the `Edit` loop
+#     stores the parsed token `'800'` (`:420`, arm `:451-454`) while
+#     `:500-507` negates the live value to -800, an `EchoParse` of the deck's
+#     own token (24 cells). Measured by RP2.1 part A's disposition probe;
 #     absent from the census only because `SKIP_PROPS` hid it on both channels.
 #     Declared for RP2.3's echo row + pin.
 # Both regcontrol pairs are in scope (their sibling `regcontrol.idle` carries 732
 # in-scope cells of 887); the exact in-scope split is not in any frozen extract
 # and RP2.3 re-derives it with the knob when it writes the pins.
+# The two regcontrol declarations in machine-readable form, one `# BIN <pair>
+# <bin>` line per pair; a pair's cells are the sum of its data rows below
+# (864 + 24 = 888 each), never restated here:
+# BIN regcontrol.fwdthreshold 5
+# BIN regcontrol.revthreshold 7
 #
 # FORMAT. `class.prop | 'rust' | 'r4133' | count`, parsed with the quote-anchored
 # regex README.md prescribes — values may contain `|`, never `'`. Rows are
 # grouped by provenance, pairs within a group in the README's own table order,
 # spellings within a pair by descending cell count. **No row here needed
 # escaping** (no value contains a backslash or an apostrophe), so these are the
-# literal strings both engines printed. Lines starting with `#` are comments;
+# literal strings both engines printed. Lines starting with `#` are comments
+# (the `# BIN` lines above are the one machine-read form among them);
 # 76 data rows follow the column header.
 class.prop | rust | r4133 | count
 # --- RP1.1 (Generator `Rneut`/`Xneut`, Sensor `Action`) — 12 pair(s), 40 row(s) ---
