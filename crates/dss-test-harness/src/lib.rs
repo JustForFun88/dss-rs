@@ -6,7 +6,8 @@
 //! `crates/dss-core/tests/` imports it with `use dss_test_harness::harness;`,
 //! so the harness compiles once per lane and its self-tests run once, in this
 //! crate's own test binary. The module is the former
-//! `crates/dss-core/tests/harness/`, moved byte-for-byte; see `TESTING.md`.
+//! `crates/dss-core/tests/harness/`, moved with `git mv` and byte-identical bar
+//! the RF-I00-04 edits in `lane.rs` and `mod.rs` (see `TESTING.md`).
 #![forbid(unsafe_code)]
 
 // Two lint scopes the move itself creates, both for code the drivers used to

@@ -225,6 +225,23 @@ fn oracle_parity_cfg_appears_only_in_compat_modules_and_tests() {
     );
 }
 
+/// The workspace's test-only library crates, by repo-relative path prefix:
+/// never linked into the shipped engine (`publish = false`, a dev-dependency
+/// only, enforced by [`no_product_crate_links_a_test_only_crate`]), so a read
+/// of the lane constant there is test code wherever in the crate it sits.
+/// `dss-test-harness` is the golden harness moved out of
+/// `crates/dss-core/tests/harness/` by RETRO_FIXES RF-I00-04, and its
+/// `lane::PARITY` IS `compat::ORACLE_PARITY` (`harness/lane.rs`). The cfg
+/// string is deliberately NOT sanctioned there ([`is_sanctioned`] is
+/// path-based and the crate has no `tests` component): the crate declares no
+/// lane feature, so a stray lane cfg in it would read `false` in the parity
+/// lane.
+const TEST_ONLY_CRATES: &[&str] = &["crates/dss-test-harness/"];
+
+fn is_test_only_crate(rel: &str) -> bool {
+    TEST_ONLY_CRATES.iter().any(|c| rel.starts_with(c))
+}
+
 /// The **second** lane-branch channel, policed the same way as the cfg string.
 ///
 /// `compat::ORACLE_PARITY` is a plain `bool` const, so product code could write
@@ -240,23 +257,8 @@ fn oracle_parity_cfg_appears_only_in_compat_modules_and_tests() {
 /// build-time instruments that never link into the shipped library. There is
 /// exactly one such reader, and it is the reason the allowance exists:
 /// `lane_dump` stamps the lane it was built in into its dump header, which is
-/// how the differential job knows it compared two *different* lanes.
-/// The workspace's test-only library crates, by repo-relative path prefix:
-/// never linked into the shipped engine (`publish = false`, a dev-dependency
-/// only), so a read of the lane constant there is test code wherever in the
-/// crate it sits. `dss-test-harness` is the golden harness moved out of
-/// `crates/dss-core/tests/harness/` by RETRO_FIXES RF-I00-04; its
-/// `lane::PARITY` IS `compat::ORACLE_PARITY` (`harness/lane.rs`). The cfg
-/// string is deliberately NOT sanctioned there ([`is_sanctioned`] is
-/// path-based and the crate has no `tests` component): the crate declares no
-/// lane feature, so a stray lane cfg in it would read `false` in the parity
-/// lane.
-const TEST_ONLY_CRATES: &[&str] = &["crates/dss-test-harness/"];
-
-fn is_test_only_crate(rel: &str) -> bool {
-    TEST_ONLY_CRATES.iter().any(|c| rel.starts_with(c))
-}
-
+/// how the differential job knows it compared two *different* lanes. The
+/// crates of [`TEST_ONLY_CRATES`] are test code as a whole.
 #[test]
 fn the_lane_constant_is_read_only_by_compat_modules_and_tests() {
     let root = repo_root();
@@ -319,6 +321,147 @@ fn the_lane_constant_is_read_only_by_compat_modules_and_tests() {
         sanctioned >= COMPAT_MODULES.len(),
         "the walk stopped reaching the lane constant's legitimate readers"
     );
+}
+
+/// The workspace's test-only packages, by package name: the golden harness
+/// (RETRO_FIXES RF-I00-04) and the EPRI bridge (`libloading`, the one
+/// `unsafe` carve-out of CLAUDE.md). A `[dev-dependencies]` edge is the only
+/// kind a product crate may have on them.
+const TEST_ONLY_PACKAGES: [&str; 2] = ["dss-epri", "dss-test-harness"];
+
+/// Every line of a `Cargo.toml` that names a [`TEST_ONLY_PACKAGES`] entry
+/// inside a table a product build links: `[dependencies]`,
+/// `[build-dependencies]`, their `[target.<cfg>.*]` forms and the dotted
+/// `[dependencies.<name>]` headers. Any `dev-dependencies` table is exempt,
+/// and so are comments. A match on the whole line also catches a renamed
+/// dependency (`package = "dss-epri"`) and a path-only one.
+fn linked_test_only_deps(manifest: &str) -> Vec<String> {
+    let mut linked_table = false;
+    let mut out = Vec::new();
+    for (i, raw) in manifest.lines().enumerate() {
+        // The line up to its `#` comment, and the same text with every quoted
+        // span dropped: a header's quoted segments (`'cfg(windows)'`,
+        // `"x86_64-pc-windows-msvc"`) may hold dots and brackets of their own.
+        let (mut code, mut bare) = (String::new(), String::new());
+        let mut quote = None;
+        for c in raw.trim().chars() {
+            match quote {
+                Some(q) if c == q => quote = None,
+                Some(_) => {}
+                None if c == '#' => break,
+                None if c == '\'' || c == '"' => quote = Some(c),
+                None => bare.push(c),
+            }
+            code.push(c);
+        }
+        if let Some(header) = bare.strip_prefix('[') {
+            let header = header.trim_start_matches('[');
+            let header = &header[..header.find(']').unwrap_or(header.len())];
+            let segments: Vec<&str> = header.split('.').map(str::trim).collect();
+            linked_table = segments
+                .iter()
+                .any(|s| *s == "dependencies" || *s == "build-dependencies")
+                && !segments.contains(&"dev-dependencies");
+        }
+        if linked_table && TEST_ONLY_PACKAGES.iter().any(|p| code.contains(p)) {
+            out.push(format!("{}: {}", i + 1, raw.trim()));
+        }
+    }
+    out
+}
+
+/// The premise of [`TEST_ONLY_CRATES`] and of `depascalize_metrics_gate.rs`'s
+/// list of the same name, enforced: no product crate of the workspace links a
+/// test-only package. Before RF-I00-04 the harness was a `mod` under
+/// `crates/dss-core/tests/`, structurally unlinkable. As a library crate it is
+/// one `[dependencies]` line away from the shipped engine, which both lists
+/// would then wave through (RF-I00-04 audit AC-8).
+#[test]
+fn no_product_crate_links_a_test_only_crate() {
+    let root = repo_root();
+    let workspace = fs::read_to_string(root.join("Cargo.toml")).expect("the workspace manifest");
+    let from = workspace
+        .find("\nmembers")
+        .expect("the workspace `members` array");
+    let array = &workspace[from..];
+    let array = &array[..array.find(']').expect("a closed `members` array")];
+    let members: Vec<&str> = array.split('"').skip(1).step_by(2).collect();
+
+    let mut products = 0usize;
+    let mut test_only = Vec::new();
+    let mut offenders = Vec::new();
+    for member in &members {
+        let rel = format!("{member}/Cargo.toml");
+        let manifest = fs::read_to_string(root.join(&rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        let name = manifest
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("name = \""))
+            .and_then(|l| l.strip_suffix('"'))
+            .unwrap_or_else(|| panic!("{rel} names no package"));
+        if TEST_ONLY_PACKAGES.contains(&name) {
+            test_only.push(name.to_string());
+            continue;
+        }
+        products += 1;
+        offenders.extend(
+            linked_test_only_deps(&manifest)
+                .into_iter()
+                .map(|l| format!("    {rel}:{l}")),
+        );
+    }
+    assert!(
+        offenders.is_empty(),
+        "a product crate links a test-only package — only a `[dev-dependencies]` \
+         edge may reach {TEST_ONLY_PACKAGES:?}:\n{}",
+        offenders.join("\n")
+    );
+    // Non-vacuity: both test-only packages are members under these names, the
+    // walk saw the product crates, and every path prefix [`TEST_ONLY_CRATES`]
+    // waves through belongs to one of the packages checked here.
+    test_only.sort();
+    assert_eq!(test_only, TEST_ONLY_PACKAGES, "the test-only members moved");
+    assert!(products >= 5, "only {products} product manifests were read");
+    for prefix in TEST_ONLY_CRATES {
+        assert!(
+            TEST_ONLY_PACKAGES
+                .iter()
+                .any(|p| *prefix == format!("crates/{p}/")),
+            "`{prefix}` is a TEST_ONLY_CRATES entry with no enforced test-only package"
+        );
+    }
+}
+
+/// [`linked_test_only_deps`] sees every table form a product build links and
+/// none that it does not, so an empty result above is a checked "no".
+#[test]
+fn the_test_only_link_scan_reads_every_linked_table_form() {
+    for linked in [
+        "[dependencies]\ndss-epri = { path = \"../dss-epri\" }",
+        "[dependencies]\noracle = { package = \"dss-test-harness\", path = \"x\" }",
+        "[dependencies.dss-test-harness]\npath = \"../dss-test-harness\"",
+        "[build-dependencies]\ndss-epri.workspace = true",
+        "[target.'cfg(windows)'.dependencies]\ndss-epri = { path = \"../dss-epri\" }",
+        "[target.\"x86_64-pc-windows-msvc\".dependencies]\ndss-test-harness = \"0\"",
+    ] {
+        assert!(
+            !linked_test_only_deps(linked).is_empty(),
+            "missed:\n{linked}"
+        );
+    }
+    for exempt in [
+        "[dev-dependencies]\ndss-epri = { path = \"../dss-epri\" }",
+        "[target.'cfg(windows)'.dev-dependencies]\ndss-test-harness = \"0\"",
+        "[dependencies]\n# dss-epri is test-only, see the workspace manifest\nserde = \"1\"",
+        "[dependencies]\nserde = \"1\" # never dss-epri here",
+        "[dev-dependencies] # the bridge\ndss-epri = { path = \"../dss-epri\" }",
+        "[dependencies]\nserde = \"1\"\n[dev-dependencies]\ndss-test-harness = \"0\"",
+        "[package]\nname = \"dss-test-harness\"",
+    ] {
+        assert!(
+            linked_test_only_deps(exempt).is_empty(),
+            "flagged:\n{exempt}"
+        );
+    }
 }
 
 /// The compat tag, assembled at runtime so this gate file carries no literal
@@ -976,7 +1119,8 @@ fn names_token(text: &str, token: &str) -> bool {
 /// `golden_reports.rs` names no split alias at all any more, and
 /// `harness/mod.rs`'s single `lane::PARITY` read belongs to no row. The arm
 /// stays because the spelling is still how the harness reads the lane (×4 in
-/// `golden_reports.rs`, ×2 in `harness/regen.rs`, ×1 in `harness/mod.rs`), so
+/// `golden_reports.rs`, ×2 in `harness/regen.rs`, ×1 in `harness/mod.rs`, and
+/// since RF-I00-04 ×1 in `golden_smoke.rs`'s lane-agreement pin), so
 /// the next pin written there must be recognised; it is no longer what keeps
 /// any row pinned.)
 ///
@@ -996,8 +1140,13 @@ fn names_token(text: &str, token: &str) -> bool {
 /// held — plus `harness/mod.rs:4738`, the kV-value compare and
 /// that file's only remaining read; `skip_prop`'s, which was the *first* of its
 /// two, went unconditional in G2.2b);
-/// `harness/lane.rs`, which uses the bare name because it declares it, names
-/// `ORACLE_PARITY` in that same declaration and is credited by the first arm.
+/// `harness/lane.rs`, which uses the bare name because it declares it, credits
+/// nothing since RF-I00-04: outside a `tests` directory only its
+/// `#[cfg(test)]` tail is a pin region, and its one `ORACLE_PARITY` read is the
+/// declaration above that tail. (Until then the whole file was a pin region,
+/// so the `ORACLE_PARITY` of the deleted `lane_const_tracks_the_engine_build`
+/// credited it with the four aliases its doc text names, `profile_ll_pu_divisor`,
+/// `fmt_g`, `json_float` and `JSON_LINE_BREAK`. Each of them is pinned elsewhere.)
 fn branches_on_lane(text: &str, _alias: &str) -> bool {
     names_token(text, "ORACLE_PARITY") || names_token(text, "lane::PARITY")
 }
@@ -3511,6 +3660,53 @@ fn resolve_cited(by_base: &BTreeMap<String, Vec<String>>, cited: &str, base: &st
         .unwrap_or_default()
 }
 
+/// The tree file a cited `.rs` path names, from its suffix matches (`hits`)
+/// and the fully-qualified spelling of the same basename the document
+/// registered earlier (`registered`): the single hit, or — for a short repeat
+/// that matches several files — the registered spelling when it is one of
+/// them. `Err` says why the citation names no one file.
+///
+/// The fallback only ever chooses among the citation's own hits. Until
+/// RF-I00-04's audit (AC-3) it also took a spelling with NO hit, so part 1 of
+/// the harness move committed twenty `crates/dss-core/tests/harness/mod.rs:N`
+/// citations of a path that no longer existed, and the rail resolved them
+/// against the moved `harness/mod.rs` the documents had spelled earlier.
+fn cited_target(hits: &[String], registered: Option<&String>) -> Result<String, String> {
+    match (hits.len(), registered) {
+        (1, _) => Ok(hits[0].clone()),
+        (0, _) => Err("names no file in the tree".to_string()),
+        (_, Some(full)) if hits.contains(full) => Ok(full.clone()),
+        (n, _) => Err(format!(
+            "matches {n} files and no fully-qualified spelling of one of them \
+             precedes it — spell enough of the path"
+        )),
+    }
+}
+
+/// [`cited_target`] never retargets a citation onto a file its own spelling
+/// does not match, whatever the document registered before it.
+#[test]
+fn a_cited_path_resolves_only_among_its_own_matches() {
+    let moved = "crates/dss-test-harness/src/harness/mod.rs".to_string();
+    let a = "crates/a/src/mod.rs".to_string();
+    let b = "crates/b/src/mod.rs".to_string();
+    let by_base = BTreeMap::from([(
+        "mod.rs".to_string(),
+        vec![moved.clone(), a.clone(), b.clone()],
+    )]);
+    let target = |cited: &str, registered: &String| {
+        cited_target(&resolve_cited(&by_base, cited, "mod.rs"), Some(registered))
+    };
+    // The single match and the short repeat resolve as before.
+    assert_eq!(target("harness/mod.rs", &a), Ok(moved.clone()));
+    assert_eq!(target("mod.rs", &moved), Ok(moved.clone()));
+    assert_eq!(target("src/mod.rs", &b), Ok(b.clone()));
+    // The pre-move spelling names no file, even with the moved file registered.
+    assert!(target("crates/dss-core/tests/harness/mod.rs", &moved).is_err());
+    // An ambiguous spelling is never resolved onto a file outside its matches.
+    assert!(target("src/mod.rs", &moved).is_err());
+}
+
 /// A `file.rs:LINE` citation in the operational docs still points at the line
 /// the sentence names.
 ///
@@ -3588,23 +3784,10 @@ fn operational_docs_line_citations_point_at_the_line_they_name() {
 
                 let base = cited.rsplit('/').next().unwrap_or(&cited).to_string();
                 let hits = resolve_cited(&by_base, &cited, &base);
-                let target = match (hits.len(), full_of_base.get(&base)) {
-                    (1, _) => hits[0].clone(),
-                    (_, Some(full)) => full.clone(),
-                    (0, None) => {
-                        bad.push(format!(
-                            "    {doc}:{}: `{cited}:{ln}` names no file in the tree",
-                            i + 1
-                        ));
-                        continue;
-                    }
-                    (n, None) => {
-                        bad.push(format!(
-                            "    {doc}:{}: `{cited}:{ln}` matches {n} files and no \
-                             fully-qualified spelling precedes it — spell enough of \
-                             the path",
-                            i + 1
-                        ));
+                let target = match cited_target(&hits, full_of_base.get(&base)) {
+                    Ok(target) => target,
+                    Err(why) => {
+                        bad.push(format!("    {doc}:{}: `{cited}:{ln}` {why}", i + 1));
                         continue;
                     }
                 };
@@ -6624,5 +6807,60 @@ fn the_rf_i00_01_rails_the_docs_name_exist_exactly_once() {
             "the RF-I00-01 rail `{pin}` is in this registry but named by none of {}",
             RF_I00_01_PIN_DOCS.join(" / ")
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The RF-I00-04 pin the docs cite by name.
+// ---------------------------------------------------------------------------
+
+/// The pin RETRO_FIXES RF-I00-04 (the golden harness as the crate
+/// `dss-test-harness`) added, with how many `fn` definitions of that name the
+/// tree holds. It is the only check that cargo built ONE `dss-core` for the
+/// drivers and the harness (the harness's own `lane_const_tracks_the_engine_build`
+/// became a tautology once `lane::PARITY` read `compat::ORACLE_PARITY`, and was
+/// deleted), so each document of [`RF_I00_04_PIN_DOCS`] points at it.
+const RF_I00_04_PINS: [(&str, usize); 1] = [(
+    "the_harness_crate_reads_the_lane_this_driver_was_built_in",
+    1,
+)];
+
+/// The documents that name [`RF_I00_04_PINS`], every one of them.
+const RF_I00_04_PIN_DOCS: [&str; 3] = [
+    "TESTING.md",
+    "docs/phase-records/retro-fixes.md",
+    "crates/dss-test-harness/src/harness/lane.rs",
+];
+
+/// A rename, a deletion or an undocumented second copy of the RF-I00-04 pin
+/// reds here instead of leaving `TESTING.md`, the step record and the `PARITY`
+/// doc naming a test that is gone (RF-I00-04 audit AT-3, under the contract of
+/// [`the_rf_i00_01_rails_the_docs_name_exist_exactly_once`]).
+#[test]
+fn the_rf_i00_04_pin_the_docs_name_exists_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    for (pin, want) in RF_I00_04_PINS {
+        let needle = format!("fn {pin}(");
+        let defs: usize = sources.iter().map(|t| t.matches(&needle).count()).sum();
+        assert_eq!(
+            defs,
+            want,
+            "the RF-I00-04 pin `{pin}` is defined {defs} times in the tree, expected \
+             exactly {want} — {} name it",
+            RF_I00_04_PIN_DOCS.join(" / ")
+        );
+        for rel in RF_I00_04_PIN_DOCS {
+            let text = fs::read_to_string(root.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} is part of the RF-I00-04 doc surface: {e}"));
+            assert!(
+                text.contains(pin),
+                "{rel} no longer names the RF-I00-04 pin `{pin}`: re-point it or \
+                 drop it from RF_I00_04_PIN_DOCS"
+            );
+        }
     }
 }

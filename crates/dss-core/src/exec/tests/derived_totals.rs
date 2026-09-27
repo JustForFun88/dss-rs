@@ -95,7 +95,7 @@ fn seq_slot_band(abs: f64, rel: f64, mean_phase_mag: f64) -> f64 {
 }
 
 /// `TotalPowers`' per-terminal band: `assert_power_close`'s per-conductor floor
-/// (`crates/dss-test-harness/src/harness/mod.rs:1550` — `i_abs·max(1, |V_kV|) + i_rel·|S|`, with
+/// (`crates/dss-test-harness/src/harness/mod.rs:1701` — `i_abs·max(1, |V_kV|) + i_rel·|S|`, with
 /// `|V_kV| = |S_kW| / |I_A|`) summed over exactly the conductors the terminal
 /// sums. A derivation of the gated power floor, not a new class.
 fn total_power_band(e: &ElementSnapshot, t: usize, i_abs: f64, i_rel: f64) -> f64 {
