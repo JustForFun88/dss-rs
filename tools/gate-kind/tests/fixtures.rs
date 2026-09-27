@@ -115,9 +115,22 @@ fn a_doc_edit_inside_stringify_is_code() {
     assert_case("stringify_doc", RsKind::Code, None);
 }
 
+/// `stringify!` keeps the source spacing (`"a+b"` against `"a + b"`), which
+/// the token comparison cannot see: a whitespace edit changes a compiled string.
+#[test]
+fn a_whitespace_edit_inside_stringify_is_code() {
+    assert_case("stringify_spacing", RsKind::Code, None);
+}
+
 #[test]
 fn a_derive_changed_beside_a_doc_inside_cfg_attr_is_code() {
     assert_case("cfg_attr_derive", RsKind::Code, None);
+}
+
+/// The premise scan reaches into `cfg_attr`: the optional-derive idiom.
+#[test]
+fn a_doc_edit_under_a_derive_outside_the_allowlist_inside_cfg_attr_is_code() {
+    assert_case("cfg_attr_derive_parser", RsKind::Code, None);
 }
 
 /// Only the `doc` entries of a `cfg_attr` go, at any depth; an attribute left
@@ -147,9 +160,27 @@ fn a_doc_edit_in_a_file_with_an_attribute_macro_is_code() {
     assert_case("attribute_macro", RsKind::Code, None);
 }
 
+/// A one-segment path that is neither a rustc built-in nor a derive helper is
+/// an attribute macro too (`#[wasm_bindgen]` renders docs into its bindings).
+#[test]
+fn a_doc_edit_beside_a_single_segment_attribute_macro_is_code() {
+    assert_case("attribute_macro_single", RsKind::Code, None);
+}
+
+/// A removed `#[should_panic]` flips a test: a non-doc attribute is code.
+#[test]
+fn a_removed_non_doc_attribute_is_code() {
+    assert_case("attribute_change", RsKind::Code, None);
+}
+
 #[test]
 fn any_change_to_a_file_calling_line_is_code() {
     assert_case("line_macro", RsKind::Code, None);
+}
+
+#[test]
+fn any_change_to_a_file_calling_column_is_code() {
+    assert_case("column_macro", RsKind::Code, None);
 }
 
 #[test]
@@ -195,6 +226,22 @@ fn a_head_that_does_not_parse_is_code() {
     assert_case("head_unparseable", RsKind::Code, None);
 }
 
+/// Both sides lex to equal tokens and differ only in a comment, but neither
+/// parses: the parse rule alone makes it `Code` (no token or text fallback).
+#[test]
+fn a_comment_only_edit_of_a_file_that_does_not_parse_is_code() {
+    assert_case("unparseable_comment_only", RsKind::Code, None);
+    let (base, head) = pair("unparseable_comment_only");
+    let reason = classify_rs_verdict(&base, &head).reason;
+    assert!(reason.contains("does not parse"), "{reason}");
+}
+
+/// rustc ignores a shebang line; the tool grades its change `Code` anyway.
+#[test]
+fn a_changed_shebang_is_code() {
+    assert_case("shebang_change", RsKind::Code, None);
+}
+
 #[test]
 fn a_changed_literal_is_code() {
     assert_case("code_change", RsKind::Code, None);
@@ -222,8 +269,9 @@ fn a_source_holding_the_sentinel_is_code() {
     assert!(reason.contains("sentinel"), "{reason}");
 }
 
-/// Every fixture directory is exercised by a test above, so a new pair cannot
-/// sit unasserted.
+/// Every fixture directory has a live `assert_case("<case>", RsKind::…)` line
+/// above (not a comment, not a bare `pair` call), so a new pair cannot sit
+/// unasserted and a deleted or commented-out assertion reds.
 #[test]
 fn every_fixture_pair_is_asserted() {
     let this = include_str!("fixtures.rs");
@@ -237,11 +285,12 @@ fn every_fixture_pair_is_asserted() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     cases.sort();
-    assert_eq!(cases.len(), 32, "fixture directories: {cases:?}");
+    assert_eq!(cases.len(), 39, "fixture directories: {cases:?}");
     for case in &cases {
+        let call = format!("assert_case(\"{case}\", RsKind::");
         assert!(
-            this.contains(&format!("(\"{case}\"")),
-            "fixture {case} has no assertion"
+            this.lines().any(|l| l.trim_start().starts_with(&call)),
+            "fixture {case} has no assert_case line"
         );
     }
 }

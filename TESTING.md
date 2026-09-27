@@ -100,20 +100,24 @@ diff's kind being the maximum over its files, and it never runs anything itself.
 | `None` | no change | none |
 | `Docs` | `.md` files | `cargo fmt --all --check` + RAILS, each entry in the lanes it names |
 | `Comments` | `.rs` files whose token streams are equal once their doc comments are stripped (plain or doc comments, whitespace) | `Docs` + commands 2, 3, 6 and 7 (a comment moves lines and may hold a rail's needle, clippy lints comments, doctests live in them) |
-| `Code` | anything else | the seven commands |
+| `Code` | anything else | the seven commands, plus `tools/lanes/lane_diff.ps1` when a compat kernel, a lane alias or the solver changes |
 
-`Code` is every path that is neither `.md` nor `.rs`, an added, deleted, renamed or unparsable
-`.rs`, a path under `tools/gate-kind/` or on its `ALWAYS_CODE` list (a `.rs` that a unit test
-outside RAILS reads as text), a file whose tokens hold `line!`, `column!` or `Location::caller`,
-a doc edit under a derive or attribute macro outside the tool's allowlist or inside a macro
-invocation, and any tool error. RAILS are the tests that read a repository `.md` or `.rs` at
-run time or include one at compile time. They are listed once, in the `GATE_RAILS` register of
-`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (package, target, optional exact nextest
-filterset, lanes: both, or once for a package that does not depend on `dss-core`), whose own
-rail re-measures the readers over every test target of the workspace and reds when the register
-differs. No document or script copies the list. A tree without the tool, a tool that does not
-build or prints no `GATE_KIND=` line, and a diff that touches `tools/gate-kind/` run the seven
-commands.
+`Code` is, among others, every path that is neither `.md` nor `.rs`, an added, deleted, renamed
+or unparsable `.rs`, a path under `tools/gate-kind/` or on its `ALWAYS_CODE` list (a `.rs` that
+a unit test outside RAILS reads as text), a file whose tokens hold `line!`, `column!`,
+`Location::caller` or `stringify!`, a doc edit in a file whose items carry a derive or an
+attribute macro outside the tool's allowlist, a doc edit inside a macro invocation, and any tool
+error. The module doc of `tools/gate-kind/src/lib.rs` holds the full list (symlinks, mode
+changes and non-UTF-8 sides included). RAILS are the tests that read a repository `.md` or `.rs`
+at run time or include one at compile time. They are listed once, in the `GATE_RAILS` register
+of `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (package, target, optional exact nextest
+filterset, lanes: both, or once for a package that does not depend on `dss-core`), whose rail
+re-measures the reader needles (a path literal ending in `.md` or `.rs`, an extension
+comparison, an `include_str!`, a `file!()`) over every test target of the workspace and reds
+when the register differs. A directory walk shows no needle: `WALK_SITES` beside the register
+counts the `read_dir` calls of every test source and reds on a new one until it is classified.
+No document or script copies the list. A tree without the tool, a tool that does not build or prints no `GATE_KIND=` line, and a
+diff that touches `tools/gate-kind/` run the seven commands, and in doubt the gate is full.
 
 ### The two lanes (Stage F)
 

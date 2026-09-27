@@ -6991,14 +6991,18 @@ const CORPUS_GATE_READERS: &str = "test(=the_bus_capture_reads_in_one_fixed_orde
 /// grades `Docs` or `Comments` can move no other test, so the reduced gates run
 /// these entries in place of the two nextest runs of the full gate. The list
 /// lives here only, and [`gate_rails_are_exactly_the_measured_readers`]
-/// re-measures it on every run.
+/// re-measures its needles on every run.
 ///
 /// A source reads when its code (not a comment, a `#[path]` value or an
 /// `include!` of compiled code) holds a whitespace-free string literal ending in
 /// `.md` or `.rs` (a path, a `join` part, a `format!` template, an
-/// `include_str!` argument) or an extension comparison with `"md"`/`"rs"`
-/// ([`is_reader_needle`]). A needle in a package's non-test code counts for
-/// every binary whose tests reach it. A binary with a reader joins whole, with
+/// `include_str!` argument), an extension comparison with `"md"`/`"rs"`
+/// ([`is_reader_needle`]) or a `file!()` ([`FILE_MACRO`]). A needle in a
+/// package's non-test code counts for every binary whose tests reach it (a
+/// crate-local `const`/`static` only test code uses, for its own binary alone).
+/// A directory walk shows no needle: [`WALK_SITES`] reds on a new one until it is
+/// classified, and [`no_doctest_reads_a_repository_file`] keeps doctests, which
+/// no reduced gate's RAILS run, free of needles. A binary with a reader joins whole, with
 /// two exceptions: `corpus_gate` joins with [`CORPUS_GATE_READERS`], and a
 /// `src/` unit-test binary of a package other than `dss-test-harness` and
 /// `gate-kind` stays out (the reduced gates never build dss-core's): the `.rs`
@@ -7086,10 +7090,10 @@ const GATE_RAILS: &[GateRail] = &[
 const LIB_RAIL_PACKAGES: [&str; 2] = ["dss-test-harness", "gate-kind"];
 
 /// The `.md` and `.rs` files under the data roots the tests walk (`tests/` and
-/// the non-module files under a member's `tests/`). A walk that hashes,
-/// compares or parses contents unfiltered reads a document only through one of
-/// these, so a new one reds here and the walks are re-measured before it lands.
-/// RF-I00-05 part 2 classified every `read_dir` walk of the test roots: each
+/// the non-module files under a member's `tests/`): a document joining or
+/// leaving them reds here, so the walks over them are re-read before it lands (a
+/// new walk reds in [`WALK_SITES`]). RF-I00-05 part 2 classified every
+/// `read_dir` walk of the test roots: each
 /// lists names, filters by extension (`.dss`, `.json`), reads a scratch or
 /// golden tree that holds no `.md`/`.rs`, or photographs a tree before and after
 /// one run (a comparison with itself, never with a stored value); the files
@@ -7286,17 +7290,42 @@ fn is_path_attribute_value(code: &str, start: usize) -> bool {
     head.trim_end().ends_with("#[")
 }
 
-/// The reader needles of one source, as `(offset, literal)`: every literal
-/// [`is_reader_needle`] accepts, less the value of a `#[path]` attribute and
-/// anything inside an `include!(…)` of compiled code.
+/// The needle a `file!()` invocation stands for: the path of the source it
+/// sits in, a `.rs` that no string literal spells.
+const FILE_MACRO: &str = "file!()";
+
+/// The reader needles of one source, as `(offset, literal)`, in source order:
+/// every literal [`is_reader_needle`] accepts, less the value of a `#[path]`
+/// attribute and anything inside an `include!(…)` of compiled code, and every
+/// `file!()` as [`FILE_MACRO`].
 fn reader_needles(code: &str, lits: &[Lit]) -> Vec<(usize, String)> {
     let includes = macro_arg_spans(code, "include");
-    lits.iter()
+    let mut out: Vec<(usize, String)> = lits
+        .iter()
         .filter(|l| is_reader_needle(&l.text))
         .filter(|l| !is_path_attribute_value(code, l.start))
         .filter(|l| !includes.iter().any(|(a, z)| (*a..*z).contains(&l.start)))
         .map(|l| (l.start, l.text.clone()))
-        .collect()
+        .collect();
+    out.extend(
+        macro_arg_spans(code, "file")
+            .into_iter()
+            .map(|(open, _)| (open, FILE_MACRO.to_string())),
+    );
+    out.sort_by_key(|(at, _)| *at);
+    out
+}
+
+/// The `const`/`static` whose name sits at `name_at` is visible outside its
+/// crate: a bare `pub` in its statement before the name (`pub(crate)`,
+/// `pub(super)` and `pub(in …)` keep it inside), so the tests of any package
+/// that depends on its crate can read its value.
+fn is_crate_visible(code: &str, name_at: usize) -> bool {
+    let start = code[..name_at].rfind([';', '{', '}']).map_or(0, |k| k + 1);
+    let head = &code[start..name_at];
+    token_positions(head, "pub")
+        .into_iter()
+        .any(|p| !head[p + "pub".len()..].trim_start().starts_with('('))
 }
 
 /// Every `<kw> <name>` of `code` (`kw` = `fn`, `mod`, `const`, …) as the offset
@@ -7949,14 +7978,16 @@ fn gate_rails_are_exactly_the_measured_readers() {
                     hits.push((fi, at, lit));
                     continue;
                 }
-                // Non-test code: a `const`/`static` only test code uses reads
-                // for this binary alone ...
+                // Non-test code: a crate-local `const`/`static` only test code
+                // uses reads for this binary alone (a `pub` one can be read by
+                // another package's tests, so it takes the reach rule below) ...
                 let test_only = const_or_static_name(&f.code, at).is_some_and(|(name, decl)| {
-                    u.files.iter().enumerate().all(|(gi, g)| {
-                        g.uses(&name)
-                            .into_iter()
-                            .all(|p| (gi == fi && p == decl) || g.in_test(p))
-                    })
+                    !is_crate_visible(&f.code, decl)
+                        && u.files.iter().enumerate().all(|(gi, g)| {
+                            g.uses(&name)
+                                .into_iter()
+                                .all(|p| (gi == fi && p == decl) || g.in_test(p))
+                        })
                 });
                 if test_only {
                     hits.push((fi, at, lit));
@@ -7991,10 +8022,13 @@ fn gate_rails_are_exactly_the_measured_readers() {
             for (fi, at, lit) in &hits {
                 let f = &u.files[*fi];
                 let rs = lit.to_ascii_lowercase().ends_with(".rs");
-                match rs
-                    .then(|| resolve_rs_needle(&root, dir, &f.rel, lit))
-                    .flatten()
-                {
+                let resolved = if lit == FILE_MACRO {
+                    Some(f.rel.clone())
+                } else {
+                    rs.then(|| resolve_rs_needle(&root, dir, &f.rel, lit))
+                        .flatten()
+                };
+                match resolved {
                     Some(p) => {
                         always_code.insert(p);
                     }
@@ -8237,7 +8271,7 @@ mod twin { include!(concat!(env!("X"), "/compiled.rs")); }
 const Q: char = '"';
 fn f<'a>(x: &'a str) -> bool {
     let url = "http://x"; let raw = r#"a */ "b.md" "#;
-    let t = format!("{}.rs", x); let d = include_str!("doc.MD");
+    let t = format!("{}.rs", x); let d = include_str!("doc.MD"); let me = file!();
     std::path::Path::new(x).extension().is_some_and(|e| e == "rs") && url.len() > raw.len() && t == d
 }
 "####;
@@ -8249,7 +8283,7 @@ fn f<'a>(x: &'a str) -> bool {
         .collect();
     assert_eq!(
         found,
-        ["{}.rs", "doc.MD", "rs"],
+        ["{}.rs", "doc.MD", FILE_MACRO, "rs"],
         "the code needles, in order"
     );
     assert!(!code.contains("commented") && !code.contains("nested"));
@@ -8268,4 +8302,425 @@ fn f<'a>(x: &'a str) -> bool {
     );
     assert!(is_reader_needle("../../TESTING.md") && is_reader_needle("md"));
     assert_eq!(macro_arg_spans(&code, "include_str").len(), 1);
+
+    // The crate-local rule of the `const`/`static` exemption: a `pub` item can
+    // be read by another package's tests, `pub(crate)` and private ones not.
+    let consts = "pub const A: &str = \"a.md\"; const B: &str = \"b.md\";
+        pub(crate) const C: [&str; 1] = [\"c.md\"]; #[cfg(test)] pub static D: &str = \"d.md\";";
+    let (code, lits) = lex_rust(consts);
+    let visible: Vec<(String, bool)> = reader_needles(&code, &lits)
+        .into_iter()
+        .map(|(at, _)| {
+            let (name, decl) = const_or_static_name(&code, at).expect("a const or static");
+            (name, is_crate_visible(&code, decl))
+        })
+        .collect();
+    let want: Vec<(String, bool)> = [("A", true), ("B", false), ("C", false), ("D", true)]
+        .into_iter()
+        .map(|(n, v)| (n.to_string(), v))
+        .collect();
+    assert_eq!(visible, want, "which consts other packages can read");
+}
+
+/// Every source of a workspace member that walks a directory, with its number
+/// of `read_dir` calls in code. A walk reads a document when it hashes,
+/// compares or parses contents unfiltered under a root that holds a `.md` or
+/// `.rs`, and a binary that does so joins [`GATE_RAILS`]. No needle shows a
+/// walk, so the sites are classified by hand and counted here: a new or removed
+/// walk reds until it is classified again. RF-I00-05 part 2 classified these
+/// (re-read by the step's audits, 2026-09-27): each lists names, filters by
+/// extension (`.dss`, `.json`), reads a scratch or golden tree that holds no
+/// `.md`/`.rs`, compares a tree with itself before and after one run, or sits in
+/// a [`GATE_RAILS`] binary. An edit that drops the filter of a counted walk,
+/// or a new caller of a walk helper (the harness's `scratch`, `run_files` and
+/// `scenario` walks), keeps the counts: it is a `Code` diff, and its gate and
+/// review classify it.
+const WALK_SITES: &[(&str, usize)] = &[
+    ("crates/dss-core/src/cim/tests.rs", 1),
+    ("crates/dss-core/src/exec/tests/allocation.rs", 1),
+    ("crates/dss-core/src/exec/tests/element_extras.rs", 1),
+    ("crates/dss-core/src/exec/tests/in_show_results.rs", 1),
+    ("crates/dss-core/src/exec/tests/ncim.rs", 1),
+    ("crates/dss-core/src/exec/tests/report.rs", 1),
+    ("crates/dss-core/src/exec/tests/storage.rs", 1),
+    ("crates/dss-core/tests/ad_reference.rs", 1),
+    ("crates/dss-core/tests/adiakoptics.rs", 1),
+    ("crates/dss-core/tests/corpus_gate/engines.rs", 2),
+    ("crates/dss-core/tests/corpus_gate/manifest.rs", 3),
+    ("crates/dss-core/tests/corpus_gate/runner.rs", 3),
+    ("crates/dss-core/tests/corpus_gate/scratch.rs", 1),
+    ("crates/dss-core/tests/corpus_manifest.rs", 3),
+    ("crates/dss-core/tests/depascalize_metrics_gate.rs", 2),
+    ("crates/dss-core/tests/golden_checkpoints.rs", 1),
+    ("crates/dss-core/tests/golden_cim.rs", 2),
+    ("crates/dss-core/tests/golden_json.rs", 2),
+    ("crates/dss-core/tests/golden_lock.rs", 1),
+    ("crates/dss-core/tests/golden_metering_monitors.rs", 1),
+    ("crates/dss-core/tests/golden_protection.rs", 1),
+    ("crates/dss-core/tests/golden_reports.rs", 4),
+    ("crates/dss-core/tests/golden_timeseries_controls.rs", 1),
+    ("crates/dss-core/tests/oracle_parity_cfg_gate.rs", 5),
+    ("crates/dss-core/tests/pd_elements_pins.rs", 1),
+    ("crates/dss-core/tests/population_lock.rs", 1),
+    ("crates/dss-core/tests/props_r4133_pins.rs", 1),
+    ("crates/dss-core/tests/props_r4133_replay.rs", 2),
+    ("crates/dss-core/tests/props_roundtrip.rs", 1),
+    ("crates/dss-core/tests/reliability_pins.rs", 1),
+    ("crates/dss-core/tests/save_roundtrip.rs", 1),
+    ("crates/dss-epri/src/guard.rs", 8),
+    ("crates/dss-epri/src/smoke.rs", 1),
+    ("crates/dss-epri/tests/protocol.rs", 1),
+    ("crates/dss-test-harness/src/harness/run_files.rs", 2),
+    ("crates/dss-test-harness/src/harness/scenario.rs", 1),
+    ("crates/dss-test-harness/src/harness/scratch.rs", 3),
+    ("tools/gate-kind/tests/fixtures.rs", 1),
+];
+
+/// [`WALK_SITES`] equals the measured `read_dir` calls of every source compiled
+/// into a test binary of the workspace (the units of
+/// [`gate_rails_are_exactly_the_measured_readers`]).
+#[test]
+fn every_directory_walk_is_classified() {
+    let root = repo_root();
+    let members = workspace_members(&root);
+    let (units, _) = workspace_test_units(&root, &members);
+    let mut found: BTreeMap<String, usize> = BTreeMap::new();
+    for f in units.iter().flat_map(|u| &u.files) {
+        let calls = token_positions(&f.code, "read_dir").len();
+        if calls > 0 {
+            found.insert(f.rel.clone(), calls);
+        }
+    }
+    let want: BTreeMap<String, usize> = WALK_SITES
+        .iter()
+        .map(|(rel, n)| (rel.to_string(), *n))
+        .collect();
+    assert!(
+        !found.is_empty(),
+        "the walk census found no read_dir at all"
+    );
+    assert_eq!(
+        found, want,
+        "a directory walk joined or left the test sources: classify it (WALK_SITES doc), \
+         register its binary in GATE_RAILS when it reads a document, and update WALK_SITES"
+    );
+}
+
+/// `name` invoked as a macro in lexed `code`: the identifier followed by `!`
+/// (never `!=`).
+fn bang_calls(code: &str, name: &str) -> Vec<usize> {
+    token_positions(code, name)
+        .into_iter()
+        .filter(|&p| {
+            let rest = code[p + name.len()..].trim_start();
+            rest.starts_with('!') && !rest.starts_with("!=")
+        })
+        .collect()
+}
+
+/// The end (exclusive) of the bracket group opening at `open` in lexed `code`,
+/// any of `{}`, `()`, `[]` counted.
+fn group_end(code: &str, open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    for (k, c) in code.bytes().enumerate().skip(open) {
+        match c {
+            b'{' | b'(' | b'[' => depth += 1,
+            b'}' | b')' | b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(k + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The premises of `tools/gate-kind` beyond the edited file (RF-I00-05
+/// settlement: audits AC1-4, AC2-1 and AC2-2, the coordinator's R6-a). The tool
+/// grades a file whose own tokens hold `line!`, `column!`, `Location::caller` or
+/// `stringify!` as `Code`, but a `macro_rules!` body holding `line!`, `column!`
+/// or `stringify!` expands at its caller's line and spacing, and
+/// `Location::caller` (under `#[track_caller]`), a panic hook's `.location()`,
+/// `dbg!` and a `Backtrace` report a caller's line. None of them sits in the
+/// tree, so a comment-only edit of a caller moves no compiled value. An external
+/// crate's macro is outside the scan, so no member depends on `log` or
+/// `tracing` either, whose macros expand `line!()` at the call site. A new one
+/// reds here: extend the tool to grade its callers first.
+#[test]
+fn the_gate_kind_premises_hold_across_files() {
+    let root = repo_root();
+    let mut offenders = Vec::new();
+    let mut macros = 0usize;
+    for path in rust_sources(&root) {
+        let text = fs::read_to_string(&path).expect("source is readable");
+        let (code, _) = lex_rust(&text);
+        let rel = rel_slash(&root, &path);
+        let line = |at: usize| code[..at].matches('\n').count() + 1;
+        for (at, _) in keyword_items(&code, "macro_rules!") {
+            macros += 1;
+            let Some(open) = code[at..].find(['{', '(', '[']).map(|k| at + k) else {
+                continue;
+            };
+            let body = &code[open..group_end(&code, open).unwrap_or(code.len())];
+            for mac in ["line", "column", "stringify"] {
+                if !bang_calls(body, mac).is_empty() {
+                    offenders.push(format!(
+                        "{rel}:{}: a macro_rules! body holds {mac}!",
+                        line(at)
+                    ));
+                }
+            }
+        }
+        for p in token_positions(&code, "caller") {
+            let head = code[..p].trim_end();
+            if head
+                .strip_suffix("::")
+                .is_some_and(|h| h.trim_end().ends_with("Location"))
+            {
+                offenders.push(format!("{rel}:{}: Location::caller", line(p)));
+            }
+        }
+        for p in token_positions(&code, "location") {
+            let before = code[..p].trim_end();
+            let after = code[p + "location".len()..].trim_start();
+            if before.ends_with('.') && after.starts_with('(') {
+                offenders.push(format!("{rel}:{}: a .location() read", line(p)));
+            }
+        }
+        for p in bang_calls(&code, "dbg") {
+            offenders.push(format!("{rel}:{}: dbg!", line(p)));
+        }
+        for p in token_positions(&code, "Backtrace") {
+            offenders.push(format!("{rel}:{}: Backtrace", line(p)));
+        }
+    }
+    for m in workspace_members(&root) {
+        let manifest = fs::read_to_string(m.dir.join("Cargo.toml")).expect("the member manifest");
+        for l in manifest.lines() {
+            let key = l.split('=').next().unwrap_or_default().trim();
+            let table = l.trim().trim_start_matches('[').trim_end_matches(']');
+            if matches!(key, "log" | "tracing")
+                || table.ends_with(".log")
+                || table.ends_with(".tracing")
+            {
+                offenders.push(format!("{}: depends on `{}`", m.name, l.trim()));
+            }
+        }
+    }
+    assert!(macros > 0, "the premise scan found no macro_rules! at all");
+    assert!(
+        offenders.is_empty(),
+        "a caller's line or spacing reaches a compiled value, which tools/gate-kind \
+         grades only in the edited file: {offenders:?}"
+    );
+}
+
+/// No workspace member has a build script or is a proc-macro crate (the
+/// coordinator's R6-b): either runs code while its crate compiles, which may
+/// read a document or a `.rs` that no reader needle shows.
+#[test]
+fn no_member_builds_with_a_script_or_as_a_proc_macro() {
+    let root = repo_root();
+    let members = workspace_members(&root);
+    assert!(!members.is_empty(), "no workspace member");
+    let mut offenders = Vec::new();
+    for m in &members {
+        if m.dir.join("build.rs").exists() {
+            offenders.push(format!("{}: build.rs", m.name));
+        }
+        let manifest = fs::read_to_string(m.dir.join("Cargo.toml")).expect("the member manifest");
+        for l in manifest.lines() {
+            let key = l.split('=').next().unwrap_or_default().trim();
+            if matches!(key, "build" | "proc-macro" | "proc_macro") {
+                offenders.push(format!("{}: `{}`", m.name, l.trim()));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a member compiles with a build script or as a proc macro, which the reduced \
+         gates of RETRO_FIXES_PLAN §2.2 do not measure: {offenders:?}"
+    );
+}
+
+/// The info strings of a fence rustdoc compiles as Rust (an empty one too).
+fn is_rust_fence(info: &str) -> bool {
+    info.split([',', ' ']).filter(|t| !t.is_empty()).all(|t| {
+        matches!(
+            t,
+            "rust"
+                | "ignore"
+                | "no_run"
+                | "should_panic"
+                | "compile_fail"
+                | "test_harness"
+                | "standalone_crate"
+        ) || t.starts_with("edition")
+    })
+}
+
+/// No doctest reads a repository `.md` or `.rs` (audits AC1-3 and AT1-3): the
+/// `Docs` gate runs no doctest, so a doctest reader would skip the gate of the
+/// document it reads. Every fenced Rust block of a line doc comment (`///`,
+/// `//!`) under a member's `src/` is lexed and scanned with [`reader_needles`],
+/// an `ignore` block included. The tree holds no block doc comment (`/** */`,
+/// `/*! */`), asserted here, so the line scan sees every doctest.
+#[test]
+fn no_doctest_reads_a_repository_file() {
+    let root = repo_root();
+    let mut blocks = 0usize;
+    let mut offenders = Vec::new();
+    for m in workspace_members(&root) {
+        for path in rs_files_under(&m.dir.join("src")) {
+            let text = fs::read_to_string(&path).expect("source is readable");
+            let rel = rel_slash(&root, &path);
+            let (code, lits) = lex_rust(&text);
+            for pat in ["/**", "/*!"] {
+                for (at, _) in text.match_indices(pat) {
+                    let in_lit = lits.iter().any(|l| (l.start..l.end).contains(&at));
+                    let next = text.as_bytes().get(at + pat.len()).copied();
+                    let doc = pat == "/*!" || !matches!(next, Some(b'*' | b'/'));
+                    // It opens its line: a `tests/**` glob inside a comment is none.
+                    let opens_line = text[..at]
+                        .rsplit('\n')
+                        .next()
+                        .is_some_and(|l| l.trim().is_empty());
+                    if doc && opens_line && !in_lit && code.as_bytes()[at] == b' ' {
+                        offenders.push(format!("{rel}: a block doc comment ({pat})"));
+                    }
+                }
+            }
+            let mut fence: Option<(bool, String)> = None;
+            let mut scan = |rust: bool, body: &str, blocks: &mut usize| {
+                if !rust {
+                    return;
+                }
+                *blocks += 1;
+                let (c, l) = lex_rust(body);
+                for (_, lit) in reader_needles(&c, &l) {
+                    offenders.push(format!("{rel}: a doctest reads {lit:?}"));
+                }
+            };
+            for raw in text.lines() {
+                let t = raw.trim_start();
+                let doc = t
+                    .strip_prefix("//!")
+                    .or_else(|| t.strip_prefix("///").filter(|r| !r.starts_with('/')));
+                let Some(doc) = doc else {
+                    if let Some((rust, body)) = fence.take() {
+                        scan(rust, &body, &mut blocks);
+                    }
+                    continue;
+                };
+                let d = doc.strip_prefix(' ').unwrap_or(doc);
+                let dt = d.trim_start();
+                if dt.starts_with("```") || dt.starts_with("~~~") {
+                    match fence.take() {
+                        Some((rust, body)) => scan(rust, &body, &mut blocks),
+                        None => fence = Some((is_rust_fence(dt[3..].trim()), String::new())),
+                    }
+                } else if let Some((_, body)) = fence.as_mut() {
+                    body.push_str(d);
+                    body.push('\n');
+                }
+            }
+            if let Some((rust, body)) = fence.take() {
+                scan(rust, &body, &mut blocks);
+            }
+        }
+    }
+    assert!(blocks > 0, "the doctest scan found no Rust fence at all");
+    assert!(
+        offenders.is_empty(),
+        "a doctest reads a repository file, which the `Docs` gate does not run: {offenders:?}"
+    );
+}
+
+/// The names the RF-I00-05 texts cite, each with the documents that name it:
+/// the plan's ritual (§2.2), `TESTING.md` "Which gate to run" and the step
+/// record.
+const RF_I00_05_NAMES: [(&str, &[&str]); 3] = [
+    ("GATE_RAILS", &RF_I00_05_TOOL_DOCS),
+    ("ALWAYS_CODE", &RF_I00_05_DOCS),
+    ("WALK_SITES", &RF_I00_05_DOCS),
+];
+
+/// `TESTING.md` "Which gate to run" and the step record.
+const RF_I00_05_DOCS: [&str; 2] = ["TESTING.md", "docs/phase-records/retro-fixes.md"];
+
+/// The documents that name `tools/gate-kind` (and [`GATE_RAILS`]).
+const RF_I00_05_TOOL_DOCS: [&str; 3] = [
+    "RETRO_FIXES_PLAN.md",
+    "TESTING.md",
+    "docs/phase-records/retro-fixes.md",
+];
+
+/// The rails the step record names, each defined exactly once.
+const RF_I00_05_PINS: [&str; 6] = [
+    "gate_rails_are_exactly_the_measured_readers",
+    "every_directory_walk_is_classified",
+    "the_gate_kind_premises_hold_across_files",
+    "no_member_builds_with_a_script_or_as_a_proc_macro",
+    "no_doctest_reads_a_repository_file",
+    "the_rf_i00_05_names_the_docs_cite_exist_exactly_once",
+];
+
+/// A rename, a deletion or a second copy of a name or a rail the RF-I00-05
+/// texts cite reds here instead of leaving them naming something that is gone
+/// (the step's question 5, under the contract of
+/// [`the_rf_i00_04_pin_the_docs_name_exists_exactly_once`]).
+#[test]
+fn the_rf_i00_05_names_the_docs_cite_exist_exactly_once() {
+    let root = repo_root();
+    let sources: Vec<String> = rust_sources(&root)
+        .iter()
+        .map(|p| fs::read_to_string(p).expect("source is readable"))
+        .collect();
+    let read = |rel: &str| {
+        fs::read_to_string(root.join(rel))
+            .unwrap_or_else(|e| panic!("{rel} is part of the RF-I00-05 doc surface: {e}"))
+    };
+    let defined =
+        |needle: &str| -> usize { sources.iter().map(|t| t.matches(needle).count()).sum() };
+    for (name, docs) in RF_I00_05_NAMES {
+        let decl = format!("const {name}:");
+        let defs = defined(&decl);
+        assert_eq!(
+            defs,
+            1,
+            "`{decl}` is declared {defs} times in the tree, expected exactly once — {}              name it",
+            docs.join(" / ")
+        );
+        for rel in docs {
+            assert!(
+                read(rel).contains(name),
+                "{rel} no longer names `{name}`: re-point it or drop it from RF_I00_05_NAMES"
+            );
+        }
+    }
+    let tool = read("tools/gate-kind/Cargo.toml");
+    assert!(
+        tool.lines().any(|l| l.trim() == "name = \"gate-kind\""),
+        "tools/gate-kind no longer holds the gate-kind package"
+    );
+    for rel in RF_I00_05_TOOL_DOCS {
+        assert!(
+            read(rel).contains("tools/gate-kind"),
+            "{rel} no longer names `tools/gate-kind`: re-point it or drop it from              RF_I00_05_TOOL_DOCS"
+        );
+    }
+    let record = read("docs/phase-records/retro-fixes.md");
+    for pin in RF_I00_05_PINS {
+        let defs = defined(&format!("fn {pin}("));
+        assert_eq!(
+            defs, 1,
+            "the RF-I00-05 rail `{pin}` is defined {defs} times in the tree, expected exactly once"
+        );
+        assert!(
+            record.contains(pin),
+            "the RF-I00-05 record no longer names the rail `{pin}`"
+        );
+    }
 }
