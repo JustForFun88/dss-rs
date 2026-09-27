@@ -354,11 +354,32 @@ impl Transformer {
 
     /// Pascal `TTransfObj.FetchXfmrCode`: copy the resolved `XfmrCode`'s whole
     /// winding web onto this transformer, then recompute.
+    ///
+    /// Two setter semantics are kept that a raw field write would lose:
+    ///
+    /// - `Nphases := Obj.Fnphases` (r4133 `Transformer.pas:2333`) is
+    ///   `Set_NPhases`, which drops a non-positive value (`If Value>0`,
+    ///   `Common/CktElement.pas:365-368`): a code with `phases=0` leaves the
+    ///   phase count alone.
+    /// - `NConds := Fnphases + 1; // forces reallocation of terminals and
+    ///   conductors` (`:2335`) never raises `BusNameRedefined` (the flag is
+    ///   raised by `Set_NConds` on a changed value, `CktElement.pas:359`), because
+    ///   `SetNumWindings` has just written the same `Fnphases + 1` (`:997`) and
+    ///   re-created the terminals whenever the shape changed (`Nterms :=`,
+    ///   `CktElement.pas:386-433`, raises nothing). r4133 therefore leaves a
+    ///   shape-changing `xfmrcode=` after a solve on blank terminal references,
+    ///   an upstream bug that is not reproduced: the flag is raised here from
+    ///   the shape itself (`exec::tests::autotrans_xfmrcode`), and a same-shape
+    ///   code raises nothing.
     pub(super) fn fetch_xfmr_code(&mut self, code: &XfmrCodeObj) {
-        self.cd.nphases = code.fnphases().max(0) as usize;
+        let shape = (self.cd.nconds, self.cd.nterms);
+        if code.fnphases() > 0 {
+            self.cd.nphases = code.fnphases() as usize;
+        }
         self.set_num_windings(code.num_windings());
-        let nc = self.cd.nphases + 1;
-        self.cd.set_nconds(nc);
+        if (self.cd.nconds, self.cd.nterms) != shape {
+            self.cd.signal_bus_name_redefined = true;
+        }
         self.windings = code.windings().to_vec();
         self.set_term_ref();
 

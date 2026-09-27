@@ -247,6 +247,26 @@ fn every_copied_field_arrives() {
 /// green, because the code's own `%loadloss` was 0.21 + 0.19 = the default 0.4).
 /// This test fails instead, on the cell, the moment the fixture drifts back onto
 /// a default.
+///
+/// **The comparison is a proxy.** The real condition is "the cell does not
+/// survive deleting its own copy statement", and a bare auto of the same shape
+/// stands in for "the copy never happened". The two agree for every cell that
+/// `RecalcElementData` leaves alone, and differ only where the recalc
+/// re-derives a copied field from other fields:
+///
+/// - `RDCOhms` is re-derived from `%R`/`kV`/`kVA` (`:1140-1145`) only while
+///   `RdcSpecified` is false. That is the bare auto's state, but the copy path
+///   sets `RdcSpecified := TRUE` (`:2367`), so a deleted `RdcOhms :=` copy would
+///   leave the `TAutoWinding` init placeholder `Sqr(kVLL)/(kVA/1000)·Rdcpu`
+///   (`:1461-1462`) instead of the bare auto's reading. The second leg below
+///   compares the fixture against that placeholder, computed from the bare
+///   auto's own init `kV`, `kVA` and `%R`.
+/// - `TapIncrement` is re-derived from `MaxTap`/`MinTap`/`NumTaps` on every
+///   recalc (`:1096-1097`), so its copy (`:2368`) can be deleted without any
+///   cell moving. The table carries no `TapIncrement` cell for that reason.
+/// - `XSCArray` would be re-derived from `XHX`/`XHT`/`XXT` under `XHXChanged`
+///   (`:1100`), but that flag is cleared by the recalc that ends `Create`, so on
+///   this path the cell is carried by its own copy (`:2377`).
 #[test]
 fn no_asserted_cell_can_be_read_off_the_defaults() {
     let mut dss = Dss::new();
@@ -260,15 +280,31 @@ fn no_asserted_cell_can_be_read_off_the_defaults() {
         dss.command(line);
         assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
     }
-
+    // Every read must be live: a property name that stops resolving answers
+    // `Property Unknown` (no error: `do_query_cmd`), an object that stops
+    // resolving logs an error, and a broken getter answers an empty string —
+    // each of which would pass the `assert_ne!` trivially. The one cell whose
+    // true default IS empty is the bare auto's code name.
+    let cell = |dss: &mut Dss, prop: &str| {
+        let seen = dss.errors().len();
+        let got = query(dss, &format!("AutoTrans.d1.{prop}"));
+        assert_eq!(dss.errors().len(), seen, "`? {prop}` -> {:?}", dss.errors());
+        assert_ne!(got, "Property Unknown", "`? {prop}` does not resolve");
+        assert!(
+            !got.is_empty() || prop == "XfmrCode",
+            "`? {prop}` answered nothing"
+        );
+        got
+    };
     let mut active = 0;
     for &(w, prop, want) in PER_WINDING {
         if w != active {
             dss.command(&format!("Edit AutoTrans.d1 wdg={w}"));
+            assert!(dss.errors().is_empty(), "wdg={w} -> {:?}", dss.errors());
             active = w;
         }
         assert_ne!(
-            query(&mut dss, &format!("AutoTrans.d1.{prop}")),
+            cell(&mut dss, prop),
             want,
             "winding {w} {prop}: the fixture asks for the AutoTrans default, so \
              that cell would pass with its copy statement deleted — pick a \
@@ -277,12 +313,46 @@ fn no_asserted_cell_can_be_read_off_the_defaults() {
     }
     for &(prop, want) in WHOLE_ELEMENT {
         assert_ne!(
-            query(&mut dss, &format!("AutoTrans.d1.{prop}")),
+            cell(&mut dss, prop),
             want,
             "{prop}: the fixture asks for the AutoTrans default, so that cell \
              would pass with its copy statement deleted"
         );
     }
+
+    // Second leg: the recalc-derived `RDCOhms` against the init placeholder a
+    // deleted copy would leave. The margin is a discrimination floor, not a
+    // tolerance: a fixture value within 1e-6 of the placeholder (well inside
+    // the `?` render's significant digits) counts as landing on it.
+    let mut checked = 0;
+    for &(w, prop, want) in PER_WINDING.iter().filter(|c| c.1 == "RDCOhms") {
+        dss.command(&format!("Edit AutoTrans.d1 wdg={w}"));
+        assert!(dss.errors().is_empty(), "wdg={w} -> {:?}", dss.errors());
+        let num = |dss: &mut Dss, p: &str| -> f64 {
+            let s = cell(dss, p);
+            s.parse().unwrap_or_else(|e| panic!("`? {p}` = {s:?}: {e}"))
+        };
+        let (kv, kva, pct_r) = (
+            num(&mut dss, "kV"),
+            num(&mut dss, "kVA"),
+            num(&mut dss, "%R"),
+        );
+        let placeholder = kv * kv / (kva / 1000.0) * (0.85 * pct_r / 100.0);
+        let want: f64 = want.parse().expect("a numeric fixture cell");
+        assert!(
+            (want - placeholder).abs() > 1e-6 * placeholder.abs(),
+            "winding {w} {prop}: the fixture's {want} is the init placeholder \
+             {placeholder}, which a deleted `RdcOhms :=` copy would leave"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 3, "one RDCOhms cell per winding");
+
+    // The sentinel `cell` rejects is what a name that does not resolve answers.
+    assert_eq!(
+        query(&mut dss, "AutoTrans.d1.NoSuchProperty"),
+        "Property Unknown"
+    );
 }
 
 /// `RdcSpecified := TRUE` (`:2367`) is not decoration: it selects the
@@ -355,9 +425,11 @@ fn a_coded_auto_equals_the_longhand_one() {
 
 /// The miss arm (`:2394-2395`): r4133's `else` is one `DoSimpleMsg` — number
 /// 100180, the text `'Xfmr Code:' + Code + ' not found.'` — and it changes
-/// nothing at all. Measured on the epri-worker 2026-08-22: after
+/// nothing at all. Re-measured 2026-09-27 on the epri-worker (r4133 DLL) with
+/// this file's deck (`coded()`, winding 1 at 138 kV): after
 /// `Edit AutoTrans.t1 xfmrcode=nosuch` the winding data still reads
-/// `kvs = [115, 69, ]`, i.e. the model is untouched.
+/// `kvs = [138, 69, 13.8, ]` and `conns = [Series, wye, delta, ]`, i.e. the
+/// model is untouched.
 ///
 /// (r4133's *echo* of property 39 does move — it has no `GetPropertyValue` arm
 /// for it, so `? …xfmrcode` answers the raw parse store and reports `nosuch`
@@ -546,5 +618,198 @@ fn save_writes_the_code_name_while_dump_hides_it() {
     assert!(
         !dumped.to_lowercase().contains("xfmrcode"),
         "a HIDE_R4133 row must not reach the 0.14.5-pinned Dump: {dumped}"
+    );
+}
+
+/// `Nphases := Obj.Fnphases` is the setter `Set_NPhases`, which ignores a
+/// non-positive value (`If Value>0 Then Fnphases := Value`, r4133
+/// `Common/CktElement.pas:365-368`). An `XfmrCode` stores `phases=0` unguarded,
+/// so fetching one must leave the element's phase count where it was, on the
+/// auto (`AutoTrans.pas:2351`) and on the Transformer it was copied from
+/// (`Transformer.pas:2333`), instead of zeroing it.
+#[test]
+fn a_code_with_zero_phases_keeps_the_phase_count() {
+    let mut dss = Dss::new();
+    for line in [
+        "New Circuit.zp basekv=69 phases=3 bus1=src",
+        "New XfmrCode.z0 phases=3 windings=2",
+        "New AutoTrans.a1 phases=3 windings=2",
+        "~ wdg=1 bus=src conn=s kV=69 kVA=10000",
+        "~ wdg=2 bus=lo conn=w kV=34.5 kVA=10000",
+        "New Transformer.x1 phases=3 windings=2 buses=[src lo2] kVs=[69 34.5]",
+    ] {
+        dss.command(line);
+        assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+    }
+    // r4133 stores `phases=0` on a code unguarded (`1: FNphases :=
+    // Parser.IntValue`, `General/XfmrCode.pas:327`); the port's property row
+    // refuses it ("cannot be zero", the 0.14.5 `NonZero` flag), so the state the
+    // fetch must survive is written straight into the object.
+    let ord = dss.class_by_name["xfmrcode"];
+    let arena = &mut dss.classes[ord].arena;
+    let z0 = (0..arena.len())
+        .find(|&i| arena[i].data().name().eq_ignore_ascii_case("z0"))
+        .expect("XfmrCode.z0 exists");
+    arena
+        .obj_mut(z0)
+        .set_i32(crate::elements::general::xfmr_code::prop::PHASES, 0);
+    assert_eq!(
+        query(&mut dss, "XfmrCode.z0.phases"),
+        "0",
+        "the code holds 0"
+    );
+
+    for line in [
+        "Edit AutoTrans.a1 xfmrcode=z0",
+        "Edit Transformer.x1 xfmrcode=z0",
+    ] {
+        dss.command(line);
+        assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+    }
+    assert_eq!(query(&mut dss, "AutoTrans.a1.phases"), "3");
+    assert_eq!(query(&mut dss, "Transformer.x1.phases"), "3");
+}
+
+/// `XfmrCode.k{np}{nw}`: `np` phases, `nw` wye windings of 10 MVA.
+fn shape_code(np: u32, nw: u32) -> Vec<String> {
+    let kvs: &[f64] = if np == 3 {
+        &[69.0, 34.5, 13.8]
+    } else {
+        &[39.8, 19.9, 7.97]
+    };
+    let mut lines = vec![format!("New XfmrCode.k{np}{nw} phases={np} windings={nw}")];
+    for (i, kv) in kvs.iter().take(nw as usize).enumerate() {
+        lines.push(format!("~ wdg={} conn=wye kV={kv} kVA=10000 %r=0.5", i + 1));
+    }
+    lines
+}
+
+/// `{kind}.t1` on `src`/`lo`, specified by `xfmrcode=` with the code of shape
+/// `built`, solved. Both codes are defined in the same order in every deck.
+fn shape_deck(kind: &str, codes: [(u32, u32); 2], built: (u32, u32)) -> Dss {
+    let mut dss = Dss::new();
+    let mut lines = vec!["New Circuit.rf basekv=69 phases=3 bus1=src".to_string()];
+    for (np, nw) in codes {
+        lines.extend(shape_code(np, nw));
+    }
+    lines.extend([
+        format!("New {kind}.t1 xfmrcode=k{}{}", built.0, built.1),
+        "~ wdg=1 bus=src".to_string(),
+        "~ wdg=2 bus=lo".to_string(),
+        "Set tolerance=1e-10".to_string(),
+        "Solve".to_string(),
+    ]);
+    for line in &lines {
+        dss.command(line);
+        assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+    }
+    assert!(dss.circuit().unwrap().is_solved, "the deck must solve");
+    dss
+}
+
+/// Solve with `{kind}.t1` built from code `from`, re-fetch code `to` (a
+/// different terminal shape) with no `bus=` after it, re-solve: the element must
+/// end up exactly the machine a deck built from `to` directly holds.
+fn assert_refetch_reprocesses(kind: &str, from: (u32, u32), to: (u32, u32)) {
+    let codes = [from, to];
+    let mut refetched = shape_deck(kind, codes, from);
+    let edit = format!("Edit {kind}.t1 xfmrcode=k{}{}", to.0, to.1);
+    refetched.command(&edit);
+    assert!(refetched.errors().is_empty(), "{:?}", refetched.errors());
+    assert!(
+        refetched.circuit().unwrap().bus_name_redefined,
+        "`{edit}` re-created the terminals, so it must flag BusNameRedefined"
+    );
+    refetched.command("Solve");
+    assert!(refetched.errors().is_empty(), "{:?}", refetched.errors());
+    assert!(
+        refetched.circuit().unwrap().is_solved,
+        "the re-solve converges"
+    );
+
+    let mut direct = shape_deck(kind, codes, to);
+    let (y_re, v_re) = solved(&mut refetched);
+    let (y_direct, v_direct) = solved(&mut direct);
+    assert_eq!(
+        y_re, y_direct,
+        "{kind}: re-fetched Y differs from the direct one"
+    );
+    assert_eq!(v_re, v_direct, "{kind}: re-fetched voltages differ");
+}
+
+/// A re-fetch that changes the terminal shape after a solve. `SetNumWindings`
+/// re-creates the terminals (blank bus references) and only `Set_NConds`
+/// raises `BusNameRedefined` (`Common/CktElement.pas:359`), which with the
+/// auto's correct `2 * Fnphases` never fires, so `fetch_xfmr_code` raises the
+/// flag from the shape change itself. Without it the re-solve aborted with
+/// #482 (`element "t1" has no node references`), the port and r4133 alike
+/// in the cases below. Measured 2026-09-27 on the epri-worker (r4133 DLL), same
+/// decks with no `bus=` after the edit: r4133 reprocesses the 3-phase auto
+/// only through its wrong `NConds := Fnphases + 1` (`AutoTrans.pas:2353`; the
+/// new `T1_3.1-3` nodes appear, with `LO.1` at 300 746 V on a 34.5 kV winding),
+/// while the 1-phase auto (2 -> 3 windings), where that value is right, is not
+/// reprocessed and the re-solve aborts with #482.
+#[test]
+fn a_shape_changing_code_after_a_solve_reprocesses_the_buses() {
+    assert_refetch_reprocesses("AutoTrans", (3, 2), (3, 3)); // NTerms 2 -> 3
+    assert_refetch_reprocesses("AutoTrans", (3, 2), (1, 2)); // NConds 6 -> 2
+    assert_refetch_reprocesses("AutoTrans", (1, 2), (1, 3)); // r4133: #482
+}
+
+/// The Transformer twin has the same hole in r4133 itself: its `NConds :=
+/// Fnphases + 1` (`Transformer.pas:2335`) repeats the value `SetNumWindings`
+/// just wrote (`:997`), so it never flags. Measured 2026-09-27 on the
+/// epri-worker (r4133 DLL): 3-phase 2 -> 3 windings aborts the re-solve with
+/// #482 and the node list keeps no `T1_3` node; 3-phase -> 1-phase re-solves on
+/// the old node list with every voltage unchanged. An upstream bug, not
+/// reproduced: the port reprocesses and solves the new machine.
+#[test]
+fn a_shape_changing_code_reprocesses_a_transformer_too() {
+    assert_refetch_reprocesses("Transformer", (3, 2), (3, 3)); // r4133: #482
+    assert_refetch_reprocesses("Transformer", (3, 2), (1, 2)); // r4133: stale
+}
+
+/// The converse: a code of the same shape keeps the terminals, so it raises
+/// nothing (the Pascal `NConds :=` with the right value is a no-op too).
+#[test]
+fn a_same_shape_code_does_not_flag_the_buses() {
+    for kind in ["AutoTrans", "Transformer"] {
+        let mut dss = shape_deck(kind, [(3, 2), (3, 3)], (3, 2));
+        assert!(!dss.circuit().unwrap().bus_name_redefined);
+        dss.command(&format!("Edit {kind}.t1 xfmrcode=k32"));
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        assert!(
+            !dss.circuit().unwrap().bus_name_redefined,
+            "{kind}: a same-shape code must not reprocess the buses"
+        );
+    }
+}
+
+/// `bank=` (property 38) is a recorded r4133 divergence the port keeps: r4133
+/// comments the assignment out (`38: {XfmrBank := Param};`, `AutoTrans.pas:519`)
+/// and answers every write with `DoSimpleMsg('Bank Property not used with
+/// AutoTrans object.', 100130)` (`:566`), so its `XfmrBank` stays `''`. The port
+/// follows dss_capi 0.14.5 (`AutoTrans.pas:482` there): the name is accepted
+/// without a message, stored, read back live by `?` (the getter reads the field,
+/// not the parse store) and keys the CIM bank (`cim/power_xfmr.rs`). Adopting
+/// #100130 is an open decision (`auto_trans/mod.rs`, the `Bank` row); this pin
+/// holds the behaviour until it is taken.
+#[test]
+fn bank_is_stored_silently_where_r4133_logs_100130() {
+    let mut dss = coded();
+    let seen = dss.errors().len();
+    dss.command("Edit AutoTrans.t1 bank=b7");
+    assert!(
+        dss.errors()[seen..].is_empty(),
+        "the port accepts bank= silently (r4133: #100130): {:?}",
+        &dss.errors()[seen..]
+    );
+    assert_eq!(query(&mut dss, "AutoTrans.t1.bank"), "b7");
+    assert!(
+        dss.errors()
+            .iter()
+            .all(|e| e.code != Some(100130) && !e.message.contains("Bank Property not used")),
+        "#100130 is not logged: {:?}",
+        dss.errors()
     );
 }

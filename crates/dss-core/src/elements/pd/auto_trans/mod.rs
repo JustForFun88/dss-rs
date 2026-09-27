@@ -187,8 +187,11 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // a working feature and move CIM output. Latent as of 2026-08-23: no
         // corpus deck writes `bank=` on an AutoTrans (every `bank=` in the
         // corpus is a Transformer), the property echo agrees on both channels,
-        // and the CIM goldens are capi-captured. Undecided, unowned — see
-        // STATUS §RP1.2.
+        // and the CIM goldens are capi-captured. Adopting #100130 is an open
+        // decision: record `docs/phase-records/r4133-props-rp0-rp1.md` §RP1.2,
+        // tracker rows in `ORPHANED_GAPS.md` and `docs/upgrade/DIVERGENCES.md`
+        // (AutoTrans `bank=`), the port's behaviour pinned by
+        // `exec::tests::autotrans_xfmrcode::bank_is_stored_silently_where_r4133_logs_100130`.
         PropDef::string("Bank"),
         // EPRI r4133 property 39 (`AutoTrans.pas:329`, help `:414`), read by the
         // auto's OWN `TAutoTransObj.FetchXfmrCode` (`:520` → `:2339-2396`), not
