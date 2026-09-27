@@ -1,0 +1,2 @@
+#[doc = include_str!("b.md")]
+pub struct Documented;

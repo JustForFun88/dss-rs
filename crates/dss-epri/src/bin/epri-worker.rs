@@ -76,6 +76,16 @@ fn main() {
         }
     };
     let version = engine.version().trim().to_string();
+    // Where every `run` reply is sent from (RF-I00-01, the `run` arm below).
+    // Without one there is nowhere to step back to, so the worker refuses to
+    // start, as the Python transport does (`os.getcwd()` raising at startup).
+    let startup_cwd = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("epri-worker: no startup working directory to step back to: {e}");
+            std::process::exit(1);
+        }
+    };
     if !version.contains(&expect) {
         eprintln!(
             "epri-worker: engine {version:?} does not contain pinned {expect:?} (no silent pass)"
@@ -253,29 +263,43 @@ fn main() {
                 reply(serde_json::json!({"ok": ok, "result": {"cleared": ok}}));
             }
             Some("run") => {
-                let run_req: RunRequest = match serde_json::from_value(req) {
-                    Ok(r) => r,
+                let out = match serde_json::from_value::<RunRequest>(req) {
                     Err(e) => {
-                        reply(
-                            serde_json::json!({"ok": false, "error": format!("bad run request: {e}")}),
-                        );
-                        continue;
+                        serde_json::json!({"ok": false, "error": format!("bad run request: {e}")})
                     }
-                };
-                match run_case(&engine, &run_req) {
-                    Ok(cr) => match serde_json::to_value(&cr) {
-                        Ok(v) => reply(serde_json::json!({"ok": true, "result": v})),
+                    Ok(run_req) => match run_case(&engine, &run_req) {
+                        Ok(cr) => match serde_json::to_value(&cr) {
+                            Ok(v) => serde_json::json!({"ok": true, "result": v}),
+                            Err(e) => serde_json::json!(
+                                {"ok": false, "error": format!("serialize result: {e}")}
+                            ),
+                        },
                         Err(e) => {
-                            reply(
-                                serde_json::json!({"ok": false, "error": format!("serialize result: {e}")}),
-                            );
+                            eprintln!("epri-worker: case failed: {e}");
+                            serde_json::json!({"ok": false, "error": e.to_string()})
                         }
                     },
-                    Err(e) => {
-                        eprintln!("epri-worker: case failed: {e}");
-                        reply(serde_json::json!({"ok": false, "error": e.to_string()}));
-                    }
-                }
+                };
+                // RETRO_FIXES RF-I00-01: the gate compiles every case in its own
+                // scratch copy and removes it after the reply, but a compile
+                // leaves this process's working directory inside the copy
+                // (r4133 `Executive/ExecHelper.pas:752-754`) and Windows refuses
+                // to remove a process's working directory: step back first. A
+                // failed step back fails the case naming the cause, as the
+                // Python twin's `finally: os.chdir(startup_cwd)` does, instead of
+                // replying from inside the copy (where it would read as an
+                // engine-held handle when the copy survives its removal).
+                let out = match std::env::set_current_dir(&startup_cwd) {
+                    Ok(()) => out,
+                    Err(e) => serde_json::json!({
+                        "ok": false,
+                        "error": format!(
+                            "epri-worker: cannot step back to {}: {e}",
+                            startup_cwd.display()
+                        ),
+                    }),
+                };
+                reply(out);
             }
             other => {
                 reply(serde_json::json!({"ok": false, "error": format!("unknown cmd {other:?}")}));
