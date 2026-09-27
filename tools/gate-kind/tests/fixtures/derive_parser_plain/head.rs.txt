@@ -1,0 +1,5 @@
+#[derive(Debug, Parser)]
+pub struct Args {
+    // not rendered anywhere, reworded
+    pub deck: String,
+}

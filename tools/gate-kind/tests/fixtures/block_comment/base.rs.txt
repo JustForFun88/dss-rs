@@ -1,0 +1,4 @@
+/* outer /* nested */ still the outer comment */
+pub fn scale(x: f64) -> f64 {
+    x * 2.0 /* doubled */
+}

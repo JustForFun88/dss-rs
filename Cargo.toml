@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-test-harness", "crates/dss-usermodel"]
+members = ["crates/dss-cli", "crates/dss-core", "crates/dss-epri", "crates/dss-metis", "crates/dss-parser", "crates/dss-sparse", "crates/dss-test-harness", "crates/dss-usermodel", "tools/gate-kind"]
 
 [workspace.dependencies]
 # Stage F / F-FMT step 2 (DE_PASCALIZE Part IV.2): the default lane renders the
@@ -41,8 +41,8 @@ wasmi = { version = "=1.0.9", default-features = false, features = ["simd"] }
 # (~×10 vs optimized). Optimize the engine crates and all dependencies
 # (notably faer's sparse LU). A package override covers every target of its
 # package, test binaries included, so dss-core's integration tests build at
-# opt 3 too, and only members with no override (dss-cli, dss-metis) stay at
-# opt 0. Rust float semantics do not change with opt level (no
+# opt 3 too, and only members with no override (dss-cli, dss-metis, gate-kind)
+# stay at opt 0. Rust float semantics do not change with opt level (no
 # fast-math/reassociation), and the live gate's exact-iteration-count
 # contract across the whole corpus pins that empirically.
 #

@@ -1,0 +1,3 @@
+pub fn first<'a>(s: &'a str) -> char {
+    s.chars().next().unwrap_or('/') // a fallback
+}
