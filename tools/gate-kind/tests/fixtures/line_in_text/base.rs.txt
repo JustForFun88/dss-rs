@@ -1,0 +1,6 @@
+/// Never calls line!() or Location::caller: this is doc text.
+pub fn not_a_nonce(line: u32) -> bool {
+    // line!() in a comment is no token
+    let _ = "column!()";
+    line != 3
+}

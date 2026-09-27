@@ -1,0 +1,4 @@
+pub fn c() -> u32 {
+    // where, reworded
+    column!()
+}

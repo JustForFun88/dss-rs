@@ -319,6 +319,7 @@ dependencies = [
  "dss-metis",
  "dss-parser",
  "dss-sparse",
+ "dss-test-harness",
  "dss-usermodel",
  "miette",
  "num-complex",
@@ -357,6 +358,17 @@ version = "0.1.0"
 dependencies = [
  "faer",
  "num-complex",
+]
+
+[[package]]
+name = "dss-test-harness"
+version = "0.0.0"
+dependencies = [
+ "dss-core",
+ "dss-epri",
+ "num-complex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -546,6 +558,15 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gate-kind"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

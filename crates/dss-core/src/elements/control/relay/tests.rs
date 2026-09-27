@@ -214,7 +214,8 @@ fn log_has(sc: &Scratch, needle: &str) -> bool {
 /// counted, which no caller exercises (none sets `DebugTrace`).
 /// [`EventLog::append`] upper-cases only the action, so the element field is
 /// stored verbatim as `Element=Debug Sample: Relay.<name>` (the spelling
-/// `sample_state_trace_follows_debugtrace` and `tests/harness/lane.rs` match);
+/// `sample_state_trace_follows_debugtrace` and
+/// `crates/dss-test-harness/src/harness/lane.rs` match);
 /// pinned by `non_debug_lines_skips_the_debug_sample_lines_only`.
 fn non_debug_lines(sc: &Scratch) -> usize {
     sc.events

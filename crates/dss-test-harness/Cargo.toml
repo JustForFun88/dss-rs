@@ -1,0 +1,19 @@
+[package]
+name = "dss-test-harness"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Test-only: the golden/oracle comparison harness of the dss-core integration tests"
+
+# RETRO_FIXES_PLAN.md RF-I00-04: the harness that `crates/dss-core/tests/*.rs`
+# used to include textually (`mod harness;` in 27 drivers: 27 compilations and
+# 27 runs of its self-tests per lane) is this one library, a dev-dependency of
+# dss-core. No `[features]`: the lane is dss-core's, read through
+# `dss_core::compat::ORACLE_PARITY` (`harness/lane.rs`), and cargo builds ONE
+# dss-core for the drivers and this crate, so both see the same lane.
+[dependencies]
+dss-core = { path = "../dss-core" }
+dss-epri = { path = "../dss-epri" }
+num-complex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
