@@ -6490,6 +6490,12 @@ fn dump3_commands_matches_oracle() {
     // unmasks it (the other three never needed masking — Recloser regenerated in
     // U2.2, Fuse/SwtControl kept 0.14.5-shaped names with the new props hidden
     // until U2.5 dropped the HIDE flags for the full r4133 surface).
+    //
+    // Provenance: those four blocks, and the hand-landed 0.15.x property lines of
+    // `[CNData]`/`[LineSpacing]`/`[Transformer]`/`[AutoTrans]`/`[RegControl]`, are
+    // stated in the golden lock's reason for this file —
+    // `golden_lock.rs::CAPI_V0145_OVERLAYS` (the row stays `capi_v0145`: every
+    // other block is the pinned-oracle capture).
     run_deck_dump_exact_block_masked("dump3_commands", &["[WindGen]"]);
 }
 
