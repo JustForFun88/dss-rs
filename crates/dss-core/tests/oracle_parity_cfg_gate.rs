@@ -3609,10 +3609,9 @@ fn operational_docs_cite_the_compat_machinery_accurately() {
 ///
 /// Each document declares how many of its citations resolve, in one
 /// `<!-- line-citations: N -->` marker line of its own (read by
-/// [`declared_line_citations`]), and the walk asserts that exact count. Until
-/// RF-D07-01 (RP5.1 audit settlement SA-2) the gate held static floors of 40
-/// and 10 against the 176 and 20 citations the walk then resolved, so most of
-/// them could vanish green. The number lives in the document rather than here
+/// [`declared_line_citations`]), and the walk asserts that exact count: a
+/// floor would let every citation above it vanish green. The number lives in
+/// the document rather than here
 /// because the documents' later editors are docs-only steps that never touch
 /// this file: the marker keeps the count inside the scope of the edit that
 /// moves it.
@@ -3707,10 +3706,10 @@ type LineComponent = (Option<usize>, Option<usize>);
 /// `j`: one `(line, range end)` per comma-separated component, and the new
 /// cursor. Empty (cursor unmoved) when no digit stands at `j`.
 ///
-/// Until RF-D07-01 (G1.10a audit AC4-4) only the first component was read: the
-/// `,508` of `runner.rs:733,508` was scanned as a bare digit run and dropped,
-/// so a stale second number passed unread. A comma continues the list only
-/// when a digit follows it at once — `mod.rs:12, 14` in prose is one citation.
+/// Every component is a citation: the `,508` of `runner.rs:733,508` is checked
+/// like the `733`, so a stale second number reds. A comma continues the list
+/// only when a digit follows it at once — `mod.rs:12, 14` in prose is one
+/// citation.
 fn line_list(chars: &[char], mut j: usize) -> (Vec<LineComponent>, usize) {
     let mut out = Vec::new();
     loop {
@@ -4103,8 +4102,7 @@ fn no_load(target: &str) -> Vec<String> {
 }
 
 /// The comma form `file.rs:A,B[,C]` is one citation per component, each
-/// checked like a citation of its own (RF-D07-01, G1.10a audit AC4-4): before
-/// it the `,508` of `runner.rs:733,508` was never read.
+/// checked like a citation of its own (RF-D07-01, G1.10a audit AC4-4).
 #[test]
 fn a_comma_citation_is_checked_component_by_component() {
     let rs = |p: &str, a: usize, b: Option<usize>| (p.to_string(), Some(a), b);
