@@ -3623,34 +3623,19 @@ fn operational_docs_cite_the_compat_machinery_accurately() {
 /// because the documents' later editors are docs-only steps that never touch
 /// this file: the marker keeps the count inside the scope of the edit that
 /// moves it.
-const LINE_CITED_DOCS: &[&str] = &["tests/TOLERANCE_NOTES.md"];
-
-/// The operational doc whose code citations still carry line numbers: the
-/// line walk [`operational_docs_line_citations_point_at_the_line_they_name`]
-/// checks it, with the same `<!-- line-citations: N -->` marker, until each of
-/// its citations names its item and it joins [`LINE_CITED_DOCS`].
-const LINE_NUMBER_CITED_DOCS: &[&str] = &["TESTING.md"];
+const LINE_CITED_DOCS: &[&str] = &["TESTING.md", "tests/TOLERANCE_NOTES.md"];
 
 /// Every file-shaped token on one documentation line, in reading order.
 ///
-/// `None` as the line number is a mention without a `:LINE` suffix — it still
-/// matters, because it is the antecedent a later bare `` `:LINE` `` inherits.
-/// That inheritance is why non-Rust extensions are returned too: most bare
-/// continuations in `tests/TOLERANCE_NOTES.md` hang off a `.pas` citation into
-/// the Pascal spec, which lives outside this repository and must NOT be
-/// resolved against it.
+/// `None` as the line number is a mention without a `:LINE` suffix: it is the
+/// antecedent a later bare `` `:LINE` `` inherits. That inheritance is why
+/// non-Rust extensions are returned too: a bare continuation after a `.pas`
+/// citation of the vendored Pascal stays a Pascal citation.
 ///
-/// An empty path is the bare form itself.
-///
-/// The third element is the END of a `:A-B` range citation. G1.7's audit found
-/// it unread: only the digits before the `-` were parsed, so a range end could
-/// name a line past the file, or drift out from under the symbol the sentence
-/// spells, without a word (four `harness/mod.rs:A-B` rows had done exactly
-/// that). A range is a claim about a BLOCK, so the anchor must sit inside the
-/// whole block — see [`operational_docs_line_citations_point_at_the_line_they_name`].
-///
-/// The comma form `runner.rs:733,508` yields one citation per component (see
-/// [`line_list`]), each anchored like a citation of its own.
+/// An empty path is the bare form itself. The third element is the end of a
+/// `:A-B` range, and the comma form `file.rs:A,B` yields one entry per
+/// component (see [`line_list`]). [`doc_symbol_citation_defects`] reds every
+/// entry that carries a line number into a repository file.
 fn file_citations_in(line: &str) -> Vec<(String, Option<usize>, Option<usize>)> {
     file_citations_at(line)
         .into_iter()
@@ -3729,10 +3714,9 @@ type LineComponent = (Option<usize>, Option<usize>);
 /// `j`: one `(line, range end)` per comma-separated component, and the new
 /// cursor. Empty (cursor unmoved) when no digit stands at `j`.
 ///
-/// Every component is a citation: the `,508` of `runner.rs:733,508` is checked
-/// like the `733`, so a stale second number reds. A comma continues the list
-/// only when a digit follows it at once — `mod.rs:12, 14` in prose is one
-/// citation.
+/// Every component is a citation of its own, so `file.rs:A,B` reds twice. A
+/// comma continues the list only when a digit follows it at once:
+/// `file.rs:A, B` in prose is one citation.
 fn line_list(chars: &[char], mut j: usize) -> (Vec<LineComponent>, usize) {
     let mut out = Vec::new();
     loop {
@@ -3774,12 +3758,9 @@ fn range_end(chars: &[char], j: usize) -> (Option<usize>, usize) {
     (n.parse::<usize>().ok(), k)
 }
 
-/// The backticked Rust identifiers a documentation line names, `::`-tails only.
-///
-/// This is the *anchor* half of the citation check: a line number alone is a
-/// weak claim (a 5 000-line harness file has a line 3 311 no matter how far the
-/// thing it named drifted), so the citation must land near something the
-/// sentence itself spells.
+/// The backticked Rust identifiers a line names, `::`-tails only: the anchor
+/// [`rust_comments_citing_a_record_line_point_at_the_passage_they_name`]
+/// looks for in both the comment and the cited passage.
 fn backticked_idents(line: &str) -> Vec<String> {
     line.split('`')
         .skip(1)
@@ -4349,205 +4330,7 @@ fn operational_docs_cite_items_the_named_files_define() {
     }
 }
 
-/// A `file.rs:LINE` citation in a [`LINE_NUMBER_CITED_DOCS`] document still
-/// points at the line the sentence names.
-///
-/// Three failures, all of them silent before this test: the file is gone or the
-/// path is spelled too loosely to name one file; the line is past the end of
-/// it; or the line drifted away from what the sentence calls it. The third is
-/// the one that actually happens — harness files grow by hundreds of lines a
-/// sub-step, and nothing in the tree read a `:LINE` suffix.
-///
-/// Resolution follows the reader's own rule: a path is matched against the tree
-/// by suffix, and a shortened repeat (`mod.rs:3281` after the section spelled
-/// `crates/dss-test-harness/src/harness/mod.rs:3243`) is disambiguated by the nearest
-/// fully-qualified mention **earlier in the same document**. A citation that
-/// resolves to neither fails rather than being skipped — an ambiguous citation
-/// is a doc defect, not an exemption.
-///
-/// The number of citations that resolve is exact per document: it must equal
-/// the document's own `<!-- line-citations: N -->` marker
-/// ([`assert_declared_line_citations`]). That is asserted only once every
-/// citation is sound, so a broken citation is reported as broken and never
-/// "fixed" by lowering the marker.
-#[test]
-fn operational_docs_line_citations_point_at_the_line_they_name() {
-    let root = repo_root();
-    let by_base = tree_files_by_base(&root);
-
-    let load = |target: &str| -> Vec<String> {
-        fs::read_to_string(root.join(target))
-            .unwrap_or_else(|e| panic!("{target}: {e}"))
-            .lines()
-            .map(str::to_string)
-            .collect()
-    };
-    let mut cache: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut bad: Vec<String> = Vec::new();
-    let mut counts: Vec<(&str, usize)> = Vec::new();
-    let mut texts: Vec<String> = Vec::new();
-
-    for doc in LINE_NUMBER_CITED_DOCS {
-        let text = fs::read_to_string(root.join(doc)).unwrap_or_else(|e| panic!("{doc}: {e}"));
-        let (checked, defects) = doc_line_citation_defects(doc, &text, &by_base, &mut cache, &load);
-        bad.extend(defects);
-        counts.push((doc, checked));
-        texts.push(text);
-    }
-
-    assert!(
-        bad.is_empty(),
-        "documentation citing a code line that no longer says what the sentence \
-         claims. Re-read the cited file and re-point the citation (or re-word the \
-         sentence); do NOT delete the line number:\n{}\nchecked: {:?}",
-        bad.join("\n"),
-        counts
-    );
-    for ((doc, checked), text) in counts.iter().zip(&texts) {
-        assert_declared_line_citations(doc, text, *checked);
-    }
-}
-
-/// One [`LINE_NUMBER_CITED_DOCS`] document's walk: how many of its `file.rs:LINE`
-/// citations resolve to one tree file, and every defect found, one report line
-/// each.
-///
-/// `by_base` maps a basename to the repo-relative files that carry it; `cache`
-/// maps a target to its lines, and `load` reads a target the cache does not
-/// hold yet (the unit tests pre-fill the cache with fixtures and load nothing).
-fn doc_line_citation_defects(
-    doc: &str,
-    text: &str,
-    by_base: &BTreeMap<String, Vec<String>>,
-    cache: &mut BTreeMap<String, Vec<String>>,
-    load: &dyn Fn(&str) -> Vec<String>,
-) -> (usize, Vec<String>) {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut bad: Vec<String> = Vec::new();
-    let mut full_of_base: BTreeMap<String, String> = BTreeMap::new();
-    let mut last_file: Option<String> = None;
-    let mut checked = 0usize;
-
-    for (i, line) in lines.iter().enumerate() {
-        let mut idents = backticked_idents(line);
-        if i > 0 {
-            // Docs wrap: the name and its citation routinely straddle a
-            // line break.
-            idents.extend(backticked_idents(lines[i - 1]));
-        }
-
-        for (tok, lineno, lineend) in file_citations_in(line) {
-            let cited = if tok.is_empty() {
-                match &last_file {
-                    Some(f) => f.clone(),
-                    None => continue,
-                }
-            } else {
-                // Register a fully-qualified spelling so the section's
-                // later short repeats resolve.
-                if tok.contains('/') && tok.ends_with(".rs") {
-                    let base = tok.rsplit('/').next().unwrap_or(&tok).to_string();
-                    let hits = resolve_cited(by_base, &tok, &base);
-                    if hits.len() == 1 {
-                        full_of_base.insert(base, hits[0].clone());
-                    }
-                }
-                last_file = Some(tok.clone());
-                tok
-            };
-            let Some(ln) = lineno else { continue };
-            if !cited.ends_with(".rs") {
-                continue;
-            }
-
-            let base = cited.rsplit('/').next().unwrap_or(&cited).to_string();
-            let hits = resolve_cited(by_base, &cited, &base);
-            let target = match cited_target(&hits, full_of_base.get(&base)) {
-                Ok(target) => target,
-                Err(why) => {
-                    bad.push(format!("    {doc}:{}: `{cited}:{ln}` {why}", i + 1));
-                    continue;
-                }
-            };
-
-            let src = cache.entry(target.clone()).or_insert_with(|| load(&target));
-            checked += 1;
-
-            if ln == 0 || ln > src.len() {
-                bad.push(format!(
-                    "    {doc}:{}: `{cited}:{ln}` is past the end of {target} \
-                     ({} lines)",
-                    i + 1,
-                    src.len()
-                ));
-                continue;
-            }
-            if src[ln - 1].trim().is_empty() {
-                bad.push(format!(
-                    "    {doc}:{}: `{cited}:{ln}` points at a blank line of {target}",
-                    i + 1
-                ));
-                continue;
-            }
-            // A `:A-B` range: the END must be a real line of the same file
-            // and must not precede the start. Before G1.7's audit settlement
-            // the end was never parsed at all.
-            if let Some(end) = lineend
-                && (end < ln || end > src.len())
-            {
-                bad.push(format!(
-                    "    {doc}:{}: `{cited}:{ln}-{end}` is not a range of \
-                     {target} ({} lines)",
-                    i + 1,
-                    src.len()
-                ));
-                continue;
-            }
-            if idents.is_empty() {
-                // Before RP5.2's audit settlement this was a silent
-                // `continue`, which made the citation existence-only: any
-                // non-blank line of the right file passed. Six of the 58
-                // citations sat in that hole — including the four the
-                // R4133_PROPS counters lean on (the normalization table,
-                // the echo table, the display floor, the forced
-                // population) — so the doc claim "resolves *and anchors*
-                // all 58" was true of 52. Anchoring costs one backticked
-                // symbol on the citing line.
-                bad.push(format!(
-                    "    {doc}:{}: `{cited}:{ln}` names no backticked symbol on \
-                     its own line or the one above, so nothing but the line's \
-                     existence can be checked — spell the symbol the cited line \
-                     defines",
-                    i + 1
-                ));
-                continue;
-            }
-            // A single line is anchored in a small window around it; a RANGE
-            // is a claim about the whole block, so the symbol must sit inside
-            // the block itself — the settlement rule that catches an end
-            // drifting off the values the sentence names.
-            let (lo, hi) = match lineend {
-                Some(end) => (ln - 1, end.min(src.len())),
-                None => (ln.saturating_sub(4), (ln + 3).min(src.len())),
-            };
-            let window = src[lo..hi].join("\n");
-            if !idents.iter().any(|id| window.contains(id.as_str())) {
-                bad.push(format!(
-                    "    {doc}:{}: `{cited}:{ln}` — {target} lines {}-{} name \
-                     none of {:?} (a `:A-B` citation is anchored inside the \
-                     range itself)",
-                    i + 1,
-                    lo + 1,
-                    hi,
-                    idents
-                ));
-            }
-        }
-    }
-    (checked, bad)
-}
-
-/// The count a [`LINE_CITED_DOCS`] (or [`LINE_NUMBER_CITED_DOCS`]) document declares in its
+/// The count a [`LINE_CITED_DOCS`] document declares in its
 /// `<!-- line-citations: N -->` marker: the first line that is such a marker,
 /// trimmed, and nothing else. A spelling of the convention inside prose (a
 /// backticked quotation) is not a marker line, so a document may describe the
@@ -4585,24 +4368,8 @@ fn assert_declared_line_citations(doc: &str, text: &str, resolved: usize) {
     );
 }
 
-/// A fixture tree for the citation walk: one `corpus_gate/runner.rs` of 50
-/// lines whose line 3 is the one call the fixture documents name. Returns the
-/// basename map and the pre-filled source cache.
-fn citation_fixture() -> (BTreeMap<String, Vec<String>>, BTreeMap<String, Vec<String>>) {
-    let target = "crates/fixture/tests/corpus_gate/runner.rs".to_string();
-    let by_base = BTreeMap::from([("runner.rs".to_string(), vec![target.clone()])]);
-    let mut src = vec!["    let unrelated = 1;".to_string(); 50];
-    src[2] = "    harness::assert_complex_close(&a, &e, rel, abs, &ctx);".to_string();
-    (by_base, BTreeMap::from([(target, src)]))
-}
-
-/// The fixture walk never reads the disk.
-fn no_load(target: &str) -> Vec<String> {
-    panic!("the fixture tree holds no {target}")
-}
-
-/// The comma form `file.rs:A,B[,C]` is one citation per component, each
-/// checked like a citation of its own (RF-D07-01, G1.10a audit AC4-4).
+/// The comma form `file.rs:A,B[,C]` is one citation per component, each a
+/// line-number red of its own (RF-D07-01, G1.10a audit AC4-4).
 #[test]
 fn a_comma_citation_is_checked_component_by_component() {
     let rs = |p: &str, a: usize, b: Option<usize>| (p.to_string(), Some(a), b);
@@ -4634,21 +4401,27 @@ fn a_comma_citation_is_checked_component_by_component() {
         ]
     );
 
-    // A stale second component is reported, and only it.
-    let (by_base, mut cache) = citation_fixture();
+    // The symbol walk reds each component, the second one included.
     let doc = "Node voltages reach it through `harness::assert_complex_close`\n\
-               (`corpus_gate/runner.rs:3,40`).\n";
-    let (checked, bad) = doc_line_citation_defects("fixture", doc, &by_base, &mut cache, &no_load);
-    assert_eq!(checked, 2, "{bad:?}");
-    assert_eq!(bad.len(), 1, "{bad:?}");
+               (`crates/fixture/src/lib.rs:3,40`).\n";
+    let (resolved, bad) = symbol_walk(doc);
+    assert_eq!(resolved, 0, "{bad:?}");
+    let cited: Vec<&str> = bad
+        .iter()
+        .map(|b| b.split('`').nth(1).unwrap_or_default())
+        .collect();
+    assert_eq!(
+        cited,
+        [
+            "crates/fixture/src/lib.rs:3",
+            "crates/fixture/src/lib.rs:40"
+        ],
+        "{bad:#?}"
+    );
     assert!(
-        bad[0].starts_with("    fixture:2: `corpus_gate/runner.rs:40`"),
+        bad.iter().all(|b| b.starts_with("    fixture:2: ")),
         "{bad:?}"
     );
-    // Both components near the call: green.
-    let doc = doc.replace(":3,40", ":3,5");
-    let (checked, bad) = doc_line_citation_defects("fixture", &doc, &by_base, &mut cache, &no_load);
-    assert_eq!((checked, bad), (2, Vec::<String>::new()));
 }
 
 /// The marker is the first line that is one; a quoted spelling in prose is not.
@@ -4849,9 +4622,9 @@ fn a_tier_citation_without_its_arm_pattern_is_reported() {
     assert!(bad[0].contains("names no arm"), "{bad:?}");
 }
 
-/// A line-number citation into the repository reds, in every spelling the line
-/// walk reads (single, range, comma list, bare continuation, a `.py` file of
-/// the tree); a line of the vendored Pascal, the commit-pinned
+/// A line-number citation into the repository reds, in every spelling
+/// [`file_citations_at`] reads (single, range, comma list, bare continuation,
+/// a `.py` file of the tree); a line of the vendored Pascal, the commit-pinned
 /// `<sha>:<path>:<N>` form and a dotted name that is no file pass.
 #[test]
 fn a_line_number_citation_into_the_repository_is_reported() {
@@ -5037,15 +4810,9 @@ fn comment_block(lines: &[&str], at: usize) -> String {
 /// A `record.md:LO-HI` citation inside a Rust comment still points at the
 /// passage the comment names.
 ///
-/// The mirror image of [`operational_docs_line_citations_point_at_the_line_they_name`],
-/// and the class that walk deliberately drops: it resolves `.rs` targets and
-/// `continue`s past every other extension, so a comment citing a plan or a
-/// phase record was checked by nothing at all. The rot is measured, not
-/// hypothetical — R4133_PROPS RP5.2's only code edit was re-pointing the two
-/// `props_r4133_replay.rs` citations of the WP-RP3 sanctioned-outcome sentence,
-/// whose range had drifted onto the RP2.4 display-floor derivation while both
-/// lanes stayed green. Its audit round (2026-09-04) found the repair itself
-/// unguarded, which is this test.
+/// The counterpart of [`operational_docs_cite_items_the_named_files_define`],
+/// which reads documents: this test reads the Rust comments that cite a line
+/// range of a plan or a phase record, a form no other walk resolves.
 ///
 /// Three checks: the record exists; the cited range is inside it and not all
 /// blank; and the passage is **anchored** — either the comment names a section
@@ -5187,8 +4954,8 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
 /// (`props_r4133_replay.rs::every_rp311_serialization_pin_exists_and_is_cited`):
 /// without one, renaming or deleting a pin leaves the prose claiming a
 /// guarantee that no longer exists, with a green suite —
-/// [`operational_docs_line_citations_point_at_the_line_they_name`] cannot
-/// help, because it only resolves the citations that carry a `:LINE` suffix and
+/// [`operational_docs_cite_items_the_named_files_define`] cannot help, because
+/// it only resolves the citations that spell their file (`<path>::<item>`) and
 /// `docs/phase-records/` is deliberately outside [`LINE_CITED_DOCS`].
 ///
 /// Each row must also still be *named* by the prose, so the table cannot
