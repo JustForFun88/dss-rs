@@ -4905,9 +4905,9 @@ names, 31 `tests::` paths, 17 `super::`, 5 `crate::`, 2 `Self::` and 39 other pa
    commands". In the workflow the two commands take a build slot of the queue. The committed gate
    texts name no queue: RF-I00-09 owns that sentence.
 **Parts:**
-1. `INFRA|9` - the lint table, the member inheritance, the rail of ruling 1, and the dss-core and
-   dss-epri warnings (the other members print none once private links are allowed, and the harness
-   is part 2's): `cargo doc` per crate is the census, and `part_1.md` lists every warning at the
+1. `INFRA|9` - the lint table, the member inheritance, the rail of ruling 1 (its "`ci.yml` runs both
+   doc commands" check lands with part 3's `ci.yml` edit), and the dss-core and dss-epri warnings
+   (the other members print none once private links are allowed, and the harness is part 2's): `cargo doc` per crate is the census, and `part_1.md` lists every warning at the
    base with its ruling (1a-4) and the fix. Scoped check per crate: `cargo doc -p <crate> --no-deps
    --document-private-items` exits 0 with no `warning:` line, without a feature and also with the
    crate's lane feature where it has one (`--features dss-core/oracle-parity` for dss-core and
@@ -4929,7 +4929,7 @@ names, 31 `tests::` paths, 17 `super::`, 5 `crate::`, 2 `Self::` and 39 other pa
    Files, with the ruling-5 sentences on `RUSTDOCFLAGS`, the `warning:` line and commands 6-7, the
    pinned-runner line that `the_nextest_profile_never_retries_and_serializes_nothing` reads kept, the
    R10 marker updated in the same commit when it moves), the `README.md` and `SPLITTING_RULES.md`
-   blocks, `ci.yml`,
+   blocks, `ci.yml` with the rail's check that it runs both doc commands,
    `RETRO_FIXES_PLAN.md` §2.2 and the same sentence in R18, the record. One `cargo doc -v` per lane
    shows the six `--deny=rustdoc::` flags and `--allow=rustdoc::private_intra_doc_links` on every
    rustdoc invocation (quoted in `part_3.md`). The two commands' wall times per lane, measured in
