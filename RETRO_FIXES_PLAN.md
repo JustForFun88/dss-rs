@@ -4305,11 +4305,19 @@ part 1 is the path-embedding probe.
 - Record block written; every uid closed or recorded with a reason.
 
 ### RF-I00-02 — The capi one-shot's native death on `controls:espvlcontrol` (R12 follow-up of RF-I00-01)
-<!-- RF-STEP {"step": "RF-I00-02", "effort": "xhigh", "parts": 1, "gate": "full", "oracle": true, "after": ["RF-I00-01", "RF-D09-06"], "n_uids": 1} -->
+<!-- RF-STEP {"step": "RF-I00-02", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-I00-01"], "n_uids": 1} -->
 **Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full (the seven commands). **After:**
-RF-I00-01, RF-D09-06 (its SA-0 ships the transport-side named error with the one-shot's exit status
-and faulthandler output - the evidence this step reads). Scheduled by hand like every §6 step (not in
-`wp_index.json`). **Brief:** `tmp/retro_fix/state/RF-I00-01.md` (ruling Q4-1) and
+RF-I00-01 only (coordinator 2026-09-30, user decision: RF-D09-06's SA-0 adds a no-circuit error to the
+transports and never reports the one-shot's exit status, so this step gathers its own evidence).
+Scheduled by hand like every §6 step (not in `wp_index.json`). **Parts:** 1. diagnostics + the
+concurrent probe: `engines.rs` keeps the one-shot's `ExitStatus` (today `Ok(Some(_))` drops it) and
+puts its code (on Windows the NTSTATUS, e.g. `0xC0000005`) and the full stderr into the "no JSON
+response" panic, the isolate one-shot of `oracle_server.py` enables `faulthandler` itself; then at
+least 200 concurrent one-shot runs of the case on a busy machine, every death with its status and
+stderr in `part_1.md`. 2. the ruling arm below with its ledger row or fix, the plan and TESTING.md
+notes, the record. Context for arm (a): r4133 cannot instantiate ESPVLControl at all
+(`r4133-espvlcontrol-uninstantiable`, an access violation in ProcessCommand); a capi 0.14.5 death of
+the same shape under load is the capi-side crash. **Brief:** `tmp/retro_fix/state/RF-I00-01.md` (ruling Q4-1) and
 `tmp/retro_fix/state/RF-I00-01/part_4.md`, plus the four logged occurrences: `tmp/rp41/p5_ws_parity.log`
 (2026-09-03), `tmp/retro_fix/state/RF-I00-01/p4_gate_run3_nextest_default.log` (default lane),
 `tmp/retro_fix/state/RF-I00-05/step_gate_5_run1.log` (parity) and `tmp/retro_fix/state/land_w2/gate_5.log:3284-3292`
@@ -4769,3 +4777,194 @@ plan, `wp_index.json`, GOLDEN_REBASE_PLAN.md) are the coordinator's to re-point.
   coordinator, the commits, the gate result), and RF-I00-04's audit line in the record names this
   step ("one R12 follow-up step" becomes "the R12 follow-up step RF-I00-06", R12). The uid closed or
   recorded with a reason.
+
+### RF-I00-07 — rustdoc is the intra-doc link checker: `cargo doc` joins the gate (user decision 2026-09-30)
+<!-- RF-STEP {"step": "RF-I00-07", "effort": "high", "parts": 3, "gate": "full", "oracle": false, "inline_shared": true, "after": ["RF-D07-01", "RF-I00-06"], "n_uids": 1} -->
+**Tier:** executor opus/high; audits, settler per §3. `high` is §3's comment and citation row: every
+edit is a doc comment, a `Cargo.toml` lint table or a gate text, no engine line moves. **Gate:** full
+(the `Cargo.toml` and `ci.yml` edits make every diff `Code`), and from part 3 on the full gate is the
+NINE commands this step defines. **After:** RF-D07-01 (its parts 3-4 are the R18 symbol rail for the
+documents; this step is the same rail for the doc comments, and its TESTING.md gate text lands after
+the R18 conversions) and RF-I00-06 (it re-words harness doc comments this step would otherwise touch
+twice). Scheduled by hand like every infra step: one lane, nothing else in flight until it lands.
+**Files:** `Cargo.toml` (a `[workspace.lints.rustdoc]` table), the `Cargo.toml` of every workspace
+member (`crates/dss-cli`, `crates/dss-core`, `crates/dss-epri`, `crates/dss-metis`,
+`crates/dss-parser`, `crates/dss-sparse`, `crates/dss-test-harness`, `crates/dss-usermodel`,
+`tools/gate-kind`: `[lints] workspace = true`, nothing else), every `.rs` file `cargo doc` warns
+about at the step base (the census is the command itself, per lane, part 1 lists it), `CLAUDE.md`
+("## Gate": the command block and "Those seven commands"), `TESTING.md` (in-step, R9, as in
+RF-I00-01/05: §"The mandatory gate" and the `Comments`/`Code` rows of §"Which gate to run"),
+`.github/workflows/ci.yml`, `RETRO_FIXES_PLAN.md` §2.2 (the table and "the full seven commands"),
+`docs/phase-records/retro-fixes.md`.
+**Doc notes (§4):** `TESTING.md` is edited in-step (R9: the gate definition moves with the tool); a
+notes entry is still appended for its owner (RF-D04-01 takes the `INFRA|` entries).
+**Decision (user, 2026-09-30):** a citation into this repository names the item (R18), and for a
+doc comment the checkable form is the intra-doc link, so rustdoc becomes a gate command and the tree
+starts with zero rustdoc warnings. Measured at 05e2539e (default lane,
+`cargo doc --workspace --no-deps --document-private-items` under
+`-W rustdoc::broken_intra_doc_links -W rustdoc::private_intra_doc_links`): 198 unresolved links
+(`crates/dss-test-harness/src/harness/props_norm.rs` 18, `harness/mod.rs` 17,
+`crates/dss-core/src/exec/command.rs` 8, `obj/props/prop_flags.rs` 7, `obj/arena.rs` 6, 31 more
+files with three or fewer), 292 links from public documentation to a private item, 9 redundant
+explicit link targets, 1 unclosed HTML tag; per crate dss-test-harness 253, dss-core 222, dss-epri
+18, dss-sparse 7. Of the 198 targets, 26 are `tests::<fn>` and 38 are bare names, most of them test
+functions, index brackets read as links (`[0]`, `[1]`, `[i]`, `[hrs]`) or items out of scope. The
+rulings:
+1. `private_intra_doc_links` is `allow`: the engine's documentation is built with
+   `--document-private-items` (it is an internal crate, the private items are the interesting ones)
+   and there the link resolves. Every warn-by-default rustdoc lint is `deny`, named one by one
+   in the table (`broken_intra_doc_links`, `redundant_explicit_links`, `invalid_html_tags`,
+   `invalid_codeblock_attributes`, `invalid_rust_codeblocks`, `bare_urls`, and any other the
+   toolchain's `rustdoc -W help` lists at warn); `rustdoc::all` is not used, it would raise the
+   allow-by-default lints too. The table is `[workspace.lints.rustdoc]` in the root
+   `Cargo.toml`, inherited by every member through `[lints] workspace = true`, so the gate command
+   carries no `RUSTDOCFLAGS` and a stray environment cannot lower it. No `#![allow(rustdoc::…)]` in
+   a crate root and no `#[allow(rustdoc::…)]` on an item: the counts reach zero by edits.
+2. A test function, a `#[cfg(test)] mod tests` item or a fixture of the test-only code is no
+   intra-doc link target (rustdoc compiles no test cfg): the link becomes a code span with the same
+   words (`` [`tests::foo`] `` → `` `tests::foo` ``), never a bracket, and the R18 spelling of a test
+   name stays the function name (grep finds it, the test list proves it). The same for a link into
+   another crate's tests or into a `tests/*.rs` driver.
+3. `[0]`, `[1]`, `[i]`, `[hrs]`, `[111]` and every other bracketed index or word that is prose is
+   escaped (`\[0\]`) or rewritten as a code span; the sentence keeps its meaning.
+4. A link whose target exists under another path (`Self::`, `super::`, a bare name that is not in
+   scope, a `crate::` path with a moved module) is re-pointed to the path that resolves, the link
+   text unchanged. A link to an item that no longer exists is R18's stale citation: the sentence is
+   rewritten to the present item or dropped, and the case is listed in the part file.
+5. The gate commands 8 and 9 are `cargo doc --workspace --no-deps --document-private-items` and the
+   same with `--features dss-core/oracle-parity` (the compat modules are cfg'd per lane and carry
+   their own docs), red on any rustdoc warning through the table, run under the build slot of the
+   queue. §2.2's `Comments` row gains them (a doc comment edit is exactly what breaks a link), the
+   `Docs` row does not (the rail of `oracle_parity_cfg_gate.rs` that keeps every `.md` out of a
+   `#[doc = include_str!]` is the premise: a `.md` edit cannot change rustdoc's input), the `Code`
+   row reads "the full nine commands".
+**Parts:**
+1. `INFRA|9` - the lint table and the dss-core, dss-sparse, dss-epri, dss-metis, dss-parser,
+   dss-usermodel, dss-cli warnings: `cargo doc` per crate is the census (`part_1.md` lists every
+   warning at the base with its ruling 2-4 and the fix). Scoped check: `cargo doc -p <crate>
+   --no-deps --document-private-items` in both lanes exits 0.
+2. The harness crate (253 warnings, the `tests::` and `super::` bulk): same census and rulings, with
+   the RF-I00-06 re-wordings already in the tree (After). Scoped check: the same command for
+   `dss-test-harness` and then `cargo doc --workspace --no-deps --document-private-items` in both
+   lanes, zero warnings, plus one negative probe on a scratch edit (one broken link in a doc
+   comment, reverted before the commit): the command exits non-zero and names the link.
+3. The gate texts: `CLAUDE.md`, `TESTING.md` (R9), `ci.yml` (two steps after the doctests),
+   `RETRO_FIXES_PLAN.md` §2.2, the record. The two commands' wall times per lane go into
+   `part_3.md` (the coordinator sets the workflow's gate prompt from them).
+**Acceptance:** commands 8 and 9 exit 0 with zero rustdoc warnings in both lanes; the negative probe
+of part 2 is red; `rg 'allow\(rustdoc' crates tools` finds nothing and `rg 'rustdoc' Cargo.toml`
+finds the one table; CLAUDE.md, TESTING.md, ci.yml and §2.2 agree on nine commands; every `.rs` edit
+of the step is a doc-comment edit (`cargo run -p gate-kind` per file prints `Comments` for each `.rs`,
+quoted in the stage report).
+
+### RF-I00-08 — Fewer dss-core integration-test binaries, kept only on a measured gain (user decision 2026-09-30)
+<!-- RF-STEP {"step": "RF-I00-08", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": true, "inline_shared": true, "after": ["RF-I00-07"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full (file moves under `tests/`
+are `Code`), NINE commands (RF-I00-07). **After:** RF-I00-07 (its harness doc-comment edits and this
+step's driver moves must not cross). Scheduled by hand like every infra step: one lane, nothing else
+in flight, because the measurement needs the quiet machine and the step moves files every lane
+edits. **Files:** `crates/dss-core/tests/*.rs` and the new `crates/dss-core/tests/<group>/main.rs` +
+`<group>/<driver>.rs` (the moved drivers, verbatim), `crates/dss-core/Cargo.toml` (only if a
+`[[test]]` entry is needed, none expected: cargo finds `tests/<group>/main.rs` by itself),
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (`gate_rails_are_exactly_the_measured_readers`,
+`WALK_SITES` and the needle census must map `tests/<group>/*.rs` to its binary as they map
+`tests/corpus_gate/*.rs` today; the `GATE_RAILS` register itself does not change), `tools/gate-kind`
+(only if its `ALWAYS_CODE` or a fixture names a moved path), `.config/nextest.toml` (no change
+expected, the allowlist rail decides), `TESTING.md` (in-step, R9: every `crates/dss-core/tests/<name>.rs`
+and `--test <name>` spelling of a moved driver), every committed text that spells a moved path or
+`--test <name>` (census `rg -n 'tests/<name>\.rs|--test <name>'` over the tree per moved driver,
+the §4 shared documents through notes entries), `docs/phase-records/retro-fixes.md`.
+**Doc notes (§4):** `TESTING.md` in-step (R9), a notes entry per other shared document.
+**Decision (user, 2026-09-30, "apply it if the result is real"):** the 56 integration-test targets of
+`dss-core` are the largest fixed cost of every gate compile (each links the engine and the harness
+and monomorphises the harness for itself). Measured at 05e2539e on a busy machine
+(`cargo test --workspace --no-run --timings`, the coordinator's run of 2026-10-01, contended by a
+lane gate): the 56 targets took 5739 CPU-seconds, the 10 `GATE_RAILS` binaries 1291 s and the other
+46 4448 s; a 69-line driver took 10 s and a 131-line one 199 s, and the correlation between a
+target's time and its source size is 0.46, so the cost is the per-binary overhead, not the driver.
+The rulings:
+1. The ten `GATE_RAILS` binaries (`capture_order`, `corpus_gate`, `depascalize_metrics_gate`,
+   `golden_json`, `oracle_parity_cfg_gate`, `pd_elements_pins`, `population_lock`,
+   `props_r4133_evidence_lock`, `props_r4133_replay`, `reliability_pins`) stay separate: the
+   reduced gates run a rail binary whole, and a merged binary that read one repository `.md`/`.rs`
+   would join the register whole and make the `Docs` gate the full suite again. The merge covers
+   only the 46 binaries that read no repository file, and `gate_rails_are_exactly_the_measured_readers`
+   proves after the merge that no new binary joins the register.
+2. At most six binaries replace the 46, grouped by theme (a `golden` group for the `golden_*`
+   drivers, a `pins` group for the `*_pins` and `*_reports` drivers, a `usermodels` group for the
+   `wasm_usermodels*` drivers, the rest by the executor's per-unit numbers), such that no group's
+   compile time exceeds the longest rail binary's: the gain is fewer links, the cost is one rustc
+   front end per group, and the critical path must not grow. Each driver becomes one `mod <driver>;`
+   line of `tests/<group>/main.rs` and its file moves verbatim (its `use` lines, `#[ignore]`
+   attributes and helper fns stay; a helper duplicated across drivers is left duplicated, this step
+   moves, it does not refactor). Test IDs change from `<driver>::<test>` to
+   `<group>::<driver>::<test>`; the `GATE_RAILS` filtersets name no moved test.
+3. The measurement decides. Part 1, on the quiet machine, three runs each and the median wall time:
+   (a) `cargo nextest run --workspace --no-run` after `cargo clean -p dss-core` (the cold test
+   compile), (b) the same after touching `crates/dss-core/src/lib.rs` (the incremental compile every
+   gate pays), both lanes, with `--timings` on one run each. Part 2 repeats (a) and (b) after the
+   merge. The merge is kept when the incremental default-lane median of (b) drops by 15 % or more,
+   else part 2 ends with the tree at the part-1 commit (the merge is not committed) and the record
+   carries the numbers. `--timings` html files stay local (R5), the medians and the per-target
+   table go into the part files and the record.
+4. No test changes behaviour: the same test count per lane before and after (`cargo nextest list`
+   both lanes, diffed by test name after the `<group>::` prefix), the same `#[ignore]` set, the
+   corpus gate untouched.
+**Parts:**
+1. Measure and design: the part-1 baseline of ruling 3 (numbers in `part_1.md`), the per-target
+   table from the timings html, the grouping with its predicted critical path, the reader census
+   (which of the 46 read a repository file: none expected, else that driver stays separate).
+2. The merge (ruling 2), the rail edits of `oracle_parity_cfg_gate.rs`, the part-2 measurement, the
+   decision of ruling 3 with the test-list diff of ruling 4. A kept merge is committed with the
+   re-pointed spellings of its own crate; a rejected one leaves the tree at the part-1 commit and
+   `part_2.md` says why.
+3. If kept: `TESTING.md` (R9), the census of moved-path spellings across the tree, the notes entries,
+   the record. If rejected: the record with the numbers, nothing else.
+**Acceptance:** the part-1 and part-2 numbers are in the record (both lanes, cold and incremental,
+medians of three); if kept, `cargo nextest list` per lane holds the same test names after the group
+prefix and the same count, `gate_rails_are_exactly_the_measured_readers` is green with an unchanged
+`GATE_RAILS`, `rg` finds no `tests/<old-name>.rs` or `--test <old-name>` spelling of a moved driver
+outside git history, and the nine commands are green.
+
+### RF-I00-09 — The machine-wide build/test queue moves into `tools/gate/` (user decision 2026-09-30)
+<!-- RF-STEP {"step": "RF-I00-09", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "inline_shared": true, "after": [], "n_uids": 1} -->
+**Tier:** executor opus/high; audits, settler per §3. **Gate:** full (a `.py` file is `Code` for
+`gate-kind`, so the seven commands, or nine once RF-I00-07 has landed). **After:** none; scheduled
+by hand on one lane, and it may run beside a lane wave (it touches no crate). **Files:**
+`tools/gate/gatelock.py` (new), `tools/gate/README.md` (new, short: what the queue is, the slots,
+the usage line, `GATELOCK_ROOT`, `GATELOCK_OFF`), `TESTING.md` (in-step, R9: one section "The
+machine-wide build/test queue" after §"Which gate to run", pointing at the README), `CLAUDE.md`
+("## Gate": one sentence, on a shared machine every gate command runs through the wrapper),
+`docs/phase-records/retro-fixes.md`.
+**Doc notes (§4):** `TESTING.md` in-step (R9), a notes entry appended for its owner.
+**Decision (user, 2026-09-30):** the coordinator's queue wrapper (`tmp/retro_fix/bin/gatelock.py`,
+its second version: FIFO tickets with an OS byte-lock per waiter so a dead process is purged, a
+Windows job object so a killed wrapper kills its cargo, two build slots and one test slot, a
+`cargo nextest run`/`cargo test` split into `--no-run` under the build slot and the run under the
+test slot, `cargo test --doc` whole under the test slot, `-j 8` per build) has run every lane's
+gate since 2026-09-27 and is part of the ritual, so it is tracked. The rulings:
+1. The script moves verbatim in behaviour: the same slots, poll, split rules, job object, board and
+   log format, exit code; the executor reads the source from the coordination directory
+   (`tmp/retro_fix/bin/gatelock.py` of the main checkout) and changes only what the move needs.
+2. Its default root is no longer a spelled absolute path: it is `<main checkout>/tmp/gatelock/`,
+   found from the script's own location through `git rev-parse --git-common-dir` (a worktree's
+   copy of the script resolves to the main checkout's `.git`, so every worktree queues on the one
+   directory), with tickets under `tickets/`, the board `board.txt` and the log `board.log` inside
+   it; `GATELOCK_ROOT` still overrides. `tmp/` is gitignored already.
+3. Windows only (`msvcrt` byte locks, a `ctypes` job object): on another platform the wrapper says
+   so and runs the command unqueued with a warning, never silently.
+4. The usage line of the ritual becomes `python tools/gate/gatelock.py --label "<who>" -- cargo
+   <args>` (relative to the tree being built). The coordinator re-points its own scripts (the
+   workflow prompts, the gate drivers) at the landing and leaves a shim at the old path that runs
+   the tracked script on the same root, so the two spellings share one queue while old runs finish;
+   the shim is the coordinator's, not this step's.
+**Parts:**
+1. `INFRA|10` - the move with rulings 1-3, the README, the TESTING.md section, the CLAUDE.md
+   sentence, the record. Probe (in `part_1.md`, no commit of it): three wrapped commands started
+   together from the lane (two `cargo clippy -p dss-sparse`, one `cargo nextest run -p dss-sparse`)
+   show on the board two build holders, the third waiting, then the test run's `--no-run` under a
+   build slot and its run under the test slot, and the exit codes pass through (a `cargo nextest run
+   -p dss-sparse -E 'test(=no_such_test)'` returns nextest's non-zero code through the wrapper).
+**Acceptance:** `tools/gate/gatelock.py` differs from the coordination copy only in the root
+resolution, the platform message and the docstring path; the probe of part 1 is in the part file;
+TESTING.md, the README and CLAUDE.md spell the same usage line; the gate is green.
