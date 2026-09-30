@@ -4779,24 +4779,28 @@ plan, `wp_index.json`, GOLDEN_REBASE_PLAN.md) are the coordinator's to re-point.
   recorded with a reason.
 
 ### RF-I00-07 — rustdoc is the intra-doc link checker: `cargo doc` joins the gate (R12 follow-up of RF-D07-01 part 3 (3), user decision 2026-09-30)
-<!-- RF-STEP {"step": "RF-I00-07", "effort": "high", "parts": 3, "gate": "full", "oracle": false, "inline_shared": true, "after": ["RF-D07-01", "RF-I00-06"], "n_uids": 1} -->
-**Tier:** executor opus/high; audits, settler per §3. `high` is §3's comment and citation row: every
-edit is a doc comment, a `Cargo.toml` lint table, one rail test or a gate text, and no engine line
-moves. **Gate:** full. Stage 2 runs the NINE commands this step defines (the `Cargo.toml`, `ci.yml`
-and cfg-gate edits make its diff `Code`), and the settle rounds gate by kind on the new rows
-(`Comments`: the `Docs` row plus commands 2, 3, 6, 7, 8 and 9, `Code`: the nine commands). The
-coordinator's execution script spells every gate inline, so before this step's stage 2 the
-coordinator re-points each of its gate sites to the new rows: stage 2, gate 2, settle, settle 2, the
-clean-audits branch and the wave landing (the full gate and the landing to the nine commands,
-`Comments` to commands 2, 3, 6, 7, 8 and 9, each doc command green only as ruling 5 defines it).
-Every stage report quotes the command list it ran. No `lane_diff`: no compat kernel, lane alias or
-solver moves. **After:** RF-D07-01 (its parts 3-4 are the R18 symbol rail for the documents, and
-this step's TESTING.md gate text lands after their conversions. Its part 3 (3) measured rustdoc,
-recorded the counts and added no command: this step is the R12 follow-up that part names, and
-rulings 1 and 5 supersede its `RUSTDOCFLAGS` form and its `-D rustdoc::private_intra_doc_links`) and
-RF-I00-06 (it re-words harness doc comments this step would otherwise touch twice). Scheduled by
-hand like every infra step: one lane, nothing else in flight until it lands. RF-I00-09 edits the
-same CLAUDE.md "## Gate" and TESTING.md gate sections, so it does not run while this step does.
+<!-- RF-STEP {"step": "RF-I00-07", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": false, "inline_shared": true, "after": ["RF-D07-01", "RF-I00-06"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. `xhigh` is §3's test/code row: the rail of
+ruling 1 is new test code (hand parsers of the root table and the member manifests, a `lex_rust`
+attribute scan, a red fixture case per check) beside the doc-comment fixes of the Files, and no
+engine line moves. **Gate:** full. Stage 2 runs the NINE commands this step defines (the
+`Cargo.toml`, `ci.yml` and cfg-gate edits make its diff `Code`), and the settle rounds gate by kind
+on the new rows (`Comments`: the `Docs` row plus commands 2, 3, 6, 7, 8 and 9, `Code`: the nine
+commands). The coordinator's execution script spells every gate inline, so before this step's
+stage 2 the coordinator re-points each of its gate sites to the new rows: stage 2, gate 2, settle,
+settle 2, the clean-audits branch and the wave landing (the full gate and the landing to the nine
+commands, `Comments` to commands 2, 3, 6, 7, 8 and 9, each doc command green only as ruling 5
+defines it). Every stage report quotes the command list it ran. At 57b52520 the Files hold one path
+under a compat or solver directory, a doc line of `crates/dss-core/src/solution/solution/ncim.rs`,
+and no compat kernel, lane alias or solver line moves: the gate row decides, and in the `Code` row a
+path rule that fires on that file runs `lane_diff`. **After:** RF-D07-01 (its parts 3-4 are the R18
+symbol rail for the documents, and this step's TESTING.md gate text lands after their conversions.
+Its part 3 (3) measured rustdoc, recorded the counts and added no command: this step is the R12
+follow-up that part names, and rulings 1 and 5 supersede its `RUSTDOCFLAGS` form and its
+`-D rustdoc::private_intra_doc_links`) and RF-I00-06 (it re-words harness doc comments this step
+would otherwise touch twice). Scheduled by hand like every infra step: one lane, nothing else in
+flight until it lands. RF-I00-09 edits the same CLAUDE.md "## Gate" and TESTING.md gate sections, so
+it does not run while this step does.
 **Files:** `Cargo.toml` (a `[workspace.lints.rustdoc]` table), the `Cargo.toml` of every workspace
 member (`crates/dss-cli`, `crates/dss-core`, `crates/dss-epri`, `crates/dss-metis`,
 `crates/dss-parser`, `crates/dss-sparse`, `crates/dss-test-harness`, `crates/dss-usermodel`,
@@ -4811,8 +4815,10 @@ command block and "Those seven commands", and one sentence of the "Cite code by 
 that is the command block and its paragraph in §"The mandatory gate", the `Comments` row and the
 five hits of `rg -n -i 'seven(-command)? (commands|gate)' TESTING.md` at 57b52520 (§"Which gate to
 run" three, §"Procedures" two), plus the R10 `<!-- line-citations: N -->` marker when the new text
-adds a symbol citation), `README.md` and `SPLITTING_RULES.md` (their gate command blocks only, as in
-RF-I00-01), `.github/workflows/ci.yml` (two steps after the doctests, and its "seven commands"
+adds a symbol citation), `README.md` (its gate command block, as in RF-I00-01), `SPLITTING_RULES.md`
+(its gate command block, as in RF-I00-01, and the sentence under it that counts the commands, "All
+three green, including the live-oracle `corpus_live` gate", which then counts nine and names
+`corpus_gate`), `.github/workflows/ci.yml` (two steps after the doctests, and its "seven commands"
 comment), `RETRO_FIXES_PLAN.md` (§2.2: the table and the paragraph "The full gate is the seven
 commands ...", and one sentence of R18), `docs/phase-records/retro-fixes.md`.
 **Doc notes (§4):** `TESTING.md` is edited in-step (R9: the gate definition moves with the tool), and
@@ -4844,8 +4850,8 @@ names, 31 `tests::` paths, 17 `super::`, 5 `crate::`, 2 `Self::` and 39 other pa
    1.96 and 1.97. A lint a later toolchain adds at warn joins the table in the step that meets it.
    `rustdoc::all` is not used, because it would raise the allow-by-default lints too. The table is
    `[workspace.lints.rustdoc]` in the root `Cargo.toml`, inherited by every member through
-   `[lints] workspace = true`, and the gate commands carry no `RUSTDOCFLAGS`. The table does not
-   protect itself (probed on a scratch workspace, 2026-10-01): `RUSTDOCFLAGS` and a
+   `[lints] workspace = true`, and the gate commands carry no rustdoc flags (ruling 5). The table
+   does not protect itself (probed on a scratch workspace, 2026-10-01): `RUSTDOCFLAGS` and a
    `build.rustdocflags` override it (`-A` silences a denied lint, `--cap-lints=warn` caps them all),
    and an attribute in code naming a rustdoc lint (`warn`, `allow` or `expect`, alone or in a list),
    a misspelled table key (an E0602 warning, the lint stays at warn) and a member without the
@@ -4858,8 +4864,8 @@ names, 31 `tests::` paths, 17 `super::`, 5 `crate::`, 2 `Self::` and 39 other pa
    every member's manifest holds `[lints]` with `workspace = true`, that no `.rs` of the tree holds an
    attribute naming a `rustdoc::` lint (`#[…]`, `#![…]`, a `cfg_attr` included, read on the code
    `lex_rust` leaves, so a string or a comment never counts), that no `.cargo/config*` sets
-   `rustdocflags`, and that `ci.yml` runs both doc commands and sets no `RUSTDOCFLAGS`. Each check
-   has a red case on a fixture string.
+   `rustdocflags`, and that `ci.yml` runs both doc commands and sets no variable whose name ends in
+   `RUSTDOCFLAGS`. Each check has a red case on a fixture string.
 1a. A module whose `mod` declaration carries a `///` doc while its file carries `//!` docs has all of
    its documentation resolved in the parent module: rustdoc takes the scope of a module's docs from
    its first doc attribute, and such a warning prints no `-->` location (probed on a scratch
@@ -4892,23 +4898,32 @@ names, 31 `tests::` paths, 17 `super::`, 5 `crate::`, 2 `Self::` and 39 other pa
    item or dropped, and the case is listed in the part file.
 5. The gate commands 8 and 9 are `cargo doc --workspace --no-deps --document-private-items` and the
    same with `--features dss-core/oracle-parity` (the compat modules are cfg'd per lane and carry
-   their own docs). They run with `RUSTDOCFLAGS` unset, and a green run exits 0 and prints no
-   `warning:` line: the six denied lints fail the command by themselves, and a `warning:` line means
-   a level was lowered or a lint the table does not name fired. The table also reaches commands 6
-   and 7: cargo hands its flags to `rustdoc --test`, which checks code-block attributes, so a
-   misspelled fence attribute (`should-panic`) fails the doctests too. The other five lints are
+   their own docs). They, and every scoped `cargo doc` of the parts, run with `RUSTDOCFLAGS`,
+   `CARGO_ENCODED_RUSTDOCFLAGS`, `CARGO_BUILD_RUSTDOCFLAGS` and every
+   `CARGO_TARGET_<TRIPLE>_RUSTDOCFLAGS` unset, and with no cargo config layer that sets
+   `build.rustdocflags` or `target.<triple>.rustdocflags` (the tree's `.cargo/config*`, which the
+   rail checks, a parent directory's, which for a lane worktree is the main checkout's,
+   `$CARGO_HOME/config.toml` and a `--config`): cargo appends each of them after the table's flags,
+   and an `-A` there leaves `cargo doc` at exit 0 with no `warning:` line on a broken link (probed on
+   a scratch workspace, 2026-10-01). A green run exits 0 and prints no `warning:` line: the six
+   denied lints fail the command by themselves, and a `warning:` line means a level was lowered or a
+   lint the table does not name fired. The table also reaches commands 6 and 7: cargo hands its
+   flags to `rustdoc --test`, which checks code-block attributes, so a misspelled fence attribute
+   (`should-panic`) fails the doctests too. The other five lints are
    checked by commands 8 and 9 only. §2.2's `Comments` row gains commands 8 and 9 (a doc comment
    edit is exactly what breaks a link). The `Docs` row does not:
    `crates/dss-core/tests/oracle_parity_cfg_gate.rs::no_md_file_is_compiled_outside_test_code` keeps
    every `.md` out of compiled non-test code, a `#[doc = include_str!]` included, and rustdoc reads
    no test code, so a `.md` edit cannot change rustdoc's input. The `Code` row reads "the full nine
-   commands". In the workflow the two commands take a build slot of the queue. The committed gate
-   texts name no queue: RF-I00-09 owns that sentence.
+   commands". In the workflow the two commands take a build slot of the queue. This step adds no
+   queue sentence to the committed gate texts (RF-I00-09 owns it). If RF-I00-09 has landed first,
+   part 3 keeps its CLAUDE.md sentence and its TESTING.md section word for word.
 **Parts:**
 1. `INFRA|9` - the lint table, the member inheritance, the rail of ruling 1 (its "`ci.yml` runs both
    doc commands" check lands with part 3's `ci.yml` edit), and the dss-core and dss-epri warnings
-   (the other members print none once private links are allowed, and the harness is part 2's): `cargo doc` per crate is the census, and `part_1.md` lists every warning at the
-   base with its ruling (1a-4) and the fix. Scoped check per crate: `cargo doc -p <crate> --no-deps
+   (the other members print none once private links are allowed, and the harness is part 2's):
+   `cargo doc` per crate is the census, and `part_1.md` lists every warning at the base with its
+   ruling (1a-4) and the fix. Scoped check per crate: `cargo doc -p <crate> --no-deps
    --document-private-items` exits 0 with no `warning:` line, without a feature and also with the
    crate's lane feature where it has one (`--features dss-core/oracle-parity` for dss-core and
    dss-cli, `--features dss-sparse/oracle-parity` and `--features dss-parser/oracle-parity` for those
@@ -4926,31 +4941,35 @@ names, 31 `tests::` paths, 17 `super::`, 5 `crate::`, 2 `Self::` and 39 other pa
 3. `INFRA|9` - the gate texts: `CLAUDE.md` ("## Gate", and the "Cite code by name" sentence: a test
    function or a `#[cfg(test)]` item is no link target and is cited as a code span with the same
    words, and commands 8 and 9 read the documented targets only), `TESTING.md` (R9: the texts of
-   Files, with the ruling-5 sentences on `RUSTDOCFLAGS`, the `warning:` line and commands 6-7, the
+   Files, with the ruling-5 sentences on the flag sources, the `warning:` line and commands 6-7, the
    pinned-runner line that `the_nextest_profile_never_retries_and_serializes_nothing` reads kept, the
    R10 marker updated in the same commit when it moves), the `README.md` and `SPLITTING_RULES.md`
-   blocks, `ci.yml` with the rail's check that it runs both doc commands,
-   `RETRO_FIXES_PLAN.md` §2.2 and the same sentence in R18, the record. One `cargo doc -v` per lane
-   shows the six `--deny=rustdoc::` flags and `--allow=rustdoc::private_intra_doc_links` on every
-   rustdoc invocation (quoted in `part_3.md`). The two commands' wall times per lane, measured in
-   gate order after commands 1-7 in the lane worktree (the queue log's `held=` seconds) and once on a
-   fresh target, go into `part_3.md` (the coordinator sets the workflow's gate prompt from them).
+   blocks with the `SPLITTING_RULES.md` count sentence of Files, `ci.yml` with the rail's check that
+   it runs both doc commands, `RETRO_FIXES_PLAN.md` §2.2 and the same sentence in R18, the record.
+   One `cargo doc -v` per lane, run like commands 8 and 9, shows every rustdoc invocation carrying
+   the six `--deny=rustdoc::` flags, the one `--allow=rustdoc::private_intra_doc_links` and no other
+   lint-level flag (`-A`, `-W`, `-D`, `-F`, their long forms, `--force-warn` or `--cap-lints`),
+   quoted in `part_3.md`. The two commands' wall times per lane, measured in gate order after
+   commands 1-7 in the lane worktree (the queue log's `held=` seconds) and once on a fresh target, go
+   into `part_3.md` (the coordinator sets the workflow's gate prompt from them).
 **Findings**
 - `INFRA|9` (major) - R18 makes the intra-doc link the checked form of a doc-comment citation, but
   no gate command runs rustdoc: a broken link never reds, and the tree carries 500 rustdoc warnings
   (05e2539e and 57b52520), 198 of them unresolved links.
 **Acceptance:**
-- Commands 8 and 9 exit 0 and print no `warning:` line in both lanes, run with `RUSTDOCFLAGS` unset,
-  and the negative probe of part 2 is red.
+- Commands 8 and 9, run with none of ruling 5's flag sources set, exit 0 and print no `warning:` line
+  in both lanes, and the negative probe of part 2 is red.
 - The rail of ruling 1 is green in both lanes, each of its checks with a red case. Every member
   manifest (nine of the nine `cargo metadata --no-deps` members) holds `[lints]` with
   `workspace = true`, `rg -n -i 'rustdocflags' .cargo Cargo.toml` finds nothing, and `part_3.md`
-  quotes the `cargo doc -v` flags of both lanes.
+  quotes the `cargo doc -v` rustdoc lines of both lanes, each with the table's seven lint flags and
+  no other lint-level flag.
 - CLAUDE.md, TESTING.md, README.md, SPLITTING_RULES.md, ci.yml and §2.2 list the same nine commands:
   each spells both `cargo doc --workspace --no-deps --document-private-items` lines, and
-  `rg -n -i 'seven(-command)? (commands|gate)' CLAUDE.md TESTING.md README.md SPLITTING_RULES.md
-  .github/workflows/ci.yml` finds nothing. CLAUDE.md's "Cite code by name" bullet and R18 carry the
-  test-target sentence, and the STATUS.md notes entry is left.
+  `rg -n -i '(seven|three)(-command)? (commands|gate|green)' CLAUDE.md TESTING.md README.md
+  SPLITTING_RULES.md .github/workflows/ci.yml` finds nothing (at 57b52520 its eight hits are the
+  texts of Files). CLAUDE.md's "Cite code by name" bullet and R18 carry the test-target sentence,
+  and the STATUS.md notes entry is left.
 - Every `.rs` edit other than the rail is a doc-comment edit: the per-file lines of `cargo run -p
   gate-kind -- --base <step base>` print a `Comments` kind for each `.rs` except the cfg gate (the
   rail, `Code`) and a file whose doc line sits inside a `macro_rules!` body or a macro invocation,
