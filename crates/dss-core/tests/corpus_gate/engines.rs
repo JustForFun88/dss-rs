@@ -428,6 +428,27 @@ pub(crate) fn oracle_server_path() -> PathBuf {
     server
 }
 
+/// A process exit code as the one-shot's "no JSON response" panic prints it:
+/// decimal, plus hex and a name when it is a Windows NTSTATUS (the high bit set),
+/// e.g. `-1073741819` is `0xc0000005 (access violation)`.
+fn describe_exit_code(code: i32) -> String {
+    let status = code as u32;
+    if status & 0x8000_0000 == 0 {
+        return format!("exit code {code}");
+    }
+    let name = match status {
+        0xC000_0005 => " (access violation)",
+        0xC000_001D => " (illegal instruction)",
+        0xC000_0094 => " (integer divide by zero)",
+        0xC000_00FD => " (stack overflow)",
+        0xC000_0374 => " (heap corruption)",
+        0xC000_0409 => " (fail-fast: stack buffer overrun or abort)",
+        0xE046_5043 => " (unhandled Free Pascal exception)",
+        _ => "",
+    };
+    format!("exit code {code} = {status:#010x}{name}")
+}
+
 // ---------------------------------------------------------------------------
 // One-shot oracle (fresh process per request).
 // ---------------------------------------------------------------------------
@@ -470,7 +491,10 @@ impl Oracle {
 
     /// One-shot request/response with a wall-clock timeout. stdout/stderr are
     /// drained on threads to avoid pipe deadlock; the first stdout line that
-    /// parses as a `Resp` is the answer.
+    /// parses as a `Resp` is the answer. A process that exits on its own without
+    /// one panics with its exit status ([`describe_exit_code`]) and its whole
+    /// stderr, where the server's `faulthandler` dump names the Python frame of a
+    /// native fault. A process killed at the deadline is an `oracle timeout`.
     pub(crate) fn call(&self, req: &Value) -> Resp {
         let timeout = oracle_timeout();
         let mut child = Command::new(&self.python)
@@ -501,14 +525,14 @@ impl Oracle {
             s
         });
         let deadline = Instant::now() + timeout;
-        let timed_out = loop {
+        let exited = loop {
             match child.try_wait() {
-                Ok(Some(_)) => break false,
+                Ok(Some(status)) => break Some(status),
                 Ok(None) => {
                     if Instant::now() >= deadline {
                         let _ = child.kill();
                         let _ = child.wait();
-                        break true;
+                        break None;
                     }
                     std::thread::sleep(Duration::from_millis(50));
                 }
@@ -517,13 +541,13 @@ impl Oracle {
         };
         let stdout = h_out.join().unwrap_or_default();
         let stderr = h_err.join().unwrap_or_default();
-        if timed_out {
+        let Some(status) = exited else {
             return Resp {
                 ok: false,
                 error: Some(format!("oracle timeout after {}s", timeout.as_secs())),
                 result: None,
             };
-        }
+        };
         for l in stdout.lines() {
             let t = l.trim();
             if t.is_empty() {
@@ -533,8 +557,12 @@ impl Oracle {
                 return r;
             }
         }
+        let exit = status
+            .code()
+            .map_or_else(|| status.to_string(), describe_exit_code);
         panic!(
-            "oracle produced no JSON response\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
+            "oracle produced no JSON response (the process exited on its own, {exit})\n\
+             --- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
         );
     }
 
@@ -544,10 +572,22 @@ impl Oracle {
 
     /// Ping and assert the pinned-engine identity (no `oddie`/`capi015` marker —
     /// the retired EPRI/target-rev engines must never re-bind the default pinned
-    /// 0.14.5 oracle). Returns the server-reported engine version.
+    /// 0.14.5 oracle) and that the server runs with `faulthandler` enabled, which
+    /// [`Oracle::call`]'s no-JSON panic relies on. Returns the server-reported
+    /// engine version.
     pub(crate) fn ping_engine(&self) -> String {
         let r = self.call(&json!({"cmd": "ping"}));
         assert!(r.ok, "oracle ping failed: {:?}", r.error);
+        assert_eq!(
+            r.result
+                .as_ref()
+                .and_then(|v| v.get("faulthandler"))
+                .and_then(Value::as_bool),
+            Some(true),
+            "the oracle server must enable faulthandler before it serves a request: \
+             {:?}",
+            r.result
+        );
         let oracle = r
             .result
             .as_ref()
@@ -1782,5 +1822,74 @@ mod transport_cwd_tests {
                 && msg.contains("lies inside the vendored corpus"),
             "{msg}"
         );
+    }
+}
+
+/// RF-I00-02: a one-shot oracle that dies before it replies names its exit
+/// status and hands over its whole stderr.
+#[cfg(test)]
+mod one_shot_exit_tests {
+    use super::*;
+
+    #[test]
+    fn an_ntstatus_exit_code_is_printed_in_hex_with_its_name() {
+        assert_eq!(describe_exit_code(3), "exit code 3");
+        assert_eq!(
+            describe_exit_code(-1_073_741_819),
+            "exit code -1073741819 = 0xc0000005 (access violation)"
+        );
+        assert_eq!(
+            describe_exit_code(-1_073_740_791),
+            "exit code -1073740791 = 0xc0000409 (fail-fast: stack buffer overrun or abort)"
+        );
+        assert_eq!(
+            describe_exit_code(-1_073_741_515),
+            "exit code -1073741515 = 0xc0000135"
+        );
+    }
+
+    /// A stand-in server that enables `faulthandler` as `oracle_server.py`
+    /// does, reads its request and dies of an access violation: the panic's
+    /// first line names the status, and the stderr it carries holds the
+    /// server's own line and the dump with the faulting frame.
+    #[cfg(windows)]
+    #[test]
+    fn a_one_shot_that_dies_natively_panics_with_its_status_and_stderr() {
+        let dir = gate_scratch_root().join("one_shot_exit");
+        std::fs::create_dir_all(&dir).expect("create the stand-in's directory");
+        let server = dir.join(format!("dies_{}.py", std::process::id()));
+        std::fs::write(
+            &server,
+            "import faulthandler, sys\n\
+             faulthandler.enable(file=sys.stderr, all_threads=True)\n\
+             print('stand-in ready', file=sys.stderr, flush=True)\n\
+             sys.stdin.readline()\n\
+             faulthandler._read_null()\n",
+        )
+        .expect("write the stand-in server");
+        let oracle = Oracle {
+            python: std::env::var("DSS_ORACLE_PYTHON").unwrap_or_else(|_| "python".to_string()),
+            server: server.clone(),
+            envs: Vec::new(),
+        };
+        let died = std::panic::catch_unwind(|| oracle.call(&json!({"cmd": "ping"})));
+        let removed = std::fs::remove_file(&server);
+        let msg = crate::runner::panic_msg(died.expect_err("a dead one-shot must panic"));
+        assert_eq!(
+            msg.lines().next(),
+            Some(
+                "oracle produced no JSON response (the process exited on its own, \
+                 exit code -1073741819 = 0xc0000005 (access violation))"
+            ),
+            "{msg}"
+        );
+        for needle in [
+            "stand-in ready",
+            "Windows fatal exception: access violation",
+            "line 5 in <module>",
+        ] {
+            assert!(msg.contains(needle), "missing {needle:?} in:\n{msg}");
+        }
+        removed.expect("remove the stand-in server");
     }
 }
