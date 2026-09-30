@@ -11,21 +11,21 @@
 //! stays 1, and the solution with the control present is byte-identical to the
 //! solution without it. See `elements::control::espvl_control` for the full note.
 //!
-//! **Split of duties with the corpus deck** (GOLDEN_REBASE G1.2, 2026-08-29;
-//! there IS one now — `tests/corpus/controls/espvlcontrol/espvlcontrol.dss`,
-//! live-gated on `capi_v0145`). The deck owns the class's *observable* surface:
-//! the full 14-property table of six controls, the `''` rendering of an unset
-//! `Type`, and `scan.LocalControlWeights` `''` → `'[ 1 1 1 1 1]'` — the ONE
-//! Sample-derived observable, produced by `MakeLocalControlList`'s type-blind
-//! sweep of every *enabled* control — plus the no-op contract (generator bases
-//! held, event log and control queue empty). Everything else `Sample` computes is
-//! measurably invisible there: a 12-step oracle mutation run that disables the
-//! redispatch (`kWBand=1e9`) moves nothing but the mutated cells among 405
-//! compared cells per step. So `PDiff`/`HalfkWBand`, the weights, `TotalWeight`,
-//! the `Max(1.0, …)` floor, the named-list branch and the control-iteration count
-//! are pinned **here** and in `elements::control::espvl_control::tests` — this
-//! module is their only regression net, and must not be thinned on the grounds
-//! that a corpus deck now exists.
+//! **Split of duties with the corpus deck**
+//! (`tests/corpus/controls/espvlcontrol/espvlcontrol.dss`, live-gated on
+//! `capi_v0145`). The deck owns the class's *observable* surface: the full
+//! 14-property table of six controls, the `''` rendering of an unset `Type`, and
+//! `scan.LocalControlWeights` `''` → `'[ 1 1 1 1 1]'` — the ONE Sample-derived
+//! observable, produced by `MakeLocalControlList`'s type-blind sweep of every
+//! *enabled* control — plus the no-op contract (generator bases held, event log
+//! and control queue empty). Its System Controllers monitor a branch held inside
+//! the band, so the redispatch never fires there: on the pinned oracle the
+//! redispatch's type-confused `kWBase` store corrupts the process. So
+//! `PDiff`/`HalfkWBand`, the weights, `TotalWeight`, the `Max(1.0, …)` floor, the
+//! named-list branch and the control-iteration count are pinned **here** and in
+//! `elements::control::espvl_control::tests` — this module is their only
+//! regression net, and must not be thinned on the grounds that a corpus deck
+//! exists.
 //!
 //! These decks are transcribed oracle gates: the same circuit run on the Rust
 //! engine, pinned against values captured from dss-python 0.15.7 (the generator
@@ -228,4 +228,113 @@ fn system_controller_resolves_named_subordinate() {
     let (p, q) = line_l1_power(&mut dss);
     assert!(rel(p, 3020.20512213) < 1e-6, "line.l1 P = {p}");
     assert!(rel(q, 1161.27356749) < 1e-6, "line.l1 Q = {q}");
+}
+
+/// The feeder of [`feeder`] with a System Controller `sys` that redispatches the
+/// named fleet `[loc1, loc2]` with weights `[3, 1]` while monitoring `monitored`.
+/// `line.l2` is a short branch to a constant-power 8000 kW load, the corpus
+/// deck's shape for keeping `PDiff` inside the band.
+fn redispatch_feeder(load_kw: f64, monitored: &str) -> Dss {
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("New circuit.espvl basekv=12.47 bus1=src phases=3");
+    dss.command("New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6");
+    if monitored.eq_ignore_ascii_case("line.l2") {
+        dss.command("New line.l2 bus1=src bus2=b2 length=0.001 r1=0.3 x1=0.6");
+        dss.command("New load.ld2 bus1=b2 phases=3 kv=12.47 kw=8000 pf=1 model=1 vminpu=0.5");
+    }
+    dss.command(&format!(
+        "New load.ld1 bus1=b1 phases=3 kv=12.47 kw={load_kw} pf=0.95"
+    ));
+    dss.command("New generator.g1 bus1=b1 phases=3 kv=12.47 kw=600 pf=1 model=1");
+    dss.command("New generator.g2 bus1=b1 phases=3 kv=12.47 kw=400 pf=0.9 model=1");
+    dss.command("New espvlcontrol.loc1 element=line.l1 terminal=1 type=LocalController");
+    dss.command("New espvlcontrol.loc2 element=line.l1 terminal=1 type=LocalController");
+    dss.command(&format!(
+        "New espvlcontrol.sys element={monitored} terminal=1 type=SystemController \
+         LocalControlList=[loc1, loc2] LocalControlWeights=[3, 1]"
+    ));
+    dss.command("Set voltagebases=[12.47]");
+    dss.command("CalcVoltageBases");
+    dss.command("Solve mode=snap");
+    assert!(dss.errors().is_empty(), "solve: {:?}", dss.errors());
+    dss
+}
+
+/// The phantom kW bases of `sys`, `loc1` and `loc2`.
+fn phantoms(dss: &Dss) -> [f64; 3] {
+    let arena = &dss.classes[dss.class_by_name["espvlcontrol"]].arena;
+    let all = arena
+        .all::<crate::elements::control::EspvlControl>()
+        .expect("ESPVLControl arena");
+    ["sys", "loc1", "loc2"].map(|name| {
+        all.iter()
+            .find(|e| e.ccd.cd.obj.name().eq_ignore_ascii_case(name))
+            .expect(name)
+            .phantom_kw_base()
+    })
+}
+
+/// The engine's redispatch path end to end: the monitored terminal power of the
+/// solved line, the named-list resolution and the write-back of each entry's
+/// phantom kW base. No oracle reads this store (upstream it is the type-confused
+/// `Gen.kWBase` write), so the expected values are the weighted shares of
+/// `PDiff = P - 8000 kW` with `P` the line power the neighbouring tests pin
+/// against dss-python 0.15.7.
+#[test]
+fn system_controller_redispatch_writes_the_weighted_deficit() {
+    // Load 12000 kW: P = 11283.08121909 kW, PDiff = +3283.08121909 kW, so loc1
+    // takes 3/4 (2462.3109143175) and loc2 1/4 (820.7703047725); `sys` is not in
+    // its own list and keeps 0.
+    let mut dss = redispatch_feeder(12000.0, "line.l1");
+    let (p, _) = line_l1_power(&mut dss);
+    assert!(rel(p, 11283.08121909) < 1e-6, "line.l1 P = {p}");
+    let p_diff = p - 8000.0;
+    let [sys, loc1, loc2] = phantoms(&dss);
+    assert_eq!(sys, 0.0, "sys is not in its own list");
+    assert!(rel(loc1, 2462.3109143175) < 1e-6, "loc1 = {loc1}");
+    assert!(rel(loc2, 820.7703047725) < 1e-6, "loc2 = {loc2}");
+    assert!(
+        rel(loc1, 0.75 * p_diff) < 1e-12,
+        "loc1 = {loc1}, PDiff = {p_diff}"
+    );
+    assert!(
+        rel(loc2, 0.25 * p_diff) < 1e-12,
+        "loc2 = {loc2}, PDiff = {p_diff}"
+    );
+    assert_gens_unchanged(&dss, "SysCtrl redispatch");
+    assert_eq!(control_iterations(&dss), 1);
+
+    // A second solve reads each base back and adds the same share again.
+    dss.command("Solve mode=snap");
+    let [_, loc1_2, loc2_2] = phantoms(&dss);
+    assert!(
+        rel(loc1_2, 2.0 * loc1) < 1e-12,
+        "loc1 after 2 solves = {loc1_2}"
+    );
+    assert!(
+        rel(loc2_2, 2.0 * loc2) < 1e-12,
+        "loc2 after 2 solves = {loc2_2}"
+    );
+
+    // Load 4000 kW: PDiff = 3020.20512213 - 8000 kW < 0, both shares are
+    // negative and the `Max(1.0, ..)` floor holds both entries at 1 kW.
+    let dss = redispatch_feeder(4000.0, "line.l1");
+    assert_eq!(phantoms(&dss), [0.0, 1.0, 1.0]);
+}
+
+/// The corpus deck's shape: `sys` monitors a branch to a constant 8000 kW load,
+/// `|PDiff|` stays below `HalfkWBand` (50 kW) and no entry is written.
+#[test]
+fn system_controller_inside_the_band_writes_nothing() {
+    let mut dss = redispatch_feeder(12000.0, "line.l2");
+    let snaps = dss.snapshot_elements();
+    let l2 = snaps
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case("Line.l2"))
+        .expect("Line.l2 snapshot");
+    let p: f64 = l2.powers[0..3].iter().map(|s| s.re).sum();
+    assert!((p - 8000.0).abs() < 1.0, "line.l2 P = {p}");
+    assert_eq!(phantoms(&dss), [0.0, 0.0, 0.0]);
+    assert_eq!(control_iterations(&dss), 1);
 }
