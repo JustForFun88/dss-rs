@@ -37,6 +37,9 @@ DI decks) is recomputed by each of the six tests that read it, measured at
 Windows MSVC builds link with `rust-lld` (`.cargo/config.toml`), which every rustup
 toolchain ships: on this workspace the incremental test build links ~30% faster than
 with `link.exe` (measured 2026-09-27, both lanes green on its binaries).
+Test binaries carry line-table debug info only (`[profile.dev] debug = "line-tables-only"`
+in `Cargo.toml`): backtraces keep file:line, and the PDBs shrink from ~29 GB per target dir.
+Build with `CARGO_PROFILE_DEV_DEBUG=2` for a debugger session.
 
 Since DE_PASCALIZE **Stage F** the engine ships in two builds, so the gate runs
 in **two lanes** — see [The two lanes](#the-two-lanes-stage-f) below for what
