@@ -3965,7 +3965,7 @@ from `TExecutive.Create`, `Executive/Executive.pas:124`) and writes it back at
 process exit (`:1013`-`:1022`, from `Executive.pas:141`) — both legs measured, the
 write included, which the leaked-DLL exit path does **not** skip. Before the bridge
 fix a worker that had run the corpus's single 50 Hz deck
-(`…/IEEETestCases/LVTestCase/Master.dss:3`) therefore left `50` in the key and every
+(`…/IEEETestCases/LVTestCase/Master.dss`) therefore left `50` in the key and every
 worker starting next solved its case at 50 Hz; that, and not the scheduler, is what
 the "21 red, all `R4133`" parity run of 2026-09-04 was — injecting 50 Hz into the
 oracle reproduces its `expected` numbers bit-for-bit (`modes:newton/newton.dss` node 0
