@@ -1020,8 +1020,8 @@ fn the_supplement_carries_only_pairs_no_frozen_row_can() {
         );
     }
 
-    // Its machine-readable form: one `# BIN <pair> <bin>` line per pair the
-    // README does not bin, each naming a pair with data rows in the file.
+    // Its machine-readable form: one `# BIN <pair> <bin>` line per pair no
+    // README WP-RP1 record bins, each naming a pair with data rows in the file.
     let declared: Vec<(String, u8)> = text
         .lines()
         .filter_map(|l| l.trim_end_matches('\r').strip_prefix("# BIN "))
