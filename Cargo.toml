@@ -52,6 +52,14 @@ wasmi = { version = "=1.0.9", default-features = false, features = ["simd"] }
 # --release build), and `overflow-checks`/`debug-assertions` keep their dev
 # defaults — this is exactly why the per-package dev override is used instead
 # of running the gate under `--release` (which would set overflow-checks=false).
+# Debug info: line tables only. Panic backtraces and test failures keep their
+# file:line, only the variable/type records a debugger steps through are left
+# out. The full-debug test PDBs weigh tens of GB per target dir (eight target
+# dirs on one disk) and every incremental link rewrites them. For an interactive
+# debugging session build once with CARGO_PROFILE_DEV_DEBUG=2.
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.dev.package."*"] # dependencies only; workspace members listed below
 opt-level = 3
 
