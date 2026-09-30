@@ -490,11 +490,13 @@ impl Oracle {
     }
 
     /// One-shot request/response with a wall-clock timeout. stdout/stderr are
-    /// drained on threads to avoid pipe deadlock; the first stdout line that
-    /// parses as a `Resp` is the answer. A process that exits on its own without
-    /// one panics with its exit status ([`describe_exit_code`]) and its whole
-    /// stderr, where the server's `faulthandler` dump names the Python frame of a
-    /// native fault. A process killed at the deadline is an `oracle timeout`.
+    /// drained on threads to avoid pipe deadlock and decoded lossily, so a byte
+    /// that is not UTF-8 costs one character, not the stream. The first stdout
+    /// line that parses as a `Resp` is the answer. A process that exits on its
+    /// own without one panics with its exit status ([`describe_exit_code`]) and
+    /// its whole stderr, where the server's `faulthandler` dump names the Python
+    /// frame of a native fault. A process killed at the deadline is an
+    /// `oracle timeout`.
     pub(crate) fn call(&self, req: &Value) -> Resp {
         let timeout = oracle_timeout();
         let mut child = Command::new(&self.python)
@@ -515,14 +517,14 @@ impl Oracle {
         let mut so = child.stdout.take().expect("oracle stdout");
         let mut se = child.stderr.take().expect("oracle stderr");
         let h_out = std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = so.read_to_string(&mut s);
-            s
+            let mut b = Vec::new();
+            let _ = so.read_to_end(&mut b);
+            String::from_utf8_lossy(&b).into_owned()
         });
         let h_err = std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = se.read_to_string(&mut s);
-            s
+            let mut b = Vec::new();
+            let _ = se.read_to_end(&mut b);
+            String::from_utf8_lossy(&b).into_owned()
         });
         let deadline = Instant::now() + timeout;
         let exited = loop {
@@ -1831,27 +1833,35 @@ mod transport_cwd_tests {
 mod one_shot_exit_tests {
     use super::*;
 
+    /// Every named status, the unnamed NTSTATUS form and the plain form.
     #[test]
     fn an_ntstatus_exit_code_is_printed_in_hex_with_its_name() {
         assert_eq!(describe_exit_code(3), "exit code 3");
-        assert_eq!(
-            describe_exit_code(-1_073_741_819),
-            "exit code -1073741819 = 0xc0000005 (access violation)"
-        );
-        assert_eq!(
-            describe_exit_code(-1_073_740_791),
-            "exit code -1073740791 = 0xc0000409 (fail-fast: stack buffer overrun or abort)"
-        );
-        assert_eq!(
-            describe_exit_code(-1_073_741_515),
-            "exit code -1073741515 = 0xc0000135"
-        );
+        for (code, hex_and_name) in [
+            (-1_073_741_819, "0xc0000005 (access violation)"),
+            (-1_073_741_795, "0xc000001d (illegal instruction)"),
+            (-1_073_741_676, "0xc0000094 (integer divide by zero)"),
+            (-1_073_741_571, "0xc00000fd (stack overflow)"),
+            (-1_073_740_940, "0xc0000374 (heap corruption)"),
+            (
+                -1_073_740_791,
+                "0xc0000409 (fail-fast: stack buffer overrun or abort)",
+            ),
+            (-532_262_845, "0xe0465043 (unhandled Free Pascal exception)"),
+            (-1_073_741_515, "0xc0000135"),
+        ] {
+            assert_eq!(
+                describe_exit_code(code),
+                format!("exit code {code} = {hex_and_name}")
+            );
+        }
     }
 
     /// A stand-in server that enables `faulthandler` as `oracle_server.py`
-    /// does, reads its request and dies of an access violation: the panic's
-    /// first line names the status, and the stderr it carries holds the
-    /// server's own line and the dump with the faulting frame.
+    /// does, writes a line ending in a byte that is not UTF-8 to each pipe,
+    /// reads its request and dies of an access violation: the panic's first
+    /// line names the status, the stdout it carries keeps its line, and the
+    /// stderr keeps the server's own line and the dump with the faulting frame.
     #[cfg(windows)]
     #[test]
     fn a_one_shot_that_dies_natively_panics_with_its_status_and_stderr() {
@@ -1862,7 +1872,8 @@ mod one_shot_exit_tests {
             &server,
             "import faulthandler, sys\n\
              faulthandler.enable(file=sys.stderr, all_threads=True)\n\
-             print('stand-in ready', file=sys.stderr, flush=True)\n\
+             sys.stdout.buffer.write(b'stand-in stdout \\xff\\n'); sys.stdout.buffer.flush()\n\
+             sys.stderr.buffer.write(b'stand-in ready \\xff\\n'); sys.stderr.buffer.flush()\n\
              sys.stdin.readline()\n\
              faulthandler._read_null()\n",
         )
@@ -1883,12 +1894,19 @@ mod one_shot_exit_tests {
             ),
             "{msg}"
         );
+        let (stdout, stderr) = msg
+            .split_once("--- stderr ---")
+            .unwrap_or_else(|| panic!("no stderr section in:\n{msg}"));
+        assert!(
+            stdout.contains("stand-in stdout \u{FFFD}"),
+            "the stdout section lost its line:\n{msg}"
+        );
         for needle in [
-            "stand-in ready",
+            "stand-in ready \u{FFFD}",
             "Windows fatal exception: access violation",
-            "line 5 in <module>",
+            "line 6 in <module>",
         ] {
-            assert!(msg.contains(needle), "missing {needle:?} in:\n{msg}");
+            assert!(stderr.contains(needle), "missing {needle:?} in:\n{msg}");
         }
         removed.expect("remove the stand-in server");
     }

@@ -32,13 +32,11 @@
 //! **"No-op" is scoped to the compiled deck — upstream it is not process-safe.**
 //! In the pinned oracle the redispatch's type-confused `kWBase` store corrupts
 //! the engine's **global** state: after one solve with it firing, a later
-//! `Compile` of any deck leaves `NumCircuits = 0` with `Error.Number = 0`, and
-//! the oracle process sometimes dies before it replies. `kWBand` cannot keep the
-//! redispatch from firing: `half_kw_band` is fixed at 50 kW when the object is
-//! created, as upstream. This port has no such failure mode (safe Rust, no
-//! aliasing). The corpus deck keeps the redispatch silent (its System
-//! Controllers monitor a branch held inside the band) and its manifest row
-//! carries `isolate: true`; the redispatch is pinned by
+//! `Compile` of any deck leaves `NumCircuits = 0` with `Error.Number = 0`. This
+//! port has no such failure mode (safe Rust, no aliasing). The corpus deck keeps
+//! the redispatch silent (its System Controllers monitor a branch held inside
+//! the band) and its manifest row carries `isolate: true`. The redispatch is
+//! pinned by
 //! `exec::tests::espvl_control::system_controller_redispatch_writes_the_weighted_deficit`.
 //!
 //! **`FkWLimit` is unsettable.** There is **no `kWLimit` property** (confirmed by
