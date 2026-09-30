@@ -3627,6 +3627,8 @@ const LINE_CITED_DOCS: &[&str] = &["TESTING.md", "tests/TOLERANCE_NOTES.md"];
 
 /// Every file-shaped token on one documentation line, in reading order.
 ///
+/// A token is a dotted name whose extension is two to four ASCII letters, or
+/// any dotted name a `:LINE` follows (`lane_diff.ps1:12`, `.gitattributes:3`).
 /// `None` as the line number is a mention without a `:LINE` suffix: it is the
 /// antecedent a later bare `` `:LINE` `` inherits. That inheritance is why
 /// non-Rust extensions are returned too: a bare continuation after a `.pas`
@@ -3679,12 +3681,6 @@ fn file_citations_at(line: &str) -> Vec<(usize, String, Option<usize>, Option<us
         let run: String = chars[start..end].iter().collect();
         let Some(dot) = run.rfind('.') else { continue };
         let ext = &run[dot + 1..];
-        if dot == 0
-            || !(2..=4).contains(&ext.len())
-            || !ext.chars().all(|c| c.is_ascii_alphabetic())
-        {
-            continue;
-        }
         // A `:LINE` suffix, if the run is immediately followed by one.
         let mut j = end;
         let mut lines = Vec::new();
@@ -3693,6 +3689,13 @@ fn file_citations_at(line: &str) -> Vec<(usize, String, Option<usize>, Option<us
             if lines.is_empty() {
                 j = end;
             }
+        }
+        let named =
+            dot > 0 && (2..=4).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphabetic());
+        let lined =
+            !lines.is_empty() && !ext.is_empty() && ext.chars().all(|c| c.is_ascii_alphanumeric());
+        if !named && !lined {
+            continue;
         }
         if lines.is_empty() {
             out.push((start, run, None, None));
@@ -3867,6 +3870,8 @@ const ARM_CITED_FNS: &[&str] = &["tol_for"];
 /// One `<path>.rs::<item>[::<member>]…` citation of a documentation line.
 #[derive(Debug, PartialEq)]
 struct SymbolCitation {
+    /// The byte offset of the path on its line.
+    at: usize,
     /// The file as the document spells it.
     path: String,
     /// The item, then each member below it.
@@ -3874,6 +3879,9 @@ struct SymbolCitation {
     /// The backticked arm patterns after it (`"feeder"`, `_`), up to the next
     /// citation of the line.
     arms: Vec<String>,
+    /// A `:LINE` list spelled right after the items (`::Policy:3`), which the
+    /// walk reds.
+    lines: Option<String>,
 }
 
 impl SymbolCitation {
@@ -3888,7 +3896,8 @@ fn symbol_citations_in(line: &str) -> Vec<SymbolCitation> {
     let is_path = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '.' | '-');
     let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
     let starts_ident = |s: &str| s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_');
-    let mut found: Vec<(usize, usize, String, Vec<String>)> = Vec::new();
+    // Each citation with the offset its spelling ends at.
+    let mut found: Vec<(usize, SymbolCitation)> = Vec::new();
     for (at, _) in line.match_indices(".rs::") {
         let start = line[..at]
             .char_indices()
@@ -3919,7 +3928,22 @@ fn symbol_citations_in(line: &str) -> Vec<SymbolCitation> {
         if line[j..].starts_with("()") {
             j += 2;
         }
-        found.push((start, j, path.to_string(), items));
+        let lines = (line[j..].starts_with(':')
+            && line[j + 1..].starts_with(|c: char| c.is_ascii_digit()))
+        .then(|| {
+            let len = line[j + 1..]
+                .find(|c: char| !(c.is_ascii_digit() || c == '-' || c == ','))
+                .unwrap_or(line.len() - j - 1);
+            line[j..=j + len].trim_end_matches(['-', ',']).to_string()
+        });
+        let cite = SymbolCitation {
+            at: start,
+            path: path.to_string(),
+            items,
+            arms: Vec::new(),
+            lines,
+        };
+        found.push((j, cite));
     }
     let ticks: Vec<usize> = line.match_indices('`').map(|(k, _)| k).collect();
     let spans: Vec<(usize, &str)> = ticks
@@ -3933,20 +3957,22 @@ fn symbol_citations_in(line: &str) -> Vec<SymbolCitation> {
                 && s.ends_with('"')
                 && !s[1..s.len() - 1].contains('"'))
     };
-    found
+    let stops: Vec<usize> = found
         .iter()
-        .enumerate()
-        .map(|(n, (_, end, path, items))| {
-            let stop = found.get(n + 1).map_or(line.len(), |next| next.0);
-            SymbolCitation {
-                path: path.clone(),
-                items: items.clone(),
-                arms: spans
-                    .iter()
-                    .filter(|&&(at, s)| at >= *end && at < stop && is_arm(s))
-                    .map(|&(_, s)| s.to_string())
-                    .collect(),
-            }
+        .skip(1)
+        .map(|(_, next)| next.at)
+        .chain([line.len()])
+        .collect();
+    found
+        .into_iter()
+        .zip(stops)
+        .map(|((end, mut cite), stop)| {
+            cite.arms = spans
+                .iter()
+                .filter(|&&(at, s)| at >= end && at < stop && is_arm(s))
+                .map(|&(_, s)| s.to_string())
+                .collect();
+            cite
         })
         .collect()
 }
@@ -4141,19 +4167,38 @@ fn item_definitions(code: &str, items: &[String]) -> Result<Vec<Def>, String> {
 }
 
 /// `arm` (`"feeder"` or `_`) is the pattern of a match arm in `code[open..end]`:
-/// the pattern is followed by `=>`, an `|` alternative or an `if` guard.
+/// a literal is followed by `=>`, an `|` alternative or an `if` guard, and `_`
+/// by `=>` or a guard. A `_` before `|` is a closure parameter (`|_|`) and a
+/// literal before `||` a condition.
 fn has_arm(code: &str, lits: &[Lit], (open, end): (usize, usize), arm: &str) -> bool {
-    let ends_a_pattern = |from: usize| {
+    let ends_a_pattern = |from: usize, alternative: bool| {
         let rest = code[from..end].trim_start();
-        rest.starts_with("=>") || rest.starts_with('|') || rest.starts_with("if ")
+        rest.starts_with("=>")
+            || rest.starts_with("if ")
+            || (alternative && rest.starts_with('|') && !rest.starts_with("||"))
     };
     match arm.strip_prefix('"').and_then(|a| a.strip_suffix('"')) {
-        Some(text) => lits
-            .iter()
-            .any(|l| l.start > open && l.end < end && l.text == text && ends_a_pattern(l.end)),
+        Some(text) => lits.iter().any(|l| {
+            l.start > open && l.end < end && l.text == text && ends_a_pattern(l.end, true)
+        }),
         None => token_positions(&code[open..end], arm)
             .into_iter()
-            .any(|p| ends_a_pattern(open + p + arm.len())),
+            .any(|p| ends_a_pattern(open + p + arm.len(), false)),
+    }
+}
+
+/// `cited`, a path as a document spells it, names a file of this repository:
+/// a `.rs` path, or any path whose file name a tree file carries, so an elided
+/// (`…/dir/file.dss`), re-rooted or moved spelling still counts. A `.pas` path
+/// counts only when the path itself resolves, since the vendored Pascal lies
+/// outside the tree and a tree file may share the name of one of its units.
+fn is_repository_file(by_base: &BTreeMap<String, Vec<String>>, cited: &str) -> bool {
+    let spelled = cited.trim_start_matches('/');
+    let base = spelled.rsplit('/').next().unwrap_or(spelled);
+    if spelled.to_ascii_lowercase().ends_with(".pas") {
+        !resolve_cited(by_base, spelled, base).is_empty()
+    } else {
+        spelled.ends_with(".rs") || by_base.contains_key(base)
     }
 }
 
@@ -4179,6 +4224,10 @@ fn doc_symbol_citation_defects(
 
     for (i, line) in text.lines().enumerate() {
         let chars: Vec<char> = line.chars().collect();
+        let byte_at: Vec<usize> = line.char_indices().map(|(b, _)| b).collect();
+        // The fully-qualified spellings of the line, registered in reading
+        // order so a short repeat resolves only through one before it.
+        let mut spellings: Vec<(usize, String, String)> = Vec::new();
         for (at, tok, lineno, _) in file_citations_at(line) {
             let (cited, pinned) = if tok.is_empty() {
                 match &last_file {
@@ -4186,13 +4235,11 @@ fn doc_symbol_citation_defects(
                     None => continue,
                 }
             } else {
-                // A fully-qualified spelling lets the section's later short
-                // repeats resolve.
                 if tok.contains('/') && tok.ends_with(".rs") {
                     let base = tok.rsplit('/').next().unwrap_or(&tok).to_string();
                     let hits = resolve_cited(by_base, &tok, &base);
                     if hits.len() == 1 {
-                        full_of_base.insert(base, hits[0].clone());
+                        spellings.push((byte_at[at], base, hits[0].clone()));
                     }
                 }
                 let pinned = is_commit_pinned(&chars, at);
@@ -4200,10 +4247,7 @@ fn doc_symbol_citation_defects(
                 (tok, pinned)
             };
             let Some(ln) = lineno else { continue };
-            let base = cited.rsplit('/').next().unwrap_or(&cited);
-            let in_tree =
-                cited.ends_with(".rs") || !resolve_cited(by_base, &cited, base).is_empty();
-            if pinned || cited.to_ascii_lowercase().ends_with(".pas") || !in_tree {
+            if pinned || !is_repository_file(by_base, &cited) {
                 continue;
             }
             bad.push(format!(
@@ -4214,8 +4258,20 @@ fn doc_symbol_citation_defects(
             ));
         }
 
+        let mut spellings = spellings.into_iter().peekable();
         for cite in symbol_citations_in(line) {
+            while let Some((_, base, full)) = spellings.next_if(|s| s.0 <= cite.at) {
+                full_of_base.insert(base, full);
+            }
             let spelled = cite.spelled();
+            if let Some(lines) = &cite.lines {
+                bad.push(format!(
+                    "    {doc}:{}: `{spelled}{lines}` cites a line number of a repository \
+                     file, which goes stale with the next edit above it — cite the item \
+                     alone: `<path>::<item>`",
+                    i + 1
+                ));
+            }
             let base = cite
                 .path
                 .rsplit('/')
@@ -4266,6 +4322,7 @@ fn doc_symbol_citation_defects(
                 }
             }
         }
+        full_of_base.extend(spellings.map(|(_, base, full)| (base, full)));
     }
     (resolved, bad)
 }
@@ -4275,7 +4332,7 @@ fn doc_symbol_citation_defects(
 ///
 /// A citation is `<path>.rs::<item>[::<member>]…`. The path resolves as in
 /// [`cited_target`]: by suffix, a short repeat through the nearest
-/// fully-qualified spelling earlier in the same document, and a path that
+/// fully-qualified spelling before it in reading order, and a path that
 /// names no file or several fails. The item needs a definition site in that
 /// file: `fn`, `struct`, `enum`, `union`, `trait`, `type`, `const`, `static`,
 /// `mod` or `macro_rules!`; a member below it is a nested item, a method of
@@ -4285,10 +4342,11 @@ fn doc_symbol_citation_defects(
 /// the arm it means beside it, and the pattern must be an arm of that
 /// function. A `.py` target is not resolved.
 ///
-/// A `file:N` line-number form reds when its path is a `.rs` path or names a
-/// file of the tree, whatever its extension. The vendored Pascal (`.pas`), the
-/// commit-pinned `<sha>:<path>:<N>` form and a dotted name that is no file
-/// (`Class.NAME`) are not lines of today's tree and pass.
+/// A `file:N` line-number form reds when its path names a file of this
+/// repository ([`is_repository_file`]), whatever its extension, and so does a
+/// `:N` after a symbol citation. The vendored Pascal, the commit-pinned
+/// `<sha>:<path>:<N>` form and a name no tree file carries (`Class.NAME`,
+/// another project's source) are not lines of today's tree and pass.
 ///
 /// The number of citations that resolve is exact per document: it must equal
 /// the document's own `<!-- line-citations: N -->` marker
@@ -4445,6 +4503,19 @@ fn a_line_citation_marker_one_off_is_reported() {
     assert_declared_line_citations("fixture", doc, resolved);
 }
 
+/// A marker below the walk's count reds too, so a citation added without the
+/// marker moving is reported (RF-D07-01, audit AT-2).
+#[test]
+#[should_panic(expected = "fixture declares `<!-- line-citations: 1 -->` but the walk resolves 2")]
+fn a_line_citation_marker_below_the_count_is_reported() {
+    let doc = "The floor lives in `crates/fixture/src/lib.rs::Policy::floor`,\n\
+               set by `lib.rs::Policy`.\n\
+               <!-- line-citations: 1 -->\n";
+    let (resolved, bad) = symbol_walk(doc);
+    assert!(bad.is_empty(), "{bad:?}");
+    assert_declared_line_citations("fixture", doc, resolved);
+}
+
 /// A document without a marker reds (RF-D07-01, RP5.1 audit SA-2).
 #[test]
 #[should_panic(expected = "fixture carries no `<!-- line-citations: N -->` marker line")]
@@ -4491,21 +4562,41 @@ pub mod checks {
 macro_rules! fixture_rule {
     () => {};
 }
+pub struct Other;
+impl Other {
+    pub fn only_other(&self) {}
+}
+pub fn closure_tier(kind: &str) -> f64 {
+    let n = [1u8].iter().map(|_| 1).count();
+    if kind == "wide" || kind == "huge" {
+        return 0.0;
+    }
+    match kind {
+        "micro" => 1e-9,
+        other => other.len() as f64 + n as f64,
+    }
+}
 "#;
 
 /// [`doc_symbol_citation_defects`] over `doc` against a tree holding
-/// `crates/fixture/src/lib.rs` = [`SYMBOL_FIXTURE`], whose arm-cited function
-/// is `fixture_tier`, and `tools/golden/probe_val.py`. The walk never reads the
-/// disk.
+/// `crates/fixture/src/lib.rs` = [`SYMBOL_FIXTURE`], whose arm-cited functions
+/// are `fixture_tier` and `closure_tier`, `tools/golden/probe_val.py`,
+/// `tools/lanes/lane_diff.ps1` and `tools/fpc/genstub.pas`. The walk never
+/// reads the disk.
 fn symbol_walk(doc: &str) -> (usize, Vec<String>) {
     let target = "crates/fixture/src/lib.rs".to_string();
-    let by_base = BTreeMap::from([
-        ("lib.rs".to_string(), vec![target.clone()]),
-        (
-            "probe_val.py".to_string(),
-            vec!["tools/golden/probe_val.py".to_string()],
-        ),
-    ]);
+    let by_base = BTreeMap::from(
+        [
+            target.as_str(),
+            "tools/golden/probe_val.py",
+            "tools/lanes/lane_diff.ps1",
+            "tools/fpc/genstub.pas",
+        ]
+        .map(|rel| {
+            let base = rel.rsplit('/').next().unwrap_or(rel).to_string();
+            (base, vec![rel.to_string()])
+        }),
+    );
     let mut cache = BTreeMap::from([(target, lex_rust(SYMBOL_FIXTURE))]);
     let load = |target: &str| -> String { panic!("the fixture tree holds no {target}") };
     doc_symbol_citation_defects(
@@ -4514,7 +4605,7 @@ fn symbol_walk(doc: &str) -> (usize, Vec<String>) {
         &by_base,
         &mut cache,
         &load,
-        &["fixture_tier"],
+        &["fixture_tier", "closure_tier"],
     )
 }
 
@@ -4525,18 +4616,23 @@ fn symbol_walk(doc: &str) -> (usize, Vec<String>) {
 /// a longer name, defines nothing.
 #[test]
 fn a_symbol_citation_resolves_to_the_items_definition() {
+    let line = "see `a/lib.rs::Policy::under()` and `lib.rs::Kind:3-5,` `\"x\"`, `_`.";
     assert_eq!(
-        symbol_citations_in("see `a/lib.rs::Policy::under()` and `lib.rs::Kind` `\"x\"`, `_`."),
+        symbol_citations_in(line),
         vec![
             SymbolCitation {
+                at: line.find("a/lib.rs").unwrap_or_default(),
                 path: "a/lib.rs".to_string(),
                 items: vec!["Policy".to_string(), "under".to_string()],
                 arms: vec![],
+                lines: None,
             },
             SymbolCitation {
+                at: line.find("`lib.rs").unwrap_or_default() + 1,
                 path: "lib.rs".to_string(),
                 items: vec!["Kind".to_string()],
                 arms: vec!["\"x\"".to_string(), "_".to_string()],
+                lines: Some(":3-5".to_string()),
             },
         ]
     );
@@ -4564,7 +4660,9 @@ fn a_symbol_citation_resolves_to_the_items_definition() {
 }
 
 /// An item the named file does not define is reported, at the top of the path
-/// and below it.
+/// and below it. A member counts only under its own parent: a method of
+/// another type's `impl` or a field's type is no member (RF-D07-01, audit
+/// AT-3).
 #[test]
 fn a_symbol_citation_of_an_unknown_item_is_reported() {
     let (resolved, bad) =
@@ -4581,6 +4679,18 @@ fn a_symbol_citation_of_an_unknown_item_is_reported() {
                 .to_string(),
         ]
     );
+    assert_eq!(
+        symbol_walk("`crates/fixture/src/lib.rs::Other::only_other`\n"),
+        (1, Vec::new())
+    );
+    for (item, why) in [
+        ("Policy::only_other", "has no `only_other` below `Policy`"),
+        ("Policy::f64", "has no `f64` below `Policy`"),
+    ] {
+        let (resolved, bad) = symbol_walk(&format!("`crates/fixture/src/lib.rs::{item}`\n"));
+        assert_eq!((resolved, bad.len()), (1, 1), "{item}: {bad:?}");
+        assert!(bad[0].ends_with(why), "{item}: {bad:?}");
+    }
 }
 
 /// A path that names no tree file, or several, is reported and not counted.
@@ -4596,10 +4706,49 @@ fn a_symbol_citation_of_a_missing_file_is_reported() {
     assert_eq!((resolved, bad.len()), (0, 1), "{bad:?}");
 }
 
+/// A short repeat resolves through the nearest fully-qualified spelling before
+/// it in reading order, never through one later on its own line (RF-D07-01,
+/// audit AC-4).
+#[test]
+fn a_short_repeat_resolves_through_the_spelling_before_it() {
+    let (a, b) = ("crates/a/src/mod.rs", "crates/b/src/mod.rs");
+    let by_base = BTreeMap::from([("mod.rs".to_string(), vec![a.to_string(), b.to_string()])]);
+    let walk = |doc: &str| {
+        let mut cache = BTreeMap::from([
+            (a.to_string(), lex_rust("pub fn only_in_a() {}\n")),
+            (b.to_string(), lex_rust("pub fn only_in_b() {}\n")),
+        ]);
+        let load = |target: &str| -> String { panic!("the fixture tree holds no {target}") };
+        doc_symbol_citation_defects("fixture", doc, &by_base, &mut cache, &load, &[])
+    };
+    let first = "`crates/a/src/mod.rs::only_in_a`\n";
+    assert_eq!(
+        walk(&format!(
+            "{first}`mod.rs::only_in_a` and `crates/b/src/mod.rs::only_in_b`\n"
+        )),
+        (3, Vec::new())
+    );
+    assert_eq!(
+        walk(&format!(
+            "{first}`mod.rs::only_in_b` and `crates/b/src/mod.rs::only_in_b`, \
+             then `mod.rs::only_in_b`\n"
+        )),
+        (
+            4,
+            vec![
+                "    fixture:2: `mod.rs::only_in_b` — crates/a/src/mod.rs defines no item \
+                 `only_in_b`"
+                    .to_string()
+            ]
+        )
+    );
+}
+
 /// A citation of an arm-cited function spells the arm it means, and each
 /// spelled pattern is an arm of that function: a quoted literal or `_`, before
 /// `=>`, an `|` alternative or a guard. A literal the function holds outside a
-/// pattern is no arm.
+/// pattern is no arm, nor is a closure's `|_|` or a literal of a `||`
+/// condition (RF-D07-01, audit AC-5).
 #[test]
 fn a_tier_citation_without_its_arm_pattern_is_reported() {
     let cite = |arms: &str| format!("| `crates/fixture/src/lib.rs::fixture_tier`{arms} | ok |\n");
@@ -4620,20 +4769,36 @@ fn a_tier_citation_without_its_arm_pattern_is_reported() {
         symbol_walk("`crates/fixture/src/lib.rs::fixture_tier`, `lib.rs::Policy` `\"micro\"`\n");
     assert_eq!(bad.len(), 1, "{bad:?}");
     assert!(bad[0].contains("names no arm"), "{bad:?}");
+
+    let closure = |arms: &str| format!("`crates/fixture/src/lib.rs::closure_tier`{arms}\n");
+    assert_eq!(symbol_walk(&closure(" `\"micro\"`")), (1, Vec::new()));
+    for arms in [" `_`", " `\"wide\"`"] {
+        let (resolved, bad) = symbol_walk(&closure(arms));
+        assert_eq!((resolved, bad.len()), (1, 1), "{arms}: {bad:?}");
+        assert!(bad[0].contains("has no arm with that pattern"), "{bad:?}");
+    }
 }
 
 /// A line-number citation into the repository reds, in every spelling
-/// [`file_citations_at`] reads (single, range, comma list, bare continuation,
-/// a `.py` file of the tree); a line of the vendored Pascal, the commit-pinned
-/// `<sha>:<path>:<N>` form and a dotted name that is no file pass.
+/// [`file_citations_at`] reads (single, range, comma list, bare continuation),
+/// into any file of the tree (a `.py`, a `.ps1`, a tree `.pas`, an elided or
+/// re-rooted path whose file name the tree carries), behind a hex run too
+/// short or too attached to be a commit, and after a symbol citation. A line
+/// of the vendored Pascal, the commit-pinned `<sha>:<path>:<N>` form, a file
+/// the tree does not carry and a dotted name that is no file pass
+/// (RF-D07-01, audits AC-1, AC-3, AT-1, AT-4).
 #[test]
 fn a_line_number_citation_into_the_repository_is_reported() {
     let doc = "`crates/fixture/src/lib.rs:3` and `lib.rs:5-9,12`, then `:14`;\n\
                `tools/golden/probe_val.py:40`, the `Class.NAME:2` line, `:4`.\n\
                `Common/Solution.pas:2568`, `:2701` and `abc1234f:crates/fixture/src/lib.rs:3`\n\
-               `deadbeefcafe:lib.rs:7` then `:8`, but `lib.rs::Policy` by name.\n";
+               `deadbeefcafe:lib.rs:7` then `:8`, but `lib.rs::Policy` by name.\n\
+               `…/golden/probe_val.py:41`, `tools/gold/probe_val.py:42`, `dss/IBus.py:9`\n\
+               `tools/lanes/lane_diff.ps1:12`, `tools/fpc/genstub.pas:5`, `…/Solution.pas:7`\n\
+               `abcd:lib.rs:15`, `g0abc1234:lib.rs:16`, `lib.rs::Policy:17`,\n\
+               `lib.rs::Policy::floor:18-19`.\n";
     let (resolved, bad) = symbol_walk(doc);
-    assert_eq!(resolved, 1);
+    assert_eq!(resolved, 3);
     let cited: Vec<&str> = bad
         .iter()
         .map(|b| b.split('`').nth(1).unwrap_or_default())
@@ -4645,7 +4810,15 @@ fn a_line_number_citation_into_the_repository_is_reported() {
             "lib.rs:5",
             "lib.rs:12",
             "lib.rs:14",
-            "tools/golden/probe_val.py:40"
+            "tools/golden/probe_val.py:40",
+            "/golden/probe_val.py:41",
+            "tools/gold/probe_val.py:42",
+            "tools/lanes/lane_diff.ps1:12",
+            "tools/fpc/genstub.pas:5",
+            "lib.rs:15",
+            "lib.rs:16",
+            "lib.rs::Policy:17",
+            "lib.rs::Policy::floor:18-19"
         ],
         "{bad:#?}"
     );
@@ -4807,12 +4980,14 @@ fn comment_block(lines: &[&str], at: usize) -> String {
     lines[lo..=hi].join("\n")
 }
 
-/// A `record.md:LO-HI` citation inside a Rust comment still points at the
-/// passage the comment names.
+/// The `record.md:LO-HI` citations left in Rust comments still point at the
+/// passage the comment names, and none is added.
 ///
 /// The counterpart of [`operational_docs_cite_items_the_named_files_define`],
-/// which reads documents: this test reads the Rust comments that cite a line
-/// range of a plan or a phase record, a form no other walk resolves.
+/// which reads documents. RETRO_FIXES ruling R18 retires the form: a comment
+/// cites a plan or record passage by its heading. The citations that remain
+/// are counted exactly, so a new one reds and each one re-cited by its heading
+/// lowers the count in the same commit.
 ///
 /// Three checks: the record exists; the cited range is inside it and not all
 /// blank; and the passage is **anchored** — either the comment names a section
@@ -4920,30 +5095,36 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
     assert!(
         bad.is_empty(),
         "a Rust comment cites a record line that no longer carries the passage it \
-         names. Re-read the record and re-point the range (or re-word the comment); \
-         do NOT delete the line number:\n{}\nchecked: {checked} citations over {:?}",
+         names. Cite the passage by its heading instead (RETRO_FIXES ruling R18) and \
+         lower the count below in the same commit; never re-point the line \
+         number:\n{}\nchecked: {checked} citations over {:?}",
         bad.join("\n"),
         citing_files
     );
     // Exact counts, read once every citation is sound (RF-D07-01, RP5.2 audit
-    // AT-1): five citations of `tests/TOLERANCE_NOTES.md` in `harness/mod.rs`
-    // and RP5.2's two of the archived R4133_PROPS plan in
-    // `props_r4133_replay.rs`. A floor would let one of the two code citations
-    // vanish green.
+    // AT-1; audit AC-2): five citations of `tests/TOLERANCE_NOTES.md` in
+    // `harness/mod.rs` and two of the archived R4133_PROPS plan in
+    // `props_r4133_replay.rs`. They only ever go down.
+    assert!(
+        checked <= 7 && citing_files.len() <= 2,
+        "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, more \
+         than the 7 over 2 files this gate holds. A Rust comment cites a plan or record \
+         passage by its heading, never by a line number (RETRO_FIXES ruling R18): cite \
+         the new one by its heading, and never raise these counts"
+    );
     assert_eq!(
         checked, 7,
-        "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, \
-         and this gate holds the exact count — a floor lets the table shrink. A \
-         citation added or removed on purpose re-measures this number in the same \
-         commit; one that vanished unasked means it was deleted or the scanner \
-         stopped seeing it"
+        "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, and \
+         this gate holds the exact count — a floor lets the table shrink. One re-cited by \
+         its heading lowers this number in the same commit; one that vanished unasked \
+         was deleted or the scanner stopped seeing it"
     );
     assert_eq!(
         citing_files.len(),
         2,
-        "the `record.md:LINE` citations now sit in {citing_files:?}, and this gate \
-         holds the exact number of citing files — a floor lets the table shrink. \
-         Re-measure it in the same commit as the edit that moved it"
+        "the `record.md:LINE` citations now sit in {citing_files:?}, and this gate holds \
+         the exact number of citing files — a floor lets the table shrink. Lower it in \
+         the same commit as the edit that re-cited a file's last citation by its heading"
     );
 }
 
