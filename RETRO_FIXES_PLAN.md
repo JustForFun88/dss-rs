@@ -5004,9 +5004,10 @@ files every lane edits.
 `LINE_CITED_DOCS` document whose rail-checked citation of a moved driver the move breaks (R9, the path
 token only), `tests/golden/golden.lock.json` (its `comment` value, ruling 5), every other file the three
 probes of **Probes** list at the step base, less the §4 shared documents and the files of the
-`corpus_gate` binary, and `docs/phase-records/retro-fixes.md`. The coordinator writes that
-`git grep -l` list into the run args at launch, and a hit in a file the run args lack is
-`blocked: needs <file>`, never a skipped site. At 57b52520 the path probe lists 33 files,
+`corpus_gate` binary, and `docs/phase-records/retro-fixes.md`. The coordinator writes that file
+list (each probe's `-l` form) into the run args at launch, and a site that needs an edit in a file
+the run args lack is `blocked: needs <file>`, never a skipped site (**Doc notes** and **Probes**
+route the §4 and `corpus_gate` hits). At 57b52520 the path probe lists 33 files,
 `crates/dss-core/Cargo.toml` among them for its two comments naming `tests/golden_lock.rs` and
 `tests/golden_smoke.rs` (no `[[test]]` entry: cargo finds `tests/<group>/main.rs` by itself), and
 neither `tools/gate-kind` nor `.config/nextest.toml`.
@@ -5113,13 +5114,19 @@ numbers motivate the step, and part 1 measures it. The rulings:
    change, and `.config/nextest.toml` names no binary.
 7. If the merge is kept, the coordinator hands its paths to the steps not landed by then, as R13 did
    for the harness path: at the landing it re-points by script every moved path in `wp_index.json` and
-   in their run args, and writes the mapping into §5 as R19. In the Files lists, findings and probes of
-   those steps and of the pending sub-steps of `GOLDEN_REBASE_PLAN.md`,
-   `crates/dss-core/tests/<driver>.rs` of a moved driver means
+   in their run args, and writes the mapping into §5 as the next free ruling number (R13's shape),
+   extending §0's range. In the Files lists, findings and probes of those steps and of the pending
+   sub-steps of `GOLDEN_REBASE_PLAN.md`, `crates/dss-core/tests/<driver>.rs` of a moved driver means
    `crates/dss-core/tests/<group>/<driver>.rs`, and `--test <driver>` means ruling 5's form (R13's
-   sentence that the drivers keep their paths then holds for the ten rails only). The section texts
-   are not rewritten, and the executor's scope check reads the re-pointed list. `part_3.md` lists the
-   46 old and new paths for the script.
+   sentence that the drivers keep their paths then holds for the ten rails only). A new driver such a
+   step names at `crates/dss-core/tests/<x>.rs` (two on 2026-10-01: `reports_show.rs` of RF-D02-13
+   and `corpus_hygiene.rs` of RF-D02-18) becomes a module of the group the new ruling names: the
+   script re-points it to `crates/dss-core/tests/<group>/<x>.rs` and adds that group's `main.rs`,
+   which gets its `mod <x>;` line. Only a new driver that reads a repository `.md` or `.rs` by ruling
+   1's rule stays a top-level binary and joins `GATE_RAILS`, its executor asking for the top-level
+   path and the cfg gate by `blocked: needs <file>`. The section texts are not rewritten, and the
+   executor's scope check reads the re-pointed list. `part_3.md` lists the 46 old and new paths for
+   the script.
 **Parts:**
 1. `INFRA|11` - Measure and design, no commit: ruling 3's part-1 runs at the step base, ruling 4's
    base listings, the reader census (the `reader …` lines of
@@ -5134,34 +5141,38 @@ numbers motivate the step, and part 1 measures it. The rulings:
    (line citations RF-D07-01 converts first) and
    `crates/dss-core/tests/save_roundtrip.rs::save_forms_structural_file_set`. Scoped check in both
    lanes: every `GATE_RAILS` entry green. Then ruling 3's part-2 runs, ruling 4's listing diff and
-   ruling 2's bound, all in `part_2.md`, and the decision. A kept merge is committed in two commits,
-   first the move alone (the `git mv` renames and the new `main.rs` files, each moved driver `R100` in
-   `git diff -M100% --name-status <base> <move commit>`), then the rest of this part. A rejected merge
-   leaves no commit: the lane returns to the step base (`git status --porcelain` empty) and
-   `part_2.md` says why.
+   ruling 2's bound, all in `part_2.md`, and the decision. A kept merge is one commit of the tree that
+   scoped check passed: this part edits no moved driver, so
+   `git diff -M100% --name-status <base> <that commit>` shows each of the 46 `R100`, and part 3's
+   census edits of moved drivers follow in its own commit. A rejected merge leaves no commit: the lane
+   returns to the step base (`git status --porcelain` empty) and `part_2.md` says why.
 3. `INFRA|11` - If kept: the census of **Probes** with one disposition per hit in `part_3.md` (the
    rest of `TESTING.md` in-step, R9), ruling 5's command forms and the lock's `comment`, the notes
    entries, ruling 7's path list, the record. If rejected: the record with the numbers, nothing else.
-**Probes:** the census, at the step base (the scope) and at the head (the check), is `git grep` over
-the tracked tree less `docs/phase-records/`, `docs/plans-archive/`, the `*_PLAN.md` files,
+**Probes:** the census, at the step base (the scope) and at the head (the check), runs over the
+tracked files less `docs/phase-records/`, `docs/plans-archive/`, the `*_PLAN.md` files,
 `tests/corpus/electricdss-tst/` and `tests/golden/` (records, archived plans and the plans keep the
 spelling of their date, and ruling 5 covers the lock). (1) The path probe, `git grep -n -E` with
 `-e 'tests/(<the 46 names>)\.rs'`, `-e '--test[ =](<the 46 names>)\b'` and
 `-e 'binary(_id)?\((dss-core::)?(<the 46 names>)\)'`: 102 lines in 33 files at 57b52520. (2) The
 template probe `git grep -n -e '--test <'`: two hits at 57b52520, TESTING.md's regeneration template
-and the `RailTarget` doc of the cfg gate. (3) The phrase probe, `git grep -n -i -E` with
-`-e 'own (test )?binar'`, `-e 'this (test )?binar'`, `-e 'tests/golden_\*'` and
-`-e 'tests/\*_(pins|reports)'`: 44 hits at 57b52520, 14 of them in the files of the `corpus_gate`
-binary, which speak of that binary and stay untouched. `part_3.md` gives every base hit one
-disposition: re-pointed (a path to `crates/dss-core/tests/<group>/<driver>.rs`, a line citation among
-them in the symbol form of R18, a command to ruling 5's form), re-worded to the present fact (the "own
-binary" of the `topology_pins` and `inc_matrix_pins` module docs, TESTING.md's
-`crates/dss-core/tests/golden_*.rs`), true as it stands (with a one-line reason), or a §4 notes entry.
+and the `RailTarget` doc of the cfg gate. (3) The phrase probe, `rg -U -n -i` over the same files
+(their `git ls-files -z` list through `xargs -0`, because `git grep` cannot match across the line
+break of a wrapped comment) with `-e '(own|this|separate)[\s/!]+(test[\s/!]+)?binar'`,
+`-e 'tests/golden_\*'` and `-e 'tests/\*_(pins|reports)'`: 51 hits at 57b52520 (a hit over two
+lines counts once), 14 of them in the files of the `corpus_gate` binary, which speak of that binary
+and stay untouched. `part_3.md` gives every base hit one disposition: re-pointed (a path to
+`crates/dss-core/tests/<group>/<driver>.rs`, a line citation among them in the symbol form of R18, a
+command to ruling 5's form), re-worded to the present fact (the "own binary" of the `topology_pins`
+and `inc_matrix_pins` module docs, the "`golden_lock.rs` is a separate test binary" of the `Anchor`
+and `is_binary_artifact` docs of `crates/dss-test-harness/src/harness/regen.rs`, TESTING.md's
+`crates/dss-core/tests/golden_*.rs`), true as it stands (with a one-line reason), or a §4 notes
+entry.
 **Acceptance:**
 - The record carries the part-1 and part-2 medians (both lanes, cold and incremental), the decision
   and the recipe, and the part files carry every cell's median, minimum and maximum, the per-target
   tables and ruling 2's bound check.
-- If kept: the move commit shows each of the 46 drivers `R100` against the step base, and each
+- If kept: part 2's commit shows each of the 46 drivers `R100` against the step base, and each
   `main.rs` holds its doc and one `mod` line per driver. Ruling 4's sets are equal in both lanes, and
   `git diff <base> -- crates/dss-core/tests/corpus_gate.rs crates/dss-core/tests/corpus_gate/` prints
   nothing. `gate_rails_are_exactly_the_measured_readers` is green with an unchanged `GATE_RAILS`, and
