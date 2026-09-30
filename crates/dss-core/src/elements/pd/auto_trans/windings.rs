@@ -179,10 +179,11 @@ impl AutoTrans {
     ///
     /// Deliberately **not** the Transformer's
     /// [`fetch_xfmr_code`](crate::elements::pd::transformer) — that one assigns
-    /// the winding vector wholesale (`windings.rs:362`) and copies the 0.15.x
-    /// kVA-ratings (`:398-399`), and neither is r4133's auto form. Here every
-    /// field is copied one at a time, in the Pascal's order, with the auto's
-    /// three deviations from the Transformer routine:
+    /// the winding vector wholesale (`self.windings = code.windings().to_vec()`)
+    /// and copies the 0.15.x kVA-ratings (`num_amp_ratings`, `kva_ratings`), and
+    /// neither is r4133's auto form. Here every field is copied one at a time,
+    /// in the Pascal's order, with the auto's three deviations from the
+    /// Transformer routine:
     ///
     /// 1. **the connection override** (`:2356-2361`) — winding 1 is forced
     ///    `SERIES` and winding 2 `WYE` whatever the code says ("No Choice for 1st
