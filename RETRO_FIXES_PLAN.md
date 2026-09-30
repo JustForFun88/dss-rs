@@ -4985,73 +4985,193 @@ names, 31 `tests::` paths, 17 `super::`, 5 `crate::`, 2 `Self::` and 39 other pa
   gate result), the notes entries left, the uid closed or recorded with a reason.
 
 ### RF-I00-08 — Fewer dss-core integration-test binaries, kept only on a measured gain (user decision 2026-09-30)
-<!-- RF-STEP {"step": "RF-I00-08", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": true, "inline_shared": true, "after": ["RF-I00-07"], "n_uids": 1} -->
-**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full (file moves under `tests/`
-are `Code`), NINE commands (RF-I00-07). **After:** RF-I00-07 (its harness doc-comment edits and this
-step's driver moves must not cross). Scheduled by hand like every infra step: one lane, nothing else
-in flight, because the measurement needs the quiet machine and the step moves files every lane
-edits. **Files:** `crates/dss-core/tests/*.rs` and the new `crates/dss-core/tests/<group>/main.rs` +
-`<group>/<driver>.rs` (the moved drivers, verbatim), `crates/dss-core/Cargo.toml` (only if a
-`[[test]]` entry is needed, none expected: cargo finds `tests/<group>/main.rs` by itself),
-`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (`gate_rails_are_exactly_the_measured_readers`,
-`WALK_SITES` and the needle census must map `tests/<group>/*.rs` to its binary as they map
-`tests/corpus_gate/*.rs` today; the `GATE_RAILS` register itself does not change), `tools/gate-kind`
-(only if its `ALWAYS_CODE` or a fixture names a moved path), `.config/nextest.toml` (no change
-expected, the allowlist rail decides), `TESTING.md` (in-step, R9: every `crates/dss-core/tests/<name>.rs`
-and `--test <name>` spelling of a moved driver), every committed text that spells a moved path or
-`--test <name>` (census `rg -n 'tests/<name>\.rs|--test <name>'` over the tree per moved driver,
-the §4 shared documents through notes entries), `docs/phase-records/retro-fixes.md`.
-**Doc notes (§4):** `TESTING.md` in-step (R9), a notes entry per other shared document.
+<!-- RF-STEP {"step": "RF-I00-08", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": false, "inline_shared": true, "after": ["RF-I00-07"], "n_uids": 1} -->
+**Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full when the merge is kept (file
+moves under `tests/` are `Code`), the NINE commands (RF-I00-07). A rejected merge commits the record
+alone, graded by the row `gate-kind` prints (`Docs`), and its audits read `part_1.md`, `part_2.md` and
+the record. At 57b52520 the census reaches three files under a `lane_diff` path
+(`crates/dss-core/src/compat.rs`, `crates/dss-core/src/compat/tests.rs` and
+`crates/dss-core/src/solution/inc_matrix/tests.rs`, comment lines only) and no compat kernel, lane
+alias or solver line moves: in the `Code` row a path rule that fires on them runs `lane_diff`.
+**After:** RF-I00-07 (its harness doc-comment edits and this step's driver moves must not cross), and
+through it RF-D07-01, whose symbol rail part 2 keeps green. Scheduled by hand like every infra step:
+one lane, nothing else in flight, because the measurement needs the quiet machine and the step moves
+files every lane edits.
+**Files:** the 46 moved drivers (`crates/dss-core/tests/<driver>.rs`, moved to
+`crates/dss-core/tests/<group>/<driver>.rs`) and the new `crates/dss-core/tests/<group>/main.rs` files
+(ruling 2), `crates/dss-core/tests/oracle_parity_cfg_gate.rs` and
+`crates/dss-core/tests/props_r4133_replay.rs` (ruling 6), `TESTING.md` (in-step, R9), each other
+`LINE_CITED_DOCS` document whose rail-checked citation of a moved driver the move breaks (R9, the path
+token only), `tests/golden/golden.lock.json` (its `comment` value, ruling 5), every other file the three
+probes of **Probes** list at the step base, less the §4 shared documents and the files of the
+`corpus_gate` binary, and `docs/phase-records/retro-fixes.md`. The coordinator writes that
+`git grep -l` list into the run args at launch, and a hit in a file the run args lack is
+`blocked: needs <file>`, never a skipped site. At 57b52520 the path probe lists 33 files,
+`crates/dss-core/Cargo.toml` among them for its two comments naming `tests/golden_lock.rs` and
+`tests/golden_smoke.rs` (no `[[test]]` entry: cargo finds `tests/<group>/main.rs` by itself), and
+neither `tools/gate-kind` nor `.config/nextest.toml`.
+**Doc notes (§4):** `TESTING.md` is edited in-step (R9: part 2 its citation tokens the move breaks,
+part 3 every other census hit in it), and a `### RF-I00-08 / INFRA|11` notes entry is still appended
+for its owner (RF-D04-01 takes the `INFRA|` entries). Another `LINE_CITED_DOCS` document with a broken
+citation token gets the same in-step edit and a notes entry. Every other census hit in a §4 document
+(at 57b52520 four in `tests/TOLERANCE_NOTES.md`, three in `tests/corpus/props_r4133/README.md` and one
+in `docs/upgrade/DIVERGENCES.md`) gets a notes entry for its owner and stays until the owner applies
+it. Records, archived plans and the plans keep the spelling of their date (R13), and ruling 7 hands the
+pending steps' paths to the coordinator.
 **Decision (user, 2026-09-30, "apply it if the result is real"):** the 56 integration-test targets of
-`dss-core` are the largest fixed cost of every gate compile (each links the engine and the harness
-and monomorphises the harness for itself). Measured at 05e2539e on a busy machine
-(`cargo test --workspace --no-run --timings`, the coordinator's run of 2026-10-01, contended by a
-lane gate): the 56 targets took 5739 CPU-seconds, the 10 `GATE_RAILS` binaries 1291 s and the other
-46 4448 s; a 69-line driver took 10 s and a 131-line one 199 s, and the correlation between a
-target's time and its source size is 0.46, so the cost is the per-binary overhead, not the driver.
-The rulings:
+`dss-core` are the largest fixed cost of every gate compile: each loads and links the engine and the
+harness, and codegens its own copy of every generic it instantiates. Measured at 05e2539e (full debug
+info, before 8cf64117) in the coordinator's queued `cargo test --workspace --no-run --timings` runs of
+2026-09-30/10-01 (jobs=8, contended by a lane gate): from scratch the 56 targets' unit durations sum to
+5739 s, the 10 `GATE_RAILS` binaries 1291 s and the other 46 4448 s. A driver of 69 non-blank lines
+took 10 s and one of 131 took 199 s, and source size explains little of it (correlation 0.42). After a
+touch of `crates/dss-core/src/lib.rs` the default-lane build took 220.6 s (the parity lane 148.7 s),
+most of it the test binaries' relinks after the 51 s rebuild of dss-core and the harness. Contended
+numbers motivate the step, and part 1 measures it. The rulings:
 1. The ten `GATE_RAILS` binaries (`capture_order`, `corpus_gate`, `depascalize_metrics_gate`,
    `golden_json`, `oracle_parity_cfg_gate`, `pd_elements_pins`, `population_lock`,
    `props_r4133_evidence_lock`, `props_r4133_replay`, `reliability_pins`) stay separate: the
    reduced gates run a rail binary whole, and a merged binary that read one repository `.md`/`.rs`
    would join the register whole and make the `Docs` gate the full suite again. The merge covers
-   only the 46 binaries that read no repository file, and `gate_rails_are_exactly_the_measured_readers`
-   proves after the merge that no new binary joins the register.
-2. At most six binaries replace the 46, grouped by theme (a `golden` group for the `golden_*`
-   drivers, a `pins` group for the `*_pins` and `*_reports` drivers, a `usermodels` group for the
-   `wasm_usermodels*` drivers, the rest by the executor's per-unit numbers), such that no group's
-   compile time exceeds the longest rail binary's: the gain is fewer links, the cost is one rustc
-   front end per group, and the critical path must not grow. Each driver becomes one `mod <driver>;`
-   line of `tests/<group>/main.rs` and its file moves verbatim (its `use` lines, `#[ignore]`
-   attributes and helper fns stay; a helper duplicated across drivers is left duplicated, this step
-   moves, it does not refactor). Test IDs change from `<driver>::<test>` to
-   `<group>::<driver>::<test>`; the `GATE_RAILS` filtersets name no moved test.
-3. The measurement decides. Part 1, on the quiet machine, three runs each and the median wall time:
-   (a) `cargo nextest run --workspace --no-run` after `cargo clean -p dss-core` (the cold test
-   compile), (b) the same after touching `crates/dss-core/src/lib.rs` (the incremental compile every
-   gate pays), both lanes, with `--timings` on one run each. Part 2 repeats (a) and (b) after the
-   merge. The merge is kept when the incremental default-lane median of (b) drops by 15 % or more,
-   else part 2 ends with the tree at the part-1 commit (the merge is not committed) and the record
-   carries the numbers. `--timings` html files stay local (R5), the medians and the per-target
-   table go into the part files and the record.
-4. No test changes behaviour: the same test count per lane before and after (`cargo nextest list`
-   both lanes, diffed by test name after the `<group>::` prefix), the same `#[ignore]` set, the
-   corpus gate untouched.
+   only the 46 binaries that read no repository `.md` or `.rs` by the needle rule of
+   `gate_rails_are_exactly_the_measured_readers` (a whitespace-free string literal ending in `.md` or
+   `.rs`, an extension comparison with `"md"` or `"rs"`, a `file!()`, or a directory walk that
+   `WALK_SITES` classifies as reading one). They read other repository files (the golden trees,
+   `.gitattributes`, the corpus manifests), which the rule does not count. After the merge the same
+   rail proves that no new binary joins the register.
+2. At most six binaries replace the 46. A group is a `crates/dss-core/tests/<group>/main.rs` that
+   holds its doc and one `mod <driver>;` line per driver, named after no target or directory that
+   `tests/` already holds (`corpus_gate`, `data`). Each of the 46 sits in exactly one group, listed in
+   `part_1.md`: a `golden` group for the `golden_*` drivers (the rail `golden_json` stays out,
+   `golden_reports` is golden), a `pins` group for the other `*_pins` drivers (the rails
+   `pd_elements_pins` and `reliability_pins` stay out) and the other `*_reports` drivers, a
+   `usermodels` group for the three `wasm_usermodels*` drivers, and the rest by part 1's per-unit
+   numbers (a theme too heavy for one binary may split in two, within the six). The aim is that no
+   group's unit duration exceeds the longest rail unit, because the gain is fewer links, the cost is
+   one rustc per group, and the critical path must not grow. Part 2 checks it in the `--timings` html
+   of its default-lane (a) and (b) runs and reports it, and a group above the bound is named there for
+   the coordinator without changing ruling 3's decision. A driver file moves verbatim: its `use`
+   lines, `#[ignore]` attributes and helper fns stay, and a helper duplicated across drivers is left
+   duplicated, because this step moves and does not refactor. In nextest a moved test's binary id
+   becomes `dss-core::<group>` and its name `<driver>::<test>`. The `GATE_RAILS` filtersets name no
+   moved test.
+3. The measurement decides. Each measured build is `cargo nextest run --workspace --no-run` (with
+   `--features dss-core/oracle-parity` in the parity lane), run through the queue with
+   `CARGO_BUILD_JOBS` unset, so the queue sets its 8, the job count of every gate build, and with no
+   `-j` (nextest reads it as `--test-threads`) and no `--build-jobs`. Its time is the queue log's
+   `held=` seconds, and it counts only when that log shows no other command holding a slot during it,
+   else it is repeated. Per lane, default then parity: three runs of (a), each directly after
+   `cargo clean -p dss-core` (the cold test compile, and the clean also empties the other lane's
+   dss-core artifacts), then three runs of (b), each directly after touching
+   `crates/dss-core/src/lib.rs` on that lane's completed build. The touch changes the mtime only:
+   dss-core is rebuilt but its crate hash does not change, so each test binary reloads its
+   dependencies and relinks without codegen. That is the per-binary floor every gate pays once
+   dss-core is rebuilt, and a code edit adds each binary's own codegen, which (b) does not measure.
+   One run per cell carries `--timings`. Part 1 measures the step base and part 2 the merged tree, in
+   the same order. The merge is kept when the default-lane median of (b) drops by 15 % or more, else
+   part 2 ends with the tree at the step base (the merge is not committed) and the record carries the
+   numbers. The part files give every cell's median, minimum and maximum, each html's
+   `Max concurrency` line and the per-target table (the html files stay local, R5). The record gives
+   the medians (two lanes, cold and incremental, before and after), the decision and the recipe (this
+   ruling at the step base and on the merge), and names no local path.
+4. No test changes behaviour. Per lane, at the step base in part 1 and on the merged tree in part 2:
+   `cargo nextest list --workspace --run-ignored all --message-format json`. Each test
+   `(dss-core::<driver>, <test>)` of a moved driver maps to `(dss-core::<group>, <driver>::<test>)` and
+   every other test to itself, and the two sets of `(binary-id, name, ignored)` are equal. That fixes
+   the count, the names after the group prefix and the `#[ignore]` set (among the moved drivers one
+   test at 57b52520, `adiakoptics::ckt24_graph_diagnostic`). The corpus gate is untouched: no file of
+   the `corpus_gate` binary changes.
+5. A command that names a moved driver keeps its scope. `cargo test ... --test <driver>` becomes
+   `cargo test ... --test <group> -- <driver>::`, whose trailing `::` keeps out a sibling whose name
+   extends the driver's (`golden_feeders_controls` beside `golden_feeders`), and the nextest form is
+   `cargo nextest run -p dss-core --test <group> -E 'test(/^<driver>::/)'`. `part_3.md` shows for each
+   re-spelled command that `-- <driver>:: --list` lists the driver's tests alone. So TESTING.md's
+   regeneration template (`--test <driver>`) still rewrites one family per run, and
+   `crates/dss-test-harness/src/harness/regen.rs::LOCK_REGEN_CMD` with the spellings of
+   `crates/dss-core/tests/golden_lock.rs` becomes
+   `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test <group> -- golden_lock:: --nocapture`.
+   `crates/dss-core/tests/golden_lock.rs::COMMENT` is re-pointed, and the lock's `comment` is never
+   hand-edited: part 3 rewrites it with that command in the default lane, whose output shows no
+   `SEEDED`, `RE-ANCHORED` or `DIGEST MOVED` line, and the `git diff` of
+   `tests/golden/golden.lock.json` changes the `comment` value alone.
+6. The rails see the groups. `crates/dss-core/tests/oracle_parity_cfg_gate.rs::workspace_test_units`
+   takes cargo's second test-target form as a root beside `tests/<name>.rs`: `tests/<dir>/main.rs`,
+   the binary `<dir>`, collected like a crate root (`mod_rs = true`), so each `mod <driver>;` loads
+   `tests/<dir>/<driver>.rs` with the module prefix `<driver>`. A directory without `main.rs`
+   (`tests/corpus_gate/`, whose files `corpus_gate.rs` reaches through `#[path]`, and `tests/data/`)
+   stays no binary, and the orphan check does not change. The four rails built on that function
+   (`gate_rails_are_exactly_the_measured_readers`, `no_md_file_is_compiled_outside_test_code`,
+   `the_walked_data_roots_hold_exactly_the_registered_text_files`,
+   `every_directory_walk_is_classified`) then scan the group drivers as they scanned the drivers. A
+   unit test on a temporary fixture tree outside the repository (a `tests/<dir>/main.rs` with one
+   `mod` driver) shows the group as one unit that holds both files, and reds when either is missed.
+   The rail literals that name a moved path are re-pointed (counts at 57b52520): the 13 `WALK_SITES`
+   rows (their counts unchanged), the twelve evidence and pin paths of `TORN_DOWN_ROWS`, the four
+   `corpus_manifest.rs` rows of the fn-local `G13D1_PINS` and `G13D1_PIN_GROUPS` of
+   `every_pin_the_g13d1_record_names_exists_and_is_cited`, and
+   `crates/dss-core/tests/props_r4133_replay.rs::PINS`. `GATE_RAILS` and `DATA_ROOT_TEXT` do not
+   change, and `.config/nextest.toml` names no binary.
+7. If the merge is kept, the coordinator hands its paths to the steps not landed by then, as R13 did
+   for the harness path: at the landing it re-points by script every moved path in `wp_index.json` and
+   in their run args, and writes the mapping into §5 as R19. In the Files lists, findings and probes of
+   those steps and of the pending sub-steps of `GOLDEN_REBASE_PLAN.md`,
+   `crates/dss-core/tests/<driver>.rs` of a moved driver means
+   `crates/dss-core/tests/<group>/<driver>.rs`, and `--test <driver>` means ruling 5's form (R13's
+   sentence that the drivers keep their paths then holds for the ten rails only). The section texts
+   are not rewritten, and the executor's scope check reads the re-pointed list. `part_3.md` lists the
+   46 old and new paths for the script.
 **Parts:**
-1. Measure and design: the part-1 baseline of ruling 3 (numbers in `part_1.md`), the per-target
-   table from the timings html, the grouping with its predicted critical path, the reader census
-   (which of the 46 read a repository file: none expected, else that driver stays separate).
-2. The merge (ruling 2), the rail edits of `oracle_parity_cfg_gate.rs`, the part-2 measurement, the
-   decision of ruling 3 with the test-list diff of ruling 4. A kept merge is committed with the
-   re-pointed spellings of its own crate; a rejected one leaves the tree at the part-1 commit and
+1. `INFRA|11` - Measure and design, no commit: ruling 3's part-1 runs at the step base, ruling 4's
+   base listings, the reader census (the `reader …` lines of
+   `gate_rails_are_exactly_the_measured_readers` run with `--no-capture` at the step base, no
+   `-p dss-core --test` reader outside the ten, none of the 46 at 57b52520) and the grouping of ruling
+   2 with the per-unit numbers behind it, all in `part_1.md`.
+2. `INFRA|11` - The merge, built in the lane's working tree: the moves and the `main.rs` files (ruling
+   2), the rail edits of ruling 6, and the citation tokens that a `LINE_CITED_DOCS` document spells by
+   a path the move breaks (R9, the path token only, each listed in that document's notes entry). At
+   57b52520 these are three in TESTING.md: its citations of `corpus_manifest.rs` for
+   `no_corpus_energymeter_is_named_zero` and of `adiakoptics.rs` for the `DSS_REGEN_AD_GOLDEN` knob
+   (line citations RF-D07-01 converts first) and
+   `crates/dss-core/tests/save_roundtrip.rs::save_forms_structural_file_set`. Scoped check in both
+   lanes: every `GATE_RAILS` entry green. Then ruling 3's part-2 runs, ruling 4's listing diff and
+   ruling 2's bound, all in `part_2.md`, and the decision. A kept merge is committed in two commits,
+   first the move alone (the `git mv` renames and the new `main.rs` files, each moved driver `R100` in
+   `git diff -M100% --name-status <base> <move commit>`), then the rest of this part. A rejected merge
+   leaves no commit: the lane returns to the step base (`git status --porcelain` empty) and
    `part_2.md` says why.
-3. If kept: `TESTING.md` (R9), the census of moved-path spellings across the tree, the notes entries,
-   the record. If rejected: the record with the numbers, nothing else.
-**Acceptance:** the part-1 and part-2 numbers are in the record (both lanes, cold and incremental,
-medians of three); if kept, `cargo nextest list` per lane holds the same test names after the group
-prefix and the same count, `gate_rails_are_exactly_the_measured_readers` is green with an unchanged
-`GATE_RAILS`, `rg` finds no `tests/<old-name>.rs` or `--test <old-name>` spelling of a moved driver
-outside git history, and the nine commands are green.
+3. `INFRA|11` - If kept: the census of **Probes** with one disposition per hit in `part_3.md` (the
+   rest of `TESTING.md` in-step, R9), ruling 5's command forms and the lock's `comment`, the notes
+   entries, ruling 7's path list, the record. If rejected: the record with the numbers, nothing else.
+**Probes:** the census, at the step base (the scope) and at the head (the check), is `git grep` over
+the tracked tree less `docs/phase-records/`, `docs/plans-archive/`, the `*_PLAN.md` files,
+`tests/corpus/electricdss-tst/` and `tests/golden/` (records, archived plans and the plans keep the
+spelling of their date, and ruling 5 covers the lock). (1) The path probe, `git grep -n -E` with
+`-e 'tests/(<the 46 names>)\.rs'`, `-e '--test[ =](<the 46 names>)\b'` and
+`-e 'binary(_id)?\((dss-core::)?(<the 46 names>)\)'`: 102 lines in 33 files at 57b52520. (2) The
+template probe `git grep -n -e '--test <'`: two hits at 57b52520, TESTING.md's regeneration template
+and the `RailTarget` doc of the cfg gate. (3) The phrase probe, `git grep -n -i -E` with
+`-e 'own (test )?binar'`, `-e 'this (test )?binar'`, `-e 'tests/golden_\*'` and
+`-e 'tests/\*_(pins|reports)'`: 44 hits at 57b52520, 14 of them in the files of the `corpus_gate`
+binary, which speak of that binary and stay untouched. `part_3.md` gives every base hit one
+disposition: re-pointed (a path to `crates/dss-core/tests/<group>/<driver>.rs`, a line citation among
+them in the symbol form of R18, a command to ruling 5's form), re-worded to the present fact (the "own
+binary" of the `topology_pins` and `inc_matrix_pins` module docs, TESTING.md's
+`crates/dss-core/tests/golden_*.rs`), true as it stands (with a one-line reason), or a §4 notes entry.
+**Acceptance:**
+- The record carries the part-1 and part-2 medians (both lanes, cold and incremental), the decision
+  and the recipe, and the part files carry every cell's median, minimum and maximum, the per-target
+  tables and ruling 2's bound check.
+- If kept: the move commit shows each of the 46 drivers `R100` against the step base, and each
+  `main.rs` holds its doc and one `mod` line per driver. Ruling 4's sets are equal in both lanes, and
+  `git diff <base> -- crates/dss-core/tests/corpus_gate.rs crates/dss-core/tests/corpus_gate/` prints
+  nothing. `gate_rails_are_exactly_the_measured_readers` is green with an unchanged `GATE_RAILS`, and
+  the fixture test of ruling 6 has its red case. The head census prints only the hits `part_3.md`
+  keeps, each with its reason, and the §4 lines whose notes entries are unapplied. The lock's diff and
+  its command's output are ruling 5's. The nine commands are green.
+- If rejected: the tree is the step base plus the record.
+- The record block written (5-10 lines: the medians, the decision, the groups by name, the recipe,
+  the commits, the gate result, no local path), the notes entries left, `INFRA|11` closed or recorded
+  with a reason.
 
 ### RF-I00-09 — The machine-wide build/test queue moves into `tools/gate/` (user decision 2026-09-30)
 <!-- RF-STEP {"step": "RF-I00-09", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "inline_shared": true, "after": [], "n_uids": 1} -->
