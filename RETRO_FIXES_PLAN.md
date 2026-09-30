@@ -4790,11 +4790,12 @@ commands). The coordinator's execution script spells every gate inline, so befor
 stage 2 the coordinator re-points each of its gate sites to the new rows: stage 2, gate 2, settle,
 settle 2, the clean-audits branch and the wave landing (the full gate and the landing to the nine
 commands, `Comments` to commands 2, 3, 6, 7, 8 and 9, each doc command green only as ruling 5
-defines it). Every stage report quotes the command list it ran. At 57b52520 the Files hold one path
-under a compat or solver directory, a doc line of `crates/dss-core/src/solution/solution/ncim.rs`,
-and no compat kernel, lane alias or solver line moves: the gate row decides, and in the `Code` row a
-path rule that fires on that file runs `lane_diff`. **After:** RF-D07-01 (its parts 3-4 are the R18
-symbol rail for the documents, and this step's TESTING.md gate text lands after their conversions.
+defines it). Every stage report quotes the command list it ran. At 57b52520 the Files hold two
+files under a compat or solver directory, `crates/dss-sparse/Cargo.toml` (its `[lints]` table) and
+`crates/dss-core/src/solution/solution/ncim.rs` (one doc line), and no compat kernel, lane alias or
+solver line moves: the gate row decides, and in the `Code` row a path rule that fires on either runs
+`lane_diff`. **After:** RF-D07-01 (its parts 3-4 are the R18 symbol rail for the documents, and
+this step's TESTING.md gate text lands after their conversions.
 Its part 3 (3) measured rustdoc, recorded the counts and added no command: this step is the R12
 follow-up that part names, and rulings 1 and 5 supersede its `RUSTDOCFLAGS` form and its
 `-D rustdoc::private_intra_doc_links`) and RF-I00-06 (it re-words harness doc comments this step
