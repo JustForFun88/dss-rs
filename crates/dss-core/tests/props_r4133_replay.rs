@@ -927,7 +927,20 @@ const DECLARED_OUT_OF_SCOPE: (usize, usize, usize) = (221, 21, 0);
 /// RP4.1 unmask compares (vendored `README.md` §"The in-scope filter": cells on
 /// `engines in {both, r4133}` cases). So a spelling whose own gap **exceeds**
 /// that maximum cannot sit on a single in-scope cell — it would have raised the
-/// maximum. The rule is [`row_out_of_scope_by_ceiling`], and it is applied only
+/// maximum. It is **a 462-case measurement**: the in-scope population of the
+/// 2026-08-08 census (462 of the 521 manifest cases). The live manifests have
+/// grown to 467 in-scope cases since (526 in all at RF-D00-16), and the
+/// argument still covers every row here because the growth is five added decks
+/// and nothing else: those decks carry no frozen row, so they neither raised a
+/// ceiling nor hold a row the rule acts on, and none of the 462 left the scope
+/// nor did any census-time `capi_v0145` case enter it, so a census cell is in
+/// scope today exactly when it was in scope when it was measured.
+/// `props_r4133_evidence_lock.rs::the_in_scope_population_is_the_census_one_plus_named_additions`
+/// locks both halves (the census set by count and digest, the census-time
+/// `capi_v0145` cases by name — none may enter the scope or pass as an
+/// addition — and the additions by name) and reds on the next in-scope deck
+/// until it is named there.
+/// The rule is [`row_out_of_scope_by_ceiling`], and it is applied only
 /// on these four cited pairs, only to numeric rows, and with a margin: the
 /// extracts round `max_rel_in_scope` to two decimals (`%.2e`), so the
 /// comparison carries [`CEILING_ROUND_MARGIN`], and the *measured* minimum
@@ -1798,9 +1811,14 @@ const RP32_SKIPPED_TAG: &str = "capi015_multistep_limitation";
 ///   and the `GetPropertyValue` override re-renders only PD-tail slots 1 and 2
 ///   (`:1885-1888`), so slots 4 and 5 fall through to the `PropertyValue[]`
 ///   store (`General/DSSObject.pas:112-115`);
-/// * `regcontrol.revthreshold` — `RegControl.pas:820-827` overrides only TapNum
-///   and `:1448` freezes `PropertyValue[23] := '100'`, the sibling of
-///   `remoteptratio` (`:1452`), measured at 888 cells by RP2.1 part A.
+/// * `regcontrol.revthreshold` — `RegControl.pas:820-827` overrides only TapNum,
+///   so the getter answers the `PropertyValue[23]` store, the sibling of
+///   `remoteptratio` (`:1452`), measured at 888 cells by RP2.1 part A: the
+///   `InitPropertyValues` default `'100'` (`:1448`) where no deck writes the
+///   property (861 cells), the deck's own token stored by the `Edit` loop
+///   (`:420`) where one does (27 cells: 24 × `'800'`, and 3 × `'100'` — the
+///   ADiakoptics `zone_2` deck's `revThreshold=100`, the default's spelling),
+///   while the live value is -100 / -800 (`:627`, `:500-507`).
 const BIN7_ECHO_SUPPLEMENT: &[&str] = &[
     "autotrans.pctperm",
     "autotrans.repair",
@@ -3656,7 +3674,8 @@ fn sig15(v: f64) -> String {
 /// asserted and dropped when `header` is `Some`.
 ///
 /// `#` lines are dropped for [`SUPPLEMENT`] only — its provenance header is the
-/// bin assignment of the pairs it holds. The frozen extracts carry no comment,
+/// bin assignment of the pairs it holds (the `# BIN` lines among them are read
+/// by [`supplement_bin_declarations`]). The frozen extracts carry no comment,
 /// and keeping the filter off them means a `#` line inserted into one is a data
 /// row here too, i.e. loud (`props_r4133_evidence_lock.rs` makes the same split
 /// for the same reason — RP2.1 audit round).
@@ -3721,6 +3740,52 @@ fn examples(name: &str, src: Source) -> Vec<Example> {
             }
         })
         .collect()
+}
+
+/// The [`SUPPLEMENT`] header's machine-readable bin declarations, in file
+/// order: one `# BIN <pair> <bin>` line per pair no README WP-RP1 record bins
+/// (`regcontrol.fwdthreshold`, `regcontrol.revthreshold`). The line
+/// carries the bin only; the pair's cells are the sum of its data rows, which
+/// [`Corpus::load`] adds up, so neither number lives in this file as a literal
+/// (RETRO_FIXES RF-D00-16, finding `RP|RP2.1|AT2|AT2-3`).
+///
+/// A `# BIN ` line that is not exactly `<class.prop> <bin 1..=7>` panics, as
+/// does a pair declared twice or a header that declares nothing: the
+/// declaration is evidence, so a malformed one must be loud rather than
+/// skipped. `props_r4133_evidence_lock.rs` (`SUPPLEMENT_BINS`) pins the same
+/// two lines as bytes and checks each bin against its pair's data rows by the
+/// README's assignment rule.
+fn supplement_bin_declarations() -> Vec<(String, u8)> {
+    let mut out: Vec<(String, u8)> = Vec::new();
+    for line in read(SUPPLEMENT).lines() {
+        let Some(decl) = line.trim_end_matches('\r').strip_prefix("# BIN ") else {
+            continue;
+        };
+        let fields: Vec<&str> = decl.split(' ').collect();
+        let [pair, bin] = fields[..] else {
+            panic!("{SUPPLEMENT}: {line:?} is not `# BIN <pair> <bin>`");
+        };
+        assert!(
+            pair.contains('.') && !pair.starts_with('.') && !pair.ends_with('.'),
+            "{SUPPLEMENT}: {line:?} names no class.prop pair"
+        );
+        let bin: u8 = bin
+            .parse()
+            .ok()
+            .filter(|b| (1..=7).contains(b))
+            .unwrap_or_else(|| panic!("{SUPPLEMENT}: {line:?} declares no bin 1..=7"));
+        assert!(
+            out.iter().all(|(p, _)| p != pair),
+            "{SUPPLEMENT}: {pair} is declared by two `# BIN` lines"
+        );
+        out.push((pair.to_string(), bin));
+    }
+    assert!(
+        !out.is_empty(),
+        "{SUPPLEMENT}: the header declares no `# BIN` line — the two regcontrol pairs \
+         would have no evidence row"
+    );
+    out
 }
 
 /// `bins.tsv`, as `pair -> [evidence]` (two entries for the one pair that is
@@ -3988,26 +4053,53 @@ impl Corpus {
             );
         }
         // The two pairs no census row can carry, each declared by its own
-        // provenance (the supplement's header states both, with the r4133
-        // citations). In scope: their sibling `regcontrol.idle` carries 732
-        // in-scope cells of 887 — RP2.3 re-derives the exact split with the
-        // census knob when it writes the pins.
-        for (pair, bin, cells) in [
-            ("regcontrol.fwdthreshold", 5u8, 888usize),
-            ("regcontrol.revthreshold", 7, 888),
-        ] {
-            supplement.insert(
-                pair.to_string(),
+        // provenance: the supplement's `# BIN <pair> <bin>` header lines (the
+        // prose above them carries the r4133 citations), and cells = the sum of
+        // the pair's own data rows (864 + 24 = 888 each at RF-D00-16), so the
+        // echo rows' `cells` are compared against the file, not a literal. In
+        // scope: their sibling `regcontrol.idle` carries 732 in-scope cells of
+        // 887 — RP2.3 re-derives the exact split with the census knob when it
+        // writes the pins.
+        for (pair, bin) in supplement_bin_declarations() {
+            let cells: usize = rows
+                .iter()
+                .filter(|r| r.src == Source::Supplement && r.pair == pair)
+                .map(|r| r.cells)
+                .sum();
+            assert!(
+                cells > 0,
+                "{SUPPLEMENT}: `# BIN {pair} {bin}` declares a pair with no data row"
+            );
+            let clash = supplement.insert(
+                pair.clone(),
                 PairEvidence {
                     numeric: bin >= 6,
                     bin,
                     cells,
                     cells_in_scope: None,
                     max_rel_in_scope: None,
-                    origin: "examples_supplement.txt provenance header".to_string(),
+                    origin: format!("examples_supplement.txt `# BIN {pair} {bin}` line"),
                 },
             );
+            assert!(
+                clash.is_none(),
+                "{pair}: declared both by a README WP-RP1 record and a `# BIN` line"
+            );
         }
+        // Every supplement pair has exactly one declaration: the README record
+        // or the `# BIN` line. A row whose pair neither names would otherwise
+        // reach the accounting with no evidence.
+        let row_pairs: BTreeSet<&str> = rows
+            .iter()
+            .filter(|r| r.src == Source::Supplement)
+            .map(|r| r.pair.as_str())
+            .collect();
+        let declared: BTreeSet<&str> = supplement.keys().map(String::as_str).collect();
+        assert_eq!(
+            row_pairs, declared,
+            "{SUPPLEMENT}: the data-row pairs and the declared pairs (README WP-RP1 records + \
+             `# BIN` lines) must be the same set"
+        );
 
         let mut r4133_allowlisted = BTreeSet::new();
         for s in shape_rows() {
@@ -4954,9 +5046,11 @@ fn every_echo_row_claims_at_least_one_example_row() {
 /// **Evidence integrity of the echo table** (plan mechanic (a)): every row's
 /// `cells` column is read back against the file it cites — `bins.tsv` for the
 /// frozen census, the vendored `README.md` §"Pairs the WP-RP1 shape closures
-/// make live" (or the supplement's provenance header) for the pairs WP-RP1 and
-/// RP0.2 created. A mis-transcribed row fails here instead of silently
-/// describing a pair that is not there.
+/// make live" (or, for the two regcontrol pairs, the supplement's `# BIN`
+/// header lines with cells summed from their data rows —
+/// [`supplement_bin_declarations`]) for the pairs WP-RP1 and RP0.2 created. A
+/// mis-transcribed row fails here instead of silently describing a pair that
+/// is not there.
 #[test]
 fn every_echo_row_matches_its_cited_evidence() {
     let corpus = Corpus::load();

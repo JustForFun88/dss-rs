@@ -1924,7 +1924,7 @@ pub const PROPS_ECHO_R4133: &[EchoRow] = &[
          "RegControl.pas:1452 ('60') vs the live value, re-initialised from PTRatio on every ptratio= (:484)",
          Capi(31)),
     echo("regcontrol", "revthreshold", EchoDefault, 888,
-         "RegControl.pas:1448 ('100') vs Create :627 kWRevPowerThreshold:=-100.0; a deck's revThreshold=800 keeps '800' while :503-505 makes the live value -800",
+         "RegControl.pas:1448 ('100') vs Create :627 kWRevPowerThreshold:=-100.0 (861 cells); a deck's revThreshold= is stored as its own token by the Edit loop (:420, an EchoParse on 27 cells: 24 x '800', 3 x '100' of the default's spelling) while :500-507 negates the live value",
          Pin("regcontrol_idle_flags_and_thresholds_render_the_live_values")),
     echo("relay", "action", EchoDefault, 270,
          "Relay.pas:388 (prop 19, DEPRECATED) + :1577 ('closed'); no arm (:1366-1440)",
@@ -3583,11 +3583,13 @@ mod tests {
     ///
     /// The live cost of that particular widening is exact and large:
     /// `regcontrol.revthreshold` is literally `'-100'` (ours) against `'100'`
-    /// (r4133) over **888 cells** — an `EchoDefault` frozen at
-    /// `Version8/Source/Controls/RegControl.pas:1448`, vendored in
-    /// `examples_supplement.txt` and owed a cited exclusion row plus a pin by
-    /// RP2.3. A sign-blind `CaseFold` would fold exactly that class of real
-    /// divergence into silence.
+    /// (r4133) on 864 cells — 861 an `EchoDefault` frozen at
+    /// `Version8/Source/Controls/RegControl.pas:1448`, 3 a deck's own
+    /// `revThreshold=100` token (stored by the `Edit` loop, `:420`) — and
+    /// `'-800'` against the deck's own token `'800'` on the other 24:
+    /// **888 cells**, vendored in `examples_supplement.txt` and owed
+    /// a cited exclusion row plus a pin by RP2.3. A sign-blind `CaseFold` would
+    /// fold exactly that class of real divergence into silence.
     ///
     /// The pin is written on the **predicate**, not on a table row, so it holds
     /// for every present and future `CaseFold` pair.
