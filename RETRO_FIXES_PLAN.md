@@ -5187,42 +5187,124 @@ entry.
 ### RF-I00-09 — The machine-wide build/test queue moves into `tools/gate/` (user decision 2026-09-30)
 <!-- RF-STEP {"step": "RF-I00-09", "effort": "high", "parts": 1, "gate": "full", "oracle": false, "inline_shared": true, "after": [], "n_uids": 1} -->
 **Tier:** executor opus/high; audits, settler per §3. **Gate:** full (a `.py` file is `Code` for
-`gate-kind`, so the seven commands, or nine once RF-I00-07 has landed). **After:** none; scheduled
-by hand on one lane, and it may run beside a lane wave (it touches no crate). **Files:**
-`tools/gate/gatelock.py` (new), `tools/gate/README.md` (new, short: what the queue is, the slots,
-the usage line, `GATELOCK_ROOT`, `GATELOCK_OFF`), `TESTING.md` (in-step, R9: one section "The
-machine-wide build/test queue" after §"Which gate to run", pointing at the README), `CLAUDE.md`
-("## Gate": one sentence, on a shared machine every gate command runs through the wrapper),
+`gate-kind`, so the seven commands, or nine once RF-I00-07 has landed), run through the live queue
+like every cargo command of the step but the probes (ruling 4). **After:** none. Scheduled by hand
+on one lane (not in `wp_index.json`). By the user's decision of 2026-09-30 it may run beside a lane
+wave (it touches no crate), an exception to the §6 preamble, but only beside a wave whose steps'
+**Files** are disjoint from its own (§4, R9): no step that holds `CLAUDE.md` or `TESTING.md` (at
+2026-10-01 RF-D05-06, the `TESTING.md` owners RF-D04-01, RF-D04-02, RF-D04-03, RF-D04-07 and
+RF-D04-09, and the R9 steps RF-D07-01, RF-D07-02, RF-D07-06, RF-D07-12 and RF-D07-13). It never
+runs beside another §6 step (the §6 preamble, and RF-I00-07 edits the same gate sections).
+**Files:** `tools/gate/gatelock.py` (new), `tools/gate/README.md` (new, short: what the queue is and
+its scope, one queue per main checkout and its worktrees, which another clone joins only through
+`GATELOCK_ROOT`; the slots and the commands that take them, the `cargo nextest run`/`cargo test`
+split, `cargo test --doc` whole under the test slot, `CARGO_BUILD_JOBS=8` for a build-slot command
+unless the caller set it, every other command unqueued; the usage line; the board and the log under
+`<main checkout>/tmp/gatelock/`, a dead process's ticket purged by the next wrapper that reads the
+queue, tickets never deleted by hand; `GATELOCK_ROOT`, the queue directory itself; `GATELOCK_OFF`;
+Windows only), `TESTING.md` (in-step, R9: one `###` subsection "The machine-wide build/test queue"
+of §"The mandatory gate", right after §"Which gate to run (the RETRO_FIXES stage gates)" and before
+§"The two lanes (Stage F)", pointing at the README, and the rows `GATELOCK_ROOT` and `GATELOCK_OFF`,
+consumer `tools/gate/gatelock.py`, in §"Environment variables"), `CLAUDE.md` ("## Gate": one
+sentence, on a shared machine every gate command runs through the wrapper),
 `docs/phase-records/retro-fixes.md`.
 **Doc notes (§4):** `TESTING.md` in-step (R9), a notes entry appended for its owner.
 **Decision (user, 2026-09-30):** the coordinator's queue wrapper (`tmp/retro_fix/bin/gatelock.py`,
 its second version: FIFO tickets with an OS byte-lock per waiter so a dead process is purged, a
 Windows job object so a killed wrapper kills its cargo, two build slots and one test slot, a
 `cargo nextest run`/`cargo test` split into `--no-run` under the build slot and the run under the
-test slot, `cargo test --doc` whole under the test slot, `-j 8` per build) has run every lane's
-gate since 2026-09-27 and is part of the ritual, so it is tracked. The rulings:
+test slot, `cargo test --doc` whole under the test slot, `CARGO_BUILD_JOBS=8` for each build-slot
+command unless set) has run every lane's gate since 2026-09-27 and is part of the ritual, so it is
+tracked. The rulings:
 1. The script moves verbatim in behaviour: the same slots, poll, split rules, job object, board and
-   log format, exit code; the executor reads the source from the coordination directory
-   (`tmp/retro_fix/bin/gatelock.py` of the main checkout) and changes only what the move needs.
+   log format, exit code. The executor reads the source from the coordination directory
+   (`tmp/retro_fix/bin/gatelock.py` of the main checkout), keeps a copy of it with its SHA-256 in
+   the step's state directory `tmp/retro_fix/state/RF-I00-09/` from the start of part 1 (the
+   reference of every audit of the step), and changes only what rulings 2 and 3 and the docstring
+   need.
 2. Its default root is no longer a spelled absolute path: it is `<main checkout>/tmp/gatelock/`,
-   found from the script's own location through `git rev-parse --git-common-dir` (a worktree's
-   copy of the script resolves to the main checkout's `.git`, so every worktree queues on the one
-   directory), with tickets under `tickets/`, the board `board.txt` and the log `board.log` inside
-   it; `GATELOCK_ROOT` still overrides. `tmp/` is gitignored already.
-3. Windows only (`msvcrt` byte locks, a `ctypes` job object): on another platform the wrapper says
-   so and runs the command unqueued with a warning, never silently.
+   where `<main checkout>` is the parent of the directory that `git -C <the script's own directory>
+   rev-parse --path-format=absolute --git-common-dir` prints. The flag is required: in the main
+   checkout git prints that directory relative to `-C` (`../../.git` from `tools/gate/`) and only a
+   linked worktree gets an absolute path, so a relative answer resolved against the caller's working
+   directory would put the coordinator's landing gates and the shim of ruling 4 on another directory
+   than the lanes. With it the main checkout's copy and every worktree's copy name the main
+   checkout's `.git`, so every tree queues on the one directory. git runs with `GIT_DIR`,
+   `GIT_COMMON_DIR` and `GIT_WORK_TREE` removed from its environment, so a caller's git context never
+   moves the answer. The queue files (`meta.lock`, `counter`, the per-slot ticket directories) sit
+   under `tickets/`, the board is `board.txt` and the log `board.log`, all inside the root.
+   `GATELOCK_ROOT` still overrides and now names that directory itself (the coordination copy reads
+   it as the parent of `gatelock/` and `state/`). The root is looked up only when the wrapper queues
+   a command, before it takes a ticket, so `GATELOCK_OFF=1` and the commands it runs unqueued never
+   fail on it (their one possible log line, a failed job assignment, is best-effort like every board
+   and log write). When `GATELOCK_ROOT` is unset and the lookup fails (no git on `PATH`, no enclosing
+   repository, git refuses, or an answer that is not one absolute directory), the wrapper runs
+   nothing: it says why, names `GATELOCK_ROOT` and `GATELOCK_OFF`, and exits non-zero, never on a
+   guessed root. `tmp/` is gitignored already.
+3. Windows only (`msvcrt` byte locks, a `ctypes` job object). The test is
+   `sys.platform == "win32"`, made before any Windows-only import (`msvcrt`, `ctypes.wintypes` and
+   the job-object structures built from it). On another platform the wrapper says so on stderr and
+   runs the command unqueued, without a job object, exiting with its code, never silently.
 4. The usage line of the ritual becomes `python tools/gate/gatelock.py --label "<who>" -- cargo
-   <args>` (relative to the tree being built). The coordinator re-points its own scripts (the
-   workflow prompts, the gate drivers) at the landing and leaves a shim at the old path that runs
-   the tracked script on the same root, so the two spellings share one queue while old runs finish;
-   the shim is the coordinator's, not this step's.
+   <args>` (relative to the tree being built). At the landing the coordinator re-points its own
+   scripts (the workflow prompts, the gate drivers), for a run only when its tree contains the
+   landing commit (`git merge-base --is-ancestor <landing commit> HEAD`): a lane cut before it has
+   no `tools/gate/` and keeps the old spelling until it merges `update`. The coordinator replaces the
+   old path by a shim only when the old board (`tmp/retro_fix/state/gate_board.txt`) shows no holder
+   and no waiter: a wrapper already running keeps the old queue directory in memory and no
+   `GATELOCK_ROOT` maps the new layout onto the old one, so two live queues would admit four builds
+   and two test runs. The shim runs `<main checkout>/tools/gate/gatelock.py` in its own process
+   (`runpy.run_path(..., run_name="__main__")`, so killing it still kills its cargo and the exit code
+   passes unchanged) and sets no `GATELOCK_ROOT`, so the two spellings share the default root. The
+   shim is the coordinator's, not this step's. Until that switch the live queue is the old one: the
+   step's gate, scoped checks and audits run through the old path, and only the probes of part 1 run
+   the new script, with commands that build nothing of the workspace.
 **Parts:**
-1. `INFRA|10` - the move with rulings 1-3, the README, the TESTING.md section, the CLAUDE.md
-   sentence, the record. Probe (in `part_1.md`, no commit of it): three wrapped commands started
-   together from the lane (two `cargo clippy -p dss-sparse`, one `cargo nextest run -p dss-sparse`)
-   show on the board two build holders, the third waiting, then the test run's `--no-run` under a
-   build slot and its run under the test slot, and the exit codes pass through (a `cargo nextest run
-   -p dss-sparse -E 'test(=no_such_test)'` returns nextest's non-zero code through the wrapper).
-**Acceptance:** `tools/gate/gatelock.py` differs from the coordination copy only in the root
-resolution, the platform message and the docstring path; the probe of part 1 is in the part file;
-TESTING.md, the README and CLAUDE.md spell the same usage line; the gate is green.
+1. `INFRA|10` - the move with rulings 1-3, the README, the TESTING.md subsection and its two rows,
+   the CLAUDE.md sentence, the probes of **Probes** (in `part_1.md`, no commit of them), the record.
+**Findings**
+- `INFRA|10` (minor) - the queue wrapper that every gate of the ritual runs through lives at an
+  untracked path of the main checkout with a spelled absolute root: tracked at
+  `tools/gate/gatelock.py` with the root of ruling 2 and the platform test of ruling 3.
+**Probes:** each through the lane's `tools/gate/gatelock.py` unless it says otherwise, every command
+quoted in `part_1.md` with its exit code, its `board.log` lines and the stderr it names.
+(1) Root: `python <script> --label rf-i00-09-root -- cargo check --help` (a build-slot command that
+compiles nothing), run with the lane's script from the lane worktree, and with a copy of it in
+`tmp/retro_fix/state/RF-I00-09/probe/` of the main checkout (inside the main tree, where git answers
+relative) from the lane worktree and from the main checkout's root. Each run appends one
+`rf-i00-09-root` line to `<main checkout>/tmp/gatelock/board.log`, and so does a run of the lane's
+script with `GIT_DIR` set to a directory that is no repository. With
+`GATELOCK_ROOT=<a fresh directory>` the line goes to that directory's `board.log` instead. A copy
+outside any checkout (under `%TEMP%`), `GATELOCK_ROOT` unset, exits non-zero naming `GATELOCK_ROOT`
+and `GATELOCK_OFF`, runs no cargo and adds no `board.log` line.
+(2) Platform: `python -c "import runpy, subprocess, sys; sys.platform = 'linux';
+sys.argv = ['gatelock.py', '--label', 'rf-i00-09-platform', '--', 'cargo', 'check', '--no-such-flag'];
+runpy.run_path('tools/gate/gatelock.py', run_name='__main__')"` (`subprocess`, imported first, keeps
+its Windows implementation) prints the warning on stderr, exits 1 (cargo's code for an unknown flag)
+and adds no `board.log` line, while the same command without the faked platform takes a build slot
+and logs `rc=1`.
+(3) Concurrency, on a fresh private root
+(`GATELOCK_ROOT=<main checkout>/tmp/retro_fix/state/RF-I00-09/probe_root`): a dependency-free scratch
+crate in `tmp/retro_fix/state/RF-I00-09/slow/` (its own `[workspace]` table, one `#[test]`, a build
+script that sleeps 20 s: a fixed window at no CPU cost), every command with `--manifest-path` and
+`--target-dir` into it, the lane's target untouched. Two `cargo clippy` and one `cargo nextest run` of
+it, started from the lane in that order 0.3 s apart: a copy of `board.txt` taken 5 s in shows two
+build holders and the run's `(compile)` ticket waiting, and `board.log` shows two build lines with
+`waited=0s`, then the `(compile)` build line with a wait of at least one poll (3 s), then the run's
+`test` line. `cargo nextest run ... -E 'test(=no_such_test)'` of the crate then logs `rc=4` on its
+`test` line (nextest's "no tests to run") and the wrapper exits 4.
+**Acceptance:**
+- `part_1.md` records the SHA-256 of the coordination copy the move started from, kept beside it
+  (ruling 1). `git diff --no-index <that copy> tools/gate/gatelock.py` holds only the root lookup
+  with its failure rule and layout (ruling 2), the platform test with the Windows-only imports
+  behind it and the unqueued branch with its warning (ruling 3), and the docstring (the usage line,
+  the board and log paths, no "local only"), and the diff stays in `part_1.md`. The record names the
+  source as the coordinator's queue wrapper, second version, never by its `tmp/` path.
+- The three probes are in `part_1.md` with their `board.log` lines and exit codes, and an auditor
+  who re-runs them gets the same slots, labels and exit codes.
+- TESTING.md, the README, CLAUDE.md and the script's docstring spell the same usage line. The
+  TESTING.md subsection is a `###` of §"The mandatory gate" between §"Which gate to run (the
+  RETRO_FIXES stage gates)" and §"The two lanes (Stage F)", and §"Environment variables" holds the
+  two rows.
+- The gate is green, run through the live queue (ruling 4). Record block written (5-10 lines), the
+  notes entry left, the uid closed or recorded with a reason.
