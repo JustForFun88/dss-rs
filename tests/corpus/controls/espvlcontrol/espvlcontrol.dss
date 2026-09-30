@@ -1,10 +1,10 @@
 // ESPVLControl scenario: an Energy-Storage/PV "system controller" supervising a
 // fleet of "local controllers" over a 12-step daily ramp. The two
 // SystemControllers `sys` and `scan` monitor `line.l2`, a short branch to the
-// constant-power 8000 kW load `ld2`, so their PDiff = P - FkWLimit stays within
-// +0.15 kW of the hardcoded FkWLimit = 8000 kW (ESPVLControl.pas:321 -- there is
-// NO kWLimit property), inside HalfkWBand = 50 kW on every step: Sample and
-// MakeLocalControlList run, the redispatch never fires.
+// constant-power 8000 kW load `ld2`, so their PDiff = P - FkWLimit (FkWLimit is
+// hardcoded to 8000 kW, ESPVLControl.pas:321 -- there is NO kWLimit property)
+// stays at +0.105..+0.142 kW, inside HalfkWBand = 50 kW, on every step: Sample
+// and MakeLocalControlList run, the redispatch never fires.
 //
 // WHY THE REDISPATCH STAYS SILENT HERE. Upstream the redispatch stores
 // `Gen.kWBase` through a TGeneratorObj cast of another ESPVLControl. On the
@@ -13,9 +13,10 @@
 // compile in the same process finds no circuit (see ISOLATE below). An oracle
 // executing that store is no reference for it, and `kWBand` cannot silence it
 // (HalfkWBand is fixed at 50 kW when the object is created, the kWBand edit only
-// sets FkWBand), so the monitored power keeps it inside the band. The redispatch
-// arithmetic (PDiff, HalfkWBand, the weights, TotalWeight, the Max(1.0,..) floor)
-// and `sys`'s NAMED-list branch are pinned by
+// sets FkWBand), so the monitored power keeps it inside the band, and
+// exec/tests/espvl_control.rs steps this deck and fails on a step outside it.
+// The redispatch arithmetic (PDiff, HalfkWBand, the weights, TotalWeight, the
+// Max(1.0,..) floor) and `sys`'s NAMED-list branch are pinned by
 // elements/control/espvl_control/tests.rs + exec/tests/espvl_control.rs, NOT
 // this deck.
 //
@@ -29,9 +30,12 @@
 //   * the full 14-property table of all five controls (compare_all_properties is
 //     force-enabled for the controls family on the capi channel), incl. the ''
 //     rendering of an unset `Type` and the dead PVSystem/Storage lists.
-//   * the no-op contract: two real generators whose kw/kvar must hold their input
-//     bases, an EMPTY event log, and an EMPTY control queue -- all compared, so a
-//     port that dispatched the generators or queued an action fails here.
+//   * the no-op contract of the in-band path: two real generators whose kw/kvar
+//     must hold their input bases, an EMPTY event log, and an EMPTY control
+//     queue -- all compared, so a port that dispatched the generators or queued
+//     an action while its SystemControllers sit inside the band fails here. No
+//     redispatch fires on this deck: the no-op contract of the firing path is
+//     pinned by exec/tests/espvl_control.rs.
 //
 // The four ESPVLControl instantiation shapes, all present:
 //   sys   -- Type=SystemController with a named LocalControlList + weights [3,1]
