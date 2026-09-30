@@ -5159,10 +5159,10 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
         citing_files
     );
     // Exact counts, read once every citation is sound (RF-D07-01, RP5.2 audit
-    // AT-1). Measured at RF-D07-01: five citations of `tests/TOLERANCE_NOTES.md`
-    // in `harness/mod.rs` and RP5.2's two of the archived R4133_PROPS plan in
-    // `props_r4133_replay.rs`. The guard used to end on `checked >= 5` over
-    // `>= 2` files, so one of RP5.2's two code citations could be deleted green.
+    // AT-1): five citations of `tests/TOLERANCE_NOTES.md` in `harness/mod.rs`
+    // and RP5.2's two of the archived R4133_PROPS plan in
+    // `props_r4133_replay.rs`. A floor would let one of the two code citations
+    // vanish green.
     assert_eq!(
         checked, 7,
         "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, \
