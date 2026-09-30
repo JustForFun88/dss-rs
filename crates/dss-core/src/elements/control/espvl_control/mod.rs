@@ -30,18 +30,16 @@
 //! pin this against dss-python 0.15.7.
 //!
 //! **"No-op" is scoped to the compiled deck — upstream it is not process-safe.**
-//! Measured 2026-08-29 (GOLDEN_REBASE G1.2 audit settlement): in the pinned
-//! oracle, a *System Controller*'s `Sample` corrupts the engine's **global**
-//! state. After even one solve, a later `Compile` of any deck leaves
-//! `NumCircuits = 0` with `Error.Number = 0` and every later API call raises
-//! `(#8888) There is no active circuit!`. Discriminated: no solve → clean; all
-//! controls disabled → clean; only Local Controllers enabled → clean; a single
-//! System Controller with `kWBand = 1e9` (so the redispatch never fires) → still
-//! broken. So the culprit is the System Controller `Sample` /
-//! `MakeLocalControlList` path itself, not the type-confused `kWBase` write. This
-//! port has no such failure mode (safe Rust, no aliasing), but the corpus deck's
-//! manifest row carries `isolate: true` so the oracle worker that runs it is
-//! never reused.
+//! In the pinned oracle the redispatch's type-confused `kWBase` store corrupts
+//! the engine's **global** state: after one solve with it firing, a later
+//! `Compile` of any deck leaves `NumCircuits = 0` with `Error.Number = 0`, and
+//! the oracle process sometimes dies before it replies. `kWBand` cannot keep the
+//! redispatch from firing: `half_kw_band` is fixed at 50 kW when the object is
+//! created, as upstream. This port has no such failure mode (safe Rust, no
+//! aliasing). The corpus deck keeps the redispatch silent (its System
+//! Controllers monitor a branch held inside the band) and its manifest row
+//! carries `isolate: true`; the redispatch is pinned by
+//! `exec::tests::espvl_control::system_controller_redispatch_writes_the_weighted_deficit`.
 //!
 //! **`FkWLimit` is unsettable.** There is **no `kWLimit` property** (confirmed by
 //! enumerating `AllPropertyNames` in the oracle): the field is hardcoded to
@@ -50,8 +48,8 @@
 //! **Deliberate, oracle-proven divergences from the literal Pascal (all
 //! unobservable):**
 //! - The type-confused `Gen.kWBase` aliases a `TGeneratorObj` field over a
-//!   `TESPVLControlObj`'s memory — impossible in safe Rust and provably
-//!   unobservable, so it is modeled as the [`phantom_kw_base`] field. Its first
+//!   `TESPVLControlObj`'s memory — impossible in safe Rust and unobservable on
+//!   every compared cell, so it is modeled as the [`phantom_kw_base`] field. Its first
 //!   read is undefined garbage in Pascal; we read a defined `0.0`. Neither the
 //!   value nor the write reaches any getter, the power flow, or `Y`.
 //! - When a named subordinate fails to resolve, or a (mis-configured) Local
