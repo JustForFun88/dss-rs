@@ -19,7 +19,7 @@ STOP); `(Get-Command cargo).Source` under `.cargo\bin`; r4133 is the behavioural
 upstream bugs are never reproduced in any lane; every deliberate divergence is excluded
 field-by-field and pinned by an expected-value test; tolerances are never loosened; no
 `#[ignore]`, no filter that greens on zero matches; commit messages and records stay short.
-Coordinator rulings R1–R17 (§5) are part of this plan.
+Coordinator rulings R1–R18 (§5) are part of this plan.
 
 A finding is closed only by evidence: the fix, or a recorded reason why it is not fixed
 (never silently dropped). A finding the executor proves wrong at HEAD is recorded as
@@ -139,7 +139,8 @@ only unmarked entries whose author has landed and leaves the rest untouched; the
 document asserts that its notes file holds no unmarked entry. The record lists the entries
 applied, by `<step> / <uid>`.
 
-**Line-citation counts (R10):** the exact per-document count of resolvable `file:LINE` citations
+**Line-citation counts (R10):** the exact per-document count of resolvable citations (the symbol
+form of R18)
 lives in the document itself as `<!-- line-citations: N -->` (RF-D07-01); an owner whose edit
 moves the count updates the marker in the same commit and never keeps or drops a citation to
 hold the number.
@@ -179,8 +180,8 @@ Derived from binding project policy (CLAUDE.md); the user may overrule any of th
   procedure, or a ledger entry without an expected-value pin is NOT done**: the executor stops
   that finding, records why, and the settler reports it to the coordinator.
 - **R9 — in-step edits to shared documents (2026-09-20, after review round c1).** A step whose
-  code change *forces* a shared-document edit — a widened citation rail that reds on a digits-only
-  file:LINE re-point (RF-D07-01, RF-D07-02, RF-D07-06) or a pin registry that asserts its own
+  code change *forces* a shared-document edit — a widened citation rail that reds on a citation
+  (since R18: its conversion to the symbol form; RF-D07-01, RF-D07-02, RF-D07-06) or a pin registry that asserts its own
   citation in a record (RF-D01-06 → `r4133-props-rp3.md`) — makes that minimal edit in-step. The
   documents are listed in the step's `files`, so the scheduler keeps it out of any wave that holds
   the doc-owner; it is NOT a doc-owner itself (index flag `inline_shared`) and still appends the
@@ -258,6 +259,36 @@ Derived from binding project policy (CLAUDE.md); the user may overrule any of th
   itself. The coordinator checks each result with `git merge-base --is-ancestor <sha> update`. A SHA of a lane that
   has not landed is re-checked at that lane's landing. An owner runs the same check on every SHA it copies into a
   document, and it stops the entry (`blocked: unresolvable <sha>`) rather than copy one that fails.
+
+- **R18 — no line-number citations into repository files (user decision, 2026-09-30).** Committed
+  text — a doc comment, a test message, a document, a record, this plan — never cites a line number
+  of a file in this repository (`file.rs:N`, `file.rs:A-B`, `file.rs:A,B`, `file.py:N`, `file.md:N`):
+  the number is stale after the next edit above it, and no anchor heuristic of the `LINE_CITED_DOCS`
+  rail could tell a moved line from a wrong one (RF-D07-01 part 1: 22 of 197 citations red, 14 of
+  them stale). A citation names the item, hierarchically, the way a rustdoc path does: from a Rust
+  doc comment an intra-doc link (`` [`tol_for`] ``, `` [`dss_core::exec::view::snapshot_elements`] ``)
+  whenever the item is reachable from that crate, so `cargo doc` checks it; elsewhere the path plus
+  the item (`crates/dss-test-harness/src/harness/mod.rs::tol_for`, the `"feeder"` arm;
+  `crates/dss-core/tests/props_r4133_replay.rs::every_echo_row_pin_is_a_test_that_exists`); a
+  document passage by its heading (`TESTING.md §"The two lanes"`). Two forms survive in documents
+  and records only, never in code: a line of the frozen vendored Pascal (`AutoTrans.pas:474`), until
+  the OpenDSS teardown removes those citations with the sources, and the commit-pinned
+  `<sha>:<path>:<N>` for a statement about the past (`git show <sha>:<path>`). Code comments are
+  short, say what the code does now and cite neither the Pascal nor OpenDSS (user decision
+  2026-09-30: the product is Rust, the Pascal is on its way out, the reader has the tests) - a
+  behaviour choice that needs a justification gets one sentence and the name of the test that pins
+  it, and the r4133 evidence behind it lives in the record, `DIVERGENCES.md` or the pin's doc, not
+  in the engine comment. Existing Pascal citations in code are not extended. Consequences: the `LINE_CITED_DOCS`
+  rail becomes a symbol rail (RF-D07-01 parts 3-4) that resolves every citation to a definition in
+  the named file and reds on an unresolved one or on a line-number form, and the
+  `<!-- line-citations: N -->` markers (R10) count symbol citations; every finding of this plan that
+  asks for a "digits-only re-point" of a citation is executed as the conversion of that citation to
+  the symbol form, under the same R9 in-step permission (the conversion is the rail-forced edit: the
+  citation token, plus the item's name when the sentence spelled none, no other prose); existing
+  line citations in the records and the plan are history and stay, but their per-document count is
+  locked so none is added (RF-D07-02); the auditors' check "every new file:LINE citation points at
+  the line it names" reads "no new line citation into a repository file, and every symbol citation
+  resolves"; CLAUDE.md carries the convention.
 
 ## 6. Schedule (computed by schedule.py from wp_index.json — 137 steps, 54 waves of up to 3 lanes; never edited by hand)
 
@@ -2647,9 +2678,10 @@ Runs last in the D06 chain so anchors are fixed after `harness/mod.rs` stopped m
 - Apart from the helper, the census literals and the new rail, the diff is comments/docs only: no ledger entry, tolerance or golden moves; §4 notes left for all four shared docs; every uid above is closed or recorded with a reason.
 
 ### RF-D07-01 — Harden the file:LINE citation walker (anchoring, comma form, floors)
-<!-- RF-STEP {"step": "RF-D07-01", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": false, "after": [], "n_uids": 5} -->
+<!-- RF-STEP {"step": "RF-D07-01", "effort": "xhigh", "parts": 4, "gate": "full", "oracle": false, "after": [], "n_uids": 5} -->
 **Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full gate (§2.2). **After:** -.
-**Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/TOLERANCE_NOTES.md`
+**Files:** `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `tests/TOLERANCE_NOTES.md`,
+`CLAUDE.md`, `.github/workflows/ci.yml` (the last two for part 3 (3) only)
 **Doc notes (§4):** `TESTING.md`, `tests/TOLERANCE_NOTES.md`
 
 All five findings live in one region of the cfg gate: `LINE_CITED_DOCS`, `file_citations_in`,
@@ -2677,6 +2709,44 @@ ordered measurement-first, in two parts:
    doc-owner steps (RF-D05-04, RF-D04-01/02/03/07/09) with the anchor landing behind them, or
    the step gets a third part. Never land the tightened anchor with a weakened check or a
    skip to get green.
+
+
+**Parts 3-4 (ruling R18, coordinator 2026-09-30 — the part-2 stop rule fired: 22 reds, 14 of them
+stale, 6 correct but mis-anchored, 3 needing prose):** AC-1 and SA-1 are closed by the citation
+form, not by a better anchor — the nearest-ident probe of part 2 is NOT landed. Parts 1-2 are
+done (232678d8, abf021fd on lane-a); parts 3-4 start from them.
+3. The symbol rail and `tests/TOLERANCE_NOTES.md`. (1) Rewrite
+   `operational_docs_line_citations_point_at_the_line_they_name` (rename it to say what it checks
+   now; keep `file_citations_in`'s comma form and the R10 markers, which count symbol citations from
+   here on) into the R18 symbol rail: a citation is `<path>::<item>` (optionally `::<item>::<member>`,
+   and for a `tol_for` arm the quoted tier literal beside it); the rail resolves the path against the
+   tree, reds on a missing file, on an item the file does not define (`fn`, `struct`, `enum`, `const`,
+   `static`, `mod`, `trait`, `type`, `macro_rules!`, an `impl` method, a field or an arm — whole-token
+   match on the definition site, never a substring of the file), on a `tol_for` row whose cited arm
+   does not spell its literal, and on any remaining line-number form `file:N` that targets a
+   repository file (a `.pas` target or the `<sha>:path:N` form in a document is skipped, R18).
+   Unit tests, each with a red case: a resolving fixture, an unknown item, a missing file, a `tol_for`
+   row without its literal, a line-number citation. (2) Convert every citation of
+   `tests/TOLERANCE_NOTES.md` (21 at part 1) to the symbol form: the target item is what the citing
+   sentence is about — read the cited lines at the revision that wrote the citation (`git blame` the
+   doc line, `git show <sha>:<file>` around N), never the nearest ident at HEAD; the 14 stale
+   citations of the part-1 red list re-resolve the same way; a sentence that spells no item gets the
+   item's name in the citation token (R9 in-step, listed in the notes); the marker is re-measured.
+   (3) rustdoc as a link checker: run `cargo doc --workspace --no-deps --document-private-items` with
+   `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links"` in both
+   lanes (the coordinator's measurement of 2026-09-30 is in the state file `RF-D07-01.md`). Green, or
+   red only inside the cfg gate's own doc comments: fix those and add it as gate command 8 to
+   CLAUDE.md, TESTING.md, `.github/workflows/ci.yml` and §2.2 of this plan in-step (both lanes, like
+   the doctests). Red elsewhere: record the count per crate in the state file and the record for a
+   follow-up R12 step, and do not add the command. Full gate green, commit.
+4. `TESTING.md`: convert every citation (176 at part 1) the same way as part 3 (2) — a sonnet gofer
+   may collect, per citation, the blamed revision and the cited lines, but the item named in each
+   conversion is the executor's reading; the four `crates/dss-epri/src/modes.rs` citations RF-D07-02
+   AT2-4 names are converted here with their own symbols (`S_SENTINELS`, `V_WITHOUT_SENTINEL`,
+   `WP_G1_MODES`, `DO_NOT_CALL`); marker re-measured; `.py` targets under `tools/` are converted to
+   `<path>::<def or class or constant>` but stay unchecked until RF-D07-02 extends the rail. Full gate
+   green, commit. Every conversion of parts 3-4 is listed one per line in the notes file of its
+   document (R9), marked as applied.
 
 Shared-doc clash (§4): a tightened rail reds on citations that are already stale in the two
 shared docs, and the gate cannot be green with them. **Ruling R9 (`rulings.md`, 2026-09-20)
@@ -2744,20 +2814,19 @@ line, no prose; listed in the notes the same way). This step is not a doc-owner 
   table shrink" message the RP3 pin tables in `props_r4133_replay.rs` use.
 
 **Acceptance:**
-- `operational_docs_line_citations_point_at_the_line_they_name` is green in both lanes with
-  the nearest-ident, whole-token, no-table-row-inheritance anchor; new unit tests exist for
-  the mis-pointed fixture, the non-discriminating `Tolerances` anchor and the comma form, each
-  with a red case - or, under the part-2 stop rule, part 1 is landed (comma form, markers,
-  exact record counts) and the measured red list is in the state file and the record with the
-  coordinator's routing decision pending; the anchor bullets are then recorded as open, never
-  as closed.
+- (R18) The symbol rail is green in both lanes over `TESTING.md` and `tests/TOLERANCE_NOTES.md`,
+  neither document holds a line-number citation into a repository file, every citation names the
+  item its sentence is about (spot-checked by the auditors against the blamed revision), and the
+  five unit tests of part 3 (1) exist, each with a red case; the nearest-ident anchor of the
+  original AC-1 / SA-1 bullets is not landed. `cargo doc` with the two rustdoc lints is either gate
+  command 8 (CLAUDE.md, TESTING.md, ci.yml, §2.2) or its red count is recorded for an R12 step.
 - Each `LINE_CITED_DOCS` document carries a `<!-- line-citations: N -->` marker equal to the
   count measured at the step's HEAD and the rail asserts it (`assert_eq!`; a missing or stale
   marker reds); the record-citation guard holds its exact counts in the gate.
-- Every digits-only re-point made in `TESTING.md` / `tests/TOLERANCE_NOTES.md` (R9) is listed
-  in the notes files and `git diff` of those two files shows digit changes plus the one
-  marker line per document only; no prose of a shared doc changes; no golden byte, ledger
-  entry or tolerance moves.
+- Every citation conversion made in `TESTING.md` / `tests/TOLERANCE_NOTES.md` (R9, R18) is listed
+  in the notes files and `git diff` of those two files shows citation tokens (plus an item name where
+  the sentence spelled none) and the one marker line per document only; no other prose of a shared
+  doc changes; no golden byte, ledger entry or tolerance moves.
 - Every uid above is closed or recorded with a reason.
 
 ### RF-D07-02 — Extend the citation rail to the plan, TESTING.md modes/.py cites and retire stale cross-file line cites
@@ -2766,8 +2835,16 @@ line, no prose; listed in the notes the same way). This step is not a doc-owner 
 **Files:** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
 **Doc notes (§4):** `GOLDEN_REBASE_PLAN.md`, `TESTING.md`, `docs/phase-records/golden-rebase.md`
 
-Builds on the RF-D07-01 walker (nearest-ident anchor, comma form, exact counts in
-`LINE_CITED_DOCS`). Two halves: (a) widen what the rail covers, (b) turn the cfg gate's own
+**Amended by R18 (coordinator 2026-09-30):** this step builds on the RF-D07-01 symbol rail
+(`<path>::<item>`, comma form, exact counts), not on a nearest-ident anchor. Every "digits-only
+re-point" below is executed as a conversion to the symbol form; the `.py` extension resolves
+`tools/**/*.py` items (`def`, `class`, a module constant) the same way; a document that joins
+`LINE_CITED_DOCS` joins it in the symbol form; and the forbid-rail arm covers every document the rail
+does not walk (this plan, the records under `docs/phase-records/`) as a per-document count lock of
+the line-number citations that exist today (history stays, nothing is added; a removed one lowers
+the number in the same commit).
+
+Builds on the RF-D07-01 walker (comma form, exact counts in `LINE_CITED_DOCS`). Two halves: (a) widen what the rail covers, (b) turn the cfg gate's own
 doc comments from dead cross-file line numbers into symbol cites. Same shared-doc clause as
 RF-D07-01 (ruling R9, `rulings.md` 2026-09-20 - see that section): digits-only re-points that
 a widened rail forces in `TESTING.md` / `GOLDEN_REBASE_PLAN.md` are made in-step (both are in

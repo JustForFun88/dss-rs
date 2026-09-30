@@ -297,8 +297,8 @@ branch deletion never touches `.inputs`.
   module doc. Integration tests are thin drivers over the golden harness, the
   test-only workspace crate `dss-test-harness` (`crates/dss-test-harness/src/harness/`), which each
   driver imports with `use dss_test_harness::harness;`.
-- Pascal is the spec: port algorithms loop-for-loop where numerics matter, and cite
-  the Pascal unit/identifier in the doc comment (`Pascal \`TcMatrix.Invert\``).
+- Where numerics matter the algorithm follows the reference loop-for-loop and the
+  test pins it; the comment describes the Rust, not the Pascal it came from.
 - 0-based indexing everywhere except the ground-node convention (`NodeRef == 0` =
   ground), converted only at parse/report boundaries.
 - Case-insensitive identifiers via lowercase-normalized keys (THashList semantics).
@@ -356,7 +356,26 @@ branch deletion never touches `.inputs`.
   already exists (tests, `ledger.json`, doc comments, `DIVERGENCES.md`, audit
   reports) instead of restating it; no before/after tables, no narrative.
 
-<!-- code-review-graph MCP tools -->
+- **Cite code by name, never by line number.** A doc comment, a test message,
+  a document or a record never cites `file.rs:N` (nor `:A-B`, `.py:N`, `.md:N`)
+  for a file of this repository: the number rots with the next edit above it.
+  Name the item the way a rustdoc path does — from a Rust doc comment an
+  intra-doc link (`` [`tol_for`] ``, `` [`dss_core::exec::view::snapshot_elements`] ``)
+  so `cargo doc` checks it; elsewhere the path plus the item
+  (`crates/dss-test-harness/src/harness/mod.rs::tol_for`, the `"feeder"` arm),
+  and a document passage by its heading. Documents and records (never code)
+  may still cite a line of the frozen vendored Pascal or use the commit-pinned
+  form `<sha>:<path>:<N>` for a statement about the past. The `LINE_CITED_DOCS`
+  rail of `crates/dss-core/tests/oracle_parity_cfg_gate.rs` guards `TESTING.md`
+  and `tests/TOLERANCE_NOTES.md` (RETRO_FIXES ruling R18).
+- **Comments are short and say what the code does now.** No history, no
+  `<sha>:path:N`, no citation of OpenDSS or the vendored Pascal in code: the
+  product is Rust, the Pascal is on its way out and the reader has the tests. A
+  behaviour choice that needs a justification gets one sentence and the name of
+  the test that pins it. The r4133 evidence behind a decision lives in
+  `DIVERGENCES.md`, the record or the pin's doc, not in the engine comment.
+  Existing Pascal citations in code are not extended and leave with the OpenDSS
+  teardown.
 - **Never cite a gitignored or scratch file as provenance in committed text.**
   `tmp/`, `tmp/retro_fix/state/...`, the session scratchpad, a worktree-local
   transcript or probe script exist on one machine only and vanish, so a reader
@@ -369,41 +388,3 @@ branch deletion never touches `.inputs`.
   stay local and are never copied into `docs/` as evidence directories
   (RETRO_FIXES ruling R5). Keep the local path in your report to the
   coordinator, not in the tree.
-
-## MCP Tools: code-review-graph
-
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
-
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-| ------ | ---------- |
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
