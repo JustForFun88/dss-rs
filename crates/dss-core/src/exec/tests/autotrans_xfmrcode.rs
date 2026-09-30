@@ -758,11 +758,46 @@ fn assert_refetch_reprocesses(kind: &str, from: (u32, u32), to: (u32, u32)) {
     assert_same_machine(kind, &mut refetched, &mut direct);
 }
 
+/// `{kind}.t1`'s terminals as `(bus name, node references)`: the wiring
+/// `ReProcessBusDefs` gives each terminal, which a re-created terminal loses
+/// (`Terminal::init` leaves no bus and all-ground node references).
+fn t1_terminals(dss: &Dss, kind: &str) -> Vec<(Option<String>, Vec<usize>)> {
+    let ckt = dss.circuit().unwrap();
+    let arena = &dss.classes[dss.class_by_name[kind.to_ascii_lowercase().as_str()]].arena;
+    let t1 = (0..arena.len())
+        .find(|&i| arena[i].data().name().eq_ignore_ascii_case("t1"))
+        .expect("t1 exists");
+    arena
+        .try_ckt_elem(t1)
+        .expect("t1 is a circuit element")
+        .cd()
+        .terminals
+        .iter()
+        .map(|t| {
+            let bus = t.bus_ref.and_then(|b| ckt.bus_list.name(b));
+            (bus.map(str::to_string), t.term_node_ref.clone())
+        })
+        .collect()
+}
+
 /// `re` (re-fetched, re-solved) holds exactly the machine `direct` (built from
-/// the new code) holds: the assembled Y, the node voltages, and `{kind}.t1`'s
-/// terminal currents and powers, which read the voltages through the element's
-/// own node references.
+/// the new code) holds: `{kind}.t1`'s terminal wiring (bus names and node
+/// references), the assembled Y, the node voltages, and `{kind}.t1`'s terminal
+/// currents and powers. The wiring is compared on its own because the other
+/// four read the element's flat `NodeRef`, which a re-created terminal leaves
+/// in place, so only the wiring shows terminals that were re-created and never
+/// re-wired.
 fn assert_same_machine(kind: &str, re: &mut Dss, direct: &mut Dss) {
+    let wiring = t1_terminals(direct, kind);
+    assert!(
+        wiring.iter().all(|(bus, _)| bus.is_some()),
+        "{kind}: the direct deck wires every terminal: {wiring:?}"
+    );
+    assert_eq!(
+        t1_terminals(re, kind),
+        wiring,
+        "{kind}: re-fetched t1 terminal wiring differs"
+    );
     let (y_re, v_re) = solved(re);
     let (y_direct, v_direct) = solved(direct);
     assert_eq!(
@@ -791,48 +826,58 @@ fn assert_same_machine(kind: &str, re: &mut Dss, direct: &mut Dss) {
 /// raises `BusNameRedefined` (`Common/CktElement.pas:359`), which with the
 /// auto's correct `2 * Fnphases` never fires, so `fetch_xfmr_code` raises the
 /// flag from the shape change itself. With that raise removed (measured
-/// 2026-09-27) the port's re-solve aborts with #482 on the legs that grow the
-/// winding count or change the phase count: `element "t1" has no node
-/// references` where the winding count grows, a singular system Y where only
-/// the conductor count changes.
+/// 2026-09-30 on every leg of this pin and the Transformer one) the port's
+/// re-solve aborts with #482 on every leg: `element "t1" has no node
+/// references` where the winding or conductor count grows, a singular system Y
+/// where it shrinks.
 ///
-/// r4133 behaves differently on every leg. Measured 2026-09-27 on the
-/// epri-worker (r4133 DLL), same decks with no `bus=` after the edit: every
-/// `xfmrcode=` on an auto also logs #100131 (`AutoTrans.pas:567`), and a
-/// 3-phase auto is already off before the edit, on its wrong
-/// `NConds := Fnphases + 1` (`AutoTrans.pas:2353`). That wrong value is what
-/// reprocesses 3-phase 2 -> 3 windings there (the new `T1_3.1-3` nodes appear,
-/// with `LO.1` at 300 746 V on a 34.5 kV winding). 3-phase -> 1-phase re-solves
-/// with no message on the old node list, every voltage unchanged. The 1-phase
-/// auto (2 -> 3 windings), where that value is right, is not reprocessed and
-/// its re-solve aborts with #482 (`Error Encountered in Solve: Aborting`).
+/// r4133 behaves differently on every leg. Measured on the epri-worker (r4133
+/// DLL), same decks with no `bus=` after the edit (2026-09-27; the 3 -> 2
+/// winding and 1 -> 3 phase legs 2026-09-30): every `xfmrcode=` on an auto
+/// also logs #100131 (`AutoTrans.pas:567`), and a 3-phase auto is off, on its
+/// wrong `NConds := Fnphases + 1` (`AutoTrans.pas:2353`). That wrong value is
+/// what reprocesses the buses wherever the auto ends up 3-phase: 2 -> 3
+/// windings gains the `T1_3.1-3` nodes (with `LO.1` at 300 746 V on a 34.5 kV
+/// winding), 1 -> 3 phases re-solves to r4133's own direct build of the code,
+/// and 3 -> 2 windings drops the `T1_3` nodes but aborts the re-solve with
+/// #482 (`Error Encountered in Solve: Invalid pointer operation`). 3-phase ->
+/// 1-phase re-solves with no message on the old node list, every voltage
+/// unchanged. The 1-phase auto (2 -> 3 windings), where that value is right,
+/// is not reprocessed and its re-solve aborts with #482 (`Error Encountered in
+/// Solve: Aborting`).
 #[test]
 fn a_shape_changing_code_after_a_solve_reprocesses_the_buses() {
     assert_refetch_reprocesses("AutoTrans", (3, 2), (3, 3)); // NTerms 2 -> 3; r4133: via Fnphases + 1
-    assert_refetch_reprocesses("AutoTrans", (3, 3), (3, 2)); // NTerms 3 -> 2
+    assert_refetch_reprocesses("AutoTrans", (3, 3), (3, 2)); // NTerms 3 -> 2; r4133: #482
     assert_refetch_reprocesses("AutoTrans", (3, 2), (1, 2)); // NConds 6 -> 2; r4133: stale
-    assert_refetch_reprocesses("AutoTrans", (1, 2), (1, 3)); // r4133: #482
+    assert_refetch_reprocesses("AutoTrans", (1, 2), (3, 2)); // NConds 2 -> 6; r4133: via Fnphases + 1
+    assert_refetch_reprocesses("AutoTrans", (1, 2), (1, 3)); // NTerms 2 -> 3; r4133: #482
 }
 
 /// The Transformer twin has the same hole in r4133 itself: its `NConds :=
 /// Fnphases + 1` (`Transformer.pas:2335`) repeats the value `SetNumWindings`
-/// just wrote (`:997`), so it never flags. Measured 2026-09-27 on the
-/// epri-worker (r4133 DLL): 3-phase 2 -> 3 windings aborts the re-solve with
-/// #482 and the node list keeps no `T1_3` node; 3-phase -> 1-phase re-solves on
-/// the old node list with every voltage unchanged. An upstream bug, not
-/// reproduced: the port reprocesses and solves the new machine.
+/// just wrote (`:997`), so it never flags. Measured on the epri-worker (r4133
+/// DLL; 2026-09-27, the 3 -> 2 winding leg and the legs from 1 phase
+/// 2026-09-30): every leg that grows the winding or phase count aborts the
+/// re-solve with #482 and gains no node (`T1_3`, `LO.2-3`), and every leg that
+/// shrinks it re-solves on the old node list with every voltage unchanged. An
+/// upstream bug, not reproduced: the port reprocesses and solves the new
+/// machine.
 #[test]
 fn a_shape_changing_code_reprocesses_a_transformer_too() {
-    assert_refetch_reprocesses("Transformer", (3, 2), (3, 3)); // r4133: #482
-    assert_refetch_reprocesses("Transformer", (3, 3), (3, 2)); // NTerms 3 -> 2
-    assert_refetch_reprocesses("Transformer", (3, 2), (1, 2)); // r4133: stale
+    assert_refetch_reprocesses("Transformer", (3, 2), (3, 3)); // NTerms 2 -> 3; r4133: #482
+    assert_refetch_reprocesses("Transformer", (3, 3), (3, 2)); // NTerms 3 -> 2; r4133: stale
+    assert_refetch_reprocesses("Transformer", (3, 2), (1, 2)); // NConds 4 -> 2; r4133: stale
+    assert_refetch_reprocesses("Transformer", (1, 2), (3, 2)); // NConds 2 -> 4; r4133: #482
+    assert_refetch_reprocesses("Transformer", (1, 2), (1, 3)); // NTerms 2 -> 3; r4133: #482
 }
 
 /// The converse: a code of the same shape keeps the terminals, so it raises
-/// nothing (the Pascal `NConds :=` with the right value is a no-op too). The
-/// kept terminals must still carry their node references, which the flag no
-/// longer restores: re-fetching another code of the same shape and re-solving
-/// gives exactly the machine built from that code.
+/// nothing (the Pascal `NConds :=` with the right value is a no-op too). With
+/// no flag nothing re-wires them, so after re-fetching another code of the same
+/// shape and re-solving, `t1`'s terminals must still carry the bus names and
+/// node references a deck built from that code gives them, and the solved
+/// machine must equal that deck's.
 #[test]
 fn a_same_shape_code_does_not_flag_the_buses() {
     let mut codes: Vec<String> = [(3, 2), (3, 3)]
