@@ -156,11 +156,11 @@ fn corpus_gate_all_cases_match_engines() {
             msg.push_str(&format!("  {}\n      {first}\n", f.label));
         }
         // Printed BEFORE the panic on purpose (G1.5 audit settlement): a panic
-        // message travels through the process-global panic hook, which another
-        // test in this binary may have replaced while it drives an expected
-        // failure (`harness`' own `reds`). The run report is the only diagnosis
-        // a red gate leaves behind — a 2026-09-05 red printed the summary and
-        // the ledger table but no case list at all — so it goes out on its own.
+        // message travels through the process-global panic hook, which any code
+        // in the process may have replaced (the harness's `reds` helpers do, in
+        // their own test binary). The run report is the only diagnosis a red
+        // gate leaves behind — a 2026-09-05 red printed the summary and the
+        // ledger table but no case list at all — so it goes out on its own.
         eprintln!("{msg}");
         panic!("{msg}");
     }
@@ -202,8 +202,8 @@ fn corpus_gate_all_cases_match_engines() {
     // which records the arm `harness::compare_element_seq` hands it back — and
     // never inside that comparator (coordinator decision D24, 2026-09-05), for
     // the reason the r4133 props guard below counts at its call site rather than
-    // off the tables: `harness::seq_floors`' 24 sibling fixtures in THIS binary
-    // call the comparator, six of them on the very arm this guard counts.
+    // off the tables: other callers drive the comparator too, among them
+    // `harness::seq_floors`' 24 fixtures, six of them on the very arm counted.
     harness::assert_seq_arm_population();
     // And for G2.4's monitor-channel normalization, which needs it for the
     // opposite reason: since both lanes' engines now report the empty channel, a
@@ -268,7 +268,7 @@ fn corpus_gate_all_cases_match_engines() {
     // silent, green gate. This one fails when the whole r4133 property compare
     // never ran, counted at the single gating call site
     // (`harness::compare_all_properties`'s r4133 arm) rather than off the
-    // tables, whose statics sibling unit tests in this binary legitimately move.
+    // tables, whose statics every other caller of the comparator moves as well.
     // It is the loud half of "a scheduler-side re-mask is invisible to
     // `population.lock.json`"; the other half is the landed `property`-scoped
     // r4133 entries going NEVER APPLIED in `assert_all_hit` above, and the

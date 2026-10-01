@@ -576,10 +576,10 @@ static CELLS: AtomicUsize = AtomicUsize::new(0);
 /// fail-on-stale census is read off (`scheduler::assert_di_census_is_the_pinned_
 /// population`, G1.10c F3).
 ///
-/// The three counters above are process-wide, and this module's own `unit:`
-/// fixtures share the process with the gate, so a census read off them would
-/// move with the test FILTER (`cargo test … -- harness::di::` alone, or the gate
-/// test alone) and could be greened by running fewer tests. Keyed by label the
+/// The three counters above are process-wide and count every caller in the
+/// process, so a census read off them would hold whatever else the process ran
+/// (this module's `unit:` fixtures run in the harness's own lib test binary,
+/// but a census must not rest on that). Keyed by label the
 /// scheduler can do what the D25/Q2 scratch census does one surface over
 /// (`harness::run_files::scratch_decline_table`): partition the rows into
 /// manifest cases and `unit:` fixtures, refuse a label that is neither, and pin

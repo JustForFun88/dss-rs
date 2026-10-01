@@ -46,7 +46,7 @@ const B0CH_ZERO: &str = "<cim:ACLineSegment.b0ch>0</cim:ACLineSegment.b0ch>";
 /// expected-value transform of the oracle golden — applied in *both* lanes since
 /// `GOLDEN_REBASE_PLAN.md` G2.2c.
 ///
-/// The CIM XML goldens are byte-compared in both lanes (`tests/harness/lane.rs`:
+/// The CIM XML goldens are byte-compared in both lanes (`harness::lane`:
 /// their writer renders no number through the F-FMT seam, so nothing in Stage F
 /// may move them wholesale). Two single-site upstream mistakes move exactly one
 /// line each, and both are pure **element-name** fixes — no value, count, or

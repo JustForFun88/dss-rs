@@ -291,7 +291,7 @@ pub fn assert_oracle_self_consistent(cap: &IncMatrixCap, ctx: &str) {
 /// Takes the three pieces of `IncMatrixView` rather than the struct: `exec::view`
 /// is a private module (only `ElementSnapshot`, `MeterZoneView`, `MonitorView`
 /// and `SystemYCsc` are re-exported from `dss_core::exec`), so the view type is
-/// not nameable from a test binary — the same reason
+/// not nameable outside `dss-core` — the same reason
 /// `harness::topology::compare_topology` never names `TopologyView` either.
 #[track_caller]
 fn upstream_view_of(inc_matrix: &[[i32; 3]], map: &[i32], n_rows: usize, ctx: &str) -> Vec<i32> {
@@ -570,7 +570,7 @@ pub const INC_UPSTREAM_ROW_DECLINES: (usize, usize) = (4, 5);
 /// * **No manifest case requests the surface at all** — a fact about the
 ///   manifests, which is why `requested` is read off them by the caller
 ///   (`corpus_gate::scheduler::inc_matrix_requested_channels`) and passed in:
-///   this module compiles into ~20 test binaries that have no manifest access.
+///   the manifest reader is the corpus-gate binary's, which this library cannot name.
 ///
 /// It is emphatically **not** silent when the manifests do request the surface
 /// and nothing was compared. That is the G1.8 audit-settlement fix (2026-09-05,
@@ -775,8 +775,8 @@ mod tests {
     }
 
     /// Run `f` and return the panic message (the `capture_guard::tests`
-    /// extractor; each harness module keeps its own — they compile into separate
-    /// test binaries).
+    /// extractor; each harness test module keeps its own private copy, which a
+    /// shared helper could replace).
     fn panic_message(f: impl FnOnce()) -> String {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .expect_err("the arm must panic");

@@ -112,7 +112,7 @@ const ITER_SLACK: i64 = 1;
 /// These are **not** silently skipped: the diff measures them like everything
 /// else and prints what it measured, it just does not fail on them. Every entry
 /// is hand-mirrored from an exclusion the corpus gate carries in
-/// `harness::lane` — hand-mirrored, because an example cannot import the test
+/// `harness::lane`, kept as this example's own list rather than read from the
 /// harness. Nothing checks the two lists against each other, so keep them in
 /// step by hand; what *is* checked is that every entry here still fires, so a
 /// stale one cannot sit around un-gating a field (fail-on-stale, added F-settle

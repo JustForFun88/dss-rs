@@ -19,7 +19,7 @@ STOP); `(Get-Command cargo).Source` under `.cargo\bin`; r4133 is the behavioural
 upstream bugs are never reproduced in any lane; every deliberate divergence is excluded
 field-by-field and pinned by an expected-value test; tolerances are never loosened; no
 `#[ignore]`, no filter that greens on zero matches; commit messages and records stay short.
-Coordinator rulings R1–R18 (§5) are part of this plan.
+Coordinator rulings R1–R19 (§5) are part of this plan.
 
 A finding is closed only by evidence: the fix, or a recorded reason why it is not fixed
 (never silently dropped). A finding the executor proves wrong at HEAD is recorded as
@@ -289,6 +289,10 @@ Derived from binding project policy (CLAUDE.md); the user may overrule any of th
   locked so none is added (RF-D07-02); the auditors' check "every new file:LINE citation points at
   the line it names" reads "no new line citation into a repository file, and every symbol citation
   resolves"; CLAUDE.md carries the convention.
+- **R19 - texts state the present (user, 2026-09-27).** Comments, doc comments, assertion and panic
+  messages, data-file comments and TESTING.md describe what is true now. The history of a move,
+  rename or refactor is not kept in them: it lives in the step records under docs/phase-records and
+  in git. No test input is anchored to an old spelling either.
 
 ## 6. Schedule (computed by schedule.py from wp_index.json — 137 steps, 54 waves of up to 3 lanes; never edited by hand)
 
@@ -4776,14 +4780,9 @@ are applied under §4 (RF-D04-01 takes TESTING.md's `INFRA|` entries).
 (2) The phrase probe `rg -n -i -e 'compile[sd]? into' -e '(same|this|including|gate|test) binar' -e 'cannot import' -e 'share[sd]? the process' -e 'same process' -e '#\[path\]' -e 'relative to .crates/dss-core.' -e 'crates/dss-core/\{'`,
 126 hits at 0c15ee21. Each hit is read with the doc or comment block around it, every false
 sentence of that block is a site, and `part_1.md` gives every base hit one disposition: re-worded,
-true as it stands (with a one-line reason), kept, or a shared document's notes entry. The kept
-hits, by phrase (0c15ee21 lines): the move's history in TESTING.md ("Where the harness lives",
-`:257` and `:261`, and the echo-pin rationale, `:3311`), `crates/dss-test-harness/src/lib.rs` (the
-crate doc naming the former module, `:9`, and `pub mod harness;`, `:21`), the comment of
-`crates/dss-test-harness/Cargo.toml` (`:9`), the cfg gate's `TEST_ONLY_CRATES` doc (`:233`),
-`cited_target` doc (`:3743`) and the pre-move negative case of
-`a_cited_path_resolves_only_among_its_own_matches` (`:3777`), and the RP3.7 `source` of
-`ledger.json` (`:1059`). The roots leave out the plans and `docs/` on purpose: records and archived
+true as it stands (with a one-line reason), kept, or a shared document's notes entry. The one
+kept hit (R19, user 2026-09-27) is `pub mod harness;` in `crates/dss-test-harness/src/lib.rs`, code
+and not text. The roots leave out the plans and `docs/` on purpose: records and archived
 plans keep the spelling of their date, and the pre-move paths in pending steps' Files lists (this
 plan, `wp_index.json`, GOLDEN_REBASE_PLAN.md) are the coordinator's to re-point.
 **Acceptance:**

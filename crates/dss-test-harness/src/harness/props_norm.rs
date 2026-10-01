@@ -2687,14 +2687,14 @@ pub fn assert_echo_rows_are_live() {
 /// ([`check_r4133_props_compare_ran`], invoked first in the gate epilogue), and
 /// it deserves its own one-line diagnosis rather than 20 row messages.
 ///
-/// Honest limit of the second arm: the shipped statics are process-global, so a
-/// sibling unit test in the same binary that drives the comparator on one of the
-/// 21 pairs supplies that row's visit by itself. In the gate binary that is
-/// exactly one row — `load.yearly`, via
-/// `harness::tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`,
-/// which asserts the row still excludes its own measured spelling. The arm is
-/// therefore a floor for the other 20 and a no-op for that one, the same
-/// property the global guard's doc records about table sums.
+/// Honest limit of the second arm: the shipped statics are process-global, so
+/// any other r4133 caller of the comparator in the gate's process that touched
+/// one of the 21 pairs would supply that row's visit by itself. The gate's
+/// binary holds none: the harness's own drives of those pairs (`load.yearly` via
+/// `harness::tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`)
+/// run in the harness's lib test binary, and the gate binary's property pilot
+/// compares on the capi channel only. The arm is a floor for all 21 rows while
+/// that holds, the same property the global guard's doc records about table sums.
 fn check_echo_rows_are_live(table: &[EchoRow], visits: &[usize], hits: &[usize]) {
     assert_eq!(
         (table.len(), table.len()),
@@ -2805,15 +2805,15 @@ pub fn r4133_props_walk_counters() -> (usize, usize) {
 ///
 /// **Deviation from the plan's literal spelling, recorded here because it makes
 /// the guard stronger, not weaker.** The plan says "`visits > 0`" summed over
-/// the tables. Summing [`NORM_VISITS`]/[`ECHO_VISITS`] cannot answer this
-/// question in this binary: `harness/mod.rs`'s own unit tests
+/// the tables. A sum over [`NORM_VISITS`]/[`ECHO_VISITS`] counts every caller in
+/// the process, and other callers exist: `harness/mod.rs`'s own unit tests
 /// (`props_policy_tests::the_r4133_channel_folds_the_documented_spellings`,
 /// `props_policy_tests::an_echo_row_drops_only_its_own_value_only_on_r4133`, …)
-/// drive the real comparator on the r4133 channel and move those very statics —
-/// which is what [`assert_echo_rows_are_live`]'s doc records as the only counter
-/// movement a *masked* gate run ever produced. A sum over the tables would
-/// therefore have been > 0 through the whole masked era, i.e. green under the
-/// re-mask it is meant to catch. These counters are bumped at the ONE gating
+/// drive the real comparator on the r4133 channel and move those very statics.
+/// They run in the harness's own lib test binary, apart from the gate, but a
+/// guard that held only while no such caller shared the gate's process would
+/// rest on where a test happens to live, which is not a fact about the gate.
+/// These counters are bumped at the ONE gating
 /// call site instead, so they stay 0 unless the gate really compared r4133
 /// properties.
 ///
@@ -4517,12 +4517,12 @@ mod tests {
         hits[0] = 1;
         check_rows_are_live(PROPS_NORM_R4133, &visits, &hits);
         // Deliberately NOT calling `assert_norm_rows_are_live()` here. It reads
-        // the process-global counters, which a gate test in the same binary
-        // legitimately moves once RP4.1 unmasks the r4133 props path — that is
-        // the exact test-ordering trap RP2.1 part D found and removed from three
-        // tests in this module. The rule is proven above over injected counters;
-        // the shipped adapter's wiring is exercised where the live assertion
-        // belongs, once, at the end of the gate (`corpus_gate.rs`).
+        // the process-global counters, which this binary's sibling tests move as
+        // well, so here it would judge whatever ran before it, not the gate's
+        // population. The rule is proven above over injected counters, and the
+        // shipped adapter's wiring is exercised where the live assertion
+        // belongs, once, at the end of the gate (`corpus_gate.rs`), in the
+        // corpus-gate binary.
     }
 
     /// …and the other direction: a row that was COMPARED and folded nothing is
@@ -5509,10 +5509,10 @@ mod tests {
              after {walks_after}/{elements_after})"
         );
         // Deliberately NOT calling `assert_r4133_props_compare_ran()`: it reads
-        // the process-global counters, which the gate test in the same binary
-        // legitimately moves — the ordering trap RP2.1 part D removed from three
-        // tests in this module. The rule is proven here over injected values;
-        // the adapter is exercised once, at the end of the gate
+        // the process-global counters, which this binary's sibling tests move as
+        // well (the line above does), so here it would not judge the gate's
+        // population. The rule is proven here over injected values, and the
+        // adapter is exercised once, at the end of the gate
         // (`corpus_gate.rs`).
     }
 

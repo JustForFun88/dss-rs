@@ -239,8 +239,8 @@ fn oracle_parity_cfg_appears_only_in_compat_modules_and_tests() {
 /// never linked into the shipped engine (`publish = false`, a dev-dependency
 /// only, enforced by [`no_product_crate_links_a_test_only_crate`]), so a read
 /// of the lane constant there is test code wherever in the crate it sits.
-/// `dss-test-harness` is the golden harness moved out of
-/// `crates/dss-core/tests/harness/` by RETRO_FIXES RF-I00-04, and its
+/// `dss-test-harness` is the golden harness of the `dss-core` integration
+/// tests (`crates/dss-test-harness/src/harness/`), and its
 /// `lane::PARITY` IS `compat::ORACLE_PARITY` (`harness/lane.rs`). The cfg
 /// string is deliberately NOT sanctioned there ([`is_sanctioned`] is
 /// path-based and the crate has no `tests` component): the crate declares no
@@ -3813,11 +3813,11 @@ fn resolve_cited(by_base: &BTreeMap<String, Vec<String>>, cited: &str, base: &st
 /// that matches several files — the registered spelling when it is one of
 /// them. `Err` says why the citation names no one file.
 ///
-/// The fallback only ever chooses among the citation's own hits. Until
-/// RF-I00-04's audit (AC-3) it also took a spelling with NO hit, so part 1 of
-/// the harness move committed twenty `crates/dss-core/tests/harness/mod.rs:N`
-/// citations of a path that no longer existed, and the rail resolved them
-/// against the moved `harness/mod.rs` the documents had spelled earlier.
+/// The fallback only ever chooses among the citation's own hits: a spelling
+/// with no hit names no file, whatever the document registered before it, so a
+/// citation of a path that does not exist reds instead of resolving onto a file
+/// of the same basename the document spelled earlier. A registered spelling
+/// outside the hits is never taken either.
 fn cited_target(hits: &[String], registered: Option<&String>) -> Result<String, String> {
     match (hits.len(), registered) {
         (1, _) => Ok(hits[0].clone()),
@@ -3834,24 +3834,24 @@ fn cited_target(hits: &[String], registered: Option<&String>) -> Result<String, 
 /// does not match, whatever the document registered before it.
 #[test]
 fn a_cited_path_resolves_only_among_its_own_matches() {
-    let moved = "crates/dss-test-harness/src/harness/mod.rs".to_string();
+    let harness = "crates/dss-test-harness/src/harness/mod.rs".to_string();
     let a = "crates/a/src/mod.rs".to_string();
     let b = "crates/b/src/mod.rs".to_string();
     let by_base = BTreeMap::from([(
         "mod.rs".to_string(),
-        vec![moved.clone(), a.clone(), b.clone()],
+        vec![harness.clone(), a.clone(), b.clone()],
     )]);
     let target = |cited: &str, registered: &String| {
         cited_target(&resolve_cited(&by_base, cited, "mod.rs"), Some(registered))
     };
-    // The single match and the short repeat resolve as before.
-    assert_eq!(target("harness/mod.rs", &a), Ok(moved.clone()));
-    assert_eq!(target("mod.rs", &moved), Ok(moved.clone()));
+    // The single match and the short repeat resolve to their file.
+    assert_eq!(target("harness/mod.rs", &a), Ok(harness.clone()));
+    assert_eq!(target("mod.rs", &harness), Ok(harness.clone()));
     assert_eq!(target("src/mod.rs", &b), Ok(b.clone()));
-    // The pre-move spelling names no file, even with the moved file registered.
-    assert!(target("crates/dss-core/tests/harness/mod.rs", &moved).is_err());
+    // A spelling with no hit names no file, even with a file registered.
+    assert!(target("crates/gone/src/mod.rs", &harness).is_err());
     // An ambiguous spelling is never resolved onto a file outside its matches.
-    assert!(target("src/mod.rs", &moved).is_err());
+    assert!(target("src/mod.rs", &harness).is_err());
 }
 
 /// Every file of the tree by basename, repo-relative with `/`.
