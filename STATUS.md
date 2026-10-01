@@ -199,7 +199,7 @@ at the solver for every reader, no ledger/golden/lock change), RF-D01-04 `f83274
 every class, 0 golden bytes, 0 ledger rows; its leftovers are listed in its record); wave 2 turned its items into rulings R14-R17 and
 five R12 follow-up steps (`86e5191a`) and linked MSVC builds with rust-lld (`05e2539e`); wave 3: RF-D02-01 `9f76d027` (AutoTrans `XfmrCode` fetch:
 phases guard, `BusNameRedefined`, honesty guards), RF-D00-16 `7a026fe6` (`props_r4133` evidence-lock holes closed); wave 35: RF-D07-01
-`c8822163` (the `LINE_CITED_DOCS` walk became the R18 symbol rail, `TESTING.md` and `TOLERANCE_NOTES.md` cite code by item); wave 36: RF-I00-02 `3df57bcf` (the capi one-shot names its exit status, the `espvlcontrol` deck keeps the type-confused capi redispatch silent). Next: RF-I00-06.
+`c8822163` (the `LINE_CITED_DOCS` walk became the R18 symbol rail, `TESTING.md` and `TOLERANCE_NOTES.md` cite code by item); wave 36: RF-I00-02 `3df57bcf` (the capi one-shot names its exit status, the `espvlcontrol` deck keeps the type-confused capi redispatch silent); wave 104: RF-I00-06 `38823ea7` (the comments and texts the harness move made false re-worded, ruling R19). Next: wave 105.
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
@@ -328,9 +328,17 @@ each row's measured cost.
   `ESPVLControl` at all (`#303`, read of `0x0`; offsets `15440` / `8F3F2D` — see the G1.2
   record). Measured, isolated to the constructor path, and ledgered as
   `r4133-espvlcontrol-uninstantiable` so the corpus deck gates on `capi_v0145`. No port
-  action: the port and the pinned 0.14.5 oracle both build and sample the class. What is
-  owed is an English write-up in `investigations/to_opendss/` (local-only folder) — out of
-  G1.2's scope.
+  action for the constructor: the port and the pinned 0.14.5 oracle both build the class.
+  What is owed is an English write-up in `investigations/to_opendss/` (local-only folder),
+  which also carries two r4133 source-level ESPVLControl bugs that the class's constructor
+  crash keeps from running live (RETRO_FIXES RF-I00-02, 2026-10-01): `TESPVLControlObj.Sample`
+  stores `Gen.kWBase` through a `TGeneratorObj` cast of another ESPVLControl
+  (`Version8/Source/Controls/ESPVLControl.pas:531-535`), the store that corrupts the pinned
+  capi 0.14.5 process whenever a SystemController redispatches (37 one-shot deaths in 9951
+  concurrent runs, `#8888` on a later compile). And a `kWBand` edit never moves the dead
+  band (`:253` sets `FkWBand` alone, `HalfkWBand` is assigned only in `Create`, `:384`,
+  where `GenDispatcher.pas:214` recomputes it on the same edit). The port reproduces the
+  inert `kWBand` until an R12 follow-up of RF-I00-02 lands.
 - **`ESPVLControl.Forecast` — r4133 property 12 absent from the port, OPEN (GOLDEN_REBASE
   G1.2 audit settlement, 2026-08-29).** r4133 declares **12** class properties where the
   pinned dss_capi 0.14.5 declares 11:
@@ -374,7 +382,7 @@ each row's measured cost.
   owner: the presence re-check after the sweep has no bounded re-list, so a delete-pending entry (a scanner still holding a just-written export) is reported as a leak — four parity reds in
   `Test/AutoTrans/` under concurrent load, every file gone from disk afterwards, the cases green scoped and on the quiet machine (**D23**). The same shape hides in **gitignored** droppings: two stale
   `*_SavedVoltages.dbl` in the main tree (one dating from 2026-09-04) read as pre-existing and shrank `SCRATCH_FILE_DECLINES` to (8, 8) until this merge deleted them by name. The single-case `espvlcontrol`
-  "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced a circuit and prints the deck's size on disk. **Closed by RETRO_FIXES RF-I00-01 (2026-09-26):** no test writes under `tests/corpus/` any more - measured per test binary (72 targets x 0 changes), not enforced for plain in-place compiles of decks with no writing verb; every former tree writer and every corpus-gate producer runs a per-run scratch copy (`harness::scratch::ScratchCopy`, `b354cf26` / `0cffd47b` / `9ace2e25`) removed within 25 x 200 ms, and the corpus gate fails on a change of the tree's listing or mtimes during its own walk (`scheduler::GateRun::assert_complete`, `71dd09ac`); 0 tree changes in every gate run from part 1's run 5 on, both lanes. The `espvlcontrol` compiled-to-no-circuit shape stays with R11 / RF-D09-06; the capi one-shot's native death on that deck is RF-I00-02.
+  "You must create a new circuit object first" flake stays open, with a new rail: `run_rust_capture` asserts the compile produced a circuit and prints the deck's size on disk. **Closed by RETRO_FIXES RF-I00-01 (2026-09-26):** no test writes under `tests/corpus/` any more - measured per test binary (72 targets x 0 changes), not enforced for plain in-place compiles of decks with no writing verb; every former tree writer and every corpus-gate producer runs a per-run scratch copy (`harness::scratch::ScratchCopy`, `b354cf26` / `0cffd47b` / `9ace2e25`) removed within 25 x 200 ms, and the corpus gate fails on a change of the tree's listing or mtimes during its own walk (`scheduler::GateRun::assert_complete`, `71dd09ac`); 0 tree changes in every gate run from part 1's run 5 on, both lanes. The `espvlcontrol` compiled-to-no-circuit shape stays with R11 / RF-D09-06; the capi one-shot's native death on that deck is RF-I00-02. **Closed by RETRO_FIXES RF-I00-02 (2026-10-01):** the cause is the pinned capi engine's SystemController redispatch, which stores `Gen.kWBase` through a `TGeneratorObj` cast of another ESPVLControl (`TESPVLControlObj.Sample`) and corrupts the process; `kWBand` cannot silence it (`HalfkWBand` is fixed in `TESPVLControlObj.Create` on both oracle revisions). The deck's `sys`+`scan` now monitor a branch to a constant 8000 kW load, so the redispatch never fires on the oracle (0 deaths in 3000 concurrent one-shot runs under a full corpus-gate run, against 37 of 9951 with it firing); the port's named-list redispatch is pinned by `crates/dss-core/src/exec/tests/espvl_control.rs::system_controller_redispatch_writes_the_weighted_deficit` and the deck's silence by `crates/dss-core/src/exec/tests/espvl_control.rs::system_controller_inside_the_band_writes_nothing`. A no-JSON death now prints the one-shot's exit status and `oracle_server.py` runs with `faulthandler`.
 - **`RelCalc` leaks reliability accumulators across meter zones — engine finding, OPEN
   (GOLDEN_REBASE G1.6(i) audit settlement AT-1, 2026-09-05).** `BusTotalMiles` and its siblings are
   zeroed per meter on its `SequenceList`'s FROM bus and read on the TO bus, so a zone-boundary bus
