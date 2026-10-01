@@ -5202,7 +5202,7 @@ split, `cargo test --doc` whole under the test slot, `CARGO_BUILD_JOBS=8` for a 
 unless the caller set it, every other command unqueued; the usage line; the board and the log under
 `<main checkout>/tmp/gatelock/`, a dead process's ticket purged by the next wrapper that reads the
 queue, tickets never deleted by hand; `GATELOCK_ROOT`, the queue directory itself; `GATELOCK_OFF`;
-Windows only), `TESTING.md` (in-step, R9: one `###` subsection "The machine-wide build/test queue"
+Windows only), `TESTING.md` (in-step, R9: one `###` subsection "The build/test queue"
 of §"The mandatory gate", right after §"Which gate to run (the RETRO_FIXES stage gates)" and before
 §"The two lanes (Stage F)", pointing at the README, and the rows `GATELOCK_ROOT` and `GATELOCK_OFF`,
 consumer `tools/gate/gatelock.py`, in §"Environment variables"), `CLAUDE.md` ("## Gate": one
@@ -5246,15 +5246,24 @@ tracked. The rulings:
    the job-object structures built from it). On another platform the wrapper says so on stderr and
    runs the command unqueued, without a job object, exiting with its code, never silently.
 4. The usage line of the ritual becomes `python tools/gate/gatelock.py --label "<who>" -- cargo
-   <args>` (relative to the tree being built). At the landing the coordinator re-points its own
-   scripts (the workflow prompts, the gate drivers) and replaces the old path by a shim. The shim
-   goes in only when the old board (`tmp/retro_fix/state/gate_board.txt`) shows no holder and no
-   waiter, and no run takes the new spelling before it: a wrapper already running keeps the old
-   queue directory in memory and no `GATELOCK_ROOT` maps the new layout onto the old one, so two
-   live queues would admit four builds and two test runs. A run is re-pointed only when its tree
-   contains the landing commit (`git merge-base --is-ancestor <landing commit> HEAD`): a lane cut
-   before it has no `tools/gate/` and keeps the old spelling, which the shim serves, until it merges
-   `update`. The shim runs `<main checkout>/tools/gate/gatelock.py` in its own process
+   <args>` (relative to the tree being built). At the landing the coordinator replaces the old path
+   by a shim and then re-points its own scripts (the workflow prompts, the gate drivers). A wrapper
+   already running keeps the old queue directory in memory and no `GATELOCK_ROOT` maps the new
+   layout onto the old one, so two live queues would admit four builds and two test runs. The shim
+   therefore goes in only when the old queue holds no live ticket. Under the old `meta.lock`
+   (`tmp/retro_fix/gatelock/meta.lock`) the coordinator finds no `.tk` in
+   `tmp/retro_fix/gatelock/build/` or `test/` whose byte lock it cannot take, and it replaces
+   `tmp/retro_fix/bin/gatelock.py` by the shim while it holds that lock. The old board
+   (`tmp/retro_fix/state/gate_board.txt`) is no such test: the wrapper writes it outside that lock
+   and only best-effort, so it can show an empty queue while a ticket is live. A wrapper that read
+   the old script before the swap queues in the old directories afterwards, so the shim runs the
+   tracked script only after two looks in a row under the old `meta.lock`, one poll (3 s) apart,
+   find no live ticket there (a wrapper still starting from the old script at the first look has
+   ticketed by the second), and no run takes the new spelling before the swap or while those
+   directories hold a live ticket. A run is re-pointed only when its tree contains the landing
+   commit (`git merge-base --is-ancestor <landing commit> HEAD`): a lane cut before it has no
+   `tools/gate/` and keeps the old spelling, which the shim serves, until it merges `update`. The
+   shim runs `<main checkout>/tools/gate/gatelock.py` in its own process
    (`runpy.run_path(..., run_name="__main__")`, so killing it still kills its cargo and the exit code
    passes unchanged) and sets no `GATELOCK_ROOT`, so the two spellings share the default root. The
    shim is the coordinator's, not this step's. Until it is in place the live queue is the old one:
@@ -5280,11 +5289,16 @@ script with `GIT_DIR` set to a directory that is no repository. With
 outside any checkout (under `%TEMP%`), `GATELOCK_ROOT` unset, exits non-zero naming `GATELOCK_ROOT`
 and `GATELOCK_OFF`, runs no cargo and adds no `board.log` line.
 (2) Platform: `python -c "import runpy, subprocess, sys; sys.platform = 'linux';
+sys.modules['msvcrt'] = None; sys.modules['ctypes.wintypes'] = None;
 sys.argv = ['gatelock.py', '--label', 'rf-i00-09-platform', '--', 'cargo', 'check', '--no-such-flag'];
-runpy.run_path('tools/gate/gatelock.py', run_name='__main__')"` (`subprocess`, imported first, keeps
-its Windows implementation) prints the warning on stderr, exits 1 (cargo's code for an unknown flag)
-and adds no `board.log` line, while the same command without the faked platform takes a build slot
-and logs `rc=1`.
+runpy.run_path('tools/gate/gatelock.py', run_name='__main__')"` prints the warning and cargo's own
+error naming the unknown flag on stderr, exits 1 (cargo's code for an unknown flag) and adds no
+`board.log` line. `subprocess`, imported first, keeps its Windows implementation, and the two
+blocked modules make any Windows-only import made before the platform test fail the probe: the
+stderr then holds a `ModuleNotFoundError` traceback in place of the warning and cargo's error, under
+the same exit code 1. The same cargo command run plainly through the script
+(`python tools/gate/gatelock.py --label rf-i00-09-platform -- cargo check --no-such-flag`) takes a
+build slot and logs `rc=1`.
 (3) Concurrency, on a fresh private root
 (`GATELOCK_ROOT=<main checkout>/tmp/retro_fix/state/RF-I00-09/probe_root`): a dependency-free scratch
 crate in `tmp/retro_fix/state/RF-I00-09/slow/` (its own `[workspace]` table, one `#[test]`, a build
@@ -5299,9 +5313,10 @@ build holders and the run's `(compile)` ticket waiting, and `board.log` shows tw
 - `part_1.md` records the SHA-256 of the coordination copy the move started from, kept beside it
   (ruling 1). `git diff --no-index <that copy> tools/gate/gatelock.py` holds only the root lookup
   with its failure rule and layout (ruling 2), the platform test with the Windows-only imports
-  behind it and the unqueued branch with its warning (ruling 3), and the docstring (the usage line,
-  the board and log paths, no "local only"), and the diff stays in `part_1.md`. The record names the
-  source as the coordinator's queue wrapper, second version, never by its `tmp/` path.
+  behind it and the unqueued branch with its warning (ruling 3), and the docstring (the scope line
+  that says one queue per main checkout and its worktrees, the usage line, the board and log paths,
+  no "local only"), and the diff stays in `part_1.md`. The record names the source as the
+  coordinator's queue wrapper, second version, never by its `tmp/` path.
 - The three probes are in `part_1.md` with their `board.log` lines and exit codes, and an auditor
   who re-runs them gets the same slots, labels and exit codes.
 - TESTING.md, the README, CLAUDE.md and the script's docstring spell the same usage line. The
