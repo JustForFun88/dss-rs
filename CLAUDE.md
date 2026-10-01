@@ -180,7 +180,10 @@ cargo test --workspace --doc --features dss-core/oracle-parity
 Those seven commands are the mandatory gate (RETRO_FIXES RF-I00-01): commands
 4-5 run the pinned `cargo-nextest` of `.config/nextest.toml` (every test in its
 own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-7
-run the doctests, which nextest does not. Since DE_PASCALIZE **Stage F**
+run the doctests, which nextest does not. On a shared machine every gate command
+runs through the queue wrapper,
+`python tools/gate/gatelock.py --label "<who>" -- cargo <args>` (`tools/gate/README.md`).
+Since DE_PASCALIZE **Stage F**
 (the `oracle-parity` feature split) the engine ships in **two lanes**, and both
 must be green:
 
