@@ -135,11 +135,12 @@ checks and of an audit runs through the queue wrapper `tools/gate/gatelock.py`:
 python tools/gate/gatelock.py --label "<who>" -- cargo <args>
 ```
 
-It admits two build commands and one test run machine-wide, first come first served, splits a
-`cargo nextest run` or `cargo test` into its compile phase (build slot) and its run (test
-slot), and exits with the command's exit code. One queue serves the main checkout and all its
-worktrees. `tools/gate/README.md` holds the slots, the board and log files and the two
-environment variables.
+One queue serves the main checkout and all its worktrees: it admits two build commands and
+one test run at a time, first come first served, splits a `cargo nextest run`, `cargo test` or
+`cargo bench` into its compile phase (build slot) and its run (test slot), runs
+`cargo test --doc` whole under the test slot, and exits with the command's exit code.
+`tools/gate/README.md` holds the slots, the board and log files and the two environment
+variables.
 
 ### The two lanes (Stage F)
 
@@ -3942,7 +3943,7 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 | `REGEN_SCHEMA_PORT` | golden_schema | `1` → rewrite `json/schema_full_port.json`, the port's own schema document (deliberate regen; the second direct `self` writer, bypassing the rails until G3.6) |
 | `DSS_AD_CLASSIFY`, `DSS_AD_DECOMPOSE` | corpus_gate | throwaway A-Diakoptics triage probes |
 | `DSS_ORACLE_ENGINE` | oracle_server | only `"capi"` is accepted (the default); anything else exits non-zero — the retired `capi015`/`oddie` engines never silently pass |
-| `GATELOCK_ROOT` | `tools/gate/gatelock.py` | the queue directory itself (default `<main checkout>/tmp/gatelock/`, found through git); when it is unset and git names no main checkout, the wrapper runs nothing and exits non-zero |
+| `GATELOCK_ROOT` | `tools/gate/gatelock.py` | the queue directory itself (default `<main checkout>/tmp/gatelock/`, found through git); when it is unset and git names no main checkout, a queued command runs nothing and the wrapper exits non-zero (`GATELOCK_OFF=1` and the unqueued commands need no root) |
 | `GATELOCK_OFF` | `tools/gate/gatelock.py` | `1` → run the command unqueued |
 
 ## Procedures

@@ -1,4 +1,4 @@
-"""Machine-wide FIFO queue for cargo builds and test runs.
+"""FIFO queue for cargo builds and test runs.
 
 One queue per main checkout and its worktrees: every copy of this script in the main
 checkout or in a worktree of it queues on the same directory. Another clone joins it only
@@ -10,11 +10,11 @@ Slots (capacity in SLOTS):
   build  - cargo clippy / build / check / doc / run / nextest list, and the compile phase
            of a test run (`--no-run`)
   test   - executing tests: cargo nextest run, cargo test, cargo bench (doctests included)
-A `cargo nextest run ...` or `cargo test ...` is split automatically: first the same
-command with `--no-run` under the build slot, then the real run under the test slot, so
-the test slot is never held while compiling. `cargo test --doc` cannot be split (cargo
-refuses `--no-run` with `--doc`) and runs whole under the test slot. Any other command
-(fmt, metadata, ...) runs without a lock.
+A `cargo nextest run ...`, `cargo test ...` or `cargo bench ...` is split automatically:
+first the same command with `--no-run` under the build slot, then the real run under the
+test slot, so the test slot is never held while compiling. `cargo test --doc` cannot be
+split (cargo refuses `--no-run` with `--doc`) and runs whole under the test slot. Any
+other command (fmt, metadata, ...) runs without a lock.
 
 Liveness: each waiter/holder keeps an OS byte-lock on its own ticket file for its whole
 life. A ticket whose lock can be taken belongs to a dead process and is purged, so a
@@ -24,10 +24,12 @@ and epri-workers instead of leaving them running outside the queue.
 The queue root is <main checkout>/tmp/gatelock/, the main checkout being the parent of
 the directory `git -C <this script's directory> rev-parse --path-format=absolute
 --git-common-dir` prints (GIT_DIR, GIT_COMMON_DIR and GIT_WORK_TREE removed from git's
-environment). GATELOCK_ROOT names the queue root itself and overrides the lookup. The
-root is looked up only when a command is queued; when the lookup fails and GATELOCK_ROOT
-is unset, nothing runs and the wrapper exits non-zero. The tickets sit under
-<root>/tickets/ and are never deleted by hand.
+environment). GATELOCK_ROOT names the queue root itself and overrides the lookup. A
+queued command looks the root up before it takes a ticket; when that lookup fails and
+GATELOCK_ROOT is unset, nothing runs and the wrapper exits non-zero. GATELOCK_OFF=1 and
+the unqueued commands never need the root: their one possible log line, a failed job
+assignment, is skipped without one. The tickets sit under <root>/tickets/ and are never
+deleted by hand.
 The board (who holds, who waits, since when) is rewritten on every change:
 <root>/board.txt; events are appended to <root>/board.log (wait and hold seconds per run).
 Board and log writes are best-effort and never fail a run.
@@ -83,14 +85,19 @@ def find_root():
            if k.upper() not in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE")}
     try:
         r = subprocess.run(["git", "-C", here, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                           env=env, capture_output=True, text=True)
+                           env=env, capture_output=True)
     except OSError as e:
         return None, f"git could not be run ({e})"
     if r.returncode != 0:
-        return None, f"git rev-parse failed in {here} (exit {r.returncode}): {r.stderr.strip()}"
-    lines = r.stdout.splitlines()
+        why = r.stderr.decode("utf-8", "replace").strip()
+        return None, f"git rev-parse failed in {here} (exit {r.returncode}): {why}"
+    try:
+        out = r.stdout.decode("utf-8")  # git prints paths in UTF-8, whatever the code page
+    except UnicodeDecodeError:
+        return None, f"git rev-parse in {here} printed {r.stdout!r}, not UTF-8"
+    lines = out.splitlines()
     if len(lines) != 1 or not os.path.isabs(lines[0]) or not os.path.isdir(lines[0]):
-        return None, f"git rev-parse in {here} printed {r.stdout!r}, not one absolute directory"
+        return None, f"git rev-parse in {here} printed {out!r}, not one absolute directory"
     return os.path.join(os.path.dirname(os.path.normpath(lines[0])), "tmp", "gatelock"), None
 
 
