@@ -137,7 +137,9 @@ entry's author landed, and is then marked in the notes file, directly under its
 `### <step> / <uid>` header, with `<!-- applied by RF-Dxx-nn <commit> -->`. An owner applies
 only unmarked entries whose author has landed and leaves the rest untouched; the LAST owner of a
 document asserts that its notes file holds no unmarked entry. The record lists the entries
-applied, by `<step> / <uid>`.
+applied, by `<step> / <uid>`. An entry a later step supersedes carries
+`<!-- amended by <step>: <what replaces it> -->` under its header and applies nothing: the owner
+marks it applied together with the entry that replaced it (coordinator 2026-10-01, RF-I00-06 AC-7).
 
 **Line-citation counts (R10):** the exact per-document count of resolvable citations (the symbol
 form of R18)
@@ -4772,6 +4774,11 @@ are applied under §4 (RF-D04-01 takes TESTING.md's `INFRA|` entries).
   verbatim, a kept hit: it is a dated measurement's provenance, and `population_lock::ledger_tags`
   digests each entry's full JSON, so re-wording it would move the digest `population.lock.json`
   pins (`…@c3edbc40146704a3`) in a text-only step.
+**Amended at the landing (coordinator 2026-10-01):** the ruling this step added is R19 (R18 was
+taken). The RP3.7 `source` above was to be re-pointed and stayed blocked on the lock, so at the
+step's head (38823ea7) the path probe prints 6 lines: three TESTING.md lines and the props README
+line, each waiting on its notes entry, `pub mod harness;`, and that `source`. RF-I00-10 re-points
+the `source` with the lock and closes the step's other remainders. "Kept" below reads accordingly.
 **Probes:** the census, at the step base (the scope) and again at the head (the check), both over
 `crates tests tools TESTING.md CLAUDE.md --glob '!tests/corpus/electricdss-tst/**' --glob '!tests/golden/**'`
 (no root inside another: rg prints a file that two roots reach twice, and `tests` holds
@@ -4806,7 +4813,7 @@ plan, `wp_index.json`, GOLDEN_REBASE_PLAN.md) are the coordinator's to re-point.
   recorded with a reason.
 
 ### RF-I00-07 — rustdoc is the intra-doc link checker: `cargo doc` joins the gate (R12 follow-up of RF-D07-01 part 3 (3), user decision 2026-09-30)
-<!-- RF-STEP {"step": "RF-I00-07", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": false, "inline_shared": true, "after": ["RF-D07-01", "RF-I00-06"], "n_uids": 1} -->
+<!-- RF-STEP {"step": "RF-I00-07", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": false, "inline_shared": true, "after": ["RF-D07-01", "RF-I00-06", "RF-I00-10"], "n_uids": 1} -->
 **Tier:** executor opus/xhigh; audits, settler per §3. `xhigh` is §3's test/code row: the rail of
 ruling 1 is new test code (hand parsers of the root table and the member manifests, a `lex_rust`
 attribute scan, a red fixture case per check) beside the doc-comment fixes of the Files, and no
@@ -5352,3 +5359,106 @@ build holders and the run's `(compile)` ticket waiting, and `board.log` shows tw
   two rows.
 - The gate is green, run through the live queue (ruling 4). Record block written (5-10 lines), the
   notes entry left, the uid closed or recorded with a reason.
+
+### RF-I00-10 — The RF-I00-06 remainders: the locked `source`, the history texts left, the rationales the move emptied (R12 follow-up of RF-I00-06, user decision 2026-10-01)
+<!-- RF-STEP {"step": "RF-I00-10", "effort": "high", "parts": 2, "gate": "full", "oracle": false, "inline_shared": false, "after": ["RF-I00-06"], "n_uids": 1} -->
+**Tier:** executor opus/high, two parts (part 1: findings 1-3, part 2: findings 4-5); audits,
+settler per §3. **Gate:** full. `lane_diff` runs once if finding 5 (g) changes
+`crates/dss-core/examples/lane_dump.rs` beyond a comment, since that example is the job's dumper.
+**After:** RF-I00-06. RF-I00-07 and RF-I00-08 run after this step (it edits harness doc comments
+and test code they census). Scheduled by hand on one lane (not in `wp_index.json`). It may run
+beside RF-I00-09 (disjoint Files but the record, user decision 2026-10-01) and lands after it.
+**Brief:** RF-I00-06's `part_1.md` (sections "BLOCKED", "Rationales whose premise the move
+removed", "Seen, not edited") and `settle.md` under `tmp/retro_fix/state/RF-I00-06/`, read from the
+main checkout.
+**Files:** `tests/corpus/ledger.json`, `tests/corpus/manifests/population.lock.json`, `Cargo.toml`,
+`crates/dss-core/Cargo.toml`, `crates/dss-core/examples/lane_dump.rs`,
+`crates/dss-core/tests/depascalize_metrics_gate.rs`, `crates/dss-core/tests/corpus_manifest.rs`,
+`crates/dss-core/tests/corpus_gate.rs`, `crates/dss-core/tests/corpus_gate/scheduler.rs`,
+`crates/dss-core/tests/corpus_gate/runner.rs`, `crates/dss-core/tests/props_r4133_pins.rs`,
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs` (a register literal or a rail only if a finding
+moves one), `crates/dss-test-harness/src/lib.rs`, and under
+`crates/dss-test-harness/src/harness/`: `mod.rs`, `scratch.rs`, `props_norm.rs`, `run_files.rs`,
+`di.rs`, `inc_matrix.rs`, `topology.rs`, `run_file_contents.rs`, `capture_guard.rs`, `lane.rs`.
+Also `docs/phase-records/retro-fixes.md` and `RETRO_FIXES_PLAN.md`. A site in a file this list
+lacks is `blocked: needs <file>`, never a skipped site.
+**Doc notes (§4):** none expected. A sentence of a shared document that a finding makes false gets
+a notes entry `### RF-I00-10 / INFRA|12`.
+**Decision (user, 2026-10-01):** every item RF-I00-06 handed to the coordinator is closed here, in
+code where the item is code. Nothing is left "for a later sweep".
+**Findings**
+- `INFRA|12` (note), five groups.
+  1. **The locked `source`.** In `tests/corpus/ledger.json`, the `source` of the entry
+     `swtcontrol-per-phase-state-makeposseq-capi-props` names
+     `crates/dss-core/tests/harness/mod.rs::skip_whole_element`. Re-point it to
+     `crates/dss-test-harness/src/harness/mod.rs::skip_whole_element` (verify the claim at the base
+     first: the function returns true for Recloser and Relay on the capi props channel only), that
+     one path and nothing else of the string. Then regenerate the lock with
+     `DSS_UPDATE_POPULATION_LOCK=1 cargo test -p dss-core --test population_lock` in the same commit.
+  2. **History in code (R19).** Each text below is re-worded to what holds now, in one or two short
+     sentences, or deleted when nothing present-tense is left. No step name, date or "used to" stays
+     in code. A number that is a dated measurement goes to this step's record block if no record
+     holds it yet. The sites: the `TEST_ONLY_CRATES` doc of `depascalize_metrics_gate.rs` ("moved out
+     of ..."), the `[profile.dev.package.dss-test-harness]` comment of the root `Cargo.toml` ("While
+     the drivers included it textually ..."), the dev-dependency comment of
+     `crates/dss-core/Cargo.toml`, the `assert_echo_rows_are_live` doc of `props_norm.rs` ("Until
+     RP4.1's unmask ..."), the `corpus_manifest.rs` comment "That separation USED to rest on cargo
+     ...", the `scratch.rs` comment "every test binary that part 1 measured", the
+     `run_files.rs::read_sidecar` doc ("since RF-I00-01 runs in its own process ..."), and the dated
+     incident numbers `(297 915, 81, 4)` in the D24 pin doc of `seq_floors`. The scope is those
+     files as wholes: read every comment and doc comment of each for the same kind of history and
+     treat it the same way, listing each site in `part_1.md`.
+  3. **Lint allowances that suppress nothing.** Remove `#![allow(dead_code)]` of
+     `harness/scratch.rs` and the `#[allow(unused_imports)]` on the `pub use regen::{...}` re-export,
+     with their comments. The module-wide `dead_code` allowance of `harness/mod.rs` stays (it covers
+     23 private items dead only in the non-test build and two never-read `regen.rs` schema fields)
+     and its comment says exactly that, without the count.
+  4. **Assertions the move made possible.** (a) `scheduler.rs::
+     assert_scratch_declines_are_the_pinned_population` and
+     `assert_di_census_is_the_pinned_population` set `unit:` rows aside, and `di.rs` partitions the
+     same way. No `unit:` row reaches the gate's process now. Each function asserts that every row
+     it sees is a manifest row and the set-aside code goes. (b)
+     `seq_floors::a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census` bounds the delta
+     (D31). `record_seq_arm`'s only caller outside the harness tests is `corpus_gate/runner.rs`, so
+     the test asserts `moved == 0`. Each of (a) and (b) is proved in both lanes under the two
+     runners the gate uses (`cargo nextest run` and, for the harness lib, `cargo test`, where the
+     tests of one binary share a process). An assertion that does not hold under one of them is not
+     made: the bound stays and the comment says in one sentence which runner breaks it.
+  5. **Rationales whose premise the move removed** (the eleven of RF-I00-06's `part_1.md`).
+     (a) Items 1, 8, 9 and 10 (D24 call-site counting "by construction", the EnergyMeter `0` scan in
+     `corpus_manifest.rs`, the report printed before the panic in `corpus_gate.rs`, the pins outside
+     the harness crate in `props_r4133_pins.rs`): the code stays. Verify each comment is true and
+     short at the base and edit only a false or history-carrying one.
+     (b) Items 2 and 11 are finding 4.
+     (c) Item 3: the doc above `bus_reliability_walk_counters` states who drives
+     `compare_bus_reliability` today (the gate, and `every_bus_reliability_column_is_compared_per_bus`
+     in the failing direction only) and what follows for the counters. No rule the tree contradicts.
+     (d) Item 4, `props_norm.rs`: the narrowed-arm limit, the "Deviation from the plan's literal
+     spelling" counters and the two "Deliberately NOT calling assert_*" comments. Where the call or
+     the exact assertion now holds (finding 4's proof rule), make it and drop the comment. Otherwise
+     one sentence that states the present reason.
+     (e) Item 5, `harness/mod.rs` `props_policy_tests`: same rule as (d) for the three notes.
+     (f) Item 6: the `panic_message` extractors duplicated in the `inc_matrix`, `topology` and
+     `run_file_contents` test modules become one `#[cfg(test)]` helper of the harness that the three
+     use. `capture_guard`'s own extractor stays if its stated reason is still true.
+     (g) Item 7: `examples/lane_dump.rs::DOCUMENTED_DIVERGENCES` mirrors a list of `harness::lane`.
+     The example reads the list from the harness crate (a dev-dependency an example sees) and the
+     mirror and any rail that only compared the two go. If the read is not possible (say why in
+     `part_2.md`, with the compiler's message), the mirror stays with a one-sentence present reason.
+**Acceptance:**
+- `git diff <base> -- tests/corpus/ledger.json` is the one path inside that `source`, and
+  `git diff <base> -- tests/corpus/manifests/population.lock.json` is the one ledger tag of the
+  `makeposseq/makeposseq_ctrl.dss` row. RF-I00-06's path probe (its **Probes** (1), same roots)
+  prints 5 lines at the head: the three TESTING.md lines and the props README line waiting on
+  their notes entries, and `pub mod harness;`.
+- `rg -n -i -e 'used to' -e 'moved out of' -e 'no longer' -e 'since RF-' -e 'until RP'` over the
+  files of finding 2 prints no comment or doc-comment hit that tells history, and `part_1.md` gives
+  each remaining hit a one-line reason.
+- Clippy is green in both lanes with the two allowances removed.
+- Every assertion of finding 4 and of 5 (d), (e) that was made has a failing-direction proof in
+  `part_2.md` (a throwaway edit that reds it, reverted) and the both-lane, both-runner green run. No
+  test is deleted and no `#[ignore]` added. The executed test count of gate commands 4-5 does not
+  drop.
+- The gate is green, `lane_diff` at `max |Δ| = 0` if it ran. Record block written (5-10 lines), and
+  the record names each of RF-I00-06's coordinator items with its disposition. The uid closed or
+  recorded with a reason.
