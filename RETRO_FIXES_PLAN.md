@@ -1311,7 +1311,7 @@ Rules for the whole step: editing a ledger entry (even its `source`) changes its
 - `G|G2.5|SA1|SA-2` (minor) - `ledger.json`, the shape_mmf exclusion entry (case `modes:inputformat/shape_mmf/shape_mmf.dss`), `source` sentence "the four Monitor ELEMENTS ... carry no current/power/loss channel at all, so their inclusion masks nothing that exists": false - a Monitor is a captured CktElement with a real all-zero channel (r4133 `Meters/Monitor.pas:1780-1791` `GetCurrents` fills CZERO; port `elements/meter/monitor/accessors.rs`). Fix (preferred): narrow the `element` scope with a `name_re` that leaves the four `Monitor.*` rows compared, and prove with `DSS_GATE_ONLY=shape_mmf` that the case stays green and the entry is still hit; otherwise state the four dropped zero-vs-zero comparisons honestly in `source`. Leave a note for golden-rebase.md (the same claim in the G2.5 settlement record).
 - `RP|RP3.10|AC1|AC-3` (minor) - `ledger.json`, the four entries `windgen-qmode0-constant-q-{snapdelta,daily,dyn,dynfault}-r4133`: each `element` scope lists 12 sub-channels while `source` says it "covers all three sub-channels" as the measured set - and for an `exclusion` entry `source` is the only liveness proof (`Scope::dead_channels` skips exclusions). Fix: the corpus-wide re-measure is done by RF-D08-03 (`G|G2.5|SA1|SA-1`, wave 13, in this step's after list: every `element` exclusion sub-channel that masks nothing is narrowed and `measured` provenance is mandatory, frozen in a census constant in `corpus_gate/ledger.rs`) and the `variables` sub-channels by RF-D06-04 (`RP|RP3.10|AC1|AC-2`, wave 11) - so re-derive the four entries' sub-channel sets from `ledger.json` at lane HEAD (the '12' above is plan-time), verify each carries per-sub-channel `measured` evidence in `source` and that `source` no longer says 'three sub-channels'; only a sub-channel still unmeasured is re-measured here (`DSS_GATE_ONLY=windgen DSS_LEDGER_MEASURE=1`, r4133 channel; TESTING.md for the knob), dropped if it does not red, with the census constant in `crates/dss-core/tests/corpus_gate/ledger.rs` (in Files) updated in the same commit. Never widen; never re-add a pruned sub-channel. Leave a note for r4133-props-rp3.md if the RP3.10 record repeats the "three sub-channels" sentence.
 - `G|G2.5|SA1|SA-5` (note) - `ledger.json` entry `gic-pct-r2-honoured-midi-r4133`, `source`: "see the capi twin's source for why the scopes stay deck-wide" - that entry no longer exists. Fix: inline the justification (recover it with `git show ac192be6^:tests/corpus/ledger.json`, or from the sibling `gic-pct-r2-honoured-gictransformer-r4133` source).
-- `G|G1.2|SA1|SA-1` (minor) - `espvlcontrol.dss` header (the empty-control-queue paragraph: "a port that ... queued an action fails here") and the matching item (3) of the case's note in `controls/manifest.json`: `compare_ctrlqueue` cannot red for that failure - in the default STATIC control mode a same-solve push+execute is drained before the end-of-step capture, so it reds only on an action left pending across steps. Fix: requalify both texts and name the surfaces that do catch a spurious push/dispatch: the universal `control_iterations` scalar (`harness/aggregates.rs`, capi channel, exact) plus the generator kW probes. Keep the flag on. Leave a note for golden-rebase.md (the two G1.2 record sentences). The optional in-engine ControlIterations pin is outside this step's files - record it as a follow-up, do not add it here.
+- `G|G1.2|SA1|SA-1` (minor) - `espvlcontrol.dss` header (the empty-control-queue paragraph: "a port that ... queued an action fails here") and the matching item (3) of the case's note in `controls/manifest.json`: `compare_ctrlqueue` cannot red for that failure - in the default STATIC control mode a same-solve push+execute is drained before the end-of-step capture, so it reds only on an action left pending across steps. Fix: requalify both texts and name the surfaces that do catch a spurious push/dispatch: the universal `control_iterations` scalar (`harness/aggregates.rs`, capi channel, exact) plus the generator kW probes. Keep the flag on. Leave a note for golden-rebase.md (the two G1.2 record sentences). The optional in-engine ControlIterations pin is outside this step's files - record it as a follow-up, do not add it here. *(Amended by RF-I00-02, 2026-10-01: the re-shaped deck never fires the redispatch, and both texts already scope item (3) to the in-band path and send the firing path to `exec/tests/espvl_control.rs`, whose firing tests assert the generators held, the event log and the control queue empty and `control_iterations == 1`. The requalification keeps that scope: the surfaces it names catch a spurious push or dispatch only while the SystemControllers sit inside the band.)* <!-- amended by RF-I00-02 -->
 - `G|G1.2|SA1|SA-5` (note) - `espvlcontrol.dss` header (three `ESPVLControl.pas:NNN` cites) and the manifest note: bare citations mixing the two trees. Fix: spell the tree on every cite with r4133 as the authority: `FkWLimit := 8000.0` is r4133 `Version8/Source/Controls/ESPVLControl.pas:381` (capi 0.14.5 `:321`); the `Ftype` gate r4133 `:595` (capi `:415`); the enabled sweep r4133 `:609-611` (capi `:429-432`). Leave a note for golden-rebase.md (three record sites).
 - `G|G1.2|SA1|SA-2` (note) - `espvlcontrol.dss` header: "the full 14-property table of all five controls" while the deck holds six ESPVLControls (loc1, loc2, off, plain, sys, scan). Fix: "all six controls".
 - `RP|RP3.12|AT1|AT-7` (note) - header comments of `autotrans_reg.dss`, `midi_autotrans.dss`, `midi_autotrans_both.dss` and the matching case note in `controls/manifest.json`: they still assert a "shared TControlledTransformerObj base" with `RegControl.pas:264` / `:1009` - both dss_capi 0.14.5 lines (`Transf_Or_AutoTrans_ProxyClass`; the "Series connection ... not been implemented" raise), and `TControlledTransformerObj` has zero hits in the r4133 tree. Fix: rewrite the comments: drop the shared-base premise, cite r4133 `Version8/Source/Controls/RegControl.pas` by its real lines (read them), label any kept dss_capi citation as such.
@@ -4305,7 +4305,7 @@ part 1 is the path-embedding probe.
 - Record block written; every uid closed or recorded with a reason.
 
 ### RF-I00-02 — The capi one-shot's native death on `controls:espvlcontrol` (R12 follow-up of RF-I00-01)
-<!-- RF-STEP {"step": "RF-I00-02", "effort": "xhigh", "parts": 2, "gate": "full", "oracle": true, "after": ["RF-I00-01"], "n_uids": 1} -->
+<!-- RF-STEP {"step": "RF-I00-02", "effort": "xhigh", "parts": 3, "gate": "full", "oracle": true, "after": ["RF-I00-01"], "n_uids": 1} -->
 **Tier:** executor opus/xhigh; audits, settler per §3. **Gate:** full (the seven commands). **After:**
 RF-I00-01 only (coordinator 2026-09-30, user decision: RF-D09-06's SA-0 adds a no-circuit error to the
 transports and never reports the one-shot's exit status, so this step gathers its own evidence).
@@ -4324,7 +4324,30 @@ the same shape under load is the capi-side crash. **Brief:** `tmp/retro_fix/stat
 (parity, the wave-2 landing gate on `5d934d40`, its one unmodified re-run green).
 **Files:** `crates/dss-core/tests/corpus_gate/engines.rs`, `tools/oracle/oracle_server.py`,
 `tests/corpus/ledger.json`, `tests/corpus/controls/manifest.json`, `TESTING.md` (notes),
-`docs/phase-records/retro-fixes.md`, `RETRO_FIXES_PLAN.md`.
+`docs/phase-records/retro-fixes.md`, `RETRO_FIXES_PLAN.md`, and by the ruling below
+`tests/corpus/controls/espvlcontrol/espvlcontrol.dss`,
+`crates/dss-core/src/elements/control/espvl_control/mod.rs` (its module doc only),
+`crates/dss-core/src/exec/tests/espvl_control.rs` (its module doc, and a pin if part 3 finds the
+redispatch path of the port without one).
+**Ruling (coordinator, 2026-10-01, after part 2):** arm (c). Part 2 measured the cause: the pinned
+capi `TESPVLControlObj.Sample` redispatch stores `Gen.kWBase` through a `TGeneratorObj` cast of
+another ESPVLControl on every step of the deck, `kWBand` cannot silence it (`HalfkWBand` is set
+only in `Create`, in both revisions and in the port), and the one-shot dies only while that store
+runs (37 deaths in 9951 concurrent runs with the redispatch firing, 0 in 2784 with it silent). An
+oracle executing a type-confused store is no oracle for that path, and arm (a) is blocked by the
+full-bypass guard of `corpus_gate/ledger.rs` (a case with a skip row must keep one gating channel,
+and the r4133 twin already skips). So part 3 re-shapes the step's own deck (a synthetic case, not a
+vendored one) so both SystemControllers monitor a new branch to a constant load (the `v3` variant of
+`part_2.md`: `line.l2` + `load.ld2` at 8000 kW, `element=line.l2` on `sys` and `scan`), keeps every
+observable the manifest note claims as live coverage on the capi channel, and states in the deck
+header and the manifest note why the redispatch is kept silent there. The port's redispatch path
+stays pinned by its own tests (`elements/control/espvl_control/tests.rs`, `exec/tests/espvl_control.rs`),
+which part 3 verifies by name (adding an expected-value pin if none exists). The three texts that
+repeat the voided "kWBand=1e9 means the redispatch never fires" claim (the deck header, the
+`espvl_control/mod.rs` module doc, the `exec/tests/espvl_control.rs` module doc) are corrected in
+part 3, doc-only. Part 3 ends with a concurrent probe of the re-shaped deck through the gate's own
+request (at least 200 runs under load, 0 deaths expected), a check that no census or population
+lock counts this deck's elements, no ledger row, no skip, the plan and TESTING.md notes, the record.
 **Findings**
 - `INFRA|4` (major) - `controls:espvlcontrol/espvlcontrol.dss` on `capi_v0145`: the `isolate`
   one-shot dies natively before replying ("oracle produced no JSON response",
@@ -4341,7 +4364,8 @@ the same shape under load is the capi-side crash. **Brief:** `tmp/retro_fix/stat
   a filter without the ruling. Until this step lands, the row is the oracle-side gate class of the
   RF-I00-01 ruling Q4-1: one unmodified re-run, every occurrence recorded with evidence.
 **Acceptance:** the death has a named cause with evidence (exit code / fault site, rate under load)
-and a disposition (ledger row or fix + rail); a recurrence names its cause in the gate output;
+and a disposition (the re-shaped deck with the probe numbers, or a ledger row or fix + rail); a
+recurrence names its cause in the gate output; the port's redispatch path is pinned by a named test;
 record block written.
 
 ### RF-I00-03 — `di_pins::PORT` per-deck memos under nextest (R12 follow-up of RF-I00-01)

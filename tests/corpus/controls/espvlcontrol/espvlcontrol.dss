@@ -1,20 +1,24 @@
 // ESPVLControl scenario: an Energy-Storage/PV "system controller" supervising a
-// fleet of "local controllers" over a daily ramp whose feeder-head power crosses
-// the hardcoded FkWLimit = 8000 kW (ESPVLControl.pas:321 -- there is NO kWLimit
-// property), so |PDiff| > HalfkWBand on both sides.
+// fleet of "local controllers" over a 12-step daily ramp. The two
+// SystemControllers `sys` and `scan` monitor `line.l2`, a short branch to the
+// constant-power 8000 kW load `ld2`, so their PDiff = P - FkWLimit (FkWLimit is
+// hardcoded to 8000 kW, ESPVLControl.pas:321 -- there is NO kWLimit property)
+// stays at +0.105..+0.142 kW, inside HalfkWBand = 50 kW, on every step: Sample
+// and MakeLocalControlList run, the redispatch never fires.
 //
-// WHAT THIS DECK ACTUALLY GATES vs WHAT IS ONLY UNIT-PINNED (measured, G1.2 audit
-// settlement 2026-08-29). A 12-step mutation run on the pinned oracle -- 405
-// compared cells per step (every property of every element, all bus voltages,
-// iterations, ControlIterations, the event log and the control queue) with
-// `kWBand=1e9` on sys+scan so the redispatch loop can never fire -- differs from
-// the base run in exactly the 24 mutated `kWBand` cells and NOTHING else. So the
-// redispatch arithmetic (PDiff, HalfkWBand, the weights, TotalWeight, the
-// Max(1.0,..) floor) and `sys`'s NAMED-list branch are UNOBSERVABLE on every
-// oracle channel: upstream writes them onto a type-confused TGeneratorObj field
-// of another ESPVLControl, and the port writes its `phantom_kw_base`. Their
-// regression net is elements/control/espvl_control/tests.rs +
-// exec/tests/espvl_control.rs, NOT this deck.
+// WHY THE REDISPATCH STAYS SILENT HERE. Upstream the redispatch stores
+// `Gen.kWBase` through a TGeneratorObj cast of another ESPVLControl. On the
+// pinned capi oracle that type-confused store corrupts the process: the one-shot
+// sometimes dies before it replies (exit 0xc0000094 or 0xc0000005) and a later
+// compile in the same process finds no circuit (see ISOLATE below). An oracle
+// executing that store is no reference for it, and `kWBand` cannot silence it
+// (HalfkWBand is fixed at 50 kW when the object is created, the kWBand edit only
+// sets FkWBand), so the monitored power keeps it inside the band, and
+// exec/tests/espvl_control.rs steps this deck and fails on a step outside it.
+// The redispatch arithmetic (PDiff, HalfkWBand, the weights, TotalWeight, the
+// Max(1.0,..) floor) and `sys`'s NAMED-list branch are pinned by
+// elements/control/espvl_control/tests.rs + exec/tests/espvl_control.rs, NOT
+// this deck.
 //
 // What this deck does gate live, per step, on capi_v0145:
 //   * `scan.LocalControlWeights` '' -> '[ 1 1 1 1 1]' -- the one Sample-derived
@@ -26,13 +30,16 @@
 //   * the full 14-property table of all five controls (compare_all_properties is
 //     force-enabled for the controls family on the capi channel), incl. the ''
 //     rendering of an unset `Type` and the dead PVSystem/Storage lists.
-//   * the no-op contract: two real generators whose kw/kvar must hold their input
-//     bases, an EMPTY event log, and an EMPTY control queue -- all compared, so a
-//     port that dispatched the generators or queued an action fails here.
+//   * the no-op contract of the in-band path: two real generators whose kw/kvar
+//     must hold their input bases, an EMPTY event log, and an EMPTY control
+//     queue -- all compared, so a port that dispatched the generators or queued
+//     an action while its SystemControllers sit inside the band fails here. No
+//     redispatch fires on this deck: the no-op contract of the firing path is
+//     pinned by exec/tests/espvl_control.rs.
 //
 // The four ESPVLControl instantiation shapes, all present:
 //   sys   -- Type=SystemController with a named LocalControlList + weights [3,1]
-//            (parse round-trip only; the branch itself is unobservable);
+//            (parse round-trip only; the branch itself is unit-pinned);
 //   scan  -- Type=SystemController with NO list -> the class sweep above;
 //   loc1  -- Type=LocalController naming a PVSystem + a Storage; upstream never
 //            resolves those pointer lists, so they round-trip only;
@@ -43,16 +50,12 @@
 //   off   -- an explicitly disabled control, so the sweep's "enabled only" filter
 //            is observable (off is NOT in scan's fleet of five).
 //
-// UPSTREAM PROCESS CONTAMINATION (measured 2026-08-29; the reason the manifest row
-// sets `isolate: true`). ESPVLControl is a no-op on every observable state of THIS
-// compiled deck, but a SystemController's Sample corrupts the pinned oracle's
-// GLOBAL process state: after even ONE solve, a later `compile <deck>` leaves
-// NumCircuits=0 with Error.Number=0 and every API call raises "(#8888) There is no
-// active circuit!". Isolated: no solve -> clean; all controls disabled -> clean;
-// only the LocalControllers enabled -> clean; `sys` alone with kWBand=1e9 (no
-// redispatch) -> STILL broken. So it is the SystemController Sample /
-// MakeLocalControlList path, not the type-confused kWBase write. A top-level
-// `clear` before the next Compile heals it, which is why the gate never saw this.
+// ISOLATE (the reason the manifest row sets `isolate: true`). After one solve
+// with a SystemController's redispatch firing, a later `compile <deck>` in the
+// same pinned-oracle process leaves NumCircuits=0 with Error.Number=0 and every
+// API call raises "(#8888) There is no active circuit!"; with the redispatch
+// silent, as on this deck, the process stays clean. A top-level `clear` before
+// the next Compile heals it.
 //
 // Deliberately no `MakePosSequence`: the ESPVLControl override dereferences the
 // always-NIL ControlledElement and aborts the oracle (docs/wpg21_makeposseq_probes.md,
@@ -63,6 +66,11 @@ Set DefaultBaseFrequency=60
 New circuit.espvl basekv=12.47 phases=3 bus1=src basefreq=60
 
 New line.l1 bus1=src bus2=b1 length=1 r1=0.3 x1=0.6
+
+// The SystemControllers' monitored branch: a constant 8000 kW keeps their
+// PDiff inside the band on every step.
+New line.l2 bus1=src bus2=b2 length=0.001 r1=0.3 x1=0.6
+New load.ld2 bus1=b2 phases=3 kv=12.47 kw=8000 pf=1 model=1 vminpu=0.5
 
 New loadshape.day npts=12 interval=1
 ~ mult=(0.40 0.55 0.72 0.88 1.00 1.12 1.20 1.08 0.92 0.78 0.62 0.46)
@@ -90,11 +98,11 @@ New espvlcontrol.off element=line.l1 terminal=1 type=LocalController enabled=no
 New espvlcontrol.plain element=line.l1 terminal=1
 
 // System controller over the NAMED fleet, unequal weights.
-New espvlcontrol.sys element=line.l1 terminal=1 type=SystemController kWBand=200
+New espvlcontrol.sys element=line.l2 terminal=1 type=SystemController kWBand=200
 ~ kvarLimit=1500 LocalControlList=[loc1, loc2] LocalControlWeights=[3, 1]
 
 // System controller with NO list: scans the whole class for enabled controls.
-New espvlcontrol.scan element=line.l1 terminal=1 type=SystemController kWBand=200
+New espvlcontrol.scan element=line.l2 terminal=1 type=SystemController kWBand=200
 
 Set voltagebases=[12.47]
 calcv

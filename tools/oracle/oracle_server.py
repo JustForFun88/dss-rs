@@ -38,6 +38,7 @@ Usage (normally spawned by the Rust gate; manual smoke test):
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
 import sys
@@ -2082,6 +2083,12 @@ def make_engine():
 
 def main() -> None:
     d, oracle = make_engine()
+    # A native fault kills this process before it replies; the dump names the
+    # Python frame on stderr, next to the exit status the Rust one-shot reports.
+    # Enabled after the engine import, which raises and catches a few engine
+    # exceptions of its own. Each exception the engine catches during a case
+    # still prints a dump (`code 0xe0465043`), so the fatal one is the last.
+    faulthandler.enable(file=sys.stderr, all_threads=True)
 
     d.AllowForms = False
     # `Show`/`Export`/`FileEdit` call `FireOffEditor`, which opens the report in
@@ -2119,7 +2126,16 @@ def main() -> None:
         if cmd == "quit":
             break
         if cmd == "ping":
-            reply({"ok": True, "result": {"pong": True, "oracle": oracle}})
+            reply(
+                {
+                    "ok": True,
+                    "result": {
+                        "pong": True,
+                        "oracle": oracle,
+                        "faulthandler": faulthandler.is_enabled(),
+                    },
+                }
+            )
             continue
         if cmd != "run":
             reply({"ok": False, "error": f"unknown cmd {cmd!r}"})
