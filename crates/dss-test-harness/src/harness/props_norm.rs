@@ -2691,7 +2691,7 @@ pub fn assert_echo_rows_are_live() {
 /// any other r4133 caller of the comparator in the gate's process that touched
 /// one of the 21 pairs would supply that row's visit by itself. The gate's
 /// binary holds none: the harness's own drives of those pairs (`load.yearly` via
-/// `harness::tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`)
+/// `harness::props_policy_tests::a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses`)
 /// run in the harness's lib test binary, and the gate binary's property pilot
 /// compares on the capi channel only. The arm is a floor for all 21 rows while
 /// that holds, the same property the global guard's doc records about table sums.

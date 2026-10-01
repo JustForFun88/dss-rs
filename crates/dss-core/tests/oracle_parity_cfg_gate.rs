@@ -403,8 +403,8 @@ fn str_list_const(src: &str, name: &str) -> Option<Vec<String>> {
 /// The premise of [`TEST_ONLY_CRATES`] and of `depascalize_metrics_gate.rs`'s
 /// list of the same name, enforced: no product crate of the workspace links a
 /// test-only package, and every entry of either list is the directory of one.
-/// Before RF-I00-04 the harness was a `mod` under `crates/dss-core/tests/`,
-/// structurally unlinkable. As a library crate it is one `[dependencies]` line
+/// Each test-only package is a library crate: the golden harness, the one
+/// entry of both lists, is one `[dependencies]` line
 /// away from the shipped engine, which both lists would then wave through
 /// (RF-I00-04 audit AC-8), and an entry naming a product crate would exempt it
 /// from the lane-constant rail or from every engine metric (settlement audit
@@ -3848,8 +3848,8 @@ fn a_cited_path_resolves_only_among_its_own_matches() {
     assert_eq!(target("harness/mod.rs", &a), Ok(harness.clone()));
     assert_eq!(target("mod.rs", &harness), Ok(harness.clone()));
     assert_eq!(target("src/mod.rs", &b), Ok(b.clone()));
-    // A spelling with no hit names no file, even with a file registered.
-    assert!(target("crates/gone/src/mod.rs", &harness).is_err());
+    // A spelling with no hit names no file, even when the file its tail matches is registered.
+    assert!(target("crates/gone/harness/mod.rs", &harness).is_err());
     // An ambiguous spelling is never resolved onto a file outside its matches.
     assert!(target("src/mod.rs", &harness).is_err());
 }

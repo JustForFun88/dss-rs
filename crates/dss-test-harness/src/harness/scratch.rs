@@ -53,8 +53,8 @@
 //! writing verb in place, read-only (part 1 attributed 72 targets x 0 changes),
 //! nothing refuses a plain in-place compile, and [`TreePhoto`] sees a writer
 //! only while it overlaps the corpus gate's own walk.
-// Dead-code analysis is suppressed module-wide, like the rest of the harness:
-// the drivers, not this crate, are the users of its items.
+// This allowance suppresses nothing: no item of this file is dead code in
+// either build, and the harness's module-wide one covers the file as well.
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet};

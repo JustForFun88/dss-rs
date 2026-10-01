@@ -4,8 +4,8 @@
 //! same dss_capi engine the Pascal source in `.inputs` builds) and committed
 //! under `tests/golden/` at the repository root. See PORTING_PLAN.md §4.
 //!
-//! The structs mirror the full golden schema, and a field no driver reads
-//! would warn, so dead-code analysis is suppressed module-wide.
+//! Dead-code analysis is off module-wide: private items only the self-tests
+//! use are dead in the non-test build, and some schema fields are never read.
 //!
 //! **Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2):** the suite runs in two lanes.
 //! Everything lane-dependent lives in [`lane`] — the drift-model table turned
@@ -42,9 +42,9 @@ pub mod regen;
 /// `harness::snapshot_bytes()`. The module keeps its own name (type namespace)
 /// alongside the function (value namespace).
 ///
-/// `allow(unused_imports)` beside the module-wide `dead_code` allowance: no
-/// driver calls these entry points until WP-G3 wires the first one, so the
-/// re-export is kept quiet like the module's other unused items.
+/// `allow(unused_imports)` suppresses nothing: this re-export is reachable
+/// from the crate root, and the lint never reports an exported `use`, whether
+/// or not a driver calls these entry points.
 #[allow(unused_imports)]
 pub use regen::{regen, snapshot_bytes, snapshot_text};
 
