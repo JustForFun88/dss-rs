@@ -718,8 +718,8 @@ fn class_member_names(snaps: &[dss_core::exec::ElementSnapshot], class: &str) ->
 ///
 /// It reuses the single channel→tag mapping the tree already has
 /// ([`harness::PropsChannel::tag`]) instead of adding a second copy:
-/// `EngineChannel` is `pub(crate)` to this one test binary while `harness/`
-/// compiles into ~20 others, so the guard takes a `&str`
+/// `EngineChannel` is `pub(crate)` to this one test binary, and the harness
+/// library cannot name a type of it, so the guard takes a `&str`
 /// ([`EngineChannel::props_channel`] records that channel-threading trap).
 fn channel_tag(channel: EngineChannel) -> &'static str {
     channel.props_channel().tag()
@@ -1162,11 +1162,11 @@ pub(crate) fn compare_capture(
                 // assert_seq_arm_population`, checked in the gate's epilogue).
                 // Recorded HERE and never inside the comparator (coordinator
                 // decision D24, the `record_control_census` line below): the
-                // `harness::seq_floors` fixtures call `compare_element_seq` in
-                // this same test binary, several of them on the very arm the
-                // guard counts, so a comparator-side census reads the gating
-                // population plus the fixtures under the mandatory
-                // `cargo test --workspace` shape. The comparator hands back the
+                // `harness::seq_floors` fixtures call `compare_element_seq` too,
+                // several of them on the very arm the guard counts, so a
+                // comparator-side census would read the gating population plus
+                // whatever else ran in the process. Counting here keeps it
+                // gate-only by construction. The comparator hands back the
                 // arm it classified (`None` for the disabled and 0-terminal
                 // rows it returns on), so there is one classification, not two.
                 if let Some(arm) =

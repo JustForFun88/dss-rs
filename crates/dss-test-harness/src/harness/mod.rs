@@ -4,8 +4,8 @@
 //! same dss_capi engine the Pascal source in `.inputs` builds) and committed
 //! under `tests/golden/` at the repository root. See PORTING_PLAN.md §4.
 //!
-//! The structs mirror the full golden schema; each integration-test binary
-//! uses only a subset, so dead-code analysis is suppressed module-wide.
+//! The structs mirror the full golden schema, and a field no driver reads
+//! would warn, so dead-code analysis is suppressed module-wide.
 //!
 //! **Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2):** the suite runs in two lanes.
 //! Everything lane-dependent lives in [`lane`] — the drift-model table turned
@@ -42,9 +42,9 @@ pub mod regen;
 /// `harness::snapshot_bytes()`. The module keeps its own name (type namespace)
 /// alongside the function (value namespace).
 ///
-/// `allow(unused_imports)` for the same reason this module allows `dead_code`:
-/// it is compiled into every golden test binary and each uses a subset — and
-/// until WP-G3 wires the first driver, that subset is empty everywhere.
+/// `allow(unused_imports)` beside the module-wide `dead_code` allowance: no
+/// driver calls these entry points until WP-G3 wires the first one, so the
+/// re-export is kept quiet like the module's other unused items.
 #[allow(unused_imports)]
 pub use regen::{regen, snapshot_bytes, snapshot_text};
 
@@ -4733,12 +4733,12 @@ static SEQ_ARM_POSSEQ_R4133: std::sync::atomic::AtomicUsize =
 /// (`corpus_gate/runner.rs`, the `c.compare_derived` block), which records the
 /// arm [`compare_element_seq`] hands back; the comparator itself records
 /// nothing (coordinator decision **D24**, 2026-09-05). That is what keeps the
-/// census the *gating* population: `seq_floors` calls the comparator at 24
-/// fixture sites in this same test binary — six of them deliberately on the
+/// census the *gating* population whoever else calls the comparator:
+/// `seq_floors` calls it at 24 fixture sites — six of them deliberately on the
 /// 1-phase positive-sequence arm, four of those with [`PropsChannel::R4133`] —
-/// and under `cargo test` (one process per test binary, the gate's runner
-/// until RF-I00-01) those calls landed in these statics: the guard read
-/// `(297 915, 81, 4)`, not the gate-only `(297 896, 79, 0)`, and failed. Pinned by
+/// and those run in this crate's own lib test binary, apart from the gate, so
+/// the statics count the runner's calls alone by construction, not because no
+/// other caller happens to share the gate's process. Pinned by
 /// `seq_floors::a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census`.
 pub fn record_seq_arm(arm: SeqArm, channel: PropsChannel) {
     use std::sync::atomic::Ordering::Relaxed;
@@ -4918,8 +4918,8 @@ fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize
 /// shapes agreed), `None` on the two structural early returns. The corpus gate's
 /// runner feeds that straight into [`record_seq_arm`]; **this comparator records
 /// nothing** (coordinator decision **D24**, 2026-09-05, the
-/// [`record_control_census`] precedent), so the 24 `seq_floors` fixture calls in
-/// this same test binary cannot move the shipped counters. There is one
+/// [`record_control_census`] precedent), so the 24 `seq_floors` fixture calls,
+/// or any other caller's, cannot move the shipped counters. There is one
 /// classification and not two: the arm is `snap.seq_arm`, read once here and
 /// handed out.
 pub fn compare_element_seq(
@@ -6683,12 +6683,12 @@ mod seq_floors {
     /// *returns* the arm; [`super::record_seq_arm`] is the runner's call.
     ///
     /// **Why a bounded delta and not `== 0`** (coordinator decision **D31**,
-    /// 2026-09-05): the gating population now contributes
+    /// 2026-09-05): the gating population contributes
     /// [`super::SEQ_ARM_CENSUS_MEASURED`]`.2` rows to `SEQ_ARM_POSSEQ_R4133`
-    /// (`modes/makeposseq/makeposseq_gic.dss`). Under `cargo test` the gate test
-    /// shares this process (nextest gives it its own), so no absolute value holds
-    /// under both runners. What IS assertable is a bound the gate never reaches:
-    /// the gate's total contribution over the whole run is that constant, so
+    /// (`modes/makeposseq/makeposseq_gic.dss`), and the rail is written to hold
+    /// even in a process that also runs the gate. This test runs in the harness's
+    /// own lib test binary, which links no gate, and asserts the bound all the
+    /// same: the gate's total contribution over the whole run is that constant, so
     /// driving the comparator strictly more than that many times and requiring the
     /// counter to move by at most that much fails the instant the comparator
     /// records even once — deterministically, whatever the interleaving.
@@ -8921,11 +8921,11 @@ mod props_policy_tests {
     /// (`regcontrol.idleforward` is one of the five pure-echo bin-1 pairs;
     /// `regcontrol.band` takes no row at all). This test drives the REAL
     /// comparator, so a prop with a normalization row would move that row's
-    /// process-global visit counter without ever folding anything, and
-    /// `assert_norm_rows_are_live()` — which runs once at the end of the gate,
-    /// in this same binary — would then report the row as stale. That is the
-    /// test-ordering trap RP2.1 part D removed from three tests in
-    /// `props_norm::tests`; measured here on the first full-workspace run.
+    /// process-global visit counter without ever folding anything, and any
+    /// sibling test of this binary that reads that counter would then see a
+    /// visit it did not make. The gate's own liveness guard,
+    /// `assert_norm_rows_are_live()`, runs once at the end of the gate in the
+    /// corpus-gate binary, which links the harness without its tests.
     /// The ECHO counters this test does move all end with `hits > 0`, which is
     /// what their own guard asks.
     ///
@@ -8989,15 +8989,15 @@ mod props_policy_tests {
     /// holds a `CaseFold` normalization row AND an echo row — which is what the
     /// two tests below need. The neighbour prop each list carries (`kW`, `kV`)
     /// deliberately has NO row of either kind, so driving it moves no
-    /// process-global counter: the trap RP2.1 part D measured, re-measured here
-    /// (the first draft used `Daily`, which DOES have a `CaseFold` row, and it
-    /// reddened `assert_norm_rows_are_live` in the corpus-gate binary).
+    /// process-global counter (a neighbour like `Daily`, which DOES have a
+    /// `CaseFold` row, would move one that no assertion of these tests
+    /// accounts for).
     ///
     /// The two tests use **different** pairs on purpose, and each leaves every
-    /// row it touches with `hits > 0`: `cargo test` runs them concurrently with
-    /// each other and with the gate's own `assert_*_rows_are_live()` epilogue, so
-    /// a shared pair would make both the exact-delta assertions and the liveness
-    /// guard order-dependent.
+    /// row it touches with `hits > 0`: `cargo test` may run them concurrently
+    /// with each other and with the other counter-reading tests of this binary,
+    /// so a shared pair would make the exact-delta assertions order-dependent,
+    /// and `hits > 0` is the state the gate's liveness guard asks of a row.
     ///
     /// [`compare_prop_lists`]: super::compare_prop_lists
     fn run_props(
@@ -9097,7 +9097,7 @@ mod props_policy_tests {
             Some(echo_before)
         );
         // …and the pair's real echo cell — r4133's stale `GetBus(2)` snapshot —
-        // is a hit, which is what the liveness guard needs from this binary.
+        // is a hit, the kind of visit the liveness guard asks of the row.
         assert!(run(
             &[("Bus2", "b2.0"), ("kV", "12.47")],
             &[("Bus2", "b2.0.0.0"), ("kV", "12.47")],
@@ -9134,10 +9134,10 @@ mod props_policy_tests {
     #[test]
     fn a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses() {
         // Counter hygiene first, and it is per TEST, not per binary: this one
-        // drives `load.yearly`'s normalization row on cells it cannot fold, and
-        // the gate's `assert_norm_rows_are_live()` may run before or after it in
-        // the same process. One foldable cell up front leaves that row with
-        // `hits > 0` whatever the ordering. The echo row gets its own hit from
+        // drives `load.yearly`'s normalization row on cells it cannot fold. One
+        // foldable cell up front leaves that row with `hits > 0` whatever else
+        // drives it, the state the liveness guard asks of a row (the guard runs
+        // in the corpus-gate binary alone). The echo row gets its own hit from
         // the measured-spelling assertion at the end.
         assert!(run_load(
             PropsChannel::R4133,
@@ -9482,7 +9482,7 @@ fn compare_prop_lists(
         "{ctx}: {element} property count differs (rust {} -> {} after PROPS_015X allowlist \
          vs oracle {}) — property-table shape changed. A NON-allowlisted extra/missing prop \
          fails here; a deliberately ported 0.15.x prop must be added to PROPS_015X in \
-         tests/harness/mod.rs",
+         crates/dss-test-harness/src/harness/mod.rs",
         actual.len(),
         filtered.len(),
         oracle.len()
@@ -9617,8 +9617,8 @@ pub fn compare_all_properties(
 /// Which oracle channel a property compare is running against, expressed in a
 /// type the harness itself owns.
 ///
-/// `corpus_gate`'s `EngineChannel` is `pub(crate)` to that one test binary while
-/// `harness/` compiles into ~20 others, so the channel cannot travel as that
+/// `corpus_gate`'s `EngineChannel` is `pub(crate)` to that one test binary, which
+/// this library cannot depend on, so the channel cannot travel as that
 /// type (plan §1.2, the channel-threading trap). The corpus_gate call sites map
 /// `EngineChannel` onto this (`EngineChannel::props_channel`). **Both** property
 /// walks read it since RP2.1: the gating [`compare_all_properties`] (through
@@ -11099,10 +11099,10 @@ pub const PD_SKIP_FIELDS: &[PdSkipRow] = &[
     },
 ];
 
-/// The file, relative to `crates/dss-core`, that must define every
+/// The file, relative to the repository root, that must define every
 /// [`PdSkipRow::pin`] — checked by
 /// `pd_elements_tests::every_pd_skip_row_pin_is_a_test_that_exists`.
-const PD_PINS_FILE: &str = "../dss-core/tests/pd_elements_pins.rs";
+const PD_PINS_FILE: &str = "crates/dss-core/tests/pd_elements_pins.rs";
 
 /// Per-row visit counter, indexed exactly like [`PD_SKIP_FIELDS`]: cells the
 /// row was consulted about.
@@ -11609,7 +11609,7 @@ mod pd_elements_tests {
     /// rows exist to prevent (GOLDEN_REBASE_PLAN.md §1.1(e), CLAUDE.md).
     #[test]
     fn every_pd_skip_row_pin_is_a_test_that_exists() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(PD_PINS_FILE);
+        let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")).join(PD_PINS_FILE);
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
             // Line endings are the checkout's, not this test's business.
@@ -11621,7 +11621,7 @@ mod pd_elements_tests {
         for pin in named {
             assert!(
                 text.contains(&format!("#[test]\nfn {pin}() {{")),
-                "PD_SKIP_FIELDS names `{pin}` as its pin, but crates/dss-core/{PD_PINS_FILE} \
+                "PD_SKIP_FIELDS names `{pin}` as its pin, but {PD_PINS_FILE} \
                  defines no such #[test]. An exclusion without its expected-value test is a \
                  mask over nothing."
             );
@@ -12188,8 +12188,8 @@ const DISTANCE_POPULATION: (usize, usize) = (867, 79_137);
 /// The single caller is `corpus_gate/runner.rs`'s `compare_bus` block. The
 /// harness' own unit drives ([`bus_distance_comparator_tests`]) call
 /// [`compare_bus_distances`] directly and are deliberately NOT counted, for the
-/// reason [`record_sc_study_compare`] gives: they run in this same test binary
-/// and would make the population unstable.
+/// reason [`record_sc_study_compare`] gives: the gate's runner alone records,
+/// so the population counts gating compares only.
 pub fn record_distance_compare(nonzero_buses: usize) {
     if nonzero_buses > 0 {
         DISTANCE_WALKS.fetch_add(1, AtomicOrd::Relaxed);
@@ -12811,9 +12811,9 @@ const SC_STUDY_POPULATION: (usize, usize) = (10, 646);
 /// The single caller is `corpus_gate/runner.rs`'s `compare_zsc` block — the
 /// gate's one entry point into this comparator. The harness' own unit drives
 /// call [`compare_bus_short_circuit`] directly and are deliberately NOT
-/// counted: they run in the same process as the gate in this test binary, and
-/// counting them would make the exact population above unstable (and green
-/// under exactly the corpus regression it exists to catch).
+/// counted: the recorder belongs to the gate's runner alone, so the exact
+/// population above counts gating compares only and no fixture can green it
+/// under exactly the corpus regression it exists to catch.
 pub fn record_sc_study_compare(buses: usize) {
     if buses > 0 {
         SC_STUDY_WALKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -12889,7 +12889,7 @@ pub fn check_sc_study_compare_ran(walks: usize, buses: usize) {
 /// nothing else: the two oracles run the same algorithm on this surface, so no
 /// VALUE here is channel-dependent. It travels as [`PropsChannel`] — despite
 /// the name, the harness' only channel type (`corpus_gate`'s `EngineChannel` is
-/// `pub(crate)` to one test binary while `harness/` compiles into ~20; the
+/// `pub(crate)` to that test binary, which this library cannot name, and the
 /// runner already maps it for every non-property surface's capture guard).
 ///
 /// `voltages_excluded` is the caller's D11(2) flag, **narrowed** for this
@@ -13634,9 +13634,9 @@ mod bus_short_circuit_tests {
     ///
     /// The silencing hook is scoped to THIS thread and delegates every other
     /// panic to the previous hook — `lane::passes`' pattern, for its reason:
-    /// this module compiles into the corpus-gate binary, where libtest runs
-    /// these drives in parallel with `corpus_gate_all_cases_match_engines`, and
-    /// a blanket no-op hook can eat that test's failure report.
+    /// `cargo test` runs these drives in parallel with the other tests of this
+    /// binary, and a blanket no-op hook can eat a sibling test's failure
+    /// report.
     ///
     /// Generic in the closure's result so the drives can call
     /// [`compare_bus_short_circuit`] directly: it returns the count of full
@@ -14463,9 +14463,9 @@ const R4133_VLL_HANG_POPULATION: (usize, usize) = (2, 12);
 /// The single caller is `corpus_gate/runner.rs`' `compare_bus` block — the
 /// gate's one entry point into this comparator. The harness' own unit drives
 /// call [`compare_bus_seq_and_vll`] directly and are deliberately NOT counted:
-/// they run in the same process as the gate in this test binary, and counting
-/// them would make the exact populations above unstable (and green under
-/// exactly the corpus regression they exist to catch) — the reason
+/// the recorder belongs to the gate's runner alone, so the exact populations
+/// above count gating compares only and no fixture can green them under
+/// exactly the corpus regression they exist to catch — the reason
 /// [`record_sc_study_compare`]'s doc gives.
 pub fn record_seq_vll_populations(counts: SeqVllCounts) {
     for (n, walks, buses) in [
@@ -15400,7 +15400,7 @@ mod bus_seq_vll_comparator_tests {
     /// Run a compare that is expected to fail and return the panic message.
     /// The silencing hook is scoped to this thread and delegates every other
     /// panic to the previous hook — `bus_short_circuit_tests::reds`' pattern,
-    /// for its reason (this module compiles into the corpus-gate binary).
+    /// for its reason (a sibling test of this binary may be failing meanwhile).
     fn reds<T: std::fmt::Debug>(f: impl FnOnce() -> T) -> String {
         thread_local! {
             static SILENCE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -15875,10 +15875,10 @@ const PCE_AT_BUS_DECLINES: (usize, usize) = (0, 0);
 ///
 /// The single caller is `corpus_gate/runner.rs`' `compare_bus` block — the
 /// gate's one entry point into this comparator. The harness' own unit drives
-/// call [`compare_bus_at_bus`] directly and are deliberately NOT counted: they
-/// run in the same process as the gate in this test binary, and counting them
-/// would make the exact populations above unstable (and green under exactly the
-/// corpus regression they exist to catch) — the reason
+/// call [`compare_bus_at_bus`] directly and are deliberately NOT counted: the
+/// recorder belongs to the gate's runner alone, so the exact populations above
+/// count gating compares only and no fixture can green them under exactly the
+/// corpus regression they exist to catch — the reason
 /// [`record_seq_vll_populations`]' doc gives.
 pub fn record_at_bus_populations(counts: AtBusCounts) {
     for (n, walks, records) in [
@@ -17862,14 +17862,14 @@ pub fn reliability_walk_counters() -> (usize, usize, usize, usize) {
 /// What [`compare_bus_reliability`] has counted in this process, as
 /// `(capi payloads, capi buses, r4133 payloads, r4133 buses)`.
 ///
-/// **Never drive [`compare_bus_reliability`] from a `#[cfg(test)]` test in this
-/// module.** These statics are process-global and the live gate's epilogue
-/// (`corpus_gate.rs`) asserts on them, so a unit test in the same binary that
-/// moved them would green [`assert_bus_reliability_compare_ran`] on a run where
-/// the gate compared nothing. That is why both directions of the rule are pinned
-/// over injected counters ([`check_bus_reliability_compare_ran`]) and why a
-/// comparator drive belongs in a binary without the epilogue
-/// (`tests/reliability_pins.rs`).
+/// **The shipped counters are the gate's alone.** These statics are
+/// process-global and the live gate's epilogue (`corpus_gate.rs`) asserts on
+/// them through [`assert_bus_reliability_compare_ran`]. This module's own drive
+/// of [`compare_bus_reliability`] (`every_bus_reliability_column_is_compared_per_bus`)
+/// runs in the harness's lib test binary, which links no gate, and panics before
+/// the counters move all the same, and both directions of the rule are pinned
+/// over injected counters ([`check_bus_reliability_compare_ran`]), so no test
+/// needs the shipped counters to hold a value.
 pub fn bus_reliability_walk_counters() -> (usize, usize, usize, usize) {
     (
         BUS_RELIABILITY_WALKS[0].load(AtomicOrd::Relaxed),
@@ -18028,8 +18028,8 @@ fn reliability_array_band(
 /// accounted, plus whatever `ledger_skip` names.
 ///
 /// `ledger_skip` is the per-VALUE `tests/corpus/ledger.json` hook, threaded as a
-/// closure for the reason `compare_variables`' is: the harness compiles into ~20
-/// test binaries and must not know the ledger. Its key is the lowercased
+/// closure for the reason `compare_variables`' is: the ledger belongs to the
+/// corpus-gate binary, and this library must not know it. Its key is the lowercased
 /// `<meter>:<field>` pair for every per-meter value (`em:saidi`,
 /// `em:sum_branch_flt_rates` — a section field is named once and dropped for
 /// every section of that meter) and the bare `totals` for the circuit-level

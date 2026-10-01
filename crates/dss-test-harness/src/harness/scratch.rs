@@ -53,8 +53,8 @@
 //! writing verb in place, read-only (part 1 attributed 72 targets x 0 changes),
 //! nothing refuses a plain in-place compile, and [`TreePhoto`] sees a writer
 //! only while it overlaps the corpus gate's own walk.
-// Each including binary uses a subset (`props_r4133_pins` includes this file
-// alone, through `#[path]`).
+// Dead-code analysis is suppressed module-wide, like the rest of the harness:
+// the drivers, not this crate, are the users of its items.
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet};

@@ -1068,7 +1068,7 @@ mod tests {
     /// stopped padding, and it must fail rather than leave the normalization
     /// dead. Asserted on the real statics, which this test can only push in the
     /// safe direction (it charges hits, never misses), so it stays
-    /// order-independent against a corpus gate sharing the same binary.
+    /// order-independent against any sibling test of this binary.
     #[test]
     fn monitor_pad_liveness_is_asserted_not_assumed() {
         // Nothing visited, or only placeholders visited: silent, always.
@@ -1095,8 +1095,8 @@ mod tests {
             MONITOR_PAD_MISSES.load(Ordering::Relaxed),
             misses,
             "a flushed monitor is not a placeholder candidate (a non-zero miss \
-             count here means the corpus gate sharing this binary just recorded \
-             a real miss — see assert_monitor_pad_is_live)"
+             count here means a sibling test of this binary just recorded a \
+             real miss — see assert_monitor_pad_is_live)"
         );
     }
 

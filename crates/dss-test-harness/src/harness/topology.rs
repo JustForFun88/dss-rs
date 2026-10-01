@@ -812,8 +812,8 @@ mod tests {
     }
 
     /// Run `f` and return the panic message (the `capture_guard::tests`
-    /// extractor; each harness module keeps its own — they compile into
-    /// separate test binaries).
+    /// extractor; each harness test module keeps its own private copy, which
+    /// a shared helper could replace).
     fn panic_message(f: impl FnOnce()) -> String {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .expect_err("the arm must panic");

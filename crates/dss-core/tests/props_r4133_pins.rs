@@ -70,9 +70,9 @@
 //! edit where the same getter answers something else), so the assertion is
 //! about the value and not about the constant.
 //!
-//! The pins are deliberately **not** in `harness/`: that module compiles into
-//! 22 test binaries, so a pin placed there would recompile and re-solve every
-//! deck 22 times per `cargo test`. Here they run once. They need no oracle, no
+//! The pins are deliberately **not** in the harness crate: they are
+//! expected-value tests of the engine, a `dss-core` integration test like the
+//! other pin binaries, and each runs once. They need no oracle, no
 //! feature flag and no channel, so they are green in both lanes.
 //!
 //! # Deck hygiene
@@ -82,7 +82,7 @@
 //! ScheduleRun.dss` in nine `Export` commands. Since RETRO_FIXES RF-I00-01 none
 //! of them runs in the **vendored** corpus tree: [`Deck::compile`] compiles a
 //! fresh scratch copy of the deck's closure (`harness/scratch.rs`, the corpus
-//! gate's own copies, included here alone), removed — loudly — when the deck
+//! gate's own copies, the one harness module used here), removed — loudly — when the deck
 //! drops. [`DeckDirGuard`] still brackets the copy's deck folder, the gate's
 //! guard contract in miniature: snapshot it, delete on the way out every file
 //! the run created, and fail loudly if the run *changed* a copied byte count
@@ -106,8 +106,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use dss_core::exec::Dss;
 
-// RETRO_FIXES RF-I00-01: every deck compiles its own fresh scratch copy.
-// (RF-I00-04: the module is the harness crate's, not a `#[path]` include.)
+// Every deck compiles its own fresh scratch copy, made by the harness crate's
+// `scratch` module, the corpus gate's own copier.
 use dss_test_harness::harness::scratch;
 
 // ---------------------------------------------------------------------------

@@ -170,7 +170,7 @@ fn every_dss_is_accounted_for_exactly_once() {
 /// collide with a real name in this corpus.
 ///
 /// It lives in this oracle-free hygiene binary, not next to the comparator in
-/// `harness/mod.rs` (compiled into 22 test binaries), so the scan runs **once**
+/// `harness/mod.rs`: it is a fact about the corpus, so the scan runs **once**
 /// per gate run. Measured 2026-09-04 (G1.3d(i) F5): decks then wrote their
 /// exports into the corpus tree while they solved, and reading one mid-write
 /// failed with a Windows sharing violation - a probe replicating this walk

@@ -1317,10 +1317,10 @@ const INC_MATRIX_DECLARED_IN_MANIFEST: &[(&str, &str)] = &[
 ];
 
 /// Which gating channels the manifests ask the incidence surface for — the
-/// arming half of `harness::inc_matrix`'s decline census, read HERE because that
-/// module compiles into ~20 test binaries with no manifest access (the G1.7
-/// predicate in [`assert_topology_declines_are_the_pinned_population`], moved
-/// across the module boundary by the G1.8 audit settlement).
+/// arming half of `harness::inc_matrix`'s decline census, read HERE because the
+/// manifest reader is this binary's and the harness library cannot name it,
+/// the same split as the G1.7 predicate in
+/// [`assert_topology_declines_are_the_pinned_population`].
 pub(crate) fn inc_matrix_requested_channels() -> harness::inc_matrix::RequestedChannels {
     let mut out = harness::inc_matrix::RequestedChannels {
         capi: false,
@@ -2059,11 +2059,11 @@ fn every_deck_that_enables_demand_interval_declares_compare_di() {
 /// `(cases, names)` and not `(cases, names, visits)`: the census key is
 /// `(case label, scratch name)` with no channel in it, so a `both` case that
 /// declines the same name on both channels is one row either way, and the
-/// process-wide visit counter also counts this binary's own
-/// `harness::run_files` unit fixtures. Those fixtures are why the population is
-/// read off the decline TABLE and restricted to labels the manifests actually
-/// carry — every other label must be one of them, which the assertion checks
-/// rather than assumes.
+/// process-wide visit counter counts every caller in the process, not only the
+/// gate's cases. That is why the population is read off the decline TABLE and
+/// restricted to labels the manifests actually carry — every other label must
+/// be a `unit:` fixture's (the `harness::run_files` fixtures run in the
+/// harness's own lib test binary), which the assertion checks, not assumes.
 const SCRATCH_FILE_DECLINES: (usize, usize) = (9, 9);
 
 /// The D25/Q2 census, re-derived from this run and pinned in both directions —
@@ -2098,11 +2098,11 @@ pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
             cases.iter().map(|uc| uc.label.as_str()).collect();
         let table = harness::run_files::scratch_decline_table();
         let census = harness::run_files::scratch_census();
-        // Rows this binary's own `harness::run_files` unit fixtures wrote. They
-        // share the process-wide census with the gate, so they are separated by
-        // label and REFUSED when they are neither a manifest case nor one of
-        // those fixtures — a typo'd or foreign label must never be absorbed into
-        // the pinned population.
+        // Rows any `unit:` fixture wrote into the process-wide census (the
+        // `harness::run_files` fixtures write theirs in the harness's own lib
+        // test binary) are separated by label, and a row is REFUSED when it is
+        // neither a manifest case nor a `unit:` fixture's — a typo'd or foreign
+        // label must never be absorbed into the pinned population.
         let (gate_rows, fixture_rows): (Vec<_>, Vec<_>) = table
             .iter()
             .partition(|(case, _)| gate_labels.contains(case.as_str()));
@@ -2114,7 +2114,7 @@ pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
         assert!(
             foreign.is_empty(),
             "the D25/Q2 scratch census carries the label(s) {foreign:?}, which are \
-             neither a manifest case nor one of this binary's `unit:` fixtures. The \
+             neither a manifest case nor a `unit:` fixture's. The \
              pinned population is a fact about the corpus, so an unrecognized \
              producer fails instead of being counted or dropped."
         );
@@ -2188,12 +2188,12 @@ pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
 /// `harness::run_file_contents::compare_run_file_cells` hands back, and never
 /// inside that comparator (coordinator decision **D24**, the
 /// [`harness::record_seq_arm`] precedent): the `harness::run_file_contents`
-/// fixtures in THIS test binary call the comparator too — several of them on
-/// the very Storage-trace kind the read-back tail below is derived from — so
-/// under `cargo test` (one process per test binary, while the gate's `cargo
-/// nextest` runs one per test) a comparator-side census reads the gating population
-/// *plus* the fixtures. Counting at the call site makes the population gate-only
-/// under either runner, which lets the constants below be pinned exactly.
+/// fixtures call the comparator too — several of them on the very
+/// Storage-trace kind the read-back tail below is derived from — and a
+/// comparator-side census would read the gating population *plus* whatever
+/// else ran in the process. Counting at the call site makes the population
+/// gate-only by construction, wherever a fixture runs and under either runner,
+/// which lets the constants below be pinned exactly.
 #[cfg(windows)]
 #[derive(Clone, Debug)]
 pub(crate) struct RunFileContentsRow {
@@ -2395,8 +2395,8 @@ pub(crate) fn assert_run_file_contents_census_is_the_pinned_population() {
             })
             .collect();
         // `harness::run_files::contents_census` is the transport-side half —
-        // files matched and oracle bytes decoded, process-wide (this binary's
-        // fixtures included, which is why it is REPORTED and never asserted;
+        // files matched and oracle bytes decoded, process-wide (every caller in
+        // the process included, which is why it is REPORTED and never asserted;
         // the gate-only rows above are what the constants pin).
         let transported = harness::run_files::contents_census();
         eprintln!(
@@ -2618,12 +2618,12 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
     {
         let gate_labels: std::collections::BTreeSet<&str> =
             cases.iter().map(|uc| uc.label.as_str()).collect();
-        // Rows this binary's own `harness::di` unit fixtures wrote. They share
-        // the process-wide accounting with the gate, so they are separated by
-        // label and REFUSED when they are neither a manifest case nor one of
-        // those fixtures — a typo'd or foreign label must never be absorbed
-        // into the pinned population (the D25/Q2 scratch census's rule, one
-        // surface over).
+        // Rows any `unit:` fixture wrote into the process-wide accounting (the
+        // `harness::di` fixtures write theirs in the harness's own lib test
+        // binary) are separated by label, and a row is REFUSED when it is
+        // neither a manifest case nor a `unit:` fixture's — a typo'd or foreign
+        // label must never be absorbed into the pinned population (the D25/Q2
+        // scratch census's rule, one surface over).
         let account = harness::di::di_account();
         let (gate_rows, fixture_rows): (Vec<_>, Vec<_>) = account
             .iter()
@@ -2636,7 +2636,7 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
         assert!(
             foreign.is_empty(),
             "the G1.10c demand-interval census carries the label(s) {foreign:?}, which are \
-             neither a manifest case nor one of this binary's `unit:` fixtures. The pinned \
+             neither a manifest case nor a `unit:` fixture's. The pinned \
              population is a fact about the corpus, so an unrecognized producer fails instead \
              of being counted or dropped."
         );

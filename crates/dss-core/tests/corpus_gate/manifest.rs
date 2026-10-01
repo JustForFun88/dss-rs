@@ -352,8 +352,8 @@ impl EngineChannel {
     }
     /// This channel as the **harness's** own channel type.
     ///
-    /// `EngineChannel` is `pub(crate)` to this one test binary while `harness/`
-    /// compiles into ~20 others, so the property comparator cannot take it
+    /// `EngineChannel` is `pub(crate)` to this one test binary, and the harness
+    /// library cannot name a type of it, so the property comparator cannot take it
     /// (`R4133_PROPS_PLAN.md` §1.2, the channel-threading trap). Every corpus_gate
     /// call site maps through here — one mapping, not one per call site.
     pub(crate) fn props_channel(self) -> harness::PropsChannel {

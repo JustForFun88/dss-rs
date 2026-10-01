@@ -808,9 +808,9 @@ fn kind_idx(k: ReportKind) -> usize {
 }
 
 /// What one call compared, returned as well as accumulated into the process
-/// census — the process counters are shared by every case the gate runs (and by
-/// every unit test in this binary), so an assertion about ONE comparison reads
-/// this, never the difference of two [`cell_census`] samples.
+/// census — the process counters are shared by every case the gate runs (and,
+/// in the harness's own test binary, by every unit test), so an assertion about
+/// ONE comparison reads this, never the difference of two [`cell_census`] samples.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CellTally {
     pub files: usize,
@@ -875,7 +875,7 @@ pub fn trace_tail_census() -> Vec<TraceTail> {
 ///
 /// A comparison census is the only thing that keeps a contents surface from
 /// silently comparing nothing — but the GATED census is not this counter: these
-/// atomics are process-wide and this binary's own fixtures share them, so the
+/// atomics are process-wide and count every comparison of the process, so the
 /// scheduler epilogue re-derives its population from the per-call
 /// [`CellTally`] the runner records instead
 /// (`corpus_gate::scheduler::assert_run_file_contents_census_is_the_pinned_population`
@@ -1382,8 +1382,8 @@ mod tests {
     use super::*;
     use crate::harness::tol_for;
 
-    /// Run `f` and return the panic message (each harness module keeps its own
-    /// extractor — they compile into separate test binaries).
+    /// Run `f` and return the panic message (each harness test module keeps its
+    /// own private extractor, which a shared helper could replace).
     fn panic_message(f: impl FnOnce()) -> String {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
             .expect_err("the arm must panic");
@@ -1945,8 +1945,8 @@ mod tests {
     #[test]
     fn the_angle_band_takes_the_larger_of_the_two_magnitudes() {
         // The per-call tally, never a difference of two `cell_census()` samples:
-        // the process counters are shared by every comparison in this binary (the
-        // G1.10b pins run in one of them too), so a delta is not this call's.
+        // the process counters count every comparison this binary runs, under
+        // `cargo test` concurrently, so a delta is not this call's.
         let t = cmp(
             "x_exp_currents.csv",
             "Element, Iresid1, AngResid1

@@ -7,7 +7,7 @@
     "channel and FAILS the gate when stale (a divergence that no longer exceeds",
     "the tier floor, or an entry whose scope never matched). Envelopes are per-",
     "case, per-channel, per-scope MEASURED facts with a mandatory cause+source —",
-    "NEVER a tolerance (tier floors in tests/harness are untouched and structurally",
+    "NEVER a tolerance (tier floors in the test harness are untouched and structurally",
     "unreachable from here). Every add/widen/flip lands as a population-lock diff.",
     "Kinds: 'divergence' (field-granular envelope, re-asserted within its pin),",
     "'skip' (hard-crash decks, the other channel still gates), 'exclusion' (proven",
