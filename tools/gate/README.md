@@ -22,9 +22,9 @@ be typed. The wrapper exits with the command's exit code.
 | `build` | 2 | `cargo clippy`, `build`, `check`, `doc`, `run`, `rustc`, `rustdoc`, `nextest list`/`archive`, and the compile phase of a test run |
 | `test` | 1 | `cargo nextest run`, `cargo test`, `cargo bench` |
 
-- A `cargo nextest run` or `cargo test` is split: the same command with `--no-run` first,
-  under the build slot, then the run itself under the test slot, so the test slot is never
-  held while compiling.
+- A `cargo nextest run`, `cargo test` or `cargo bench` is split: the same command with
+  `--no-run` first, under the build slot, then the run itself under the test slot, so the
+  test slot is never held while compiling.
 - `cargo test --doc` cannot take `--no-run` and runs whole under the test slot.
 - A build-slot command gets `CARGO_BUILD_JOBS=8` unless the caller set it.
 - Every other command (`cargo fmt`, `cargo metadata`, anything that is not cargo) runs
@@ -37,7 +37,8 @@ checkout being the parent of git's common directory for the script's own directo
 
 - `board.txt` - who holds a slot, who waits and since when, rewritten on every change;
 - `board.log` - one line per finished command with its slot, ticket number, label, wait
-  and hold seconds and exit code;
+  and hold seconds, exit code and the command (cut at 200 characters), and one line per
+  purged dead ticket and per failed job assignment;
 - `tickets/` - the queue itself. Each waiter keeps an OS byte lock on its own ticket for its
   whole life, and the next wrapper that reads the queue purges a ticket whose lock it can
   take (a dead process). Tickets are never deleted by hand.
@@ -47,8 +48,10 @@ rustc, test binaries and `epri-worker`s.
 
 ## Environment
 
-- `GATELOCK_ROOT` - the queue directory itself; overrides the git lookup. When it is unset
-  and the lookup fails, the wrapper runs nothing and exits non-zero.
+- `GATELOCK_ROOT` - the queue directory itself; overrides the git lookup. A queued command
+  looks the root up before it takes a ticket: when `GATELOCK_ROOT` is unset and the lookup
+  fails, the wrapper runs nothing and exits non-zero. `GATELOCK_OFF=1` and the unqueued
+  commands never need the root.
 - `GATELOCK_OFF=1` - run the command unqueued.
 
 Windows only: on another platform the wrapper says so on stderr and runs the command
