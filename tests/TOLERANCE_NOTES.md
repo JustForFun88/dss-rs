@@ -529,7 +529,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
   `let allowed = abs_floor + rel * mag;` — it bands the **modulus** of the
   complex difference, `|Δz| ≤ abs + rel·|z|`. Node voltages reach the same
   function through `harness::assert_complex_close`
-  (`corpus_gate/runner.rs:927,930`). So the admitted error set is the closed
+  (`corpus_gate/runner.rs::compare_capture`). So the admitted error set is the closed
   **disc** `D(z, ρ)` with `ρ = abs + rel·|z|`, and derivations 1, 2 and 4 below
   are images of that disc.
   *Had* the gate banded `re` and `im` separately at `abs + rel·|component|`, the
@@ -569,7 +569,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
      element-by-element by `compare_element_channels`); `VoltagesMagAng` is the
      rendering of `NodeV[NodeRef[·]]` (`v_rel/v_abs`, gated node-by-node in
      `harness::assert_complex_close`,
-     `corpus_gate/runner.rs:927-930`). The two evaluations of `|·|` themselves
+     `corpus_gate/runner.rs::compare_capture`). The two evaluations of `|·|` themselves
      differ by at most an ulp each (`num_complex::norm` = hypot vs the naive FPC
      `Cabs`, proven equal on the whole reachable domain by
      `line_constants::tests::naive_modulus_equals_hypot_until_the_square_overflows`),
@@ -1091,7 +1091,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
      `5.213217533932785e-3` > `2.1128110294680455e-4` on r4133 — ~20x the band on
      every channel, the band itself being `total_power_band`, untouched. Read one
      solve earlier (after `compile` alone; the gate solves once more,
-     `tools/oracle/oracle_server.py:612-632`) the same capi channel is
+     `tools/oracle/oracle_server.py::run_case`) the same capi channel is
      `0.6831564014868734`/`2.1850404626011652` kVA off a freshly-recomputed
      terminal sum, against `0.53`/`0.75` kVA of per-conductor `Powers` staleness
      there, so summing a terminal grows the gap rather than cancelling it. The two `CplxSeq*` do **not** join it (they reach `GetCurrents`
@@ -1374,7 +1374,7 @@ pinned oracle, an artifact, not an engine gap.
 
 ## `PDElements` walk — exact, and why it earns no floor (G1.6b, 2026-09-04)
 
-`harness::compare_pd_elements` (`crates/dss-test-harness/src/harness/mod.rs:11229`)
+`harness::compare_pd_elements` (`crates/dss-test-harness/src/harness/mod.rs::compare_pd_elements`)
 compares all fourteen fields of the per-PD-element walk with **`rel = abs = 0`**
 and takes no `Tolerances` argument at all. That is a derivation, not an
 optimism: on every gated case today each compared value is one of
@@ -1394,7 +1394,7 @@ optimism: on every gated case today each compared value is one of
 rounding to absorb and any difference at all is a bug, not a floor. The one
 divergence the corpus does measure is not numeric drift but an uninitialized read
 in both oracles, which is excluded field-by-field in `PD_SKIP_FIELDS`
-(`crates/dss-test-harness/src/harness/mod.rs:11043`) and pinned — an envelope over a
+(`crates/dss-test-harness/src/harness/mod.rs::PD_SKIP_FIELDS`) and pinned — an envelope over a
 value that changes every process would not be a fact. See TESTING.md
 §"The `PDElements` walk".
 
@@ -1476,7 +1476,7 @@ decision, not a reliability one — so it is not made here.
 without a zero test on **all three** engines: r4133
 `Version8/Source/Meters/EnergyMeter.pas:2563`, capi 0.14.5
 `src/Meters/EnergyMeter.pas:2518`, port `average_repair_time`
-(`crates/dss-core/src/solution/meters/reliability.rs:327`). A feeder section whose
+(`crates/dss-core/src/solution/meters/reliability.rs::calc_reliability_indices`). A feeder section whose
 branches all carry `faultrate=0` therefore evaluates `0.0 / 0.0` and yields
 `NaN` — identically everywhere, since IEEE-754 fixes that result and the port
 performs the same single division on the same two f64 accumulators.
@@ -1638,7 +1638,7 @@ same arithmetic the meter indices are built out of: sums of deck literals
 (`faultrate`, `repair`, `RelWeighting`, `length`) and integer customer counts,
 accumulated in a fixed zone-walk order (r4133
 `Version8/Source/Meters/EnergyMeter.pas:2470-2616`; port `calc_reliability_indices`,
-`crates/dss-core/src/solution/meters/reliability.rs:107`). Four of them are already pinned **bit-for-bit
+`crates/dss-core/src/solution/meters/reliability.rs::calc_reliability_indices`). Four of them are already pinned **bit-for-bit
 against both oracles** by transitivity through the G1.6(i) pin
 `relcalc_indices_match_both_oracles_on_the_duty_deck`: on
 `modes:time/midi_duty_ctrl.dss` `N_interrupts == SAIFI`,
@@ -1863,7 +1863,7 @@ it, and no tier constant moves. In the order the comparator applies them:
    (case, step, channel) short-circuit comparison green). The number is
    `worst |diff| / allowed`; 1.0 would be a failure. `Zsc`/`Ysc`/`Isc` are
    non-trivial on the four vendored decks that run a fault study (the fourth
-   spells it `solve mode=f`, `ieee37_SC_Currents.dss:111`), listed per channel
+   spells it `solve mode=f`, `ieee37_SC_Currents.dss`), listed per channel
    below, and on the `micro`-band `faultstudy_micro` deck (worst 1.9e-6, `Voc`);
    the rest compares sentinel shapes, exact zeros and a live `Voc`:
 
@@ -2014,9 +2014,9 @@ per zone build, by the loop
 
 (r4133 `Version8/Source/Meters/EnergyMeter.pas:1833-1838`, capi
 `src/Meters/EnergyMeter.pas:1894-1898`, port — the `dist_from_meter` assignment in
-`crates/dss-core/src/solution/meters/zones/build.rs:240-251`), off a `0.0`
+`crates/dss-core/src/solution/meters/zones/build.rs::make_meter_zone_lists`), off a `0.0`
 `dist_from_meter` planted at the zone head (`EnergyMeter.pas:1790`/`:1841`,
-`build.rs:178`). So
+`build.rs::make_meter_zone_lists`). So
 each compared number is a running sum whose every ingredient is bit-identical on
 the three engines:
 
@@ -2028,7 +2028,7 @@ the three engines:
   one entry that could have differed: `To_Meters(UNITS_MILES) = 1609.344` in
   r4133 `Version8/Source/Shared/LineUnits.pas:81`, in capi
   `src/Shared/LineUnits.pas:108` and in the port's `LineUnits::Miles` arm
-  (`crates/dss-core/src/support/line_units/mod.rs:85`). The `1609.3` that lives
+  (`crates/dss-core/src/support/line_units/mod.rs::LineUnits::to_meters`). The `1609.3` that lives
   in `Version7/Source/Deprecated_LazDSS/Shared/LineUnits.pas:84` and
   `Version8/Source/CMD_Lazz/Shared/LineUnits.pas:84` is in **neither** shipped
   build, and the live r4133 DLL was measured to confirm it: a metered 0.5/1/1 mi
@@ -2688,13 +2688,13 @@ dated). What was checked, and against what:
 
 | claim here | landed at | verdict |
 |---|---|---|
-| the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs:895` (`Option<f64>` = `Some(2e-4)`) | unchanged |
-| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs:1082`), seamed at `under_display_floor_r4133` (`:1175`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs:9820`) | unchanged |
-| the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, each row's gap measured as `display_rel` (`props_norm.rs:783-792`) | identical, both places |
-| 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs:565`) | unchanged |
-| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `mod.rs:1208-1217` and `:1225-1234` (`i_rel`/`i_abs`) | unchanged |
-| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `mod.rs:1433-1442` and `:1422-1431` | unchanged |
-| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `mod.rs:8712` (asserted as `i_abs / floor`) | unchanged |
+| the floor is `2e-4` relative | `R4133_DISPLAY_FLOOR` at `harness/props_norm.rs::R4133_DISPLAY_FLOOR` (`Option<f64>` = `Some(2e-4)`) | unchanged |
+| both clauses ship (metric + mechanism) | `display_rel` / `display_is_render` (`props_norm.rs::display_is_render`), seamed at `under_display_floor_r4133` (`props_norm.rs::under_display_floor_r4133`) and called from `PropsPolicy::under_display_floor` (`harness/mod.rs::PropsPolicy::under_display_floor`) | unchanged |
+| the four derivation rows (6.431124e-05 / 1.374769e-03 / 4.404256e-03 / 5.524501e-02) | the constant's own doc table, each row's gap measured as `display_rel` (`props_norm.rs::R4133_DISPLAY_FLOOR`) | identical, both places |
+| 1 951 vendored spellings claimed (from 2 006, less the 55 the mechanism clause refuses) | `props_r4133_replay::CLAIMED_DISPLAY_FLOOR` = 1951 (`props_r4133_replay.rs::CLAIMED_DISPLAY_FLOOR`) | unchanged |
+| capi tier floors the bound rests on — `micro` 1e-9/1e-6, `feeder` 1e-7/1e-5 | `harness::tol_for`, `harness/mod.rs::tol_for` `"micro"` and `"feeder"` (`i_rel`/`i_abs`) | unchanged |
+| the two loosest kinds — `midi` 1e-6/1e-4 (no arm of its own: the `_` fallback `Tolerances`), `micro_wtg3_dynamics` 2e-5/1e-4 | `harness/mod.rs::tol_for` `_` and `"micro_wtg3_dynamics"` | unchanged |
+| the magnitudes the bound does not cover — 0.5 / 0.5 / 0.05 | `props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`, `harness/mod.rs::props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors` (asserted as `i_abs / floor`) | unchanged |
 | no `Tolerances` field, no `tol_for` tier moved by this plan | `Tolerances` has no props field; the floor is read only by `props_norm` | unchanged |
 
 The floor therefore still sits **3.110×** above the worst cell it claims and
@@ -3395,3 +3395,4 @@ pin and the default lane taking the clean fix. Consequences for tolerance work:
 - A marker still spelled `TODO(compat)` in the tree is one Stage F **escaped**
   with a measured blocker, and every survivor is registered in
   `oracle_parity_cfg_gate::ESCAPE_REGISTER` with its owner.
+<!-- line-citations: 23 -->

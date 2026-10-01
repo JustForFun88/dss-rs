@@ -73,20 +73,9 @@ const SKIP_DIRS: &[&str] = &[
 /// nothing for a later reader to re-verify by hand.
 const SKIP_DIRS_AT_ROOT: &[&str] = &["tmp"];
 
-/// Every `.rs` file in the repository.
-///
-/// Deliberately the **whole tree**, not just `crates/*/{src,tests,benches,
-/// examples}`. The compat tag is an index of the ported Rust that deliberately
-/// reproduces an upstream inexactness, and `CLAUDE.md` says all of them are
-/// absorbed in one pass — not "all of them under `crates/`". F.3ac found three
-/// markers living outside that prefix: `tools/wasm_usermodel/models/
-/// indmach012a` is a real hand-ported Rust crate (the WM.2 reference user
-/// model) that is **workspace-excluded by design** — it carries its own empty
-/// `[workspace]` table so the fixture toolchain stays pinned separately from
-/// the product gate (`WASM_USERMODELS_PLAN.md` §2.6). A `crates/`-shaped walk
-/// can never see it, so its markers named Stage F as their owner while being
-/// invisible to every Stage F gate, including the exit count.
-fn rust_sources(root: &Path) -> Vec<PathBuf> {
+/// Every file in the repository, sorted: the whole tree bar [`SKIP_DIRS`] and
+/// [`SKIP_DIRS_AT_ROOT`].
+fn tree_files(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut dirs = vec![root.to_path_buf()];
 
@@ -101,12 +90,33 @@ fn rust_sources(root: &Path) -> Vec<PathBuf> {
                 if !skipped {
                     dirs.push(path);
                 }
-            } else if path.extension().is_some_and(|e| e == "rs") {
+            } else {
                 out.push(path);
             }
         }
     }
     out.sort();
+    out
+}
+
+/// Every `.rs` file in the repository.
+///
+/// Deliberately the **whole tree**, not just `crates/*/{src,tests,benches,
+/// examples}`. The compat tag is an index of the ported Rust that deliberately
+/// reproduces an upstream inexactness, and `CLAUDE.md` says all of them are
+/// absorbed in one pass — not "all of them under `crates/`". F.3ac found three
+/// markers living outside that prefix: `tools/wasm_usermodel/models/
+/// indmach012a` is a real hand-ported Rust crate (the WM.2 reference user
+/// model) that is **workspace-excluded by design** — it carries its own empty
+/// `[workspace]` table so the fixture toolchain stays pinned separately from
+/// the product gate (`WASM_USERMODELS_PLAN.md` §2.6). A `crates/`-shaped walk
+/// can never see it, so its markers named Stage F as their owner while being
+/// invisible to every Stage F gate, including the exit count.
+fn rust_sources(root: &Path) -> Vec<PathBuf> {
+    let out: Vec<PathBuf> = tree_files(root)
+        .into_iter()
+        .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+        .collect();
     assert!(
         out.len() > 100,
         "source scan found only {} files — the walk is broken",
@@ -3592,44 +3602,54 @@ fn operational_docs_cite_the_compat_machinery_accurately() {
     );
 }
 
-/// The operational docs whose sections cite code by `file.rs:LINE`.
+/// The operational docs whose code citations the symbol rail
+/// [`operational_docs_cite_items_the_named_files_define`] checks.
 ///
-/// Both are already in [`operational_docs`] for the compat half above; the two
+/// They are also in [`operational_docs`] for the compat half above; the two
 /// halves are split because the two ways such a sentence rots are independent.
 /// That half asks *does the file this tag-line names still carry a marker*;
-/// this one asks *does the line this sentence names still hold the thing the
-/// sentence calls it*. R4133_PROPS RP5.1 wrote 46 fresh `file.rs:LINE`
-/// citations into these two files and its audit round found the second question
-/// asked by nobody — the compat walk's path extractor stops at `.rs` and never
-/// reads a `:LINE` suffix.
+/// this one asks *does the file this sentence names still define the item it
+/// names*.
 ///
 /// `docs/` records and the plans stay out, for the reason
 /// [`operational_docs`] already gives: they state history and are *allowed* to
 /// differ from HEAD.
-const LINE_CITED_DOCS: &[(&str, usize)] = &[
-    // (doc, the floor its own citations must not fall below)
-    ("TESTING.md", 40),
-    ("tests/TOLERANCE_NOTES.md", 10),
-];
+///
+/// Each document declares how many of its citations resolve, in one
+/// `<!-- line-citations: N -->` marker line of its own (read by
+/// [`declared_line_citations`]), and the walk asserts that exact count: a
+/// floor would let every citation above it vanish green. The number lives in
+/// the document rather than here
+/// because the documents' later editors are docs-only steps that never touch
+/// this file: the marker keeps the count inside the scope of the edit that
+/// moves it.
+const LINE_CITED_DOCS: &[&str] = &["TESTING.md", "tests/TOLERANCE_NOTES.md"];
 
 /// Every file-shaped token on one documentation line, in reading order.
 ///
-/// `None` as the line number is a mention without a `:LINE` suffix — it still
-/// matters, because it is the antecedent a later bare `` `:LINE` `` inherits.
-/// That inheritance is why non-Rust extensions are returned too: most bare
-/// continuations in `tests/TOLERANCE_NOTES.md` hang off a `.pas` citation into
-/// the Pascal spec, which lives outside this repository and must NOT be
-/// resolved against it.
+/// A token is a [`file_shaped`] name, or any dotted name a `:LINE` follows
+/// (`lane_diff.ps1:12`, `.gitattributes:3`, but also a version or a ratio:
+/// `0.14.5:2`, `1.5:1`). `None` as the line number is a mention without a
+/// `:LINE` suffix. A token is the antecedent a later bare `` `:LINE` ``
+/// inherits, one of the second shape only when it names a repository file
+/// ([`doc_symbol_citation_defects`]). That inheritance is why non-Rust
+/// extensions are returned too: a bare continuation after a `.pas` citation of
+/// the vendored Pascal stays a Pascal citation.
 ///
-/// An empty path is the bare form itself.
-///
-/// The third element is the END of a `:A-B` range citation. G1.7's audit found
-/// it unread: only the digits before the `-` were parsed, so a range end could
-/// name a line past the file, or drift out from under the symbol the sentence
-/// spells, without a word (four `harness/mod.rs:A-B` rows had done exactly
-/// that). A range is a claim about a BLOCK, so the anchor must sit inside the
-/// whole block — see [`operational_docs_line_citations_point_at_the_line_they_name`].
+/// An empty path is the bare form itself. The third element is the end of a
+/// `:A-B` range, and the comma form `file.rs:A,B` yields one entry per
+/// component (see [`line_list`]). [`doc_symbol_citation_defects`] reds every
+/// entry that carries a line number into a repository file.
 fn file_citations_in(line: &str) -> Vec<(String, Option<usize>, Option<usize>)> {
+    file_citations_at(line)
+        .into_iter()
+        .map(|(_, path, n, end)| (path, n, end))
+        .collect()
+}
+
+/// [`file_citations_in`] with the char offset each token starts at (the
+/// backtick of a bare continuation).
+fn file_citations_at(line: &str) -> Vec<(usize, String, Option<usize>, Option<usize>)> {
     let chars: Vec<char> = line.chars().collect();
     let is_path = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '.' | '-');
     let mut out = Vec::new();
@@ -3638,14 +3658,11 @@ fn file_citations_in(line: &str) -> Vec<(String, Option<usize>, Option<usize>)> 
         // The bare continuation, always backtick-anchored so a stray `:12` in
         // prose is not read as a citation.
         if chars[i] == '`' && chars.get(i + 1) == Some(&':') {
-            let mut j = i + 2;
-            while chars.get(j).is_some_and(char::is_ascii_digit) {
-                j += 1;
-            }
-            if j > i + 2 {
-                let n: String = chars[i + 2..j].iter().collect();
-                let (end, j) = range_end(&chars, j);
-                out.push((String::new(), n.parse::<usize>().ok(), end));
+            let (lines, j) = line_list(&chars, i + 2);
+            if !lines.is_empty() {
+                for (n, end) in lines {
+                    out.push((i, String::new(), n, end));
+                }
                 i = j;
                 continue;
             }
@@ -3666,33 +3683,73 @@ fn file_citations_in(line: &str) -> Vec<(String, Option<usize>, Option<usize>)> 
         let run: String = chars[start..end].iter().collect();
         let Some(dot) = run.rfind('.') else { continue };
         let ext = &run[dot + 1..];
-        if dot == 0
-            || !(2..=4).contains(&ext.len())
-            || !ext.chars().all(|c| c.is_ascii_alphabetic())
-        {
-            continue;
-        }
         // A `:LINE` suffix, if the run is immediately followed by one.
         let mut j = end;
-        let mut lineno = None;
-        let mut lineend = None;
+        let mut lines = Vec::new();
         if chars.get(j) == Some(&':') {
-            let mut k = j + 1;
-            while chars.get(k).is_some_and(char::is_ascii_digit) {
-                k += 1;
-            }
-            if k > j + 1 {
-                let n: String = chars[j + 1..k].iter().collect();
-                lineno = n.parse::<usize>().ok();
-                let (e, k) = range_end(&chars, k);
-                lineend = e;
-                j = k;
+            (lines, j) = line_list(&chars, j + 1);
+            if lines.is_empty() {
+                j = end;
             }
         }
-        out.push((run, lineno, lineend));
+        let lined =
+            !lines.is_empty() && !ext.is_empty() && ext.chars().all(|c| c.is_ascii_alphanumeric());
+        if !file_shaped(&run) && !lined {
+            continue;
+        }
+        if lines.is_empty() {
+            out.push((start, run, None, None));
+        } else {
+            for (lineno, lineend) in lines {
+                out.push((start, run.clone(), lineno, lineend));
+            }
+        }
         i = i.max(j);
     }
     out
+}
+
+/// A dotted name whose extension is two to four ASCII letters (`lib.rs`,
+/// `Solution.pas`): the shape that makes a mention a file token without a
+/// `:LINE` after it.
+fn file_shaped(name: &str) -> bool {
+    name.rfind('.').is_some_and(|dot| {
+        let ext = &name[dot + 1..];
+        dot > 0 && (2..=4).contains(&ext.len()) && ext.chars().all(|c| c.is_ascii_alphabetic())
+    })
+}
+
+/// One component of a citation's line list: the line, and the end of a
+/// `A-B` range.
+type LineComponent = (Option<usize>, Option<usize>);
+
+/// The `A[-B][,C[-D]]…` line list of a citation, read from its first digit at
+/// `j`: one `(line, range end)` per comma-separated component, and the new
+/// cursor. Empty (cursor unmoved) when no digit stands at `j`.
+///
+/// Every component is a citation of its own, so `file.rs:A,B` reds twice. A
+/// comma continues the list only when a digit follows it at once:
+/// `file.rs:A, B` in prose is one citation.
+fn line_list(chars: &[char], mut j: usize) -> (Vec<LineComponent>, usize) {
+    let mut out = Vec::new();
+    loop {
+        let start = j;
+        while chars.get(j).is_some_and(char::is_ascii_digit) {
+            j += 1;
+        }
+        if j == start {
+            return (out, start);
+        }
+        let n: String = chars[start..j].iter().collect();
+        let (end, k) = range_end(chars, j);
+        out.push((n.parse::<usize>().ok(), end));
+        j = k;
+        if chars.get(j) == Some(&',') && chars.get(j + 1).is_some_and(char::is_ascii_digit) {
+            j += 1;
+        } else {
+            return (out, j);
+        }
+    }
 }
 
 /// The `-B` half of a `:A-B` range citation, read from just past the `A`.
@@ -3714,12 +3771,9 @@ fn range_end(chars: &[char], j: usize) -> (Option<usize>, usize) {
     (n.parse::<usize>().ok(), k)
 }
 
-/// The backticked Rust identifiers a documentation line names, `::`-tails only.
-///
-/// This is the *anchor* half of the citation check: a line number alone is a
-/// weak claim (a 5 000-line harness file has a line 3 311 no matter how far the
-/// thing it named drifted), so the citation must land near something the
-/// sentence itself spells.
+/// The backticked Rust identifiers a line names, `::`-tails only: the anchor
+/// [`rust_comments_citing_a_record_line_point_at_the_passage_they_name`]
+/// looks for in both the comment and the cited passage.
 fn backticked_idents(line: &str) -> Vec<String> {
     line.split('`')
         .skip(1)
@@ -3800,29 +3854,12 @@ fn a_cited_path_resolves_only_among_its_own_matches() {
     assert!(target("src/mod.rs", &moved).is_err());
 }
 
-/// A `file.rs:LINE` citation in the operational docs still points at the line
-/// the sentence names.
-///
-/// Three failures, all of them silent before this test: the file is gone or the
-/// path is spelled too loosely to name one file; the line is past the end of
-/// it; or the line drifted away from what the sentence calls it. The third is
-/// the one that actually happens — harness files grow by hundreds of lines a
-/// sub-step, and nothing in the tree read a `:LINE` suffix.
-///
-/// Resolution follows the reader's own rule: a path is matched against the tree
-/// by suffix, and a shortened repeat (`mod.rs:3281` after the section spelled
-/// `crates/dss-test-harness/src/harness/mod.rs:3243`) is disambiguated by the nearest
-/// fully-qualified mention **earlier in the same document**. A citation that
-/// resolves to neither fails rather than being skipped — an ambiguous citation
-/// is a doc defect, not an exemption.
-#[test]
-fn operational_docs_line_citations_point_at_the_line_they_name() {
-    let root = repo_root();
-
+/// Every file of the tree by basename, repo-relative with `/`.
+fn tree_files_by_base(root: &Path) -> BTreeMap<String, Vec<String>> {
     let mut by_base: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for path in rust_sources(&root) {
+    for path in tree_files(root) {
         let rel = path
-            .strip_prefix(&root)
+            .strip_prefix(root)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
@@ -3831,156 +3868,1033 @@ fn operational_docs_line_citations_point_at_the_line_they_name() {
         };
         by_base.entry(base).or_default().push(rel);
     }
+    by_base
+}
 
-    let mut cache: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut bad: Vec<String> = Vec::new();
-    let mut counts: Vec<(&str, usize)> = Vec::new();
+/// The functions whose citation names the match arm it means, by the arm's
+/// pattern in backticks beside it: `` `harness/mod.rs::tol_for` `"feeder"` ``.
+/// Each tier arm is a claim of its own, and the function name alone cannot
+/// tell them apart.
+const ARM_CITED_FNS: &[&str] = &["tol_for"];
 
-    for (doc, floor) in LINE_CITED_DOCS {
-        let text = fs::read_to_string(root.join(doc)).unwrap_or_else(|e| panic!("{doc}: {e}"));
-        let lines: Vec<&str> = text.lines().collect();
-        let mut full_of_base: BTreeMap<String, String> = BTreeMap::new();
-        let mut last_file: Option<String> = None;
-        let mut checked = 0usize;
+/// One `<path>::<item>[::<member>]…` citation of a documentation line.
+#[derive(Debug, PartialEq)]
+struct SymbolCitation {
+    /// The byte offset of the path on its line.
+    at: usize,
+    /// The file as the document spells it.
+    path: String,
+    /// The item, then each member below it.
+    items: Vec<String>,
+    /// The backticked arm patterns after it (`"feeder"`, `_`), up to the next
+    /// citation of the line.
+    arms: Vec<String>,
+    /// A `:LINE` list spelled right after the items (`::Policy:3`), which the
+    /// walk reds.
+    lines: Option<String>,
+}
 
-        for (i, line) in lines.iter().enumerate() {
-            let mut idents = backticked_idents(line);
-            if i > 0 {
-                // Docs wrap: the name and its citation routinely straddle a
-                // line break.
-                idents.extend(backticked_idents(lines[i - 1]));
+impl SymbolCitation {
+    fn spelled(&self) -> String {
+        format!("{}::{}", self.path, self.items.join("::"))
+    }
+}
+
+/// The `<path>::<item>[::<member>]…` spelling whose path ends at the `::` at
+/// byte `colons`, and the byte its spelling ends at. `None` when no file name
+/// with an extension stands before the `::` or no item follows it. A trailing
+/// `()` is part of the spelling, not of the item.
+fn symbol_spelling_at(line: &str, colons: usize) -> Option<(usize, SymbolCitation)> {
+    let is_path = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '.' | '-');
+    let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let starts_ident = |s: &str| s.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_');
+    let start = line[..colons]
+        .char_indices()
+        .rev()
+        .find(|(_, c)| !is_path(*c))
+        .map_or(0, |(k, c)| k + c.len_utf8());
+    let path = &line[start..colons];
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if !name
+        .rfind('.')
+        .is_some_and(|dot| dot > 0 && dot + 1 < name.len())
+    {
+        return None;
+    }
+    let mut items = Vec::new();
+    let mut j = colons + "::".len();
+    while starts_ident(&line[j..]) {
+        let len = line[j..]
+            .find(|c: char| !is_ident(c))
+            .unwrap_or(line.len() - j);
+        items.push(line[j..j + len].to_string());
+        j += len;
+        if line[j..].starts_with("::") && starts_ident(&line[j + 2..]) {
+            j += 2;
+        } else {
+            break;
+        }
+    }
+    if items.is_empty() {
+        return None;
+    }
+    if line[j..].starts_with("()") {
+        j += 2;
+    }
+    let lines = (line[j..].starts_with(':')
+        && line[j + 1..].starts_with(|c: char| c.is_ascii_digit()))
+    .then(|| {
+        let len = line[j + 1..]
+            .find(|c: char| !(c.is_ascii_digit() || c == '-' || c == ','))
+            .unwrap_or(line.len() - j - 1);
+        line[j..=j + len].trim_end_matches(['-', ',']).to_string()
+    });
+    let cite = SymbolCitation {
+        at: start,
+        path: path.to_string(),
+        items,
+        arms: Vec::new(),
+        lines,
+    };
+    Some((j, cite))
+}
+
+/// Every `<path>.rs::<item>…` citation on one documentation line, in reading
+/// order, with the arm patterns spelled beside it.
+fn symbol_citations_in(line: &str) -> Vec<SymbolCitation> {
+    // Each citation with the offset its spelling ends at.
+    let found: Vec<(usize, SymbolCitation)> = line
+        .match_indices(".rs::")
+        .filter_map(|(at, _)| symbol_spelling_at(line, at + ".rs".len()))
+        .collect();
+    let ticks: Vec<usize> = line.match_indices('`').map(|(k, _)| k).collect();
+    let spans: Vec<(usize, &str)> = ticks
+        .chunks_exact(2)
+        .map(|p| (p[0], &line[p[0] + 1..p[1]]))
+        .collect();
+    let is_arm = |s: &str| {
+        s == "_"
+            || (s.len() > 2
+                && s.starts_with('"')
+                && s.ends_with('"')
+                && !s[1..s.len() - 1].contains('"'))
+    };
+    let stops: Vec<usize> = found
+        .iter()
+        .skip(1)
+        .map(|(_, next)| next.at)
+        .chain([line.len()])
+        .collect();
+    found
+        .into_iter()
+        .zip(stops)
+        .map(|((end, mut cite), stop)| {
+            cite.arms = spans
+                .iter()
+                .filter(|&&(at, s)| at >= end && at < stop && is_arm(s))
+                .map(|&(_, s)| s.to_string())
+                .collect();
+            cite
+        })
+        .collect()
+}
+
+/// Every `<path>::<item>…` citation of a file other than a `.rs` on one
+/// documentation line (`tools/golden/probe_val.py::main`), in reading order.
+/// The rail does not resolve their items, but a `:LINE` after one is still a
+/// line number.
+fn non_rust_symbol_citations_in(line: &str) -> Vec<SymbolCitation> {
+    line.match_indices("::")
+        .filter_map(|(at, _)| symbol_spelling_at(line, at))
+        .map(|(_, cite)| cite)
+        .filter(|cite| !cite.path.ends_with(".rs"))
+        .collect()
+}
+
+/// The token at char `start` is the path of a commit-pinned
+/// `<sha>:<path>:<N>` citation: 7 to 40 hex digits and a `:` right before it.
+fn is_commit_pinned(chars: &[char], start: usize) -> bool {
+    if start < 2 || chars[start - 1] != ':' {
+        return false;
+    }
+    let mut k = start - 1;
+    while k > 0 && chars[k - 1].is_ascii_hexdigit() {
+        k -= 1;
+    }
+    let before = k.checked_sub(1).map(|p| chars[p]);
+    (7..=40).contains(&(start - 1 - k))
+        && !before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// The item keywords whose next identifier names the item they define.
+const ITEM_KEYWORDS: [&str; 10] = [
+    "fn",
+    "struct",
+    "enum",
+    "union",
+    "trait",
+    "type",
+    "const",
+    "static",
+    "mod",
+    "macro_rules!",
+];
+
+/// A definition site in a [`lex_rust`]-blanked source: what defines it (an
+/// item keyword, `field` or `variant`), the `{` of its body and its end.
+#[derive(Clone, Copy, Debug)]
+struct Def {
+    kw: &'static str,
+    open: Option<usize>,
+    end: usize,
+}
+
+/// Every item of `code` named `name` whose keyword sits in `lo..hi`.
+///
+/// `const` and `static` in a type (`*const T`, `&'static str`) define
+/// nothing.
+fn keyword_definitions(code: &str, name: &str, (lo, hi): (usize, usize)) -> Vec<Def> {
+    let mut out = Vec::new();
+    for kw in ITEM_KEYWORDS {
+        for (at, found) in keyword_items(code, kw) {
+            let in_type = code[..at].ends_with(['*', '\'']);
+            if at < lo || at >= hi || found != name || in_type {
+                continue;
             }
+            if let Some((end, open)) = item_end(code, at) {
+                out.push(Def { kw, open, end });
+            }
+        }
+    }
+    out
+}
 
-            for (tok, lineno, lineend) in file_citations_in(line) {
-                let cited = if tok.is_empty() {
-                    match &last_file {
-                        Some(f) => f.clone(),
-                        None => continue,
+/// The type an `impl` header (the code between `impl` and its `{`)
+/// implements, as its last path segment: `Foo` for `impl<T> Foo<T>` and for
+/// `impl Display for crate::Foo`.
+fn impl_self_type(header: &str) -> Option<&str> {
+    let flat = header.replace("->", "  ");
+    let angle = |s: &str| {
+        s.chars().fold(0i32, |d, c| match c {
+            '<' => d + 1,
+            '>' => d - 1,
+            _ => d,
+        })
+    };
+    let mut from = 0usize;
+    let lead = flat.len() - flat.trim_start().len();
+    if flat[lead..].starts_with('<') {
+        let mut depth = 0i32;
+        for (k, c) in flat[lead..].char_indices() {
+            depth += match c {
+                '<' => 1,
+                '>' => -1,
+                _ => 0,
+            };
+            if depth == 0 {
+                from = lead + k + 1;
+                break;
+            }
+        }
+    }
+    let base = from;
+    for p in token_positions(&flat[base..], "for") {
+        if angle(&flat[base..base + p]) == 0 {
+            from = base + p + "for".len();
+        }
+    }
+    let ty = header[from..]
+        .trim_start()
+        .trim_start_matches('&')
+        .trim_start();
+    let ty = ty.strip_prefix("dyn ").unwrap_or(ty);
+    let len = ty
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == ':'))
+        .unwrap_or(ty.len());
+    ty[..len].rsplit("::").next().filter(|t| !t.is_empty())
+}
+
+/// The definitions of `member` below `parent` (named `parent_name`): an item
+/// nested in its body; for a type, a method or associated item of one of its
+/// `impl` blocks, and a field (`struct`, `union`) or a variant (`enum`) at
+/// the top level of its body.
+fn member_definitions(code: &str, parent: &Def, parent_name: &str, member: &str) -> Vec<Def> {
+    let mut bodies: Vec<(usize, usize)> =
+        parent.open.map(|o| (o, parent.end)).into_iter().collect();
+    if matches!(parent.kw, "struct" | "enum" | "union" | "trait") {
+        for at in token_positions(code, "impl") {
+            let before = code[..at].trim_end();
+            let item_position = before.is_empty()
+                || before.ends_with([';', '}', '{', ']'])
+                || before.ends_with("unsafe");
+            if !item_position {
+                continue;
+            }
+            if let Some((end, Some(open))) = item_end(code, at)
+                && impl_self_type(&code[at + "impl".len()..open]) == Some(parent_name)
+            {
+                bodies.push((open, end));
+            }
+        }
+    }
+    let mut out: Vec<Def> = bodies
+        .iter()
+        .flat_map(|&span| keyword_definitions(code, member, span))
+        .collect();
+    let (Some(open), true) = (
+        parent.open,
+        matches!(parent.kw, "struct" | "union" | "enum"),
+    ) else {
+        return out;
+    };
+    let variant = parent.kw == "enum";
+    for p in token_positions(&code[open..parent.end], member) {
+        let at = open + p;
+        let depth = code[open..at].bytes().fold(0i32, |d, c| match c {
+            b'{' | b'(' | b'[' => d + 1,
+            b'}' | b')' | b']' => d - 1,
+            _ => d,
+        });
+        let lead = code[open..at]
+            .rfind(['{', ',', ']', ';', '}'])
+            .map_or("", |k| code[open + k + 1..at].trim());
+        let after = code[at + member.len()..parent.end].trim_start();
+        let shape = if variant {
+            lead.is_empty() && after.starts_with([',', '(', '{', '}', '='])
+        } else {
+            (lead.is_empty() || lead.starts_with("pub"))
+                && after.starts_with(':')
+                && !after.starts_with("::")
+        };
+        if depth == 1 && shape {
+            out.push(Def {
+                kw: if variant { "variant" } else { "field" },
+                open: None,
+                end: at + member.len(),
+            });
+        }
+    }
+    out
+}
+
+/// The definitions of the item path `items` in `code` (`["PropsPolicy",
+/// "under_display_floor"]`), or which step of the path has none.
+fn item_definitions(code: &str, items: &[String]) -> Result<Vec<Def>, String> {
+    let mut defs = keyword_definitions(code, &items[0], (0, code.len()));
+    if defs.is_empty() {
+        return Err(format!("defines no item `{}`", items[0]));
+    }
+    for (k, pair) in items.windows(2).enumerate() {
+        defs = defs
+            .iter()
+            .flat_map(|d| member_definitions(code, d, &pair[0], &pair[1]))
+            .collect();
+        if defs.is_empty() {
+            return Err(format!(
+                "has no `{}` below `{}`",
+                pair[1],
+                items[..=k].join("::")
+            ));
+        }
+    }
+    Ok(defs)
+}
+
+/// `arm` (`"feeder"` or `_`) is the pattern of a match arm in `code[open..end]`:
+/// a literal is followed by `=>`, an `|` alternative or an `if` guard, and `_`
+/// by `=>` or a guard. A `_` before `|` is a closure parameter (`|_|`) and a
+/// literal before `||` a condition.
+fn has_arm(code: &str, lits: &[Lit], (open, end): (usize, usize), arm: &str) -> bool {
+    let ends_a_pattern = |from: usize, alternative: bool| {
+        let rest = code[from..end].trim_start();
+        rest.starts_with("=>")
+            || rest.starts_with("if ")
+            || (alternative && rest.starts_with('|') && !rest.starts_with("||"))
+    };
+    match arm.strip_prefix('"').and_then(|a| a.strip_suffix('"')) {
+        Some(text) => lits.iter().any(|l| {
+            l.start > open && l.end < end && l.text == text && ends_a_pattern(l.end, true)
+        }),
+        None => token_positions(&code[open..end], arm)
+            .into_iter()
+            .any(|p| ends_a_pattern(open + p + arm.len(), false)),
+    }
+}
+
+/// `cited`, a path as a document spells it, names a file of this repository:
+/// a `.rs` path, or any path whose file name a tree file carries, so an elided
+/// (`…/dir/file.dss`), re-rooted or moved spelling still counts. A `.pas` path
+/// counts only when the path itself resolves, since the vendored Pascal lies
+/// outside the tree and a tree file may share the name of one of its units.
+fn is_repository_file(by_base: &BTreeMap<String, Vec<String>>, cited: &str) -> bool {
+    let spelled = cited.trim_start_matches('/');
+    let base = spelled.rsplit('/').next().unwrap_or(spelled);
+    if spelled.to_ascii_lowercase().ends_with(".pas") {
+        !resolve_cited(by_base, spelled, base).is_empty()
+    } else {
+        spelled.ends_with(".rs") || by_base.contains_key(base)
+    }
+}
+
+/// One [`LINE_CITED_DOCS`] document's walk: how many of its symbol citations
+/// name one tree file, and every defect, one report line each.
+///
+/// `by_base` maps a basename to the repo-relative files that carry it, any
+/// extension; `cache` maps a target to its [`lex_rust`] split, and `load` reads a target
+/// the cache does not hold yet (the unit tests pre-fill the cache and load
+/// nothing). `arm_cited` is [`ARM_CITED_FNS`].
+fn doc_symbol_citation_defects(
+    doc: &str,
+    text: &str,
+    by_base: &BTreeMap<String, Vec<String>>,
+    cache: &mut BTreeMap<String, (String, Vec<Lit>)>,
+    load: &dyn Fn(&str) -> String,
+    arm_cited: &[&str],
+) -> (usize, Vec<String>) {
+    let mut bad: Vec<String> = Vec::new();
+    let mut full_of_base: BTreeMap<String, String> = BTreeMap::new();
+    let mut last_file: Option<(String, bool)> = None;
+    let mut resolved = 0usize;
+
+    for (i, line) in text.lines().enumerate() {
+        let chars: Vec<char> = line.chars().collect();
+        let byte_at: Vec<usize> = line.char_indices().map(|(b, _)| b).collect();
+        // The fully-qualified spellings of the line, registered in reading
+        // order so a short repeat resolves only through one before it.
+        let mut spellings: Vec<(usize, String, String)> = Vec::new();
+        for (at, tok, lineno, _) in file_citations_at(line) {
+            let (cited, pinned) = if tok.is_empty() {
+                match &last_file {
+                    Some(last) => last.clone(),
+                    None => continue,
+                }
+            } else {
+                if tok.contains('/') && tok.ends_with(".rs") {
+                    let base = tok.rsplit('/').next().unwrap_or(&tok).to_string();
+                    let hits = resolve_cited(by_base, &tok, &base);
+                    if hits.len() == 1 {
+                        spellings.push((byte_at[at], base, hits[0].clone()));
                     }
-                } else {
-                    // Register a fully-qualified spelling so the section's
-                    // later short repeats resolve.
-                    if tok.contains('/') && tok.ends_with(".rs") {
-                        let base = tok.rsplit('/').next().unwrap_or(&tok).to_string();
-                        let hits = resolve_cited(&by_base, &tok, &base);
-                        if hits.len() == 1 {
-                            full_of_base.insert(base, hits[0].clone());
-                        }
-                    }
-                    last_file = Some(tok.clone());
-                    tok
-                };
-                let Some(ln) = lineno else { continue };
-                if !cited.ends_with(".rs") {
+                }
+                let pinned = is_commit_pinned(&chars, at);
+                // A dotted name read only for its `:LINE` (`1.5:1`) is no
+                // antecedent unless it names a file of the tree.
+                if file_shaped(&tok) || is_repository_file(by_base, &tok) {
+                    last_file = Some((tok.clone(), pinned));
+                }
+                (tok, pinned)
+            };
+            let Some(ln) = lineno else { continue };
+            if pinned || !is_repository_file(by_base, &cited) {
+                continue;
+            }
+            bad.push(format!(
+                "    {doc}:{}: `{cited}:{ln}` cites a line number of a repository file, \
+                 which goes stale with the next edit above it — cite the item: \
+                 `<path>::<item>`",
+                i + 1
+            ));
+        }
+
+        let mut spellings = spellings.into_iter().peekable();
+        for cite in symbol_citations_in(line) {
+            while let Some((_, base, full)) = spellings.next_if(|s| s.0 <= cite.at) {
+                full_of_base.insert(base, full);
+            }
+            let spelled = cite.spelled();
+            if let Some(lines) = &cite.lines {
+                bad.push(format!(
+                    "    {doc}:{}: `{spelled}{lines}` cites a line number of a repository \
+                     file, which goes stale with the next edit above it — cite the item \
+                     alone: `<path>::<item>`",
+                    i + 1
+                ));
+            }
+            let base = cite
+                .path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&cite.path)
+                .to_string();
+            let hits = resolve_cited(by_base, &cite.path, &base);
+            let target = match cited_target(&hits, full_of_base.get(&base)) {
+                Ok(target) => target,
+                Err(why) => {
+                    bad.push(format!("    {doc}:{}: `{spelled}` {why}", i + 1));
                     continue;
                 }
-
-                let base = cited.rsplit('/').next().unwrap_or(&cited).to_string();
-                let hits = resolve_cited(&by_base, &cited, &base);
-                let target = match cited_target(&hits, full_of_base.get(&base)) {
-                    Ok(target) => target,
-                    Err(why) => {
-                        bad.push(format!("    {doc}:{}: `{cited}:{ln}` {why}", i + 1));
-                        continue;
-                    }
-                };
-
-                let src = cache.entry(target.clone()).or_insert_with(|| {
-                    fs::read_to_string(root.join(&target))
-                        .unwrap_or_else(|e| panic!("{target}: {e}"))
-                        .lines()
-                        .map(str::to_string)
-                        .collect()
+            };
+            resolved += 1;
+            let (code, lits) = &*cache
+                .entry(target.clone())
+                .or_insert_with(|| lex_rust(&load(&target)));
+            let defs = match item_definitions(code, &cite.items) {
+                Ok(defs) => defs,
+                Err(why) => {
+                    bad.push(format!("    {doc}:{}: `{spelled}` — {target} {why}", i + 1));
+                    continue;
+                }
+            };
+            let item = cite.items.last().map_or("", String::as_str);
+            if !arm_cited.contains(&item) {
+                continue;
+            }
+            if cite.arms.is_empty() {
+                bad.push(format!(
+                    "    {doc}:{}: `{spelled}` names no arm — spell the pattern of the \
+                     arm the sentence means beside it (`\"feeder\"`, `_`)",
+                    i + 1
+                ));
+            }
+            for arm in &cite.arms {
+                let found = defs.iter().any(|d| {
+                    d.open
+                        .is_some_and(|open| has_arm(code, lits, (open, d.end), arm))
                 });
-                checked += 1;
-
-                if ln == 0 || ln > src.len() {
+                if !found {
                     bad.push(format!(
-                        "    {doc}:{}: `{cited}:{ln}` is past the end of {target} \
-                         ({} lines)",
-                        i + 1,
-                        src.len()
-                    ));
-                    continue;
-                }
-                if src[ln - 1].trim().is_empty() {
-                    bad.push(format!(
-                        "    {doc}:{}: `{cited}:{ln}` points at a blank line of {target}",
+                        "    {doc}:{}: `{spelled}` `{arm}` — `{item}` in {target} has no \
+                         arm with that pattern",
                         i + 1
-                    ));
-                    continue;
-                }
-                // A `:A-B` range: the END must be a real line of the same file
-                // and must not precede the start. Before G1.7's audit settlement
-                // the end was never parsed at all.
-                if let Some(end) = lineend
-                    && (end < ln || end > src.len())
-                {
-                    bad.push(format!(
-                        "    {doc}:{}: `{cited}:{ln}-{end}` is not a range of \
-                         {target} ({} lines)",
-                        i + 1,
-                        src.len()
-                    ));
-                    continue;
-                }
-                if idents.is_empty() {
-                    // Before RP5.2's audit settlement this was a silent
-                    // `continue`, which made the citation existence-only: any
-                    // non-blank line of the right file passed. Six of the 58
-                    // citations sat in that hole — including the four the
-                    // R4133_PROPS counters lean on (the normalization table,
-                    // the echo table, the display floor, the forced
-                    // population) — so the doc claim "resolves *and anchors*
-                    // all 58" was true of 52. Anchoring costs one backticked
-                    // symbol on the citing line.
-                    bad.push(format!(
-                        "    {doc}:{}: `{cited}:{ln}` names no backticked symbol on \
-                         its own line or the one above, so nothing but the line's \
-                         existence can be checked — spell the symbol the cited line \
-                         defines",
-                        i + 1
-                    ));
-                    continue;
-                }
-                // A single line is anchored in a small window around it; a RANGE
-                // is a claim about the whole block, so the symbol must sit inside
-                // the block itself — the settlement rule that catches an end
-                // drifting off the values the sentence names.
-                let (lo, hi) = match lineend {
-                    Some(end) => (ln - 1, end.min(src.len())),
-                    None => (ln.saturating_sub(4), (ln + 3).min(src.len())),
-                };
-                let window = src[lo..hi].join("\n");
-                if !idents.iter().any(|id| window.contains(id.as_str())) {
-                    bad.push(format!(
-                        "    {doc}:{}: `{cited}:{ln}` — {target} lines {}-{} name \
-                         none of {:?} (a `:A-B` citation is anchored inside the \
-                         range itself)",
-                        i + 1,
-                        lo + 1,
-                        hi,
-                        idents
                     ));
                 }
             }
         }
-        counts.push((doc, checked));
-        assert!(
-            checked >= *floor,
-            "{doc} yielded only {checked} `file.rs:LINE` citations (floor {floor}) \
-             — either the section that carries them is gone or the scanner stopped \
-             seeing them, and this gate went vacuous"
-        );
+        full_of_base.extend(spellings.map(|(_, base, full)| (base, full)));
+
+        for cite in non_rust_symbol_citations_in(line) {
+            let Some(lines) = &cite.lines else { continue };
+            if !is_repository_file(by_base, &cite.path) {
+                continue;
+            }
+            bad.push(format!(
+                "    {doc}:{}: `{}{lines}` cites a line number of a repository \
+                 file, which goes stale with the next edit above it — cite the item \
+                 alone: `<path>::<item>`",
+                i + 1,
+                cite.spelled()
+            ));
+        }
+    }
+    (resolved, bad)
+}
+
+/// Every code citation of a [`LINE_CITED_DOCS`] document names an item that
+/// the file it names defines, and none cites a line number.
+///
+/// A citation is `<path>.rs::<item>[::<member>]…`. The path resolves as in
+/// [`cited_target`]: by suffix, a short repeat through the nearest
+/// fully-qualified spelling before it in reading order, and a path that
+/// names no file or several fails. The item needs a definition site in that
+/// file: `fn`, `struct`, `enum`, `union`, `trait`, `type`, `const`, `static`,
+/// `mod` or `macro_rules!`; a member below it is a nested item, a method of
+/// the type's `impl` blocks, a field or a variant. Sites are matched token by
+/// token in the source with comments and literals blanked, never as a
+/// substring of the file. A citation of an [`ARM_CITED_FNS`] function spells
+/// the arm it means beside it, and the pattern must be an arm of that
+/// function. A `.py` target is not resolved.
+///
+/// A `file:N` line-number form reds when its path names a file of this
+/// repository ([`is_repository_file`]), whatever its extension, and so does a
+/// `:N` after a symbol citation of such a file, a `.py` one included. The
+/// vendored Pascal, the commit-pinned `<sha>:<path>:<N>` form and a name no
+/// tree file carries (`Class.NAME`, another project's source) are not lines of
+/// today's tree and pass.
+///
+/// The number of citations that resolve is exact per document: it must equal
+/// the document's own `<!-- line-citations: N -->` marker
+/// ([`assert_declared_line_citations`]), asserted only once every citation is
+/// sound, so a broken citation is reported as broken and never "fixed" by
+/// lowering the marker.
+#[test]
+fn operational_docs_cite_items_the_named_files_define() {
+    let root = repo_root();
+    let by_base = tree_files_by_base(&root);
+    let load = |target: &str| -> String {
+        fs::read_to_string(root.join(target)).unwrap_or_else(|e| panic!("{target}: {e}"))
+    };
+    let mut cache: BTreeMap<String, (String, Vec<Lit>)> = BTreeMap::new();
+    let mut bad: Vec<String> = Vec::new();
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+    let mut texts: Vec<String> = Vec::new();
+
+    for doc in LINE_CITED_DOCS {
+        let text = fs::read_to_string(root.join(doc)).unwrap_or_else(|e| panic!("{doc}: {e}"));
+        let (resolved, defects) =
+            doc_symbol_citation_defects(doc, &text, &by_base, &mut cache, &load, ARM_CITED_FNS);
+        bad.extend(defects);
+        counts.push((doc, resolved));
+        texts.push(text);
     }
 
     assert!(
         bad.is_empty(),
-        "documentation citing a code line that no longer says what the sentence \
-         claims. Re-read the cited file and re-point the citation (or re-word the \
-         sentence); do NOT delete the line number:\n{}\nchecked: {:?}",
+        "documentation citing code by a line number, or by an item the named file \
+         does not define. Cite the item the sentence is about as `<path>::<item>` \
+         (read what the sentence meant, never the nearest name); do NOT delete the \
+         citation:\n{}\nresolved: {:?}",
         bad.join("\n"),
         counts
+    );
+    for ((doc, resolved), text) in counts.iter().zip(&texts) {
+        assert_declared_line_citations(doc, text, *resolved);
+    }
+}
+
+/// The count a [`LINE_CITED_DOCS`] document declares in its
+/// `<!-- line-citations: N -->` marker: the first line that is such a marker,
+/// trimmed, and nothing else. A spelling of the convention inside prose (a
+/// backticked quotation) is not a marker line, so a document may describe the
+/// marker without declaring anything.
+fn declared_line_citations(text: &str) -> Result<usize, String> {
+    const OPEN: &str = "<!-- line-citations:";
+    let Some(marker) = text.lines().map(str::trim).find(|l| l.starts_with(OPEN)) else {
+        return Err("carries no `<!-- line-citations: N -->` marker line".to_string());
+    };
+    marker
+        .strip_prefix(OPEN)
+        .and_then(|rest| rest.strip_suffix("-->"))
+        .and_then(|n| n.trim().parse::<usize>().ok())
+        .ok_or_else(|| format!("has the marker line `{marker}`, not `<!-- line-citations: N -->`"))
+}
+
+/// `doc` declares exactly the `resolved` citations its walk counted: an exact
+/// count, fail-on-stale in both directions (the `NORM_ROWS` / `ECHO_ROWS`
+/// convention), so a citation can neither vanish nor appear without the edit
+/// that moved it saying so.
+fn assert_declared_line_citations(doc: &str, text: &str, resolved: usize) {
+    let declared = declared_line_citations(text).unwrap_or_else(|why| {
+        panic!(
+            "{doc} {why}: every citation-checked document declares how many of its \
+             code citations resolve — the walk resolves {resolved}, so add the line \
+             `<!-- line-citations: {resolved} -->` to {doc}"
+        )
+    });
+    assert_eq!(
+        resolved, declared,
+        "{doc} declares `<!-- line-citations: {declared} -->` but the walk resolves \
+         {resolved} code citations in it. Re-measure and update that marker of {doc} in \
+         the same commit as the edit that moved the count, and never drop (or keep) a \
+         citation to hold the number"
+    );
+}
+
+/// The comma form `file.rs:A,B[,C]` is one citation per component, each a
+/// line-number red of its own (RF-D07-01, G1.10a audit AC4-4).
+#[test]
+fn a_comma_citation_is_checked_component_by_component() {
+    let rs = |p: &str, a: usize, b: Option<usize>| (p.to_string(), Some(a), b);
+    assert_eq!(
+        file_citations_in("through `harness::x` (`corpus_gate/runner.rs:733,508`)."),
+        vec![
+            rs("corpus_gate/runner.rs", 733, None),
+            rs("corpus_gate/runner.rs", 508, None)
+        ]
+    );
+    // Ranges mix with single lines, and a bare continuation takes a list too.
+    assert_eq!(
+        file_citations_in("`a.rs:1,2-3,4` then `:5,9`"),
+        vec![
+            rs("a.rs", 1, None),
+            rs("a.rs", 2, Some(3)),
+            rs("a.rs", 4, None),
+            rs("", 5, None),
+            rs("", 9, None)
+        ]
+    );
+    // A comma of prose is not a list; a mention without a line stays one.
+    assert_eq!(
+        file_citations_in("`a.rs:12`, 14 and `b.rs:7`,x in `c.rs`"),
+        vec![
+            rs("a.rs", 12, None),
+            rs("b.rs", 7, None),
+            ("c.rs".to_string(), None, None)
+        ]
+    );
+
+    // The symbol walk reds each component, the second one included.
+    let doc = "Node voltages reach it through `harness::assert_complex_close`\n\
+               (`crates/fixture/src/lib.rs:3,40`).\n";
+    let (resolved, bad) = symbol_walk(doc);
+    assert_eq!(resolved, 0, "{bad:?}");
+    let cited: Vec<&str> = bad
+        .iter()
+        .map(|b| b.split('`').nth(1).unwrap_or_default())
+        .collect();
+    assert_eq!(
+        cited,
+        [
+            "crates/fixture/src/lib.rs:3",
+            "crates/fixture/src/lib.rs:40"
+        ],
+        "{bad:#?}"
+    );
+    assert!(
+        bad.iter().all(|b| b.starts_with("    fixture:2: ")),
+        "{bad:?}"
+    );
+}
+
+/// The marker is the first line that is one; a quoted spelling in prose is not.
+#[test]
+fn the_line_citation_marker_is_the_first_marker_line() {
+    let text = "Each doc carries `<!-- line-citations: N -->`.\n\
+                <!-- line-citations: 4 -->\n  <!-- line-citations: 9 -->\n";
+    assert_eq!(declared_line_citations(text), Ok(4));
+    assert!(declared_line_citations("<!-- line-citations: four -->\n").is_err());
+    assert!(declared_line_citations("prose only\n").is_err());
+}
+
+/// A marker one off the walk's count reds (RF-D07-01, RP5.1 audit SA-2).
+#[test]
+#[should_panic(expected = "fixture declares `<!-- line-citations: 2 -->` but the walk resolves 1")]
+fn a_line_citation_marker_one_off_is_reported() {
+    let doc = "The floor lives in `crates/fixture/src/lib.rs::Policy::floor`.\n\
+               <!-- line-citations: 2 -->\n";
+    let (resolved, bad) = symbol_walk(doc);
+    assert!(bad.is_empty(), "{bad:?}");
+    assert_declared_line_citations("fixture", doc, resolved);
+}
+
+/// A marker below the walk's count reds too, so a citation added without the
+/// marker moving is reported (RF-D07-01, audit AT-2).
+#[test]
+#[should_panic(expected = "fixture declares `<!-- line-citations: 1 -->` but the walk resolves 2")]
+fn a_line_citation_marker_below_the_count_is_reported() {
+    let doc = "The floor lives in `crates/fixture/src/lib.rs::Policy::floor`,\n\
+               set by `lib.rs::Policy`.\n\
+               <!-- line-citations: 1 -->\n";
+    let (resolved, bad) = symbol_walk(doc);
+    assert!(bad.is_empty(), "{bad:?}");
+    assert_declared_line_citations("fixture", doc, resolved);
+}
+
+/// A document without a marker reds (RF-D07-01, RP5.1 audit SA-2).
+#[test]
+#[should_panic(expected = "fixture carries no `<!-- line-citations: N -->` marker line")]
+fn a_line_cited_doc_without_a_marker_is_reported() {
+    let doc = "The floor lives in `crates/fixture/src/lib.rs::Policy::floor`.\n";
+    let (resolved, bad) = symbol_walk(doc);
+    assert!(bad.is_empty(), "{bad:?}");
+    assert_declared_line_citations("fixture", doc, resolved);
+}
+
+/// The source of the symbol-walk fixture tree: one item of every shape the
+/// rail resolves, and names that appear only in a comment, a literal or a
+/// type.
+const SYMBOL_FIXTURE: &str = r#"
+//! `fn in_a_comment` defines nothing.
+pub struct Policy {
+    pub(crate) floor: f64,
+    #[allow(dead_code)]
+    pub rel: f64,
+}
+impl Policy {
+    pub fn under(self) -> bool {
+        let label = "fn in_a_literal";
+        self.floor > 0.0 && !label.is_empty()
+    }
+}
+pub enum Kind {
+    Micro,
+    Feeder(u8),
+}
+pub fn fixture_tier(kind: &str) -> f64 {
+    let name: &'static str = "large";
+    match kind {
+        "micro" => 1e-9,
+        "feeder" | "wide" => 1e-7,
+        _ if kind == name => 1e-5,
+        _ => 1e-6,
+    }
+}
+pub const TIER_NAMES: [&str; 2] = ["micro", "feeder"];
+pub mod checks {
+    pub fn a_check() {}
+}
+macro_rules! fixture_rule {
+    () => {};
+}
+pub struct Other;
+impl Other {
+    pub fn only_other(&self) {}
+}
+pub fn closure_tier(kind: &str) -> f64 {
+    let n = [1u8].iter().map(|_| 1).count();
+    if kind == "wide" || kind == "huge" {
+        return 0.0;
+    }
+    match kind {
+        "micro" => 1e-9,
+        other => other.len() as f64 + n as f64,
+    }
+}
+"#;
+
+/// [`doc_symbol_citation_defects`] over `doc` against a tree holding
+/// `crates/fixture/src/lib.rs` = [`SYMBOL_FIXTURE`], whose arm-cited functions
+/// are `fixture_tier` and `closure_tier`, `tools/golden/probe_val.py`,
+/// `tools/lanes/lane_diff.ps1` and `tools/fpc/genstub.pas`. The walk never
+/// reads the disk.
+fn symbol_walk(doc: &str) -> (usize, Vec<String>) {
+    let target = "crates/fixture/src/lib.rs".to_string();
+    let by_base = BTreeMap::from(
+        [
+            target.as_str(),
+            "tools/golden/probe_val.py",
+            "tools/lanes/lane_diff.ps1",
+            "tools/fpc/genstub.pas",
+        ]
+        .map(|rel| {
+            let base = rel.rsplit('/').next().unwrap_or(rel).to_string();
+            (base, vec![rel.to_string()])
+        }),
+    );
+    let mut cache = BTreeMap::from([(target, lex_rust(SYMBOL_FIXTURE))]);
+    let load = |target: &str| -> String { panic!("the fixture tree holds no {target}") };
+    doc_symbol_citation_defects(
+        "fixture",
+        doc,
+        &by_base,
+        &mut cache,
+        &load,
+        &["fixture_tier", "closure_tier"],
+    )
+}
+
+/// Every item shape resolves: a `fn`, a `struct` and its field, an `impl`
+/// method, an `enum` variant, a `const`, a `mod` and the `fn` inside it, a
+/// `macro_rules!`, through a full path and a short repeat of it. A name that
+/// the file spells only in a comment, a literal or a type, or only as part of
+/// a longer name, defines nothing.
+#[test]
+fn a_symbol_citation_resolves_to_the_items_definition() {
+    let line = "see `a/lib.rs::Policy::under()` and `lib.rs::Kind:3-5,` `\"x\"`, `_`.";
+    assert_eq!(
+        symbol_citations_in(line),
+        vec![
+            SymbolCitation {
+                at: line.find("a/lib.rs").unwrap_or_default(),
+                path: "a/lib.rs".to_string(),
+                items: vec!["Policy".to_string(), "under".to_string()],
+                arms: vec![],
+                lines: None,
+            },
+            SymbolCitation {
+                at: line.find("`lib.rs").unwrap_or_default() + 1,
+                path: "lib.rs".to_string(),
+                items: vec!["Kind".to_string()],
+                arms: vec!["\"x\"".to_string(), "_".to_string()],
+                lines: Some(":3-5".to_string()),
+            },
+        ]
+    );
+    let doc = "`crates/fixture/src/lib.rs::fixture_tier` `\"micro\"`, then \
+               `lib.rs::Policy`, `lib.rs::Policy::floor`, `lib.rs::Policy::rel`,\n\
+               `lib.rs::Policy::under()`, `src/lib.rs::Kind::Feeder`, \
+               `lib.rs::TIER_NAMES`, `lib.rs::checks::a_check` and \
+               `lib.rs::fixture_rule`.\n";
+    assert_eq!(symbol_walk(doc), (9, Vec::new()));
+
+    for (item, why) in [
+        ("in_a_comment", "defines no item `in_a_comment`"),
+        ("in_a_literal", "defines no item `in_a_literal`"),
+        ("str", "defines no item `str`"),
+        ("Poli", "defines no item `Poli`"),
+        ("Policy::und", "has no `und` below `Policy`"),
+        ("Kind::floor", "has no `floor` below `Kind`"),
+        ("fixture_tier::kind", "has no `kind` below `fixture_tier`"),
+    ] {
+        let (resolved, bad) = symbol_walk(&format!("`crates/fixture/src/lib.rs::{item}`\n"));
+        assert_eq!(resolved, 1, "{item}");
+        assert_eq!(bad.len(), 1, "{item}: {bad:?}");
+        assert!(bad[0].ends_with(why), "{item}: {bad:?}");
+    }
+}
+
+/// An item the named file does not define is reported, at the top of the path
+/// and below it. A member counts only under its own parent: a method of
+/// another type's `impl` or a field's type is no member (RF-D07-01, audit
+/// AT-3).
+#[test]
+fn a_symbol_citation_of_an_unknown_item_is_reported() {
+    let (resolved, bad) =
+        symbol_walk("`crates/fixture/src/lib.rs::tol_for` and `lib.rs::checks::b_check`\n");
+    assert_eq!(resolved, 2);
+    assert_eq!(
+        bad,
+        vec![
+            "    fixture:1: `crates/fixture/src/lib.rs::tol_for` — crates/fixture/src/lib.rs \
+             defines no item `tol_for`"
+                .to_string(),
+            "    fixture:1: `lib.rs::checks::b_check` — crates/fixture/src/lib.rs has no \
+             `b_check` below `checks`"
+                .to_string(),
+        ]
+    );
+    assert_eq!(
+        symbol_walk("`crates/fixture/src/lib.rs::Other::only_other`\n"),
+        (1, Vec::new())
+    );
+    for (item, why) in [
+        ("Policy::only_other", "has no `only_other` below `Policy`"),
+        ("Policy::f64", "has no `f64` below `Policy`"),
+    ] {
+        let (resolved, bad) = symbol_walk(&format!("`crates/fixture/src/lib.rs::{item}`\n"));
+        assert_eq!((resolved, bad.len()), (1, 1), "{item}: {bad:?}");
+        assert!(bad[0].ends_with(why), "{item}: {bad:?}");
+    }
+}
+
+/// A path that names no tree file, or several, is reported and not counted.
+#[test]
+fn a_symbol_citation_of_a_missing_file_is_reported() {
+    let (resolved, bad) = symbol_walk("`crates/fixture/src/main.rs::Policy`\n");
+    assert_eq!(resolved, 0);
+    assert_eq!(
+        bad,
+        vec!["    fixture:1: `crates/fixture/src/main.rs::Policy` names no file in the tree"]
+    );
+    let (resolved, bad) = symbol_walk("`fixture/lib.rs::Policy` (no such directory)\n");
+    assert_eq!((resolved, bad.len()), (0, 1), "{bad:?}");
+}
+
+/// A short repeat resolves through the nearest fully-qualified spelling before
+/// it in reading order, never through one later on its own line (RF-D07-01,
+/// audit AC-4).
+#[test]
+fn a_short_repeat_resolves_through_the_spelling_before_it() {
+    let (a, b) = ("crates/a/src/mod.rs", "crates/b/src/mod.rs");
+    let by_base = BTreeMap::from([("mod.rs".to_string(), vec![a.to_string(), b.to_string()])]);
+    let walk = |doc: &str| {
+        let mut cache = BTreeMap::from([
+            (a.to_string(), lex_rust("pub fn only_in_a() {}\n")),
+            (b.to_string(), lex_rust("pub fn only_in_b() {}\n")),
+        ]);
+        let load = |target: &str| -> String { panic!("the fixture tree holds no {target}") };
+        doc_symbol_citation_defects("fixture", doc, &by_base, &mut cache, &load, &[])
+    };
+    let first = "`crates/a/src/mod.rs::only_in_a`\n";
+    assert_eq!(
+        walk(&format!(
+            "{first}`mod.rs::only_in_a` and `crates/b/src/mod.rs::only_in_b`\n"
+        )),
+        (3, Vec::new())
+    );
+    assert_eq!(
+        walk(&format!(
+            "{first}`mod.rs::only_in_b` and `crates/b/src/mod.rs::only_in_b`, \
+             then `mod.rs::only_in_b`\n"
+        )),
+        (
+            4,
+            vec![
+                "    fixture:2: `mod.rs::only_in_b` — crates/a/src/mod.rs defines no item \
+                 `only_in_b`"
+                    .to_string()
+            ]
+        )
+    );
+}
+
+/// A citation of an arm-cited function spells the arm it means, and each
+/// spelled pattern is an arm of that function: a quoted literal or `_`, before
+/// `=>`, an `|` alternative or a guard. A literal the function holds outside a
+/// pattern is no arm, nor is a closure's `|_|` or a literal of a `||`
+/// condition (RF-D07-01, audit AC-5).
+#[test]
+fn a_tier_citation_without_its_arm_pattern_is_reported() {
+    let cite = |arms: &str| format!("| `crates/fixture/src/lib.rs::fixture_tier`{arms} | ok |\n");
+    for arms in [" `\"micro\"`", " `\"feeder\"` and `\"wide\"`", " `_`"] {
+        assert_eq!(symbol_walk(&cite(arms)), (1, Vec::new()), "{arms}");
+    }
+    let (_, bad) = symbol_walk(&cite(""));
+    assert_eq!(bad.len(), 1, "{bad:?}");
+    assert!(bad[0].contains("names no arm"), "{bad:?}");
+    for arms in [" `\"large\"`", " `\"huge\"`", " `\"micro\"` and `\"nano\"`"] {
+        let (resolved, bad) = symbol_walk(&cite(arms));
+        assert_eq!(resolved, 1);
+        assert_eq!(bad.len(), 1, "{arms}: {bad:?}");
+        assert!(bad[0].contains("has no arm with that pattern"), "{bad:?}");
+    }
+    // An arm spelled after the NEXT citation belongs to that one.
+    let (_, bad) =
+        symbol_walk("`crates/fixture/src/lib.rs::fixture_tier`, `lib.rs::Policy` `\"micro\"`\n");
+    assert_eq!(bad.len(), 1, "{bad:?}");
+    assert!(bad[0].contains("names no arm"), "{bad:?}");
+
+    let closure = |arms: &str| format!("`crates/fixture/src/lib.rs::closure_tier`{arms}\n");
+    assert_eq!(symbol_walk(&closure(" `\"micro\"`")), (1, Vec::new()));
+    for arms in [" `_`", " `\"wide\"`"] {
+        let (resolved, bad) = symbol_walk(&closure(arms));
+        assert_eq!((resolved, bad.len()), (1, 1), "{arms}: {bad:?}");
+        assert!(bad[0].contains("has no arm with that pattern"), "{bad:?}");
+    }
+}
+
+/// A line-number citation into the repository reds, in every spelling
+/// [`file_citations_at`] reads (single, range, comma list, bare continuation),
+/// into any file of the tree (a `.py`, a `.ps1`, a tree `.pas` by a path that
+/// resolves, an elided or re-rooted path whose file name the tree carries),
+/// behind a hex run too short or too attached to be a commit, and after a
+/// symbol citation of any tree file (`.rs`, `.py`, `.ps1`). A bare
+/// continuation continues the file cited before a version, a ratio or a
+/// dotted name that is no file (`0.14.5:2`, `1.5:1`, `Class.method:22`). A
+/// line of the vendored Pascal, a re-rooted spelling of a tree `.pas` (a
+/// vendored unit may carry its name), the commit-pinned `<sha>:<path>:<N>`
+/// form, a file the tree does not carry and a dotted name that is no file
+/// pass (RF-D07-01, audits AC-1, AC-3, AT-1, AT-4, SA-1, SA-2).
+#[test]
+fn a_line_number_citation_into_the_repository_is_reported() {
+    let doc = "`crates/fixture/src/lib.rs:3` and `lib.rs:5-9,12`, then `:14`;\n\
+               `tools/golden/probe_val.py:40`, the `Class.NAME:2` line, `:4`.\n\
+               `Common/Solution.pas:2568`, `:2701` and `abc1234f:crates/fixture/src/lib.rs:3`\n\
+               `deadbeefcafe:lib.rs:7` then `:8`, but `lib.rs::Policy` by name.\n\
+               `…/golden/probe_val.py:41`, `tools/gold/probe_val.py:42`, `dss/IBus.py:9`\n\
+               `tools/lanes/lane_diff.ps1:12`, `tools/fpc/genstub.pas:5`, `…/Solution.pas:7`\n\
+               `abcd:lib.rs:15`, `g0abc1234:lib.rs:16`, `lib.rs::Policy:17`,\n\
+               `lib.rs::Policy::floor:18-19`.\n\
+               `crates/fixture/src/lib.rs:20`, a 1.5:1 ratio, then `:21`; Class.method:22, `:23`\n\
+               (backend 0.14.5:2)\n\
+               then `:24`; `tools/golden/probe_val.py::main:40`, `dss/IBus.py::f:9`\n\
+               `…/golden/probe_val.py::Probe::run():41`, `tools/lanes/lane_diff.ps1::x:12`\n\
+               `tools/fpX/genstub.pas:5` and `…/golden/probe_val.py::main`.\n";
+    let (resolved, bad) = symbol_walk(doc);
+    assert_eq!(resolved, 3);
+    let cited: Vec<&str> = bad
+        .iter()
+        .map(|b| b.split('`').nth(1).unwrap_or_default())
+        .collect();
+    assert_eq!(
+        cited,
+        [
+            "crates/fixture/src/lib.rs:3",
+            "lib.rs:5",
+            "lib.rs:12",
+            "lib.rs:14",
+            "tools/golden/probe_val.py:40",
+            "/golden/probe_val.py:41",
+            "tools/gold/probe_val.py:42",
+            "tools/lanes/lane_diff.ps1:12",
+            "tools/fpc/genstub.pas:5",
+            "lib.rs:15",
+            "lib.rs:16",
+            "lib.rs::Policy:17",
+            "lib.rs::Policy::floor:18-19",
+            "crates/fixture/src/lib.rs:20",
+            "crates/fixture/src/lib.rs:21",
+            "crates/fixture/src/lib.rs:23",
+            "crates/fixture/src/lib.rs:24",
+            "tools/golden/probe_val.py::main:40",
+            "/golden/probe_val.py::Probe::run:41",
+            "tools/lanes/lane_diff.ps1::x:12"
+        ],
+        "{bad:#?}"
+    );
+    assert!(bad[0].starts_with("    fixture:1: "), "{bad:?}");
+    assert!(
+        bad[0].contains("cites a line number of a repository file"),
+        "{bad:?}"
     );
 }
 
@@ -4135,18 +5049,14 @@ fn comment_block(lines: &[&str], at: usize) -> String {
     lines[lo..=hi].join("\n")
 }
 
-/// A `record.md:LO-HI` citation inside a Rust comment still points at the
-/// passage the comment names.
+/// The `record.md:LO-HI` citations left in Rust comments still point at the
+/// passage the comment names, and none is added.
 ///
-/// The mirror image of [`operational_docs_line_citations_point_at_the_line_they_name`],
-/// and the class that walk deliberately drops: it resolves `.rs` targets and
-/// `continue`s past every other extension, so a comment citing a plan or a
-/// phase record was checked by nothing at all. The rot is measured, not
-/// hypothetical — R4133_PROPS RP5.2's only code edit was re-pointing the two
-/// `props_r4133_replay.rs` citations of the WP-RP3 sanctioned-outcome sentence,
-/// whose range had drifted onto the RP2.4 display-floor derivation while both
-/// lanes stayed green. Its audit round (2026-09-04) found the repair itself
-/// unguarded, which is this test.
+/// The counterpart of [`operational_docs_cite_items_the_named_files_define`],
+/// which reads documents. RETRO_FIXES ruling R18 retires the form: a comment
+/// cites a plan or record passage by its heading. The citations that remain
+/// are counted exactly, so a new one reds and each one re-cited by its heading
+/// lowers the count in the same commit.
 ///
 /// Three checks: the record exists; the cited range is inside it and not all
 /// blank; and the passage is **anchored** — either the comment names a section
@@ -4252,18 +5162,38 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
     }
 
     assert!(
-        checked >= 5 && citing_files.len() >= 2,
-        "the walk found only {checked} `record.md:LINE` citations over {citing_files:?} \
-         — either they were all deleted or the scanner stopped seeing them, and this \
-         gate went vacuous"
-    );
-    assert!(
         bad.is_empty(),
         "a Rust comment cites a record line that no longer carries the passage it \
-         names. Re-read the record and re-point the range (or re-word the comment); \
-         do NOT delete the line number:\n{}\nchecked: {checked} citations over {:?}",
+         names. Cite the passage by its heading instead (RETRO_FIXES ruling R18) and \
+         lower the count below in the same commit; never re-point the line \
+         number:\n{}\nchecked: {checked} citations over {:?}",
         bad.join("\n"),
         citing_files
+    );
+    // Exact counts, read once every citation is sound (RF-D07-01, RP5.2 audit
+    // AT-1; audit AC-2): five citations of `tests/TOLERANCE_NOTES.md` in
+    // `harness/mod.rs` and two of the archived R4133_PROPS plan in
+    // `props_r4133_replay.rs`. They only ever go down.
+    assert!(
+        checked <= 7 && citing_files.len() <= 2,
+        "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, more \
+         than the 7 over 2 files this gate holds. A Rust comment cites a plan or record \
+         passage by its heading, never by a line number (RETRO_FIXES ruling R18): cite \
+         the new one by its heading, and never raise these counts"
+    );
+    assert_eq!(
+        checked, 7,
+        "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, and \
+         this gate holds the exact count — a floor lets the table shrink. One re-cited by \
+         its heading lowers this number in the same commit; one that vanished unasked \
+         was deleted or the scanner stopped seeing it"
+    );
+    assert_eq!(
+        citing_files.len(),
+        2,
+        "the `record.md:LINE` citations now sit in {citing_files:?}, and this gate holds \
+         the exact number of citing files — a floor lets the table shrink. Lower it in \
+         the same commit as the edit that re-cited a file's last citation by its heading"
     );
 }
 
@@ -4274,8 +5204,8 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
 /// (`props_r4133_replay.rs::every_rp311_serialization_pin_exists_and_is_cited`):
 /// without one, renaming or deleting a pin leaves the prose claiming a
 /// guarantee that no longer exists, with a green suite —
-/// [`operational_docs_line_citations_point_at_the_line_they_name`] cannot
-/// help, because it only resolves the citations that carry a `:LINE` suffix and
+/// [`operational_docs_cite_items_the_named_files_define`] cannot help, because
+/// it only resolves the citations that spell their file (`<path>::<item>`) and
 /// `docs/phase-records/` is deliberately outside [`LINE_CITED_DOCS`].
 ///
 /// Each row must also still be *named* by the prose, so the table cannot
