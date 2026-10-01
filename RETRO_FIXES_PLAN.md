@@ -5247,18 +5247,19 @@ tracked. The rulings:
    runs the command unqueued, without a job object, exiting with its code, never silently.
 4. The usage line of the ritual becomes `python tools/gate/gatelock.py --label "<who>" -- cargo
    <args>` (relative to the tree being built). At the landing the coordinator re-points its own
-   scripts (the workflow prompts, the gate drivers), for a run only when its tree contains the
-   landing commit (`git merge-base --is-ancestor <landing commit> HEAD`): a lane cut before it has
-   no `tools/gate/` and keeps the old spelling until it merges `update`. The coordinator replaces the
-   old path by a shim only when the old board (`tmp/retro_fix/state/gate_board.txt`) shows no holder
-   and no waiter: a wrapper already running keeps the old queue directory in memory and no
-   `GATELOCK_ROOT` maps the new layout onto the old one, so two live queues would admit four builds
-   and two test runs. The shim runs `<main checkout>/tools/gate/gatelock.py` in its own process
+   scripts (the workflow prompts, the gate drivers) and replaces the old path by a shim. The shim
+   goes in only when the old board (`tmp/retro_fix/state/gate_board.txt`) shows no holder and no
+   waiter, and no run takes the new spelling before it: a wrapper already running keeps the old
+   queue directory in memory and no `GATELOCK_ROOT` maps the new layout onto the old one, so two
+   live queues would admit four builds and two test runs. A run is re-pointed only when its tree
+   contains the landing commit (`git merge-base --is-ancestor <landing commit> HEAD`): a lane cut
+   before it has no `tools/gate/` and keeps the old spelling, which the shim serves, until it merges
+   `update`. The shim runs `<main checkout>/tools/gate/gatelock.py` in its own process
    (`runpy.run_path(..., run_name="__main__")`, so killing it still kills its cargo and the exit code
    passes unchanged) and sets no `GATELOCK_ROOT`, so the two spellings share the default root. The
-   shim is the coordinator's, not this step's. Until that switch the live queue is the old one: the
-   step's gate, scoped checks and audits run through the old path, and only the probes of part 1 run
-   the new script, with commands that build nothing of the workspace.
+   shim is the coordinator's, not this step's. Until it is in place the live queue is the old one:
+   the step's gate, scoped checks and audits run through the old path, and only the probes of part 1
+   run the new script, with commands that build nothing of the workspace.
 **Parts:**
 1. `INFRA|10` - the move with rulings 1-3, the README, the TESTING.md subsection and its two rows,
    the CLAUDE.md sentence, the probes of **Probes** (in `part_1.md`, no commit of them), the record.
@@ -5271,8 +5272,9 @@ quoted in `part_1.md` with its exit code, its `board.log` lines and the stderr i
 (1) Root: `python <script> --label rf-i00-09-root -- cargo check --help` (a build-slot command that
 compiles nothing), run with the lane's script from the lane worktree, and with a copy of it in
 `tmp/retro_fix/state/RF-I00-09/probe/` of the main checkout (inside the main tree, where git answers
-relative) from the lane worktree and from the main checkout's root. Each run appends one
-`rf-i00-09-root` line to `<main checkout>/tmp/gatelock/board.log`, and so does a run of the lane's
+relative) from the lane worktree and from `tmp/retro_fix/state/RF-I00-09/`, two working directories
+against which that relative answer lands elsewhere. Each run appends one `rf-i00-09-root` line to
+`<main checkout>/tmp/gatelock/board.log`, and so does a run of the lane's
 script with `GIT_DIR` set to a directory that is no repository. With
 `GATELOCK_ROOT=<a fresh directory>` the line goes to that directory's `board.log` instead. A copy
 outside any checkout (under `%TEMP%`), `GATELOCK_ROOT` unset, exits non-zero naming `GATELOCK_ROOT`
