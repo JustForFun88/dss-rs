@@ -178,18 +178,18 @@ English upstream-ready reports for all confirmed r4133 bugs live in
 
 ## Launching agents and workflows (user rule 2026-10-03 — binding)
 
-- **Ask before every launch.** No agent and no workflow starts without the
-  user's confirmation of that launch, even when the user has just asked for the
-  work: name what would start, on which lane, and what is already running, then
-  wait for the answer. A general "go ahead" or an earlier approval does not
-  carry over to the next launch.
-- **Check the machine before asking.** Count the workflows and building lanes in
-  flight, read the gate queue (`tools/gate/README.md`: waiting tickets mean the
-  machine is full), and look at CPU load, free memory and the running
-  `cargo`/`rustc` processes. Report those numbers in the question. If the queue
-  has waiters or the machine is loaded, say so and recommend waiting.
+- **Check the machine before every launch** of an agent or a workflow, also when
+  the user has just asked for the work: count the workflows and building lanes
+  in flight, read the gate queue (`tools/gate/README.md`: waiting tickets mean
+  the machine is full), and look at CPU load, free memory and the running
+  `cargo`/`rustc` processes.
+- **Resources free: launch without asking.** The check is not a question to the
+  user on every launch.
+- **Resources short: ask first.** Do not launch. Tell the user what is already
+  running (how many agents and workflows, the queue), that one more will slow
+  everything down, and ask whether they really want it started now.
 - **Ceiling:** about three workflows and three to four building lanes at once.
-  A freed lane is not a reason to launch.
+  Past it the machine counts as short. A freed lane is not a reason to launch.
 - After stopping a workflow, check that its scripts no longer queue builds.
 
 ## Gate (must be green before any commit)
