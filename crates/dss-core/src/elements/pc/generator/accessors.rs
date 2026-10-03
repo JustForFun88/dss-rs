@@ -133,102 +133,70 @@ impl CktElement for Generator {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TGeneratorObj.NumVariables` (`generator.pas:2717-2726`): the
-    /// linked `DynamicExp` count first, else the classic GenVars count plus the
-    /// existing `UserModel`/`ShaftModel` variable counts (WASM_USERMODELS WM.3).
+    /// The linked `DynamicExp`'s memory dump when it has variables, else the 6
+    /// classic GenVars, followed in both cases by the `UserModel` and
+    /// `ShaftModel` variables (`a_dynamic_eq_generator_keeps_both_model_tails`).
     fn num_variables(&self) -> usize {
-        let n = self.dyneq.num_variables();
-        if n != 0 {
-            return n;
-        }
-        let mut total = self.num_gen_variables();
-        if let Some(um) = self.user_model.as_ref().filter(|s| s.exists()) {
-            total += um.num_vars();
-        }
-        if let Some(sm) = self.shaft_model.as_ref().filter(|s| s.exists()) {
-            total += sm.num_vars();
-        }
-        total
+        let (un, sn) = self.tail_num_vars();
+        self.variable_base() + un + sn
     }
 
-    /// Pascal `TGeneratorObj.VariableName` (`generator.pas:2728-2786`): the
-    /// `DynamicExp` name first, then the classic table (1..6), then the
-    /// `UserModel` names (`k = i - NumGenVariables`), then the `ShaftModel` names.
+    /// The `DynamicExp` slot names or the 6 classic names, then the
+    /// `UserModel` names, then the `ShaftModel` names. Any other index answers
+    /// the empty string (`out_of_range_variable_names_are_empty`).
     ///
-    /// **Upstream bug deliberately NOT reproduced** (so: no compat marker —
-    /// the tag is for quirks we *do* reproduce). Pascal's ShaftModel branch
-    /// (`:2780`) calls `UserModel.FGetVarName` — a genuine upstream bug (should be
-    /// `ShaftModel.FGetVarName`); with no UserModel loaded it dereferences a nil
-    /// function pointer (an access violation), and out of the UserModel's range
-    /// it reads an uninitialized stack buffer. Per the CLAUDE.md rule (UB /
-    /// uninitialized-read bugs are NOT reproduced), the port does the correct
-    /// thing and queries the `ShaftModel` names. The dyn gate binds the SAME model
-    /// as `UserModel=` and `ShaftModel=`, so its 14 shaft names DUPLICATE the user
-    /// names — the (correct) ShaftModel names the port returns coincide with what
-    /// the buggy upstream `FGetVarName` would read from the UserModel, so comparing
-    /// the full ordered 34-name surface (`wasm_usermodels.rs`) neither masks nor
-    /// trips over the upstream bug.
+    /// **Upstream bug deliberately NOT reproduced**: upstream asks the
+    /// `UserModel` for the shaft names (a nil call with no `UserModel`, an
+    /// uninitialized buffer past its range); the port asks the `ShaftModel`.
+    /// The dyn gate binds the same model in both slots, so its ordered 34-name
+    /// surface (`wasm_usermodels.rs`) reads the same either way.
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.dyneq.variable_name(i) {
             return name;
         }
-        let base = self.num_gen_variables();
+        // A dump answers its own indices above, so only the classic layout
+        // reaches the classic names.
+        let base = self.variable_base();
         if (1..=base).contains(&i) {
             return self.gen_variable_name(i);
         }
-        let un = self
-            .user_model
-            .as_ref()
-            .filter(|s| s.exists())
-            .map_or(0, |s| s.num_vars());
+        let (un, sn) = self.tail_num_vars();
         if i > base
             && i <= base + un
             && let Some(um) = self.user_model.as_ref()
         {
             return um.var_name(i - base).unwrap_or_default().to_string();
         }
-        if let Some(sm) = self.shaft_model.as_ref().filter(|s| s.exists())
-            && i > base + un
-            && i <= base + un + sm.num_vars()
+        if i > base + un
+            && i <= base + un + sn
+            && let Some(sm) = self.shaft_model.as_ref()
         {
             return sm.var_name(i - base - un).unwrap_or_default().to_string();
         }
-        self.gen_variable_name(i) // Pascal seeds Result := 'ERROR' for out-of-range
+        String::new()
     }
 
-    /// Pascal `TGeneratorObj.GetAllVariables` (`generator.pas:2689-2715`): the
-    /// `DynamicExp` memory dump first, else the classic GenVars (`States[0..6]`)
-    /// followed by the `UserModel` values (`@States[NumGenVariables]`) and the
-    /// `ShaftModel` values (`@States[NumGenVariables + N]`) — WASM_USERMODELS WM.3.
+    /// The linked `DynamicExp`'s memory dump when it has variables, else the 6
+    /// classic GenVars, then in both cases the `UserModel` values and the
+    /// `ShaftModel` values right after the block actually filled, so the
+    /// surface is exactly the `num_variables()` cells the names describe
+    /// (`a_dynamic_eq_generator_keeps_both_model_tails`).
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
-        if self.dyneq.has_dynamic_eq() {
-            for (i, s) in states
-                .iter_mut()
-                .enumerate()
-                .take(self.dyneq.num_variables())
-            {
+        let base = self.variable_base();
+        if self.dyneq.num_variables() != 0 {
+            for (i, s) in states.iter_mut().enumerate().take(base) {
                 *s = self.dyneq.get_dynamic_eq_val(i);
             }
-            return;
+        } else {
+            self.get_gen_variables(states);
         }
-        self.get_gen_variables(states);
-        let base = self.num_gen_variables();
-        let un = self
-            .user_model
-            .as_ref()
-            .filter(|s| s.exists())
-            .map_or(0, |s| s.num_vars());
+        let (un, sn) = self.tail_num_vars();
         if un > 0 {
             let end = (base + un).min(states.len());
             if base < end {
                 self.get_all_vars_slot(UserModelSlot::User, &mut states[base..end], sys, node_v);
             }
         }
-        let sn = self
-            .shaft_model
-            .as_ref()
-            .filter(|s| s.exists())
-            .map_or(0, |s| s.num_vars());
         if sn > 0 {
             let start = base + un;
             let end = (start + sn).min(states.len());
@@ -238,12 +206,13 @@ impl CktElement for Generator {
         }
     }
 
-    /// Pascal `TGeneratorObj.Set_Variable` (`generator.pas:2634-2687`): route a
-    /// 1-based state-variable write to the classic GenVars table (1..6), then the
-    /// `UserModel` / `ShaftModel`. `i < 1` → `#565`; a DynamicEq generator rejects
-    /// writes → `#566`; index 3 (`Vd`) is read-only → `#564`. The diagnostics have
-    /// no direct return channel here, so they queue on the element's deferred-error
-    /// log (drained by the executive after the `Set StateVar` command).
+    /// Route a 1-based state-variable write to the classic GenVars table (1..6),
+    /// then the `UserModel` / `ShaftModel`. `i < 1` → `#565`; a DynamicEq
+    /// generator rejects writes ahead of its model tail → `#566` and routes the
+    /// tail to the models (`a_dynamic_eq_generator_keeps_both_model_tails`);
+    /// index 3 (`Vd`) is read-only → `#564`. The diagnostics have no direct
+    /// return channel here, so they queue on the element's deferred-error log
+    /// (drained by the executive after the `Set StateVar` command).
     fn set_variable(&mut self, i: usize, value: f64, sys: &crate::elements::traits::SysCtx) {
         use super::dynamics::{RADIANS_TO_DEGREES, TWO_PI};
         if i < 1 {
@@ -257,6 +226,12 @@ impl CktElement for Generator {
             return;
         }
         if self.dyneq.has_dynamic_eq() {
+            let base = self.variable_base();
+            if i > base {
+                // The tail routing counts from the classic block.
+                self.set_user_model_variable(i - base + self.num_gen_variables(), value, sys);
+                return;
+            }
             self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
                 format!(
                     "Generator.{}: cannot set state variable when using DynamicEq.",

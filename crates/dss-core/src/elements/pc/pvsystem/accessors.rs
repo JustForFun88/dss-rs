@@ -11,7 +11,9 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::temp_shape::TShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
+use crate::elements::pc::inv_based_pce::{
+    Connection, InvBasedPce, InvBasedPceData, InvDynamicVars, NUM_INV_DYN_VARS,
+};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
@@ -97,47 +99,45 @@ impl CktElement for PVSystem {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TPVsystemObj.NumVariables` — the linked `DynamicExp` count first
-    /// (inherited `TDynEqPCE.NumVariables`), else 22 (13 base + 9 InvDynVars).
+    /// The linked `DynamicExp`'s memory dump when it has variables, else the 22
+    /// classic variables (13 base + 9 InvDynVars), followed in both cases by the
+    /// `UserModel` variables (`a_dynamic_eq_pvsystem_keeps_its_model_tail`).
     fn num_variables(&self) -> usize {
-        let n = self.base.dyneq.num_variables();
-        if n != 0 {
-            return n;
-        }
-        self.num_pv_variables() + self.num_user_model_variables()
+        self.variable_base() + self.num_user_model_variables()
     }
 
-    /// Pascal `TPVsystemObj.VariableName` (1-based, `PVsystem.pas:2591-2640`): the
-    /// `DynamicExp` memory-slot name first (inherited), then the classic name
-    /// table, then the `UserModel` names.
+    /// The `DynamicExp` slot names or the 22 classic names, then the
+    /// `UserModel` names. Index 0 answers the empty string and an index past
+    /// the surface `"Unknown variable"`
+    /// (`a_dynamic_eq_pvsystem_keeps_its_model_tail`).
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.base.dyneq.variable_name(i) {
             return name;
         }
-        if i > self.num_pv_variables()
-            && let Some(name) = self.user_model_variable_name(i)
-        {
-            return name;
+        // A dump answers its own indices above, so only the classic layout
+        // reaches the classic names.
+        let base = self.variable_base();
+        if i <= base {
+            return self.pv_variable_name(i);
         }
-        self.pv_variable_name(i)
+        // The tail lookup counts from the classic block; past the surface the
+        // inverter-dynamics table's unknown-index name.
+        self.user_model_variable_name(i - base + self.num_pv_variables())
+            .unwrap_or_else(|| InvDynamicVars::get_inv_dyn_name(NUM_INV_DYN_VARS).to_string())
     }
 
-    /// Pascal `TPVsystemObj.GetAllVariables` (`PVsystem.pas:2552-2564`): the
-    /// `DynamicExp` memory dump first, else the classic 22 followed by the
-    /// `UserModel` values (`@States[NumPVSystemVariables]`).
+    /// The linked `DynamicExp`'s memory dump when it has variables, else the 22
+    /// classic variables, then in both cases the `UserModel` values right after
+    /// the block actually filled (`a_dynamic_eq_pvsystem_keeps_its_model_tail`).
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
-        if self.base.dyneq.has_dynamic_eq() {
-            for (i, s) in states
-                .iter_mut()
-                .enumerate()
-                .take(self.base.dyneq.num_variables())
-            {
+        let base = self.variable_base();
+        if self.base.dyneq.num_variables() != 0 {
+            for (i, s) in states.iter_mut().enumerate().take(base) {
                 *s = self.base.dyneq.get_dynamic_eq_val(i);
             }
-            return;
+        } else {
+            self.get_all_pv_variables(sys, node_v, states);
         }
-        self.get_all_pv_variables(sys, node_v, states);
-        let base = self.num_pv_variables();
         let un = self.num_user_model_variables();
         if un > 0 {
             let end = (base + un).min(states.len());
@@ -147,10 +147,15 @@ impl CktElement for PVSystem {
         }
     }
 
+    /// Route a 1-based state-variable write past the block ahead of the tail
+    /// to the `UserModel` (an index past the surface is ignored), every other
+    /// index to the classic table, which a linked `DynamicExp` makes read-only
+    /// (`#566`, `a_dynamic_eq_pvsystem_keeps_its_model_tail`).
     fn set_variable(&mut self, i: usize, value: f64, sys: &crate::elements::traits::SysCtx) {
-        // Pascal `Set_Variable` routes i > NumPVSystemVariables to the UserModel
-        // (`PVsystem.pas:2534-2541`, WASM_USERMODELS WM.4).
-        if i > self.num_pv_variables() && self.set_user_model_variable(i, value, sys) {
+        let base = self.variable_base();
+        if i > base {
+            // The tail routing counts from the classic block.
+            self.set_user_model_variable(i - base + self.num_pv_variables(), value, sys);
             return;
         }
         self.set_pv_variable(i, value);
@@ -302,6 +307,14 @@ impl InvBasedPce for PVSystem {
 }
 
 impl PVSystem {
+    /// How many variables sit ahead of the `UserModel` tail: the linked
+    /// `DynamicExp`'s memory dump when it has variables, else the 22 classic
+    /// variables. The four variable accessors all start the tail here.
+    fn variable_base(&self) -> usize {
+        let n = self.base.dyneq.num_variables();
+        if n != 0 { n } else { self.num_pv_variables() }
+    }
+
     /// Pascal `TPVsystemObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);

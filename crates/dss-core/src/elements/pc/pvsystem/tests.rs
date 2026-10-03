@@ -581,3 +581,130 @@ fn direct_shortcut_excluded_in_gfm_mode() {
         i_gfm[0]
     );
 }
+
+// --- the state-variable surface: the model tail on the DynamicExp path ---
+
+/// The committed PVSystem guest fixture's 4 variables, in order.
+const MODEL_VARS: [&str; 4] = ["Iout1", "G", "B", "Tau"];
+
+/// A PVSystem with the committed fixture `tests/fixtures/wasm/wm4model.wasm`
+/// bound as `UserModel=` (`G`/`B`/`Tau` exactly representable), its deferred
+/// loads resolved the way the executive does.
+fn pvsystem_with_user_model() -> PVSystem {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/wasm/wm4model.wasm");
+    let wasm = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let mut pv = edit_pvsystem(&[
+        ("UserModel", "wm4model.wasm"),
+        ("UserData", "g=0.25 b=-0.125 tau=0.5"),
+    ]);
+    let sys = SysCtx::parse_default();
+    let mut errors = crate::diag::ErrorLog::new();
+    for load in pv.take_user_model_loads() {
+        pv.apply_user_model_load(&load, Some(&wasm), &sys, &mut errors);
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(pv.cd.obj.take_errors().is_empty());
+    pv
+}
+
+/// Link a two-variable `DynamicExp` (`speed`, `theta`) whose memory holds
+/// `[1.5, -0.25]` and `[0.75, 0.125]`.
+fn bind_dynamic_eq(pv: &mut PVSystem) {
+    use crate::elements::general::dynamic_exp::{DynamicExpObj, prop as dexp};
+    let mut eq = DynamicExpObj::new("pde");
+    eq.set_i32(dexp::NVARIABLES, 2);
+    eq.set_string_list(dexp::VARNAMES, vec!["speed".into(), "theta".into()]);
+    pv.base.dyneq.dynamic_eq_obj = Some(eq);
+    pv.base.dyneq.on_dynamic_eq_set();
+    pv.base.dyneq.dynamic_eq_vals = vec![[1.5, -0.25], [0.75, 0.125]];
+}
+
+/// The whole state-variable surface, in index order.
+fn all_variables(pv: &mut PVSystem) -> Vec<f64> {
+    let mut states = vec![0.0; pv.num_variables()];
+    pv.get_all_variables(&SysCtx::parse_default(), &[], &mut states);
+    states
+}
+
+/// A PVSystem with a `DynamicEq=` keeps its `UserModel` variables: the surface
+/// is the 4-slot dump, then the 4 model variables, by count, name, value and
+/// write. Without the equation the same tail follows the 22 classic variables.
+/// Index 0 answers the empty string and an index past the surface
+/// `"Unknown variable"`; a write past the surface changes nothing and a write
+/// into the dump answers `#566`.
+#[test]
+fn a_dynamic_eq_pvsystem_keeps_its_model_tail() {
+    let mut pv = pvsystem_with_user_model();
+    assert_eq!(pv.num_variables(), 22 + 4);
+    let names: Vec<String> = (22..=27).map(|i| pv.variable_name(i)).collect();
+    assert_eq!(names[0], "Max. Amps (phase)");
+    assert_eq!(
+        names[1..5],
+        MODEL_VARS,
+        "UserModel names after the classic ones"
+    );
+    assert_eq!(names[5], "Unknown variable");
+    let user = [0.0, 0.25, -0.125, 0.5];
+    assert_eq!(
+        all_variables(&mut pv)[22..],
+        user,
+        "UserModel after the 22 classic variables"
+    );
+
+    bind_dynamic_eq(&mut pv);
+    assert_eq!(pv.num_variables(), 4 + 4);
+    let names: Vec<String> = (0..=9).map(|i| pv.variable_name(i)).collect();
+    assert_eq!(names[..5], ["", "speed", "dspeed", "theta", "dtheta"]);
+    assert_eq!(names[5..9], MODEL_VARS, "UserModel names after the dump");
+    assert_eq!(names[9], "Unknown variable");
+
+    let dump = [1.5, -0.25, 0.75, 0.125];
+    let s = all_variables(&mut pv);
+    assert_eq!(s[..4], dump, "the DynamicExp dump");
+    assert_eq!(s[4..], user, "UserModel after the dump");
+
+    let sys = SysCtx::parse_default();
+    pv.set_variable(4 + 2, 0.1875, &sys);
+    pv.set_variable(4 + 3, 0.375, &sys);
+    assert!(pv.cd.obj.take_errors().is_empty());
+    let s = all_variables(&mut pv);
+    assert_eq!(s[4 + 1], 0.1875, "the write reached the UserModel G");
+    assert_eq!(s[4 + 2], 0.375, "the write reached the UserModel B");
+    assert_eq!(s[..4], dump, "the tail writes leave the dump alone");
+
+    pv.set_variable(4 + 4 + 1, 7.0, &sys);
+    let errors = pv.cd.obj.take_errors();
+    assert!(errors.is_empty(), "a write past the surface: {errors:?}");
+    assert_eq!(
+        all_variables(&mut pv),
+        s,
+        "a write past the surface changes nothing"
+    );
+
+    pv.set_variable(2, 9.0, &sys);
+    let errors = pv.cd.obj.take_errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("cannot set state variable when using DynamicEq"));
+    assert_eq!(all_variables(&mut pv)[..4], dump);
+}
+
+/// A linked `DynamicExp` without variables keeps the classic layout: the same
+/// count and names as before the link, every classic value read as
+/// `-9999.99`, then the `UserModel` tail.
+#[test]
+fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
+    use crate::elements::general::dynamic_exp::DynamicExpObj;
+    let mut pv = pvsystem_with_user_model();
+    let names: Vec<String> = (0..=27).map(|i| pv.variable_name(i)).collect();
+
+    pv.base.dyneq.dynamic_eq_obj = Some(DynamicExpObj::new("empty"));
+    pv.base.dyneq.on_dynamic_eq_set();
+    assert_eq!(pv.base.dyneq.num_variables(), 0);
+    assert_eq!(pv.num_variables(), 22 + 4);
+    let linked: Vec<String> = (0..=27).map(|i| pv.variable_name(i)).collect();
+    assert_eq!(linked, names);
+    let s = all_variables(&mut pv);
+    assert_eq!(s[..22], [-9999.99; 22], "the classic values under the link");
+    assert_eq!(s[22..], [0.0, 0.25, -0.125, 0.5], "UserModel after them");
+}

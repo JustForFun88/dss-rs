@@ -554,18 +554,27 @@ impl Storage {
     // State-variable interface
     // -----------------------------------------------------------------------
 
-    /// Pascal `TStorageObj.NumVariables` (l.3203) — the 34 classic variables
-    /// (25 base + 9 InvDynVars). The linked-`DynamicExp` count is dispatched ahead
-    /// of this in the `num_variables` accessor; the UserModel/DynaModel counts are
-    /// added there too (WM.4).
+    /// The 34 classic variables (25 base + 9 InvDynVars).
     pub(super) fn num_storage_variables(&self) -> usize {
         NUM_STORAGE_VARS // = 34
     }
 
-    /// Pascal `TStorageObj.VariableName` (l.3220) (1-based).
-    /// Pascal seeds `Result := 'ERROR'` then `Result := inherited VariableName(i)`
-    /// (`''` for `i >= 1` with no DynamicEq): so `i < 1` returns `'ERROR'`, but an
-    /// out-of-range high index (`i > 34`, no UserModel) returns `''`.
+    /// How many variables sit ahead of the `UserModel`/`DynaModel` tail: the
+    /// linked `DynamicExp`'s memory dump when it has variables, else the 34
+    /// classic variables. The four variable accessors all start the tail here.
+    pub(super) fn variable_base(&self) -> usize {
+        let n = self.base.dyneq.num_variables();
+        if n != 0 {
+            n
+        } else {
+            self.num_storage_variables()
+        }
+    }
+
+    /// The 34 classic Storage names (1-based). Index 0 answers the empty string;
+    /// every index past the 25 base names goes through the inverter-dynamics
+    /// name table, so one past 34 answers `"Unknown variable"`
+    /// (`out_of_range_variable_names_follow_the_name_tables`).
     pub(super) fn storage_variable_name(&self, i: usize) -> String {
         match i {
             1 => "kWh",
@@ -593,9 +602,8 @@ impl Storage {
             23 => "kW VW Limit",
             24 => "Limit kWOut Function",
             25 => "kVA Exceeded",
-            26..=34 => InvDynamicVars::get_inv_dyn_name(i - NUM_BASE_STORAGE_VARS - 1),
-            0 => "ERROR", // Pascal `i < 1` exits with the 'ERROR' seed.
-            _ => "",      // i > 34 (no UserModel): the inherited '' (not 'ERROR').
+            0 => "",
+            _ => InvDynamicVars::get_inv_dyn_name(i - NUM_BASE_STORAGE_VARS - 1),
         }
         .to_string()
     }
@@ -615,9 +623,11 @@ impl Storage {
         false
     }
 
-    /// Pascal `TStorageObj.Get_Variable` (l.2977) (1-based).
-    /// Returns -9999.99 for out-of-range `i`; i > NumStorageVariables routes to the
-    /// UserModel/DynaModel state vars (WM.4).
+    /// One of the 34 classic Storage variables (1-based), read by
+    /// `get_all_storage_variables`. A linked `DynamicExp` answers its memory
+    /// dump instead and `-9999.99` past it, so a `DynamicExp` without variables
+    /// reads every classic value as `-9999.99`
+    /// (`a_dynamic_eq_without_variables_keeps_the_classic_layout`).
     pub(super) fn get_storage_variable(
         &mut self,
         i: usize,
@@ -713,10 +723,10 @@ impl Storage {
         }
     }
 
-    /// Pascal `TStorageObj.GetAllVariables` (l.3176): fill `states[0..33]`
-    /// (0-based) with `Variable[1..34]` (1-based). The `DynamicEqObj` memory dump is
-    /// handled by the `get_all_variables` accessor short-circuit; the
-    /// UserModel/DynaModel values are appended there (WM.4).
+    /// Fill `states[0..34]` (0-based) with the 34 classic variables (1-based).
+    /// The `get_all_variables` accessor writes the `DynamicExp` memory dump in
+    /// their place when an equation with variables is linked, and appends the
+    /// UserModel/DynaModel values in both cases.
     pub(super) fn get_all_storage_variables(
         &mut self,
         sys: &SysCtx,
@@ -730,11 +740,11 @@ impl Storage {
         }
     }
 
-    /// Pascal `TStorageObj.Set_Variable` (l.3110) (1-based). The write side of the
-    /// state-variable interface, reached via the `set_variable` trait method.
-    /// A linked `DynamicExp` makes every state variable read-only (msg 566, below);
-    /// i > NumStorageVariables routes to the UserModel/DynaModel setters (WM.4).
-    pub(super) fn set_storage_variable(&mut self, i: usize, value: f64, sys: &SysCtx) {
+    /// The 34 classic Storage setters (1-based), which the `set_variable`
+    /// accessor reaches for the indices ahead of the model tail; it routes the
+    /// tail itself. A linked `DynamicExp` makes the table read-only (msg 566,
+    /// below) and index 0 writes nothing.
+    pub(super) fn set_storage_variable(&mut self, i: usize, value: f64) {
         // DynamicEqObj <> NIL: state variables are read-only — the equation drives
         // them (Pascal Set_Variable, msg 566).
         if self.base.dyneq.has_dynamic_eq() {
@@ -763,12 +773,7 @@ impl Storage {
                 .base
                 .dyn_vars
                 .set_inv_dyn_value(i - NUM_BASE_STORAGE_VARS - 1, value),
-            // WASM_USERMODELS WM.4 — i > NumStorageVariables routes to the
-            // `UserModel`/`DynaModel` state-variable setters (Pascal
-            // Storage.pas:3158-3177).
-            _ => {
-                self.set_user_model_variable(i, value, sys);
-            }
+            _ => {}
         }
     }
 }

@@ -589,3 +589,233 @@ fn gen_dispatch_mode_pins_enum_ordinals() {
     assert_eq!(GenDispatchMode::from_ordinal(3), None);
     assert_eq!(GenDispatchMode::default(), GenDispatchMode::Default);
 }
+
+// --- the state-variable surface: the model tails on the DynamicExp path ---
+
+/// The committed Generator guest fixture's 14 variables, in order.
+const MODEL_VARS: [&str; 14] = [
+    "Slip",
+    "puRs",
+    "puXs",
+    "puRr",
+    "puXr",
+    "puXm",
+    "MaxSlip",
+    "Is1",
+    "Is2",
+    "Ir1",
+    "Ir2",
+    "StatorLoss",
+    "RotorLoss",
+    "HPshaft",
+];
+
+/// The committed Generator guest fixture, `tests/fixtures/wasm/indmach012a.wasm`.
+fn indmach012a_wasm() -> Vec<u8> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/wasm/indmach012a.wasm");
+    std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+/// The `ShaftModel=` binding of the fixture, with its own `Rs`/`Xs`.
+const SHAFT_MODEL: [(&str, &str); 2] = [
+    ("ShaftModel", "indmach012a.wasm"),
+    ("ShaftData", "Rs=0.0625 Xs=0.25"),
+];
+
+/// Apply the property edits that bind the fixture, then resolve the deferred
+/// loads the way the executive does.
+fn bind_models(g: &mut Generator, edits: &[(&str, &str)]) {
+    let wasm = indmach012a_wasm();
+    for (name, value) in edits {
+        let msgs = edit_gen_prop(g, name, value);
+        assert!(msgs.is_empty(), "{name}: {msgs:?}");
+    }
+    let sys = SysCtx::parse_default();
+    let mut errors = crate::diag::ErrorLog::new();
+    for load in g.take_user_model_loads() {
+        g.apply_user_model_load(&load, Some(&wasm), &sys, &mut errors);
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(g.cd.obj.take_errors().is_empty());
+}
+
+/// Bind the fixture as both `UserModel=` and `ShaftModel=`, each with its own
+/// `Rs`/`Xs` (all exactly representable).
+fn bind_both_models(g: &mut Generator) {
+    bind_models(
+        g,
+        &[
+            ("UserModel", "indmach012a.wasm"),
+            ("UserData", "Rs=0.03125 Xs=0.125"),
+            SHAFT_MODEL[0],
+            SHAFT_MODEL[1],
+        ],
+    );
+}
+
+/// Link a two-variable `DynamicExp` (`speed`, `theta`) whose memory holds
+/// `[1.5, -0.25]` and `[0.75, 0.125]`.
+fn bind_dynamic_eq(g: &mut Generator) {
+    use crate::elements::general::dynamic_exp::{DynamicExpObj, prop as dexp};
+    let mut eq = DynamicExpObj::new("gde");
+    eq.set_i32(dexp::NVARIABLES, 2);
+    eq.set_string_list(dexp::VARNAMES, vec!["speed".into(), "theta".into()]);
+    g.dyneq.dynamic_eq_obj = Some(eq);
+    g.dyneq.on_dynamic_eq_set();
+    g.dyneq.dynamic_eq_vals = vec![[1.5, -0.25], [0.75, 0.125]];
+}
+
+/// The whole state-variable surface, in index order.
+fn all_variables(g: &mut Generator) -> Vec<f64> {
+    let mut states = vec![0.0; g.num_variables()];
+    g.get_all_variables(&SysCtx::parse_default(), &[], &mut states);
+    states
+}
+
+/// A Generator with a `DynamicEq=` keeps its `UserModel` and `ShaftModel`
+/// variables: the surface is the 4-slot dump, then the 14 user and the 14 shaft
+/// variables, by count, name, value and write. Without the equation the same
+/// tails follow the 6 classic GenVars. A write past the surface changes
+/// nothing; a write into the dump answers `#566`.
+#[test]
+fn a_dynamic_eq_generator_keeps_both_model_tails() {
+    let mut g = gen_3ph();
+    bind_both_models(&mut g);
+    assert_eq!(g.num_variables(), 6 + 14 + 14);
+    let classic = all_variables(&mut g);
+    assert_eq!(classic[6 + 1], 0.03125, "UserModel puRs after the GenVars");
+    assert_eq!(
+        classic[20 + 1],
+        0.0625,
+        "ShaftModel puRs after the user tail"
+    );
+
+    bind_dynamic_eq(&mut g);
+    assert_eq!(g.num_variables(), 4 + 14 + 14);
+    let names: Vec<String> = (1..=32).map(|i| g.variable_name(i)).collect();
+    assert_eq!(names[..4], ["speed", "dspeed", "theta", "dtheta"]);
+    for (k, want) in MODEL_VARS.iter().enumerate() {
+        assert_eq!(names[4 + k], *want, "UserModel variable {}", k + 1);
+        assert_eq!(names[18 + k], *want, "ShaftModel variable {}", k + 1);
+    }
+
+    let dump = [1.5, -0.25, 0.75, 0.125];
+    let s = all_variables(&mut g);
+    assert_eq!(s[..4], dump, "the DynamicExp dump");
+    assert_eq!(s[4 + 1], 0.03125, "UserModel puRs after the dump");
+    assert_eq!(s[4 + 2], 0.125, "UserModel puXs after the dump");
+    assert_eq!(s[18 + 1], 0.0625, "ShaftModel puRs after the user tail");
+    assert_eq!(s[18 + 2], 0.25, "ShaftModel puXs after the user tail");
+
+    // Index 6 lies past the 4-slot dump but inside the 6 classic slots.
+    let sys = SysCtx::parse_default();
+    g.set_variable(4 + 2, 0.046875, &sys);
+    g.set_variable(4 + 3, 0.375, &sys);
+    g.set_variable(18 + 3, 0.5, &sys);
+    assert!(g.cd.obj.take_errors().is_empty());
+    let s = all_variables(&mut g);
+    assert_eq!(s[4 + 1], 0.046875, "the write reached the UserModel puRs");
+    assert_eq!(s[4 + 2], 0.375, "the write reached the UserModel puXs");
+    assert_eq!(s[18 + 2], 0.5, "the write reached the ShaftModel puXs");
+    assert_eq!(s[..4], dump, "the tail writes leave the dump alone");
+
+    g.set_variable(32 + 1, 7.0, &sys);
+    let errors = g.cd.obj.take_errors();
+    assert!(errors.is_empty(), "a write past the surface: {errors:?}");
+    assert_eq!(
+        all_variables(&mut g),
+        s,
+        "a write past the surface changes nothing"
+    );
+
+    g.set_variable(2, 9.0, &sys);
+    let errors = g.cd.obj.take_errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("cannot set state variable when using DynamicEq"));
+    assert_eq!(all_variables(&mut g)[..4], dump);
+}
+
+/// An index outside `1..=num_variables()` answers the empty string in every
+/// layout: classic, classic with both model tails, and the `DynamicExp` dump
+/// with both tails.
+#[test]
+fn out_of_range_variable_names_are_empty() {
+    let mut g = gen_3ph();
+    assert_eq!(g.num_variables(), 6);
+    assert_eq!(g.variable_name(0), "");
+    assert_eq!(g.variable_name(6), "dTheta (Deg)");
+    assert_eq!(g.variable_name(7), "");
+
+    bind_both_models(&mut g);
+    assert_eq!(g.num_variables(), 34);
+    assert_eq!(g.variable_name(0), "");
+    assert_eq!(g.variable_name(34), "HPshaft");
+    assert_eq!(g.variable_name(35), "");
+
+    bind_dynamic_eq(&mut g);
+    assert_eq!(g.num_variables(), 32);
+    assert_eq!(g.variable_name(0), "");
+    assert_eq!(g.variable_name(32), "HPshaft");
+    assert_eq!(g.variable_name(33), "");
+}
+
+/// A `ShaftModel=` bound without a `UserModel=` answers its own names, values
+/// and writes right after the 6 classic GenVars, and after the `DynamicExp`
+/// dump once one is linked: the shaft names come from the `ShaftModel`, never
+/// from the absent `UserModel`.
+#[test]
+fn a_lone_shaft_model_names_its_own_tail() {
+    let mut g = gen_3ph();
+    bind_models(&mut g, &SHAFT_MODEL);
+    assert_eq!(g.num_variables(), 6 + 14);
+    let names: Vec<String> = (7..=21).map(|i| g.variable_name(i)).collect();
+    assert_eq!(
+        names[..14],
+        MODEL_VARS,
+        "ShaftModel names after the GenVars"
+    );
+    assert_eq!(names[14], "");
+    let classic = all_variables(&mut g);
+    assert_eq!(classic[6 + 1], 0.0625, "ShaftModel puRs after the GenVars");
+    assert_eq!(classic[6 + 2], 0.25, "ShaftModel puXs after the GenVars");
+
+    bind_dynamic_eq(&mut g);
+    assert_eq!(g.num_variables(), 4 + 14);
+    let names: Vec<String> = (5..=19).map(|i| g.variable_name(i)).collect();
+    assert_eq!(names[..14], MODEL_VARS, "ShaftModel names after the dump");
+    assert_eq!(names[14], "");
+    let dump = [1.5, -0.25, 0.75, 0.125];
+    let s = all_variables(&mut g);
+    assert_eq!(s[..4], dump, "the DynamicExp dump");
+    assert_eq!(s[4 + 1], 0.0625, "ShaftModel puRs after the dump");
+    assert_eq!(s[4 + 2], 0.25, "ShaftModel puXs after the dump");
+
+    let sys = SysCtx::parse_default();
+    g.set_variable(4 + 3, 0.5, &sys);
+    assert!(g.cd.obj.take_errors().is_empty());
+    let s = all_variables(&mut g);
+    assert_eq!(s[4 + 2], 0.5, "the write reached the ShaftModel puXs");
+    assert_eq!(s[..4], dump, "the tail write leaves the dump alone");
+}
+
+/// A linked `DynamicExp` without variables keeps the classic layout: the same
+/// count, names and values as before the link, the 6 GenVars then both model
+/// tails.
+#[test]
+fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
+    use crate::elements::general::dynamic_exp::DynamicExpObj;
+    let mut g = gen_3ph();
+    bind_both_models(&mut g);
+    let names: Vec<String> = (0..=35).map(|i| g.variable_name(i)).collect();
+    let values = all_variables(&mut g);
+    assert_eq!(values.len(), 6 + 14 + 14);
+
+    g.dyneq.dynamic_eq_obj = Some(DynamicExpObj::new("empty"));
+    g.dyneq.on_dynamic_eq_set();
+    assert_eq!(g.dyneq.num_variables(), 0);
+    assert_eq!(g.num_variables(), 6 + 14 + 14);
+    let linked: Vec<String> = (0..=35).map(|i| g.variable_name(i)).collect();
+    assert_eq!(linked, names);
+    assert_eq!(all_variables(&mut g), values);
+}

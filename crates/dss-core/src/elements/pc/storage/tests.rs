@@ -881,3 +881,169 @@ fn makeposseq_begin_edit_moves_only_the_recalc_count() {
         );
     }
 }
+
+/// Index 0 answers the empty string; an index past the 34 classic names goes
+/// through the inverter-dynamics name table and answers `"Unknown variable"`.
+#[test]
+fn out_of_range_variable_names_follow_the_name_tables() {
+    let st = Storage::new("s1");
+    assert_eq!(st.num_variables(), 34);
+    assert_eq!(st.variable_name(0), "");
+    assert_eq!(st.variable_name(1), "kWh");
+    assert_eq!(st.variable_name(25), "kVA Exceeded");
+    assert_eq!(st.variable_name(26), "Grid voltage");
+    assert_eq!(st.variable_name(34), "Max. Amps (phase)");
+    assert_eq!(st.variable_name(35), "Unknown variable");
+}
+
+// --- the state-variable surface: the model tails on the DynamicExp path ---
+
+/// The committed Storage guest fixture's 4 variables, in order.
+const MODEL_VARS: [&str; 4] = ["Iout1", "G", "B", "Tau"];
+
+/// Bind the committed fixture `tests/fixtures/wasm/wm4model.wasm` as both
+/// `UserModel=` and `DynaDLL=`, each with its own `G`/`B`/`Tau` (all exactly
+/// representable), resolving the deferred loads the way the executive does.
+fn bind_both_models(st: &mut Storage) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/wasm/wm4model.wasm");
+    let wasm = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    for (name, value) in [
+        ("UserModel", "wm4model.wasm"),
+        ("UserData", "g=0.25 b=-0.125 tau=0.5"),
+        ("DynaDLL", "wm4model.wasm"),
+        ("DynaData", "g=0.0625 b=-0.5 tau=2"),
+    ] {
+        let msgs = edit_storage_prop(st, name, value);
+        assert!(msgs.is_empty(), "{name}: {msgs:?}");
+    }
+    let sys = SysCtx::parse_default();
+    let mut errors = crate::diag::ErrorLog::new();
+    for load in st.take_user_model_loads() {
+        st.apply_user_model_load(&load, Some(&wasm), &sys, &mut errors);
+    }
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(st.cd.obj.take_errors().is_empty());
+}
+
+/// Link a two-variable `DynamicExp` (`speed`, `theta`) whose memory holds
+/// `[1.5, -0.25]` and `[0.75, 0.125]`.
+fn bind_dynamic_eq(st: &mut Storage) {
+    use crate::elements::general::dynamic_exp::{DynamicExpObj, prop as dexp};
+    let mut eq = DynamicExpObj::new("sde");
+    eq.set_i32(dexp::NVARIABLES, 2);
+    eq.set_string_list(dexp::VARNAMES, vec!["speed".into(), "theta".into()]);
+    st.base.dyneq.dynamic_eq_obj = Some(eq);
+    st.base.dyneq.on_dynamic_eq_set();
+    st.base.dyneq.dynamic_eq_vals = vec![[1.5, -0.25], [0.75, 0.125]];
+}
+
+/// The whole state-variable surface, in index order.
+fn all_variables(st: &mut Storage) -> Vec<f64> {
+    let mut states = vec![0.0; st.num_variables()];
+    st.get_all_variables(&SysCtx::parse_default(), &[], &mut states);
+    states
+}
+
+/// A Storage keeps its `UserModel` and `DynaModel` variables, each in its own
+/// block: after the 34 classic variables, and with a `DynamicEq=` after the
+/// 4-slot dump, by count, name, value and write. A write past the surface
+/// changes nothing; a write into the dump answers `#566`.
+#[test]
+fn a_dynamic_eq_storage_keeps_both_model_tails() {
+    let mut st = Storage::new("s1");
+    bind_both_models(&mut st);
+    assert_eq!(st.num_variables(), 34 + 4 + 4);
+    let names: Vec<String> = (35..=43).map(|i| st.variable_name(i)).collect();
+    assert_eq!(
+        names[..4],
+        MODEL_VARS,
+        "UserModel names after the classic ones"
+    );
+    assert_eq!(
+        names[4..8],
+        MODEL_VARS,
+        "DynaModel names after the user tail"
+    );
+    assert_eq!(names[8], "Unknown variable");
+    let user = [0.0, 0.25, -0.125, 0.5];
+    let dyna = [0.0, 0.0625, -0.5, 2.0];
+    let classic = all_variables(&mut st);
+    assert_eq!(
+        classic[34..38],
+        user,
+        "UserModel after the 34 classic variables"
+    );
+    assert_eq!(classic[38..], dyna, "DynaModel after the user tail");
+
+    bind_dynamic_eq(&mut st);
+    assert_eq!(st.num_variables(), 4 + 4 + 4);
+    let names: Vec<String> = (0..=13).map(|i| st.variable_name(i)).collect();
+    assert_eq!(names[..5], ["", "speed", "dspeed", "theta", "dtheta"]);
+    assert_eq!(names[5..9], MODEL_VARS, "UserModel names after the dump");
+    assert_eq!(
+        names[9..13],
+        MODEL_VARS,
+        "DynaModel names after the user tail"
+    );
+    assert_eq!(names[13], "Unknown variable");
+
+    let dump = [1.5, -0.25, 0.75, 0.125];
+    let s = all_variables(&mut st);
+    assert_eq!(s[..4], dump, "the DynamicExp dump");
+    assert_eq!(s[4..8], user, "UserModel after the dump");
+    assert_eq!(s[8..], dyna, "DynaModel after the user tail");
+
+    let sys = SysCtx::parse_default();
+    st.set_variable(4 + 2, 0.1875, &sys);
+    st.set_variable(4 + 3, 0.375, &sys);
+    st.set_variable(8 + 3, 0.875, &sys);
+    assert!(st.cd.obj.take_errors().is_empty());
+    let s = all_variables(&mut st);
+    assert_eq!(s[4 + 1], 0.1875, "the write reached the UserModel G");
+    assert_eq!(s[4 + 2], 0.375, "the write reached the UserModel B");
+    assert_eq!(s[8 + 2], 0.875, "the write reached the DynaModel B");
+    assert_eq!(s[8 + 1], 0.0625, "the DynaModel G kept its own value");
+    assert_eq!(s[..4], dump, "the tail writes leave the dump alone");
+
+    st.set_variable(4 + 4 + 4 + 1, 7.0, &sys);
+    let errors = st.cd.obj.take_errors();
+    assert!(errors.is_empty(), "a write past the surface: {errors:?}");
+    assert_eq!(
+        all_variables(&mut st),
+        s,
+        "a write past the surface changes nothing"
+    );
+
+    st.set_variable(2, 9.0, &sys);
+    let errors = st.cd.obj.take_errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("cannot set state variable when using DynamicEq"));
+    assert_eq!(all_variables(&mut st)[..4], dump);
+}
+
+/// A linked `DynamicExp` without variables keeps the classic layout: the same
+/// count and names as before the link, every classic value read as
+/// `-9999.99`, then the `UserModel` and `DynaModel` tails.
+#[test]
+fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
+    use crate::elements::general::dynamic_exp::DynamicExpObj;
+    let mut st = Storage::new("s1");
+    bind_both_models(&mut st);
+    let names: Vec<String> = (0..=43).map(|i| st.variable_name(i)).collect();
+
+    st.base.dyneq.dynamic_eq_obj = Some(DynamicExpObj::new("empty"));
+    st.base.dyneq.on_dynamic_eq_set();
+    assert_eq!(st.base.dyneq.num_variables(), 0);
+    assert_eq!(st.num_variables(), 34 + 4 + 4);
+    let linked: Vec<String> = (0..=43).map(|i| st.variable_name(i)).collect();
+    assert_eq!(linked, names);
+    let s = all_variables(&mut st);
+    assert_eq!(s[..34], [-9999.99; 34], "the classic values under the link");
+    assert_eq!(s[34..38], [0.0, 0.25, -0.125, 0.5], "UserModel after them");
+    assert_eq!(
+        s[38..],
+        [0.0, 0.0625, -0.5, 2.0],
+        "DynaModel after the user tail"
+    );
+}
