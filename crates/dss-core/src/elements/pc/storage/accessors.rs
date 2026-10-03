@@ -12,7 +12,9 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::inv_based_pce::VarMode;
-use crate::elements::pc::inv_based_pce::{Connection, InvBasedPce, InvBasedPceData};
+use crate::elements::pc::inv_based_pce::{
+    Connection, InvBasedPce, InvBasedPceData, InvDynamicVars, NUM_INV_DYN_VARS,
+};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
@@ -23,6 +25,27 @@ use crate::util::sqrt3;
 use super::{Storage, StorageDispatchMode, StorageState, nconds_for_connection, prop};
 
 impl Storage {
+    /// Write variable `k` (1-based) of the loaded `DynaDLL=` model; a guest
+    /// failure queues `#1569` on the element.
+    fn set_dyna_model_variable(&mut self, k: usize, value: f64, sys: &SysCtx) {
+        let Some(mut dm) = self.dyna_model.take() else {
+            return;
+        };
+        let name = self.cd.obj.name().to_string();
+        let mut errs = crate::diag::ErrorLog::new();
+        if let Err(e) = dm.set_variable(k, value, self, sys, &[]) {
+            errs.push(crate::diag::DssDiagnostic::msg(
+                format!("Storage.{name}: user model `set_variable` failed: {e}"),
+                Some(1569),
+            ));
+        }
+        dm.drain_effects(&name, &mut errs);
+        self.dyna_model = Some(dm);
+        for d in errs.into_vec() {
+            self.cd.obj.push_error(d);
+        }
+    }
+
     /// Pascal `Set_kW`: set the state + the dispatch percentage from a signed kW.
     /// `pub(crate)` so the StorageController fleet dispatch can drive `obj.kW`.
     pub(crate) fn set_kw(&mut self, value: f64) {
@@ -125,52 +148,58 @@ impl CktElement for Storage {
         self.integrate_states_impl(sys, node_v);
     }
 
-    /// Pascal `TStorageObj.NumVariables` (`Storage.pas:3208-3223`) — the linked
-    /// `DynamicExp` count first (inherited `TDynEqPCE.NumVariables`), else 34
-    /// (25 base + 9 InvDynVars) plus the existing `UserModel`/`DynaModel`
-    /// variable counts (WASM_USERMODELS WM.4).
+    /// The linked `DynamicExp`'s memory dump when it has variables, else the 34
+    /// classic variables (25 base + 9 InvDynVars), followed in both cases by the
+    /// `UserModel` and then the `DynaModel` variables
+    /// (`a_dynamic_eq_storage_keeps_both_model_tails`).
     fn num_variables(&self) -> usize {
-        let n = self.base.dyneq.num_variables();
-        if n != 0 {
-            return n;
-        }
-        self.num_storage_variables()
-            + self.num_user_model_variables()
-            + self.num_dyna_model_variables()
+        self.variable_base() + self.num_user_model_variables() + self.num_dyna_model_variables()
     }
 
-    /// Pascal `TStorageObj.VariableName` (1-based, `Storage.pas:3225-3323`): the
-    /// `DynamicExp` memory-slot name first (inherited), then the classic name
-    /// table, then the `UserModel`/`DynaModel` names.
+    /// The `DynamicExp` slot names or the 34 classic names, then the
+    /// `UserModel` names, then the `DynaModel` names. Index 0 answers the empty
+    /// string and an index past the surface `"Unknown variable"`
+    /// (`out_of_range_variable_names_follow_the_name_tables`).
     fn variable_name(&self, i: usize) -> String {
         if let Some(name) = self.base.dyneq.variable_name(i) {
             return name;
         }
-        if i > self.num_storage_variables()
-            && let Some(name) = self.user_model_variable_name(i)
-        {
-            return name;
+        // A dump answers its own indices above, so only the classic layout
+        // reaches the classic names.
+        let base = self.variable_base();
+        if i <= base {
+            return self.storage_variable_name(i);
         }
-        self.storage_variable_name(i)
+        let un = self.num_user_model_variables();
+        if i <= base + un {
+            // The tail lookup counts from the classic block.
+            return self
+                .user_model_variable_name(i - base + self.num_storage_variables())
+                .unwrap_or_default();
+        }
+        if i <= base + un + self.num_dyna_model_variables()
+            && let Some(dm) = self.dyna_model.as_ref()
+        {
+            return dm.var_name(i - base - un).unwrap_or_default().to_string();
+        }
+        // Past the surface: the inverter-dynamics table's unknown-index name.
+        InvDynamicVars::get_inv_dyn_name(NUM_INV_DYN_VARS).to_string()
     }
 
-    /// Pascal `TStorageObj.GetAllVariables` (`Storage.pas:3181-3206`): the
-    /// `DynamicExp` memory dump first, else the classic 34 followed by the
-    /// `UserModel` then `DynaModel` values (each written at `@States[base]`,
-    /// faithful to Pascal — with one model bound this is unambiguous).
+    /// The linked `DynamicExp`'s memory dump when it has variables, else the 34
+    /// classic variables, then in both cases the `UserModel` values and the
+    /// `DynaModel` values right after the block actually filled, so the
+    /// surface is exactly the `num_variables()` cells the names describe
+    /// (`a_dynamic_eq_storage_keeps_both_model_tails`).
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
-        if self.base.dyneq.has_dynamic_eq() {
-            for (i, s) in states
-                .iter_mut()
-                .enumerate()
-                .take(self.base.dyneq.num_variables())
-            {
+        let base = self.variable_base();
+        if self.base.dyneq.num_variables() != 0 {
+            for (i, s) in states.iter_mut().enumerate().take(base) {
                 *s = self.base.dyneq.get_dynamic_eq_val(i);
             }
-            return;
+        } else {
+            self.get_all_storage_variables(sys, node_v, states);
         }
-        self.get_all_storage_variables(sys, node_v, states);
-        let base = self.num_storage_variables();
         let un = self.num_user_model_variables();
         if un > 0 {
             let end = (base + un).min(states.len());
@@ -180,15 +209,32 @@ impl CktElement for Storage {
         }
         let dn = self.num_dyna_model_variables();
         if dn > 0 {
-            let end = (base + dn).min(states.len());
-            if base < end {
-                self.get_all_vars_slot(UserModelSlot::Dyna, &mut states[base..end], sys, node_v);
+            let start = base + un;
+            let end = (start + dn).min(states.len());
+            if start < end {
+                self.get_all_vars_slot(UserModelSlot::Dyna, &mut states[start..end], sys, node_v);
             }
         }
     }
 
+    /// Route a 1-based state-variable write past the block ahead of the tail
+    /// to the `UserModel` and then the `DynaModel` (an index past the surface
+    /// is ignored), every other index to the classic table, which a linked
+    /// `DynamicExp` makes read-only (`#566`,
+    /// `a_dynamic_eq_storage_keeps_both_model_tails`).
     fn set_variable(&mut self, i: usize, value: f64, sys: &crate::elements::traits::SysCtx) {
-        self.set_storage_variable(i, value, sys);
+        let base = self.variable_base();
+        if i <= base {
+            self.set_storage_variable(i, value);
+            return;
+        }
+        let un = self.num_user_model_variables();
+        if i <= base + un {
+            // The tail routing counts from the classic block.
+            self.set_user_model_variable(i - base + self.num_storage_variables(), value, sys);
+        } else if i <= base + un + self.num_dyna_model_variables() {
+            self.set_dyna_model_variable(i - base - un, value, sys);
+        }
     }
 
     fn harmonic_spectrum(&self) -> Option<&SpectrumObj> {

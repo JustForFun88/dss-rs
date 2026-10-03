@@ -446,10 +446,27 @@ impl Generator {
         6
     }
 
-    /// Pascal `TGeneratorObj.VariableName(i)` (1-based, the 6 classic names).
-    /// Pascal seeds `Result := 'ERROR'` and returns it for any out-of-range index
-    /// (the monitor header only ever asks for `1..=NumVariables`, so this is the
-    /// unreachable guard value, matched here for fidelity).
+    /// How many variables sit ahead of the `UserModel`/`ShaftModel` tail: the
+    /// linked `DynamicExp`'s memory dump when it has variables, else the 6
+    /// classic GenVars. The four variable accessors all start the tail here.
+    pub(super) fn variable_base(&self) -> usize {
+        let n = self.dyneq.num_variables();
+        if n != 0 { n } else { self.num_gen_variables() }
+    }
+
+    /// The `UserModel` and `ShaftModel` variable counts, 0 for an absent model.
+    pub(super) fn tail_num_vars(&self) -> (usize, usize) {
+        let count = |slot: Option<&super::GenUserModelSlot>| {
+            slot.filter(|s| s.exists()).map_or(0, |s| s.num_vars())
+        };
+        (
+            count(self.user_model.as_deref()),
+            count(self.shaft_model.as_deref()),
+        )
+    }
+
+    /// The 6 classic GenVars names (1-based); any other index answers the
+    /// empty string (`out_of_range_variable_names_are_empty`).
     pub(super) fn gen_variable_name(&self, i: usize) -> String {
         match i {
             1 => "Frequency",
@@ -458,16 +475,16 @@ impl Generator {
             4 => "PShaft",
             5 => "dSpeed (Deg/sec)",
             6 => "dTheta (Deg)",
-            _ => "ERROR",
+            _ => "",
         }
         .to_string()
     }
 
     /// Pascal `TGeneratorObj.Get_Variable` for the 6 classic GenVars, filled into
-    /// `states[0..6]` (the `GetAllVariables` loop). The `DynamicEqObj` memory dump is
-    /// handled by the `get_all_variables` accessor short-circuit; UserModel/ShaftModel
-    /// variables are appended by that accessor from the loaded WASM slots (see
-    /// `accessors.rs::get_all_variables`, WASM_USERMODELS §WP-WM.3).
+    /// `states[0..6]` (the `GetAllVariables` loop). The `get_all_variables`
+    /// accessor writes the `DynamicExp` memory dump in their place when an
+    /// equation with variables is linked, and appends the UserModel/ShaftModel
+    /// variables from the loaded WASM slots in both cases.
     pub(super) fn get_gen_variables(&mut self, states: &mut [f64]) {
         states[0] = (self.w0 + self.speed) / TWO_PI; // Frequency, Hz
         states[1] = self.theta * RADIANS_TO_DEGREES; // Theta, deg

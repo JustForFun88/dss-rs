@@ -162,8 +162,8 @@ impl IndMach012 {
         NUM_VARIABLES
     }
 
-    /// Pascal `TIndMach012Obj.VariableName(i)` (1-based). Out-of-range → "ERROR"
-    /// (the unreachable guard value Pascal seeds and returns).
+    /// The 22 IndMach012 state-variable names (1-based); any other index
+    /// answers the empty string (`tests::out_of_range_variable_names_are_empty`).
     pub(super) fn variable_name_impl(&self, i: usize) -> String {
         match i {
             1 => "Frequency",
@@ -188,7 +188,7 @@ impl IndMach012 {
             20 => "Shaft Power (hp)",
             21 => "Power Factor",
             22 => "Efficiency (%)",
-            _ => "ERROR",
+            _ => "",
         }
         .to_string()
     }
@@ -249,5 +249,21 @@ impl IndMach012 {
             12 => self.pu_xm = value,
             _ => {} // read-only
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An index outside `1..=22` answers the empty string.
+    #[test]
+    fn out_of_range_variable_names_are_empty() {
+        let m = IndMach012::new("m");
+        assert_eq!(m.num_variables(), NUM_VARIABLES);
+        assert_eq!(m.variable_name(0), "");
+        assert_eq!(m.variable_name(1), "Frequency");
+        assert_eq!(m.variable_name(NUM_VARIABLES), "Efficiency (%)");
+        assert_eq!(m.variable_name(NUM_VARIABLES + 1), "");
     }
 }
