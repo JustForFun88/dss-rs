@@ -346,10 +346,10 @@ pub fn run_smoke() -> Result<SmokeReport, String> {
     ));
 
     // The copy goes last, after the engine's final call. Dropping the engine
-    // releases nothing (`Engine` has no `Drop`, the DLL is never unloaded):
-    // what lets the copy go is `Ieee13Copy::remove` stepping back out of it
-    // (the compile left the process working directory there). A copy that
-    // survives the budget fails the smoke naming the producer.
+    // frees its circuit (the DLL itself is never unloaded), and
+    // `Ieee13Copy::remove` steps back out of the copy, where the compile left
+    // the process working directory. A copy that survives the budget fails the
+    // smoke naming the producer.
     drop(engine);
     copy.remove()?;
     Ok(SmokeReport { lines })

@@ -1877,6 +1877,7 @@ mod tests {
         assert_eq!(read.keys().collect::<Vec<_>>(), vec!["nev_exp_y.csv"]);
         assert_eq!(read["nev_exp_y.csv"], "Row,Col\n1,2\n");
         std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&side).ok();
     }
 
     /// An empty pattern list is "the gate did not ask": no sidecar is created
@@ -1915,6 +1916,7 @@ mod tests {
             "asked, and this deck wrote nothing selected"
         );
         std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(&side).ok();
     }
 
     /// The sidecar is WIPED before it is written, so a file left by the other
@@ -1992,6 +1994,9 @@ mod tests {
         PathBuf::from(p)
     }
 
+    /// A fixture case directory under the temp dir, named by process and
+    /// thread, cleared together with its sidecar sibling: an earlier process
+    /// with the same id, or a run that panicked, may have left either behind.
     fn tmp_root(tag: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
             "dss_guard_{tag}_{}_{:?}",
@@ -1999,6 +2004,25 @@ mod tests {
             std::thread::current().id()
         ));
         std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(sidecar_beside(&root)).ok();
         root
+    }
+
+    /// A sidecar left beside a fixture directory (process ids are reused, and
+    /// `no_patterns_means_not_requested_and_touches_no_directory` reds on a
+    /// sidecar it did not create) is gone once [`tmp_root`] hands the
+    /// directory out again.
+    #[test]
+    fn tmp_root_clears_a_sidecar_left_behind() {
+        let root = tmp_root("stale-sidecar");
+        let side = sidecar_beside(&root);
+        std::fs::create_dir_all(&side).unwrap();
+        std::fs::write(side.join("left_behind.csv"), b"earlier run\n").unwrap();
+        let again = tmp_root("stale-sidecar");
+        assert_eq!(again, root);
+        assert!(
+            !side.exists(),
+            "a sidecar left by an earlier run survived tmp_root"
+        );
     }
 }

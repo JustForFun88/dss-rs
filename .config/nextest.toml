@@ -34,7 +34,7 @@ nextest-version = { required = "0.9.146" }
 retries = 0
 # Run every test: one red never hides the rest of the lane.
 fail-fast = false
-# Report a test still running after each 600 s period; never terminate it
-# (no `terminate-after`): the corpus gate's own per-request deadline is
-# DSS_ORACLE_TIMEOUT_SECS.
-slow-timeout = { period = "600s" }
+# Report a test still running after each 600 s period and terminate it after
+# the third (1800 s): a wedged test fails instead of holding the machine. The
+# corpus gate, the slowest test, finishes inside two periods.
+slow-timeout = { period = "600s", terminate-after = 3 }

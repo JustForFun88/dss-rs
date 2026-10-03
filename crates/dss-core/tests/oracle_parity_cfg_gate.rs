@@ -7591,9 +7591,10 @@ const NEXTEST_PINNED: &str = "0.9.146";
 /// - `retries = 0`: a retried red is a green nobody fixed (RETRO_FIXES R11:
 ///   never retried into green);
 /// - `fail-fast = false`: the first red would hide the rest of the lane;
-/// - `slow-timeout = { period = "600s" }`: report only, because a
-///   `terminate-after` would kill the corpus gate mid-walk (the gate's own
-///   per-request deadline is `DSS_ORACLE_TIMEOUT_SECS`).
+/// - `slow-timeout = { period = "600s", terminate-after = 3 }`: a test is
+///   reported every 600 s and terminated at 1800 s, so a wedged test fails
+///   instead of holding the machine. The corpus gate, the slowest test,
+///   finishes inside two periods, and a shorter bound could kill it mid-walk.
 ///
 /// Any other line is refused, whatever it sets and however TOML spells it: a
 /// table or array-of-tables header, a dotted or quoted key, an inline table or
@@ -7628,7 +7629,10 @@ fn nextest_profile_violations(toml: &str) -> Vec<String> {
         const KNOWN: [(&str, &str); 10] = [
             ("retries", " - it retries a red into green"),
             ("fail-fast", " - a red stops the rest of the lane"),
-            ("terminate-after", " - it kills a slow test mid-run"),
+            (
+                "terminate-after",
+                " - it sets when a slow test is killed mid-run",
+            ),
             (
                 "default-filter",
                 " - it drops tests and the run still exits 0",
@@ -7654,7 +7658,11 @@ fn nextest_profile_violations(toml: &str) -> Vec<String> {
         ("", "nextest-version", pinned.as_str()),
         ("[profile.default]", "retries", "0"),
         ("[profile.default]", "fail-fast", "false"),
-        ("[profile.default]", "slow-timeout", "{ period = \"600s\" }"),
+        (
+            "[profile.default]",
+            "slow-timeout",
+            "{ period = \"600s\", terminate-after = 3 }",
+        ),
     ];
     let mut present = vec![false; allowed.len()];
     let mut out = Vec::new();
@@ -7741,11 +7749,12 @@ fn the_nextest_profile_never_retries_and_serializes_nothing() {
     for (from, to) in [
         ("retries = 0", "retries = 1"),
         ("fail-fast = false", "fail-fast = true"),
+        ("terminate-after = 3", "terminate-after = 2"),
         (
+            "{ period = \"600s\", terminate-after = 3 }",
             "{ period = \"600s\" }",
-            "{ period = \"600s\", terminate-after = 2 }",
         ),
-        ("{ period = \"600s\" }", "{ period = \"60s\" }"),
+        ("period = \"600s\"", "period = \"60s\""),
         ("required = \"0.9.146\"", "required = \"0.9.100\""),
         (
             "retries = 0",
