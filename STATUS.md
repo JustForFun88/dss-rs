@@ -218,6 +218,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - `capture_order.rs` and `tools/oracle/oracle_server.py` state the oracle behaviour in plain words, with no Pascal source citation (user decision 2026-10-03, follow-up of RF-D01-13).
 - RF-I00-10 (the harness texts state the present, the scratch and DI census asserts read manifest rows only, the D24 pin reads all three census counters, `lane_dump` reads the lane register from the harness, the locked ledger `source` names the harness crate).
 - RF-D02-15 (Generator, PVSystem and Storage keep their user-model variable tails when a `DynamicExp` is linked, an out-of-range `VariableName` follows r4133).
+- RF-D08-07 (`golden_lock.rs` reads `.gitattributes` in any ASCII case, fails an ambiguous provenance declaration and pins the declared-provenance census).
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
