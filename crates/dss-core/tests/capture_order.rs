@@ -1,23 +1,20 @@
 //! Source gate for the **capture-order contract** (`GOLDEN_REBASE_PLAN.md`
 //! §1.1(a), coordinator decision **D3**): on both live-oracle transports, every
 //! *cache-aware* read of an element (group **A**) must be issued **before**
-//! every read that runs `GetCurrents` into a scratch buffer (group **B**);
-//! everything else (selectors, discrete state, the node-voltage reads) is
-//! order-free (group **C**).
+//! every read that computes the element's currents into a scratch buffer
+//! (group **B**); everything else (selectors, discrete state, the node-voltage
+//! reads) is order-free (group **C**).
 //!
 //! # Why the order is a contract and not a habit
 //!
-//! `TDSSCktElement.ComputeIterminal` (r4133
-//! `Common/CktElement.pas:632-639`) recomputes `Iterminal` **only** when the
-//! element's `IterminalSolutionCount` differs from `Solution.SolutionCount`.
-//! `TPCElement.GetTerminalCurrents` (`PCElements/PCElement.pas:247-266`) fills
-//! the CALLER's scratch buffer and then stamps that counter
-//! (`set_ITerminalUpdated(TRUE)`, `:510-514`) **without** filling `Iterminal`.
-//! So a group-B read issued first can make a following group-A read
-//! (`Losses` — `Common/CktElement.pas:707`, `Get_Losses`, `ComputeIterminal` at
-//! `:743`; `Powers` — `GetPhasePower`, `Common/CktElement.pas:1041/:1049`)
-//! answer from a stale cache. That is the mechanism behind the upstream
-//! harmonics `Powers`-after-`Currents` defect this project never reproduces
+//! The oracle recomputes an element's cached terminal current **only** when
+//! the solution count stamped on that cache differs from the circuit's. On a
+//! power-conversion element a group-B read fills the CALLER's scratch buffer
+//! and then stamps that count **without** filling the cache. So a group-B read
+//! issued first can make a following group-A read (`Losses`, `Powers`, both
+//! computed from the cached terminal current) answer from a stale cache. That
+//! is the mechanism behind the upstream harmonics `Powers`-after-`Currents`
+//! defect this project never reproduces
 //! (CLAUDE.md §"Known upstream bugs"), and it is why a capture must never be
 //! free to reorder its reads.
 //!
@@ -28,8 +25,8 @@
 //!
 //! 1. every marker's group is [`dss_epri::modes::capture_group_of`]'s — the
 //!    **one** home of that mapping, where each group comes from
-//!    `ModeEffect::capture_group()` of the row that transcribes the Pascal
-//!    `case` arm (G1.3a spec amendment item 1: no second, competing order
+//!    `ModeEffect::capture_group()` of that read's row in the mode table
+//!    (G1.3a spec amendment item 1: no second, competing order
 //!    table may exist in the repo);
 //! 2. the parsed marker sequence is exactly the transport's declared sequence
 //!    (so a read that appears, disappears or moves is visible here);
@@ -70,22 +67,20 @@
 //!
 //! G1.7's topology surface is group C — the six order-free `Topology` rows
 //! (`NumLoops`, `NumIsolatedBranches`, `NumIsolatedLoads`, `AllLoopedPairs`,
-//! `AllIsolatedBranches`, `AllIsolatedLoads`) never assign
-//! `ActiveCircuit.ActiveCktElement` — but it carries its own two constraints,
-//! and both are asserted here:
+//! `AllIsolatedBranches`, `AllIsolatedLoads`) never move the active circuit
+//! element — but it carries its own two constraints, and both are asserted
+//! here:
 //!
 //! * it is read after `all_properties` and after every other *reading* capture:
-//!   the FIRST `Topology` read is what builds the memoized `Branch_List` and
-//!   rewrites `Checked`/`IsIsolated`/`BusChecked` on every element (r4133
-//!   `Common/Circuit.pas:2932-2950`, `:2937-2947`), and `TopologyI(1)`/`(2)` +
-//!   `TopologyV(1)`/`(2)` leave the `PDElements`/`PCElements` cursors at the end
-//!   (`DDLL/DTopology.pas:75-94`, `:319-390`);
+//!   the FIRST `Topology` read is what builds the memoized branch list and
+//!   rewrites the checked and isolated flags of every element and bus, and
+//!   `TopologyI(1)`/`(2)` + `TopologyV(1)`/`(2)` leave the
+//!   `PDElements`/`PCElements` cursors at the end;
 //! * the other twelve `ITopology` members are **never touched**. Three of them
 //!   are the B16 parity gap (`ActiveLevel`, `BranchName`, `ActiveBranch` of
 //!   `origin/fastdss:dss/ITopology.py:10-20`) and the other nine are cursor
-//!   rows; every one reassigns `ActiveCktElement` (capi
-//!   `CAPI/CAPI_Topology.pas:98-110`; r4133 `DTopology.pas:29-54`, `:96-160`,
-//!   `:170-186`) and would poison the per-element capture of the same step.
+//!   rows. On both channels every one of them moves the active circuit
+//!   element and would poison the per-element capture of the same step.
 //!
 //! G1.8's flat incidence surface (`Solution.IncMatrix` / `Laplacian` /
 //! `IncMatrixRows` / `IncMatrixCols`) is the one capture that comes after the
@@ -93,27 +88,24 @@
 //! at all: it issues the executive pair `CalcIncMatrix` + `CalcLaplacian` first.
 //! Four separate rules, all asserted below:
 //!
-//! * **last** — `Calc_Inc_Matrix` recreates or resets `IncMat`, refills
-//!   `Inc_Mat_Rows` and clears `IncMat_Ordered` (r4133
-//!   `Common/Solution.pas:3051-3066`), and `AddSeriesReac2IncMatrix` re-points
-//!   `LastClassReferenced` / `ActiveDSSClass` and calls `ActiveDSSClass.First`
-//!   (`:3007-3010`), which reassigns `ActiveCircuit.ActiveCktElement`. It must
-//!   therefore follow every per-element, reliability and property read — and it
-//!   must follow the topology read too, because G1.7's two decline censuses are
-//!   defined on a `Branch_List` nothing else has touched;
-//! * **the pair, in that order** — r4133's `CalcLaplacian`
-//!   (`Executive/ExecCommands.pas:911-917`) is a bare
-//!   `Laplacian := IncMat.Transpose()` / `.multiply(IncMat)` with no
-//!   `Assigned(IncMat)` guard, so issuing it first dereferences NIL inside the
-//!   DLL. capi guards the same command with error 8877
-//!   (`Executive/ExecCommands.pas:421-433`) and so does the port, which is why
-//!   the swap is pinned from the sources here rather than driven live;
+//! * **last** — `CalcIncMatrix` rebuilds the incidence matrix and its row list
+//!   and clears the ordered flag, and while adding the series reactors it
+//!   iterates the reactor class, which moves the active class and the active
+//!   circuit element. It must therefore follow every per-element, reliability
+//!   and property read — and it must follow the topology read too, because
+//!   G1.7's two decline censuses are defined on a branch list nothing else has
+//!   touched;
+//! * **the pair, in that order** — r4133's `CalcLaplacian` multiplies the
+//!   transposed incidence matrix by the matrix without checking that it exists,
+//!   so issuing it first dereferences a null pointer inside the DLL. capi
+//!   refuses the same command with error 8877 and so does the port, which is
+//!   why the swap is pinned from the sources here rather than driven live;
 //! * **`CalcIncMatrix_O` and `Solution.BusLevels` are never touched** — the
-//!   ordered builder calls `GetTopology` (`Common/Solution.pas:3173`), which
-//!   would memoize that same `Branch_List`, and `SolutionV(2)` writes one element
-//!   past its own array on r4133 (`DDLL/DSolution.pas:580-582`, on the bridge's
-//!   `modes::DO_NOT_CALL` register). Both keep their `tests/golden/inc_matrix/`
-//!   `org_*` byte goldens instead (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c);
+//!   ordered builder builds the topology tree when none is memoized yet, which
+//!   would memoize that same branch list, and `SolutionV(2)` writes one element
+//!   past its own array on r4133 (on the bridge's `modes::DO_NOT_CALL`
+//!   register). Both keep their `tests/golden/inc_matrix/` `org_*` byte goldens
+//!   instead (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c);
 //! * **no other command mid-step** — the r4133 transport calls a
 //!   command-issuing `Engine` method only at the sites of
 //!   [`R4133_COMMAND_SITES`], fn by fn: the run itself, ahead of the step's
@@ -123,10 +115,7 @@
 //!
 //! The bodies gated here are the element captures of the two live channels:
 //! the pinned dss-python oracle (`tools/oracle/oracle_server.py`, backend
-//! dss_capi 0.14.5 — `CAPI/CAPI_Alt.pas:1043` `CurrentsMagAng`, `:1072`
-//! `VoltagesMagAng`, `CAPI/CAPI_CktElement.pas:541` `Residuals`) and the EPRI
-//! r4133 DLL bridge (`crates/dss-epri` — `DDLL/DCktElement.pas:263` `Enabled`,
-//! `:827` `Residuals`, `:1058` `CurrentsMagAng`, `:1082` `VoltagesMagAng`).
+//! dss_capi 0.14.5) and the EPRI r4133 DLL bridge (`crates/dss-epri`).
 //!
 //! # Stronger than the upstream harness
 //!
@@ -169,7 +158,7 @@
 //! inside each transport's `run_case`: the aggregates must be read before the
 //! element capture (whose `Currents` read is group B) and before the discrete
 //! capture (which drives `Transformers.First/Next` of its own, while every
-//! aggregate walks a `TPointerList` to exhaustion and leaves its cursor at the
+//! aggregate walks its element list to exhaustion and leaves its cursor at the
 //! end). [`check_order`] and its two channel anchor sets carry that rule, and
 //! [`the_gate_rejects_a_swapped_or_renamed_capture`] shows it has
 //! teeth. Folded here from the G1.9 lane's own `capture_order.rs` at the D7
@@ -201,12 +190,10 @@
 //!   scope only the G1.10b contents copy and the teardown, past the scope only
 //!   the declared sweep report and a reply built from names already bound. The
 //!   one statement the capi transport may still run is the D32(2)(a) teardown
-//!   `clear`, which releases dss_capi's never-closed Storage trace stream
-//!   (`src/PCElements/Storage.pas:872` opens it; `:871`/`:1199` are the only
-//!   closes). r4133 closes its own
-//!   immediately (`Version8/Source/PCElements/Storage.pas:1085`) and needs no
-//!   counterpart, so its tail is empty. A teardown is not a read: it comes after
-//!   the classification, so the compared surface stays the run
+//!   `clear`, which releases dss_capi's Storage trace stream, held open until
+//!   the element is destroyed. r4133 closes its own as soon as it writes the
+//!   header and needs no counterpart, so its tail is empty. A teardown is not a
+//!   read: it comes after the classification, so the compared surface stays the run
 //!   `clear → Set DefaultBaseFrequency=60 → compile → post → n × solve` (plus
 //!   the last step's `RelCalc` on a reliability case) on both channels, where
 //!   the r4133 bridge's `clear` also re-asserts the D39 report switches, which
@@ -1521,7 +1508,7 @@ fn check(b: &CaptureBody, text: &str) -> Vec<String> {
             )),
             None => bad.push(format!(
                 "unknown: {} names `{name}`, which has no row in \
-                 `dss_epri::modes` and is not a declared selector — add the Pascal `case` arm to \
+                 `dss_epri::modes` and is not a declared selector — add the read's row to \
                  the mode table, or declare the selector in SELECTORS",
                 b.file
             )),
@@ -1545,9 +1532,8 @@ fn check(b: &CaptureBody, text: &str) -> Vec<String> {
     {
         bad.push(format!(
             "order: {}::{} reads the group-A `{}` (position {a}) after the group-B `{}` \
-             (position {bi}) — a group-B read stamps IterminalSolutionCount without filling \
-             Iterminal (PCElements/PCElement.pas:247-266), so the cache-aware read that follows \
-             can answer stale (Common/CktElement.pas:632-639)",
+             (position {bi}) — a group-B read stamps the terminal-current cache as current \
+             without filling it, so the cache-aware read that follows can answer stale",
             b.file, b.func, seq[a].0, seq[bi].0
         ));
     }
@@ -1638,10 +1624,9 @@ fn the_declared_selectors_are_not_quantity_reads() {
 /// per-bus walk, the two circuit arrays inside the same order-free checkpoint
 /// slot as `AllBusVmagPu` — and that placement is only legitimate while all
 /// three are order-free. The claim itself has exactly one home
-/// (`dss_epri::modes`, whose `ModeEffect` rows transcribe the Pascal `case`
-/// arms: `DBus.pas:122-128` `BUSF` 5, `DCircuit.pas:566-580` `CircuitV` 12,
-/// `:582-604` `CircuitV` 13 — each returns the stored field and moves no
-/// cursor), so it is asserted here rather than restated there.
+/// (`dss_epri::modes`, whose `ModeEffect` rows `BUSF` 5, `CircuitV` 12 and
+/// `CircuitV` 13 each return the stored field and move no cursor), so it is
+/// asserted here rather than restated there.
 #[test]
 fn the_distance_surface_is_order_free_in_the_mode_table() {
     for (family, name) in [
@@ -1663,11 +1648,10 @@ fn the_distance_surface_is_order_free_in_the_mode_table() {
 /// `crates/dss-core/tests/corpus_gate.rs::AT_BUS_READ_ORDER` pins that both
 /// transports read them LAST in the per-bus walk, and that placement is chosen
 /// because on the r4133 channel they are the block's only
-/// [`dss_epri::modes::ModeEffect::Impure`] reads: `getP*atBus` drives
-/// `DSS_Class.First`/`Next` and `TDSSClass.Get_First`/`Get_Next`
-/// (`Common/DSSClass.pas:342-371`) assign `ActiveCircuit.ActiveCktElement`.
-/// What that impurity does NOT touch is any `Iterminal` cache, which is exactly
-/// what keeps the whole bus block order-free — so `Impure` must map to `'C'`
+/// [`dss_epri::modes::ModeEffect::Impure`] reads: each one walks a class with
+/// `First`/`Next`, which moves the active circuit element. What that impurity
+/// does NOT touch is any terminal-current cache, which is exactly what keeps
+/// the whole bus block order-free — so `Impure` must map to `'C'`
 /// here ([`dss_epri::modes::ModeEffect::capture_group`]). A future re-class of
 /// either row to `'A'`/`'B'` would make the bus block's slot matter and fails
 /// here, where the claim has its single home, instead of silently in the gate.
@@ -1782,11 +1766,11 @@ fn the_gate_fires_when_a_group_a_read_moves_after_a_group_b_read() {
 
 /// The positive half of the A-before-B rule, which no other test states: a
 /// group-**C** read is order-free *by construction* (`ModeEffect::Pure` — it
-/// reads a field and never runs `ComputeIterminal` or `GetCurrents`), so moving
-/// one into the middle of the A/B block cannot violate the D3 order. Moving the
-/// G1.3d(i) `NumPhases` read (`CktElementI(2)`, `DDLL/DCktElement.pas:149`) to
-/// sit between the group-A `Losses` and the group-A/B `capture_element`
-/// delegation raises only the declaration-bookkeeping violation — proof the
+/// reads a field and never touches the terminal-current cache or computes
+/// currents), so moving one into the middle of the A/B block cannot violate the
+/// D3 order. Moving the G1.3d(i) `NumPhases` read (`CktElementI(2)`) to sit
+/// between the group-A `Losses` and the group-A/B `capture_element` delegation
+/// raises only the declaration-bookkeeping violation — proof the
 /// mutation really landed — and never an `order:` one.
 #[test]
 fn a_group_c_read_may_sit_between_a_group_a_and_a_group_b_read() {
@@ -2070,10 +2054,9 @@ fn the_gate_fires_when_a_read_disappears() {
 }
 
 /// The A-before-B rule stated for the surface GOLDEN_REBASE G1.3d(ii) adds:
-/// `PhaseLosses` (`CktElementV(6)`, r4133 `DDLL/DCktElement.pas:637`) is
-/// `TDSSCktElement.GetPhaseLosses`, whose first act is `ComputeIterminal`
-/// (r4133 `Common/CktElement.pas:1090`, capi `Common/CktElement.pas:896`) — so
-/// it is group **A** and must precede the group-B `Currents`.
+/// `PhaseLosses` (`CktElementV(6)`) starts, on both oracles, by reading through
+/// the terminal-current cache, which is recomputed only when its solution count
+/// is stale — so it is group **A** and must precede the group-B `Currents`.
 ///
 /// The mistake this guards is the natural one: appending the read to the
 /// `element_extras` tail, where the other nine G1.3d scalars live, instead of
@@ -2097,11 +2080,11 @@ fn the_gate_fires_when_phase_losses_moves_after_the_currents_read() {
 }
 
 /// The member GOLDEN_REBASE G1.3c adds to the A-before-B rule: `TotalPowers`
-/// (`CktElementV(20)`, r4133 `DDLL/DCktElement.pas:1109`; capi
-/// `Alt_CE_Get_TotalPowers`, `CAPI/CAPI_Alt.pas:1108`) is the per-terminal sum
-/// of `TDSSCktElement.GetPhasePower` (`Common/CktElement.pas:1041`), whose
-/// first act on an enabled element is `ComputeIterminal` (`:1049`) — the same
-/// cache-aware path `Powers` takes. So it is group **A** and must be issued
+/// (`CktElementV(20)` on r4133, `Alt_CE_Get_TotalPowers` on capi) is the
+/// per-terminal sum of the phase powers, and on an enabled element the oracle
+/// starts that sum by reading through the terminal-current cache, which is
+/// recomputed only when its solution count is stale — the same cache-aware path
+/// `Powers` takes. So it is group **A** and must be issued
 /// before the group-B `Currents`, on both transports.
 ///
 /// Stated in both directions, because the negative half alone would pass on a
@@ -2114,8 +2097,8 @@ fn total_powers_is_a_group_a_read_issued_before_the_currents_read() {
     assert_eq!(
         capture_group_of("CktElement", "TotalPowers"),
         Some('A'),
-        "`TotalPowers` sums `GetPhasePower`, whose first act is `ComputeIterminal` \
-         (Common/CktElement.pas:1049) — the mode table must classify it as group A"
+        "`TotalPowers` sums the phase powers, which take the cache-aware \
+         terminal-current path — the mode table must classify it as group A"
     );
     for key in [
         "oracle_server.capture_all_elements",
@@ -2619,11 +2602,10 @@ fn the_gate_rejects_a_swapped_or_renamed_capture() {
 /// the incidence pair, and that ordering is [`check_inc_matrix_last`]'s.
 ///
 /// Two reasons, the stronger first: the first `Topology` read is what BUILDS
-/// the memoized `Branch_List` and rewrites `Checked`/`IsIsolated`/`BusChecked`
-/// on every element on the way (r4133 `Common/Circuit.pas:2932-2950`,
-/// `:2937-2947`); and `TopologyI(1)`/`(2)` + `TopologyV(1)`/`(2)` walk
-/// `PDElements`/`PCElements` `.First`/`.Next` to exhaustion
-/// (`DDLL/DTopology.pas:75-94`, `:319-390`), leaving those cursors at the end.
+/// the memoized branch list and rewrites the checked and isolated flags of
+/// every element and bus on the way; and `TopologyI(1)`/`(2)` +
+/// `TopologyV(1)`/`(2)` walk `PDElements`/`PCElements` `.First`/`.Next` to
+/// exhaustion, leaving those cursors at the end.
 fn check_topology_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> {
     let run = offset_after(src, a.run, 0, rel)?;
     let topology = offset_after(src, a.topology, run, rel)?;
@@ -2638,9 +2620,10 @@ fn check_topology_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> 
         if topology <= other {
             return Err(format!(
                 "{rel}: the G1.7 topology capture (byte {topology}) is read BEFORE {what} \
-                 (byte {other}). The first `Topology` read builds the memoized `Branch_List` \
-                 and rewrites Checked/IsIsolated/BusChecked on every element (r4133 \
-                 `Common/Circuit.pas:2932-2950`), so it must follow every other read of                  the step (only G1.8's incidence pair may come after it)."
+                 (byte {other}). The first `Topology` read builds the memoized branch list \
+                 and rewrites the checked and isolated flags of every element and bus, so it \
+                 must follow every other read of the step (only G1.8's incidence pair may come \
+                 after it)."
             ));
         }
     }
@@ -2673,10 +2656,9 @@ const ITOPOLOGY_MEMBERS: [&str; 18] = [
 ];
 
 /// The six of those eighteen the corpus gate captures: the only ones that do
-/// **not** reassign `ActiveCircuit.ActiveCktElement` (capi
-/// `CAPI/CAPI_Topology.pas:98-110`; r4133 `DTopology.pas:29-54`, `:96-160`,
-/// `:170-186`). The other twelve are the B16 parity gap (`ActiveLevel`,
-/// `BranchName`, `ActiveBranch`) and the nine cursor rows.
+/// **not** move the active circuit element, on either channel. The other
+/// twelve are the B16 parity gap (`ActiveLevel`, `BranchName`, `ActiveBranch`)
+/// and the nine cursor rows.
 const TOPOLOGY_CAPTURED: [&str; 6] = [
     "AllIsolatedBranches",
     "AllIsolatedLoads",
@@ -2851,9 +2833,8 @@ fn expected_r4133_accessors() -> Vec<String> {
 fn set_error(rel: &str, what: &str, found: &[String], want: &[String]) -> String {
     format!(
         "{rel}: {what} is {found:?}, but the G1.7 capture reads exactly {want:?}. \
-         The other twelve `ITopology` members reassign `ActiveCircuit.ActiveCktElement` \
-         (capi `CAPI_Topology.pas:98-110`; r4133 `DTopology.pas:29-54`, `:96-160`, \
-         `:170-186`) and would poison the per-element capture of the same step; three of \
+         The other twelve `ITopology` members move the active circuit element on both \
+         channels and would poison the per-element capture of the same step. Three of \
          them are also the documented B16 parity gap. If the surface really changed, change \
          `TOPOLOGY_CAPTURED` and the comparator with it — never just this list."
     )
@@ -3041,7 +3022,7 @@ def later(ckt):
     // -- r4133 --------------------------------------------------------------
     let rs_ok = "\
 /// Never calls topology_active_branch, topology_branch_name or
-/// topology_active_level — see `DTopology.pas:29-54`.
+/// topology_active_level — they move the active circuit element.
 fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
     let a = engine.topology_num_loops()?; /* not topology_first_load */
     let b = engine.topology_num_isolated_branches()?;
@@ -3120,12 +3101,10 @@ fn capture_topology(engine: &Engine) -> Result<TopologyCap, EngineError> {
 
 /// The two executive commands the G1.8 capture may issue, in this order.
 ///
-/// The order is a contract, not a style: r4133's `CalcLaplacian`
-/// (`Version8/Source/Executive/ExecCommands.pas:911-917`) is a bare
-/// `Laplacian := IncMat.Transpose()` / `.multiply(IncMat)` with no
-/// `Assigned(IncMat)` test, so issuing it before any `CalcIncMatrix`
-/// dereferences NIL inside the DLL and kills the worker. capi guards the same
-/// command with error 8877 (`.inputs/dss_capi/src/Executive/ExecCommands.pas:421-433`)
+/// The order is a contract, not a style: r4133's `CalcLaplacian` multiplies the
+/// transposed incidence matrix by the matrix without checking that it exists,
+/// so issuing it before any `CalcIncMatrix` dereferences a null pointer inside
+/// the DLL and kills the worker. capi refuses the same command with error 8877
 /// and so does the port — which is why the swap is pinned from the sources here
 /// rather than driven live (`inc_matrix_pins.rs::calclaplacian_without_calcincmatrix_raises_8877`).
 const INCIDENCE_PAIR: [&str; 2] = ["CalcIncMatrix", "CalcLaplacian"];
@@ -3135,17 +3114,15 @@ const INCIDENCE_PAIR: [&str; 2] = ["CalcIncMatrix", "CalcLaplacian"];
 /// `:633-640`).
 const INCIDENCE_READS: [&str; 4] = ["IncMatrix", "Laplacian", "IncMatrixRows", "IncMatrixCols"];
 
-/// Executive commands no capture may ever issue. `CalcIncMatrix_O`
-/// (`Calc_Inc_Matrix_Org`) calls `GetTopology` (r4133
-/// `Common/Solution.pas:3173`), which builds and memoizes the very `Branch_List`
+/// Executive commands no capture may ever issue. `CalcIncMatrix_O` builds the
+/// topology tree when none is memoized yet, which memoizes the very branch list
 /// G1.7's two decline censuses are defined on. Its coverage stays byte-golden
 /// (`tests/golden/inc_matrix/` `org_*`), per the §G3.2c re-scope.
 const FORBIDDEN_COMMANDS: [&str; 1] = ["CalcIncMatrix_O"];
 
-/// `Solution.BusLevels` — `SolutionV(2)`, `DDLL/DSolution.pas:569-588`: `:577`
-/// sets `ArrSize := length(Inc_Mat_Levels) - 1` and `:580-582` size the buffer
-/// to `ArrSize` and write `0..ArrSize` inclusive, one element past the end. The
-/// r4133 bridge refuses the mode before
+/// `Solution.BusLevels` — `SolutionV(2)` on r4133 sizes its reply one shorter
+/// than the bus-level list and then writes every level into it, one element
+/// past the end. The r4133 bridge refuses the mode before
 /// the FFI (`crates/dss-epri/src/modes.rs::DO_NOT_CALL`), so a surface only one
 /// channel can answer is not a gate: neither transport may read it.
 const FORBIDDEN_READS: [&str; 2] = ["BusLevels", "bus_levels"];
@@ -3178,15 +3155,14 @@ const R4133_COMMAND_SITES: [(&str, &str); 10] = [
 /// topology and the reliability ones included — of the captures it is the only
 /// one that writes solution state.
 ///
-/// `Calc_Inc_Matrix` recreates or resets `IncMat`, refills `Inc_Mat_Rows` and
-/// clears `IncMat_Ordered` (r4133 `Common/Solution.pas:3051-3066`), and
-/// `AddSeriesReac2IncMatrix` re-points `LastClassReferenced` / `ActiveDSSClass`
-/// and calls `ActiveDSSClass.First` (`:3007-3010`), reassigning
-/// `ActiveCircuit.ActiveCktElement`; and it must follow the topology read,
-/// because that read is the one that memoizes `Branch_List`. The reliability
-/// capture is no exception: it reads the meter and bus state the once-per-case
-/// `RelCalc` left (issued by `run_case` ahead of every capture of the step, on
-/// r4133 pinned by [`R4133_COMMAND_SITES`]), so the pair must not precede it.
+/// `CalcIncMatrix` rebuilds the incidence matrix and its row list and clears
+/// the ordered flag, and while adding the series reactors it iterates the
+/// reactor class, which moves the active class and the active circuit element.
+/// It must also follow the topology read, because that read is the one that
+/// memoizes the branch list. The reliability capture is no exception: it reads
+/// the meter and bus state the once-per-case `RelCalc` left (issued by
+/// `run_case` ahead of every capture of the step, on r4133 pinned by
+/// [`R4133_COMMAND_SITES`]), so the pair must not precede it.
 fn check_inc_matrix_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> {
     let run = offset_after(src, a.run, 0, rel)?;
     let inc = offset_after(src, a.inc_matrix, run, rel)?;
@@ -3202,11 +3178,9 @@ fn check_inc_matrix_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String
         if inc <= other {
             return Err(format!(
                 "{rel}: the G1.8 incidence capture (byte {inc}) runs BEFORE {what} \
-                 (byte {other}). `Calc_Inc_Matrix` rewrites solution state and \
-                 `AddSeriesReac2IncMatrix` reassigns ActiveCktElement (r4133 \
-                 `Common/Solution.pas:3007-3010`, `:3051-3066`), and it must not \
-                 precede the topology read that memoizes `Branch_List` — so it \
-                 comes strictly last in the step."
+                 (byte {other}). `CalcIncMatrix` rewrites solution state and moves the \
+                 active circuit element, and it must not precede the topology read that \
+                 memoizes the branch list — so it comes strictly last in the step."
             ));
         }
     }
@@ -3636,9 +3610,9 @@ fn member_reads_in_order(body: &str, handle: &str) -> Vec<String> {
 fn incidence_error(rel: &str, what: &str, found: &[String], want: &[String]) -> String {
     format!(
         "{rel}: {what} is {found:?}, but the G1.8 capture does exactly {want:?}. \
-         The pair's ORDER is a contract (r4133 `ExecCommands.pas:911-917` has no \
-         NIL guard and would crash the worker; capi and the port raise 8877), the \
-         read order is what both channels must share, and `CalcIncMatrix_O` / \
+         The pair's ORDER is a contract (r4133's `CalcLaplacian` has no guard against \
+         a missing incidence matrix and would crash the worker, while capi and the port \
+         raise 8877), the read order is what both channels must share, and `CalcIncMatrix_O` / \
          `Solution.BusLevels` are out of the live gate by decision \
          (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c). If the surface really changed, \
          change these constants and the comparator with them — never just this list."
@@ -3782,9 +3756,8 @@ fn check_no_forbidden_incidence_use(
     for bad in FORBIDDEN_COMMANDS {
         if commands.iter().any(|c| c == bad) {
             return Err(format!(
-                "{rel}: the transport issues `{bad}`. `Calc_Inc_Matrix_Org` calls \
-                 `GetTopology` (r4133 `Common/Solution.pas:3173`), which memoizes the \
-                 `Branch_List` G1.7's `TOPOLOGY_STALE_DECLINES` / \
+                "{rel}: the transport issues `{bad}`. It builds the topology tree, which \
+                 memoizes the branch list G1.7's `TOPOLOGY_STALE_DECLINES` / \
                  `LOOPED_PAIR_WINDOW_DECLINES` censuses are defined on — it is out of \
                  the live gate by decision (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c) and \
                  keeps its `org_*` byte goldens instead."
@@ -3798,7 +3771,7 @@ fn check_no_forbidden_incidence_use(
             return Err(format!(
                 "{rel}: the transport reads `{bad}` in code ({hits:?}). `SolutionV(2)` \
                  `Solution.BusLevels` writes one element past its own array on r4133 \
-                 (`DDLL/DSolution.pas:580-582`) and sits on the bridge's \
+                 and sits on the bridge's \
                  `modes::DO_NOT_CALL` register, so no channel may read it."
             ));
         }
@@ -3829,7 +3802,7 @@ fn check_do_not_call_still_refuses_bus_levels(src: &str, rel: &str) -> Result<()
             return Err(format!(
                 "{rel}: the `DO_NOT_CALL` register no longer carries `{needle}`. \
                  `SolutionV(2)` `Solution.BusLevels` is a one-element heap overflow \
-                 inside the DLL (`DDLL/DSolution.pas:580-582`); removing the \
+                 inside the DLL, and removing the \
                  row would let a future accessor call it."
             ));
         }
@@ -3841,10 +3814,9 @@ fn check_do_not_call_still_refuses_bus_levels(src: &str, rel: &str) -> Result<()
 /// were not written for.
 ///
 /// `_inc_ints` implements rule N1 — drop the one trailing cell capi allocates and
-/// never writes (`CAPI_Solution.pas:873`/`:910`) — and the sub-step's KILL
-/// CRITERION is that the cell is 0 and the length is `3·NZero + 1`
-/// (`GOLDEN_REBASE_PLAN.md` §G1.8). Both are enforced in Python, where no Rust
-/// test reaches them; an edit that kept the strip and dropped the zero-check
+/// never writes — and the sub-step's KILL CRITERION is that the cell is 0 and
+/// the length is `3·NZero + 1` (`GOLDEN_REBASE_PLAN.md` §G1.8). Both are
+/// enforced in Python, where no Rust test reaches them; an edit that kept the strip and dropped the zero-check
 /// (`return xs[:-1]` unconditionally) would leave every existing test green,
 /// because the gate-side `assert_transport_shape` only re-asserts the fixpoint
 /// `len % 3 == 0` — and a capi reply whose last cell stopped being the unwritten
@@ -4218,8 +4190,8 @@ fn the_incidence_gates_reject_a_swapped_or_early_capture() {
     // -- capi ---------------------------------------------------------------
     let py_ok = "\
 def capture_inc_matrix(d, ckt) -> dict:
-    \"\"\"NEVER CalcIncMatrix_O and never sol.BusLevels: the first calls
-    GetTopology, the second overruns its array.\"\"\"
+    \"\"\"NEVER CalcIncMatrix_O and never sol.BusLevels: the first builds
+    the topology tree, the second overruns its array.\"\"\"
     sol = ckt.Solution
     d.Text.Command = \"CalcIncMatrix\"
     d.Text.Command = \"CalcLaplacian\"
@@ -4266,7 +4238,7 @@ def later(d):
         &py_commands(&ordered),
     )
     .expect_err("the ordered builder was issued");
-    assert!(err.contains("GetTopology"), "{err}");
+    assert!(err.contains("builds the topology tree"), "{err}");
 
     let levels = py_ok.replace(
         "    lap = _inc_ints(sol.Laplacian, \"Laplacian\")",
@@ -4296,7 +4268,7 @@ def later(d):
     // -- r4133 --------------------------------------------------------------
     let rs_ok = "\
 /// Never issues `CalcIncMatrix_O` and never reads `Solution.BusLevels` /
-/// `solution_bus_levels` — `DSolution.pas:580-582`.
+/// `solution_bus_levels` — the second overruns its array.
 fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
     engine.exec_wait(\"CalcIncMatrix\")?;
     engine.exec_wait(\"CalcLaplacian\")?;
@@ -4321,7 +4293,7 @@ fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
         "    engine.exec_wait(\"CalcLaplacian\")?;\n    engine.exec_wait(\"CalcIncMatrix\")?;",
     );
     let err = check_r4133_incidence(&swapped, "synthetic").expect_err("the pair was swapped");
-    assert!(err.contains("ExecCommands.pas:911-917"), "{err}");
+    assert!(err.contains("missing incidence matrix"), "{err}");
 
     let extra = rs_ok.replace(
         "    let cols = inc_names(engine.solution_inc_matrix_cols()?, \"c\", false)?;",
@@ -4357,7 +4329,7 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
         \"Solution\",
         ModeKind::V,
         2,
-        \"Solution.BusLevels: DSolution.pas:580-582 overruns its array\",
+        \"Solution.BusLevels: writes one element past its array\",
     ),
 ];
 ";
@@ -4390,7 +4362,7 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
     let err = check_inc_matrix_last(before_topology, &a, "synthetic")
         .expect_err("the incidence pair ran before the topology read");
     assert!(err.contains("topology capture"), "{err}");
-    assert!(err.contains("Branch_List"), "{err}");
+    assert!(err.contains("memoizes the branch list"), "{err}");
 
     // Topology first this time, so its arm is satisfied and the failure has to
     // come from one of the reads the pair still overtakes.
@@ -4475,10 +4447,9 @@ struct RunFileRule {
     /// Whether the contents copy comes BEFORE this transport's teardown.
     ///
     /// True on r4133, which has no teardown at all. **False on capi, and that is
-    /// MEASURED** (`tmp/g110b/probe_f1_stor_handle.py`, G1.10b F1): dss_capi
-    /// 0.14.5 holds a Storage `debugtrace` stream open for the life of the object
-    /// (`src/PCElements/Storage.pas:872`) with a share mode that denies READ, so
-    /// before the teardown `clear` the file cannot be opened at all
+    /// MEASURED** (G1.10b F1): dss_capi 0.14.5 holds a Storage `debugtrace`
+    /// stream open for the life of the object with a share mode that denies
+    /// READ, so before the teardown `clear` the file cannot be opened at all
     /// (`PermissionError: [Errno 13]`), and after it reads whole (28 777 bytes on
     /// `Storage_price.dss`). Moving the copy past the teardown is safe for every
     /// other selected report because the export writers close their file as they
@@ -4509,10 +4480,9 @@ struct RunFileRule {
 }
 
 /// The capi channel. Its teardown is D32(2)(a): dss_capi opens a Storage
-/// `debugtrace` stream at edit time and never closes it for the life of the
-/// object (`src/PCElements/Storage.pas:872`; `FreeAndNil(TraceFile)` only at
-/// `:871` on a re-edit and `:1199` in `TStorageObj.Destroy`), so the circuit is
-/// released with one `clear` — after the classification — or the guard's
+/// `debugtrace` stream at edit time and keeps it open until the element is
+/// re-edited or destroyed, so the circuit is released with one `clear` — after
+/// the classification — or the guard's
 /// `os.remove` raises and the next producer of the same case snapshots the
 /// leaked file as pre-existing. D33(1) wraps that `clear` in `try:` because the
 /// pinned 0.14.5 faults on it after an AutoAdd solve; the recording arms are on
@@ -4545,9 +4515,9 @@ const CAPI_RUN_FILES: RunFileRule = RunFileRule {
 };
 
 /// The r4133 channel. r4133 closes its own Storage trace file as it writes the
-/// header (`Version8/Source/PCElements/Storage.pas:1085`), so this transport
-/// needs no teardown at all: after the classification the guard is swept and the
-/// reply is built, and **nothing** may run in between.
+/// header, so this transport needs no teardown at all: after the classification
+/// the guard is swept and the reply is built, and **nothing** may run in
+/// between.
 const R4133_RUN_FILES: RunFileRule = RunFileRule {
     lang: Lang::Rust,
     di: "let di = if req.di",
@@ -4855,9 +4825,8 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
             "{rel}: the guard scope ends after {} statement(s) following the run-file \
              classification, but the declared G1.10b contents copy plus the D32(2)(a) \
              teardown have {}: {allowed:?}. A teardown that shrank silently is the leak \
-             D32(2)(a) closed (dss_capi's Storage trace stream, \
-             `src/PCElements/Storage.pas:872`) coming back; a contents copy that \
-             vanished silently is the G1.10b surface comparing nothing.",
+             D32(2)(a) closed (dss_capi's Storage trace stream) coming back, and a \
+             contents copy that vanished silently is the G1.10b surface comparing nothing.",
             stmts.len(),
             allowed.len(),
         ));
@@ -5031,7 +5000,7 @@ fn check_run_file_contents_read_with_the_set(
              statement {want} ({tail:?}). The SET and the BYTES describe the same \
              instant of the filesystem, so only the declared D32(2)(a) teardown may \
              stand between them — on capi it MUST, because its held Storage \
-             `debugtrace` stream (`src/PCElements/Storage.pas:872`) denies READ until \
+             `debugtrace` stream denies READ until \
              that `clear` closes it, and on r4133 there is no teardown to stand there."
         ));
     }
@@ -5103,7 +5072,7 @@ fn the_run_file_contents_gate_rejects_an_early_detached_or_duplicated_copy() {
     // (3) the capi copy pulled IN FRONT of the teardown — the measured slot:
     // dss_capi's held Storage `debugtrace` stream denies READ until that `clear`
     // closes it, so the copy would fail on `STOR_<name>.csv` with
-    // `PermissionError: [Errno 13]` (`tmp/g110b/probe_f1_stor_handle.py`).
+    // `PermissionError: [Errno 13]`.
     let before_teardown = move_line_after(
         ok,
         "run_file_contents = _copy_selected_contents(",
@@ -5517,10 +5486,9 @@ fn the_run_tail_gate_rejects_a_misplaced_di_read() {
 }
 
 /// The r4133 half of the same four drives. This transport has no teardown
-/// (r4133 closes its own trace file,
-/// `Version8/Source/PCElements/Storage.pas:1085`), so its fourth slot violation
-/// is the read nested in the retry loop, which recompiles in-process and would
-/// copy out the tree of an attempt that was thrown away.
+/// (r4133 closes its own trace file as it writes the header), so its fourth
+/// slot violation is the read nested in the retry loop, which recompiles
+/// in-process and would copy out the tree of an attempt that was thrown away.
 #[test]
 fn the_r4133_run_tail_gate_rejects_a_misplaced_di_read() {
     let rel = "synthetic";
@@ -5568,8 +5536,7 @@ fn the_r4133_run_tail_gate_rejects_a_misplaced_di_read() {
 /// The r4133 half: the same rule against the Rust spelling of the scope, where
 /// the guard is consumed by an explicit `finish()` and the tail carries the
 /// G1.10b contents copy and nothing else (that transport has no teardown —
-/// r4133 closes its own trace file,
-/// `Version8/Source/PCElements/Storage.pas:1085`).
+/// r4133 closes its own trace file as it writes the header).
 #[test]
 fn the_run_file_gate_rejects_a_classification_after_the_sweep() {
     let rel = "synthetic";
