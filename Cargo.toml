@@ -94,12 +94,9 @@ opt-level = 3
 overflow-checks = true
 debug-assertions = true
 
-# The golden harness of the dss-core integration tests (RETRO_FIXES RF-I00-04).
-# While the drivers included it textually (`mod harness;`) it was compiled into
-# dss-core's own test targets, which the dss-core override above covers (a
-# package override applies to every target of the package, its test binaries
-# included), so its comparators always ran at opt-level 3 on the corpus sweep.
-# As its own crate it keeps that level. Safety knobs kept at dev defaults.
+# The golden harness of the dss-core integration tests: its comparators run on
+# the corpus sweep, so it is optimized like the engine crates. Safety knobs
+# kept at dev defaults.
 [profile.dev.package.dss-test-harness]
 opt-level = 3
 overflow-checks = true

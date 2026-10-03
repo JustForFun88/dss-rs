@@ -19,9 +19,8 @@
 //! name against `OutputDirectory` (`GetOutputDirectory + CircuitName_ +
 //! FileName`, r4133 `Version8/Source/Executive/ExportOptions.pas:401`), so a run
 //! writes into the case dir or into a tree it creates, never into a
-//! subdirectory that already existed; while the gate schedules by case *dir*,
-//! so a file appearing under one belongs to a concurrently running sibling case
-//! (`dss_epri::guard::CorpusGuard::classify` carries the measurement).
+//! subdirectory that already existed (`dss_epri::guard::CorpusGuard::classify`
+//! carries the measurement).
 //!
 //! Purely observational: no command is added to any run on any transport, so
 //! nothing about the compared model moves. What it gates is everything the
@@ -32,7 +31,7 @@
 //!
 //! # The CONTENTS half (G1.10b)
 //!
-//! Sub-step G1.10b adds the bytes of the members the gate SELECTS
+//! This half compares the bytes of the members the gate SELECTS
 //! ([`dss_epri::guard::RUN_FILE_CONTENTS_PATTERNS`] — the report CSVs whose kind
 //! its own name identifies). The selection is computed once on the gate side and
 //! travels in the run request, so neither oracle transport re-derives it; the
@@ -51,7 +50,7 @@
 //!
 //! # The demand-interval tenant (G1.10c)
 //!
-//! Sub-step **G1.10c** compares the CONTENTS of the run-created demand-interval
+//! This tenant compares the CONTENTS of the run-created demand-interval
 //! tree (`<OutputDirectory><CaseName>/DI_yr_<year>/*`, r4133
 //! `Version8/Source/Meters/EnergyMeter.pas:824`). Its members are the very
 //! classification described here, narrowed by
@@ -177,8 +176,7 @@ pub struct RunFileReport {
 impl RunFileProbe {
     /// Snapshot the case directory before the Rust engine touches it.
     ///
-    /// RETRO_FIXES RF-I00-01 part 2: `case_path` is the deck of the port's own
-    /// scratch copy; a vendored deck is refused before anything is photographed
+    /// `case_path` is the deck of the port's own scratch copy; a vendored deck is refused before anything is photographed
     /// ([`super::scratch::not_vendored`]).
     pub fn start(case_path: &str) -> RunFileProbe {
         super::scratch::not_vendored(std::path::Path::new(case_path), "RunFileProbe::start");
@@ -192,8 +190,7 @@ impl RunFileProbe {
     /// (GOLDEN_REBASE G1.10c).
     ///
     /// Read inside the probe's own bracket, after the Rust engine has been
-    /// dropped (so `close_all_di_files` has run and every stream is flushed —
-    /// `crates/dss-core/src/solution/meters/demand_interval.rs:515-570`) and
+    /// dropped (so `close_all_di_files` has run and every stream is flushed) and
     /// before [`RunFileProbe::finish_and_clean`], which sweeps the tree away.
     /// The borrow checker states that half of the rule: `finish_and_clean`
     /// consumes the probe, so no DI read can follow it.
@@ -258,11 +255,11 @@ impl RunFileProbe {
     ///    "pre-existing" and silently drops out of that producer's created set.
     ///    `corpus_gate::runner::compare_with_result` fails the case on an
     ///    oracle's `sweep_failed`; this is the port's half of that rail, so the
-    ///    order-coupling cannot hide on the one producer that used to report
-    ///    its leak to stderr only (`dss_epri::guard::CorpusGuard`'s `Drop`).
+    ///    order-coupling cannot hide behind a leak reported to stderr only
+    ///    (`dss_epri::guard::CorpusGuard`'s `Drop`).
     ///
-    /// `want_contents` arms the G1.10b half. The probe's bracket now opens for
-    /// a `compare_di`-only case too (coordinator decision D42(4): the port
+    /// `want_contents` arms the G1.10b half. The probe's bracket opens for a
+    /// `compare_di`-only case too (coordinator decision D42(4): the port
     /// `RunFileProbe` exists whenever `compare_run_files || compare_di`), and
     /// `compare_di` is FORCED on every live case — `large` decks included —
     /// while `compare_run_files` is not. Reading and strictly decoding the
@@ -271,8 +268,7 @@ impl RunFileProbe {
     /// patterns only under `compare_run_files`, and `copy_selected_contents`
     /// answers `None` without them): `4Bus-YYD/YYD-Master.DSS` is `large`,
     /// exports `Voltages`/`Currents` under names the selection matches, and
-    /// nothing compares them. Merge settlement of the lane-e G1.10c landing,
-    /// finding MC-2.
+    /// nothing compares them.
     #[track_caller]
     pub fn finish_and_clean(mut self, ctx: &str, want_contents: bool) -> RunFileReport {
         let created = self.guard.created();
@@ -438,14 +434,14 @@ pub fn contents_census() -> (usize, usize) {
 /// this run's output.
 ///
 /// What makes one sidecar per case safe against the OTHER channel is not that
-/// assertion (both channels copy the same names, so it cannot tell them apart —
-/// G1.10b audit settlement, finding AT4-8) but three facts: `run_one_case`
+/// assertion (both channels copy the same names, so it cannot tell them apart)
+/// but three facts: `run_one_case`
 /// drives a `both` case's channels strictly in sequence (fetch, compare, then
 /// the next channel), `dss_epri::guard::copy_selected_contents` and its Python
 /// twin `remove_dir_all` the sidecar before each copy, and this function deletes
 /// it as it reads. No other test asks for a sidecar: the opt-in
-/// `corpus_live_properties` sweep, which since RF-I00-01 runs in its own
-/// process beside the gate, clears both sidecar flags of its requests.
+/// `corpus_live_properties` sweep, which runs in its own process beside the
+/// gate, clears both sidecar flags of its requests.
 #[track_caller]
 pub fn read_sidecar(
     dir: &std::path::Path,
@@ -1215,8 +1211,8 @@ mod tests {
         );
         assert_eq!(di["ieee13/di_yr_0/totals_1.csv"], "Hour, kWh\n1, 2\n");
 
-        // G1.10b turned the probe's report into a struct; the DI read must leave
-        // its `created` half exactly as it was.
+        // The DI read must leave the probe report's `created` half exactly as it
+        // was.
         let report = probe.finish_and_clean("unit:port-di", false);
         let created = &report.created;
         assert!(
@@ -1249,8 +1245,7 @@ mod tests {
     /// The probe's bracket opens for `compare_run_files || compare_di`
     /// (coordinator decision D42(4)) and `compare_di` is forced on every live
     /// case, `large` decks included; without this gate the port alone would read
-    /// and strictly UTF-8-decode files nothing compares (merge settlement of the
-    /// lane-e G1.10c landing, finding MC-2).
+    /// and strictly UTF-8-decode files nothing compares.
     #[test]
     fn the_port_probe_reads_no_contents_when_that_surface_is_off() {
         let root = std::env::temp_dir().join(format!(
@@ -1312,8 +1307,8 @@ mod tests {
         out
     }
 
-    /// RF-I00-01 part 2 — the port's run-file probe brackets a scratch copy,
-    /// never a vendored folder: it refuses a vendored deck up front.
+    /// The port's run-file probe brackets a scratch copy, never a vendored
+    /// folder: it refuses a vendored deck up front.
     #[test]
     #[should_panic(expected = "RunFileProbe::start")]
     fn the_probe_refuses_a_vendored_deck() {

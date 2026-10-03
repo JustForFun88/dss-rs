@@ -79,11 +79,11 @@
 //!
 //! Several of the flagged decks write while they run — `Test/TD21RelayTest.DSS`
 //! and its siblings end in `show eventlog`, `StorageControllerTechNote/Schedule/
-//! ScheduleRun.dss` in nine `Export` commands. Since RETRO_FIXES RF-I00-01 none
-//! of them runs in the **vendored** corpus tree: [`Deck::compile`] compiles a
+//! ScheduleRun.dss` in nine `Export` commands. None of them runs in the
+//! **vendored** corpus tree: [`Deck::compile`] compiles a
 //! fresh scratch copy of the deck's closure (`harness/scratch.rs`, the corpus
 //! gate's own copies, the one harness module used here), removed — loudly — when the deck
-//! drops. [`DeckDirGuard`] still brackets the copy's deck folder, the gate's
+//! drops. [`DeckDirGuard`] brackets the copy's deck folder, the gate's
 //! guard contract in miniature: snapshot it, delete on the way out every file
 //! the run created, and fail loudly if the run *changed* a copied byte count
 //! instead of only adding files. [`the_deck_guard_really_sweeps`] proves it is

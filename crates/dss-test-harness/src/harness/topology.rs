@@ -806,24 +806,10 @@ fn compare_looped_pairs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::panic_message;
 
     fn s(xs: &[&str]) -> Vec<String> {
         xs.iter().map(|x| (*x).to_string()).collect()
-    }
-
-    /// Run `f` and return the panic message (the `capture_guard::tests`
-    /// extractor; each harness test module keeps its own private copy, which
-    /// a shared helper could replace).
-    fn panic_message(f: impl FnOnce()) -> String {
-        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .expect_err("the arm must panic");
-        if let Some(m) = payload.downcast_ref::<&str>() {
-            (*m).to_string()
-        } else if let Some(m) = payload.downcast_ref::<String>() {
-            m.clone()
-        } else {
-            "<non-string panic payload>".to_string()
-        }
     }
 
     /// **Pin (`GOLDEN_REBASE_PLAN.md` G1.7 §3.1-S2/S3).** The capi channel

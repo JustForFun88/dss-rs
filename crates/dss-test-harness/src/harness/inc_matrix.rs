@@ -769,24 +769,10 @@ pub fn compare_inc_matrix(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::panic_message;
 
     fn s(xs: &[&str]) -> Vec<String> {
         xs.iter().map(|x| (*x).to_string()).collect()
-    }
-
-    /// Run `f` and return the panic message (the `capture_guard::tests`
-    /// extractor; each harness test module keeps its own private copy, which a
-    /// shared helper could replace).
-    fn panic_message(f: impl FnOnce()) -> String {
-        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .expect_err("the arm must panic");
-        if let Some(m) = payload.downcast_ref::<&str>() {
-            (*m).to_string()
-        } else if let Some(m) = payload.downcast_ref::<String>() {
-            m.clone()
-        } else {
-            "<non-string panic payload>".to_string()
-        }
     }
 
     /// `asymmetric:reactor/reactor_asym.dss` as both channels report it after

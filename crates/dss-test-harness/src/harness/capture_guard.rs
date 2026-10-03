@@ -116,20 +116,7 @@ fn missing_capture_msg(flag: &str, channel: &str, shape: &str, ctx: &str) -> Str
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Run `f` and return the panic message — the guards are proven to fire, not
-    /// merely assumed to (`corpus_gate/runner.rs::panic_msg` is the same
-    /// extractor; it lives in another test binary, so this module keeps its own).
-    fn panic_message(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
-        let payload = std::panic::catch_unwind(f).expect_err("the guard must panic");
-        if let Some(s) = payload.downcast_ref::<&str>() {
-            (*s).to_string()
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "<non-string panic payload>".to_string()
-        }
-    }
+    use crate::harness::panic_message;
 
     /// Every refusal names all four moving parts, so a red gate says *which*
     /// case, *which* flag, *which* oracle went silent and *how*.

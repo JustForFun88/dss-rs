@@ -216,6 +216,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - RF-D01-13 (`capture_order.rs` scans the run tail to the end of `run_case`, counts a read on any handed receiver and an `Engine` command through any path).
 - RF-D08-01 (the corpus gate pins its deck-wide bus-array suppressions, the ledger's sequence and complex envelope bands are driven by asymmetric cases).
 - `capture_order.rs` and `tools/oracle/oracle_server.py` state the oracle behaviour in plain words, with no Pascal source citation (user decision 2026-10-03, follow-up of RF-D01-13).
+- RF-I00-10 (the harness texts state the present, the scratch and DI census asserts read manifest rows only, the D24 pin reads all three census counters, `lane_dump` reads the lane register from the harness, the locked ledger `source` names the harness crate).
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been

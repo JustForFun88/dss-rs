@@ -1162,10 +1162,9 @@ pub(crate) fn compare_capture(
                 // assert_seq_arm_population`, checked in the gate's epilogue).
                 // Recorded HERE and never inside the comparator (coordinator
                 // decision D24, the `record_control_census` line below): the
-                // `harness::seq_floors` fixtures call `compare_element_seq` too,
-                // several of them on the very arm the guard counts, so a
-                // comparator-side census would read the gating population plus
-                // whatever else ran in the process. Counting here keeps it
+                // comparator has other callers, the `harness::seq_floors`
+                // fixtures among them, and a comparator-side census would
+                // count every caller in its process. Counting here keeps it
                 // gate-only by construction. The comparator hands back the
                 // arm it classified (`None` for the disabled and 0-terminal
                 // rows it returns on), so there is one classification, not two.
@@ -1971,11 +1970,10 @@ pub(crate) fn compare_with_result(
             );
             // The census is recorded HERE and never inside that comparator
             // (coordinator decision D24, the `record_seq_arm` line above): the
-            // `harness::run_file_contents` fixtures call it in this same test
-            // binary, several of them on the Storage-trace kind, so a
-            // comparator-side census would read the gating population plus the
-            // fixtures under the mandatory `cargo test --workspace` shape. Recorded
-            // for EVERY gated (case, channel) — `files = 0` included — so that "the
+            // comparator has other callers, the `harness::run_file_contents`
+            // fixtures among them, and a comparator-side census would count
+            // every caller in its process. Recorded for EVERY gated (case,
+            // channel) — `files = 0` included — so that "the
             // surface was requested and compared nothing" is visible rather than
             // absent (`scheduler::assert_run_file_contents_census_is_the_pinned_
             // population`, the gate's epilogue).
