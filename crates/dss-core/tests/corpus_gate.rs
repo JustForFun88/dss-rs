@@ -124,7 +124,9 @@ fn corpus_gate_all_cases_match_engines() {
     // It is not a mask and must never read as one, so every suppressed case is
     // listed next to the entry that caused it
     // (`ledger::LedgerRuntime::bus_array_suppressions`, driven both ways by
-    // `a_suppressed_bus_array_is_named_with_the_entry_that_caused_it`).
+    // `a_suppressed_bus_array_is_named_with_the_entry_that_caused_it`), and the
+    // list is pinned below once every case has passed
+    // (`ledger::BUS_ARRAY_SUPPRESSIONS`).
     let suppressed = run.ledger.bus_array_suppressions();
     if !suppressed.is_empty() {
         eprintln!(
@@ -175,6 +177,13 @@ fn corpus_gate_all_cases_match_engines() {
     {
         panic!("{stale}");
     }
+    // The D11(2) suppressions printed above are a population with no ledger
+    // row of their own: re-derived from this run and pinned in both directions
+    // (`ledger::BUS_ARRAY_SUPPRESSIONS`, driven offline by
+    // `the_bus_array_suppression_pin_reds_in_both_directions`). After the
+    // per-case failures for the reason the rails below give: a failing case may
+    // not have reached its bus compare. Silent under `DSS_GATE_ONLY`.
+    run.ledger.assert_bus_array_suppressions_are_pinned();
     // The same discipline for the Stage F default-lane event-log re-round
     // cells: each one exempts a rendered number from the oracle compare, so one
     // that stopped occurring must fail rather than quietly become a no-op.
