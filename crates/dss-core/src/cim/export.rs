@@ -3444,34 +3444,14 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "Y",
             );
-            // Upstream writes `TRUE` unconditionally here
-            // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3700`; r4133
-            // `Version8/Source/Common/ExportCIMXML.pas:3183`), under its own
-            // "TODO - check bus 2" — so a bank whose wye point is tied to a live
-            // bus still exports as solidly grounded. Both lanes answer that TODO
-            // the way the **same unit's** transformer writer already answers it
-            // (`XfmrTankPhasesAndGround`, `:1531-1570`; r4133 `:1242`:
-            // `NodeRef[j2] = 0` → "last conductor is grounded solidly", ported
-            // at `cim/power_xfmr.rs`): a Capacitor's wye point *is* its second
-            // terminal — literally the "bus 2" the TODO names, defaulting to
-            // `.0.0.0`.
-            //
-            // The sibling tests one conductor because a wye *winding* has one
-            // neutral conductor. A wye capacitor has none: `Nconds = Nphases`
-            // (`Capacitor.pas:340`; r4133 `:299`) and its terminal-2 conductors
-            // are the per-phase returns, so `all` is the deliberate widening —
-            // the bank is solidly earthed only when *every* phase returns to
-            // ground. A partially earthed `bus2=nb.1.0.0` is three independent
-            // single-phase units, not an earthed wye point, and reads `false`
-            // (`golden_cim::cim_wye_grounded_reads_the_neutral`'s mixed deck
-            // pins exactly that against an `any` reading).
-            //
-            // `term2_nodes` above is empty — and this reads `true` — either
-            // pre-`SetNodeRef`, where the transformer sibling does the same
-            // with the same data, or at `nterms < 2`, which `conn=wye` cannot
-            // produce: it forces `Nterms := 2` (`Capacitor.pas:334-339`; r4133
-            // `:298`), ported at `elements/pd/capacitor/accessors.rs:210-211`.
-            // (`GOLDEN_REBASE_PLAN.md` G2.1g; `issue-23`.)
+            // A wye bank's neutral is its second terminal, whose conductors are
+            // the per-phase returns: the bank is grounded only when every one of
+            // them sits on the ground node, so a single live return
+            // (`bus2=nb.1.0.0`) reads `false`. An empty `term2_nodes` (node refs
+            // not set yet) reads `true`; a wye bank always has two terminals
+            // (the wye branch of the `CONN` arm of the capacitor's
+            // `side_effects` in `elements/pd/capacitor/accessors.rs`). Pinned by
+            // `golden_cim::cim_wye_grounded_reads_the_neutral`.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
@@ -3491,20 +3471,10 @@ pub(crate) fn export_cdpsm(
                 "ShuntCompensator",
                 "D",
             );
-            // The delta arm names the same class the wye arm above does.
-            // Upstream writes this one `BooleanNode(FunPrf,
-            // 'LinearShuntCompensator.grounded', FALSE)` six lines below its own
-            // `BooleanNode(FunPrf, 'ShuntCompensator.grounded', TRUE)`
-            // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3706` vs `:3700`;
-            // r4133 `Version8/Source/Common/ExportCIMXML.pas:3187` vs `:3183`) —
-            // one object emitting one attribute under two class prefixes,
-            // decided by its connection. CIM100 declares `grounded` on
-            // `ShuntCompensator`, and `LinearShuntCompensator` is a subclass, so
-            // the delta spelling resolves against no property at all: a strict
-            // consumer rejects it, a lenient one drops the flag. Both gating
-            // oracles carry it; both lanes now write the sibling arm's name
-            // (`GOLDEN_REBASE_PLAN.md` G2.2c; `issue-24`). Only the element name
-            // moves — the value and the emission order are untouched.
+            // A delta bank is never grounded. The flag is written under
+            // `ShuntCompensator`, the class CIM100 declares `grounded` on, as in
+            // the wye arm above. Pinned by
+            // `golden_cim::cim_writer_divergences_are_pinned`.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
@@ -3944,10 +3914,14 @@ pub(crate) fn export_cdpsm(
             // read here through the same field.
             let has_line_code = line.line_code_specified;
             let has_geometry = line.geometry_obj.is_some();
-            let spacing_specified =
-                line.line_spacing_obj.is_some() && !line.line_wire_data.is_empty();
+            // The spacing branch follows the flag. A cleared flag can leave the
+            // spacing and its wires on the line, so the conductor data below
+            // reads the objects themselves. Both halves are pinned by
+            // `golden_cim::cim_aclinesegment_branch_follows_the_spacing_flag`.
+            let spacing_specified = line.spacing_specified;
+            let has_wire_data = line.line_spacing_obj.is_some() && !line.line_wire_data.is_empty();
             // Pascal `NumConductorData` / `FetchConductorData` (Line.pas:2116).
-            let num_cond_avail = if spacing_specified {
+            let num_cond_avail = if has_wire_data {
                 line.line_spacing_obj
                     .as_ref()
                     .map(|s| s.nwires())
@@ -3959,7 +3933,7 @@ pub(crate) fn export_cdpsm(
             };
             let mut conductor_refs: Vec<ConductorRef> = Vec::new();
             for i in 1..=(num_cond_avail.max(0) as usize) {
-                let cond: Option<&ConductorObj> = if spacing_specified {
+                let cond: Option<&ConductorObj> = if has_wire_data {
                     line.line_wire_data.get(i - 1).and_then(|o| o.as_ref())
                 } else if let Some(g) = &line.geometry_obj {
                     g.conductor(i)
@@ -4439,11 +4413,14 @@ pub(crate) fn export_cdpsm(
             yearly: String,
             cvr: String,
             spectrum: String,
-            /// The neutral conductor's node ref — `NodeRef[Nphases]` of the
-            /// load's only terminal, the wye analogue of the transformer
-            /// writer's `j2` (see the `EnergyConsumer.grounded` writer below).
-            /// `0` (ground) before `SetNodeRef`, which reads as grounded.
+            /// The node refs of the first and of the neutral (`Nphases+1`-th)
+            /// conductor of the load's only terminal; both are `0` (ground)
+            /// before the node refs are set. Read with `open_neutral` by the
+            /// `EnergyConsumer.grounded` writer below.
+            first_node: usize,
             neutral_node: usize,
+            /// `rneut < 0`, the Load's open-neutral test.
+            open_neutral: bool,
         }
         let snap = {
             let Some(load) = classes[r.class_ord()].arena.get::<Load>(r.index()) else {
@@ -4454,16 +4431,19 @@ pub(crate) fn export_cdpsm(
             let shape_name = |o: Option<&dyn DssObject>| -> String {
                 o.map(|s| s.data().name().to_string()).unwrap_or_default()
             };
+            let (first_node, neutral_node) = if load.cd.node_ref.is_empty() {
+                (0, 0)
+            } else {
+                let nodes = load.cd.term_nodes(0);
+                (
+                    nodes.first().copied().unwrap_or(0),
+                    nodes.get(load.cd.nphases).copied().unwrap_or(0),
+                )
+            };
             LoadSnap {
-                neutral_node: if load.cd.node_ref.is_empty() {
-                    0
-                } else {
-                    load.cd
-                        .term_nodes(0)
-                        .get(load.cd.nphases)
-                        .copied()
-                        .unwrap_or(0)
-                },
+                first_node,
+                neutral_node,
+                open_neutral: load.rneut < 0.0,
                 enabled: load.cd.enabled,
                 load_model: load.load_model,
                 kw_base: load.kw_base,
@@ -4549,20 +4529,16 @@ pub(crate) fn export_cdpsm(
         );
         if snap.connection == Connection::Wye {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "Y");
-            // The load half of the same upstream TODO: `TRUE` written
-            // unconditionally (`.inputs/dss_capi/src/Common/
-            // ExportCIMXML.pas:4478`; r4133 `Version8/Source/Common/
-            // ExportCIMXML.pas:3854`), again under "TODO - check bus 2". A Load
-            // has one terminal, and `SetNcondsForConnection` (`Load.pas:479-492`)
-            // gives a wye connection `Nconds = Nphases + 1`, so its neutral is
-            // that terminal's `Nphases+1`-th conductor — the transformer
-            // writer's `NodeRef[j2] = 0` test, applied where this class keeps
-            // its neutral. (`GOLDEN_REBASE_PLAN.md` G2.1g; `issue-23`.)
+            // The ladder `cim::power_xfmr::xfmr_tank_phases_and_ground` reads
+            // for a wye winding: grounded when the neutral conductor or, in a
+            // reversed connection, the first conductor sits on the ground node,
+            // else unless a negative `rneut` leaves the neutral open. Pinned by
+            // `golden_cim::cim_wye_grounded_reads_the_neutral`.
             writer::boolean_node(
                 &mut buf,
                 ProfileChoice::Fun,
                 "EnergyConsumer.grounded",
-                snap.neutral_node == 0,
+                snap.neutral_node == 0 || snap.first_node == 0 || !snap.open_neutral,
             );
         } else {
             writer::shunt_connection_kind_node(&mut buf, ProfileChoice::Fun, "EnergyConsumer", "D");

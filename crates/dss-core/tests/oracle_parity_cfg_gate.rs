@@ -1847,11 +1847,15 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // under upstream's own `// TODO - check bus 2` — so a wye with an isolated
     // or impedance-earthed neutral is handed to the receiving tool as solidly
     // grounded, which changes its earth-fault and zero-sequence answers. The
-    // fix is the **same unit's** transformer writer's test
-    // (`XfmrTankPhasesAndGround` `:1531-1570`: `NodeRef[j2] = 0`, "last
-    // conductor is grounded solidly") applied where each shunt class keeps its
-    // neutral — the capacitor's second terminal, the load's `Nphases+1`-th
-    // conductor. Both gating oracles carry the quirk; both lanes now read the
+    // fix is the **same unit's** transformer writer's answer
+    // (`XfmrTankPhasesAndGround` `:1531-1570`) applied where each shunt
+    // class keeps its neutral: the capacitor's second terminal reads its
+    // `NodeRef[j2] = 0` rung ("last conductor is grounded solidly"), and the
+    // load reads the whole wye ladder over its `Nphases+1`-th conductor —
+    // neutral node, reversed first node, then `Rneut < 0` open, else earthed
+    // (pinned rung by rung by the ladder deck of the registered pin,
+    // `golden_cim::cim_wye_grounded_reads_the_neutral`). Both gating oracles
+    // carry the quirk; both lanes now read the
     // model. Zero-footprint, measured: no CIM golden deck and no gated corpus
     // deck has a wye capacitor with an explicit `bus2=` or a wye load with a
     // non-ground neutral, so all 15 CIM goldens stay byte-identical (the
@@ -1862,7 +1866,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         "CIM_WYE_GROUNDED_IS_HARDCODED_TRUE",
         Kind::SplitAlias,
         // Both halves of this two-site row — the capacitor's terminal-2 reading
-        // and the load's neutral reading — get their own needle: the pin
+        // and the load's neutral ladder — get their own needle: the pin
         // asserts both, but a register anchored on one of them would stay green
         // while the other was reverted, and the row→tree direction is exactly
         // what this register exists to mechanize.
@@ -1879,7 +1883,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
             "crates/dss-core/src/cim/export.rs",
             &[
                 "\n                snap.term2_nodes.iter().all(|&n| n == 0),",
-                "\n                snap.neutral_node == 0,",
+                "\n                snap.neutral_node == 0 || snap.first_node == 0 || !snap.open_neutral,",
             ],
         ),
         Some((
@@ -2141,8 +2145,8 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // 'ShuntCompensator.grounded', TRUE)` for a wye bank
     // (`.inputs/dss_capi/src/Common/ExportCIMXML.pas:3700`; r4133
     // `Version8/Source/Common/ExportCIMXML.pas:3183`) and `BooleanNode(FunPrf,
-    // 'LinearShuntCompensator.grounded', FALSE)` for a delta one six lines below
-    // (`:3706`; r4133 `:3187`). CIM100 declares `grounded` on
+    // 'LinearShuntCompensator.grounded', FALSE)` for a delta one (`:3706`;
+    // r4133 `:3187`). CIM100 declares `grounded` on
     // `ShuntCompensator`, so the delta spelling resolves against no property —
     // a strict consumer rejects it, a lenient one drops the flag. Both gating
     // oracles carry it; both lanes now write the sibling arm's name. Only the
