@@ -9,7 +9,7 @@ use crate::elements::general::dynamic_exp::DynamicExpObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::pc::dyneq_pce::{DynEqPce, DynEqPceData};
+use crate::elements::pc::dyneq_pce::{DynEqHost, DynEqPce, DynEqPceData};
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
@@ -109,11 +109,19 @@ impl CktElement for WindGen {
         self.integrate_states_impl(sys, node_v);
     }
 
+    /// A linked `DynamicExp` replaces the shaft swing, so its memory must hold
+    /// what the integration reads and writes
+    /// (`windgen_dynamic_eq_without_state_variables_refuses_the_dynamics_solve`).
+    fn dynamics_refusal(&self) -> Option<String> {
+        let msg = self.dyneq.integration_problem(DynEqHost::Machine)?;
+        Some(format!("WindGen.{}: {msg}", self.cd.obj.name()))
+    }
+
     /// Pascal `TWindGenObj.NumVariables` (`WindGen.pas:2814-2819`): the classic
     /// block plus the loaded `UserModel`'s variables.
     ///
-    /// The classic block is the linked `DynamicExp`'s memory dump when one is
-    /// bound (the `GetAllVariables` split at `:2798-2802`), else the 22 native
+    /// The classic block is the linked `DynamicExp`'s memory dump when one with
+    /// variables is bound (the `GetAllVariables` split at `:2798-2802`), else the 22 native
     /// WindGen variables. **This is one deliberate correction**: upstream's
     /// `NumVariables` has no `DynamicExp` branch at all, so with an equation
     /// bound it reports `22 + N` while `GetAllVariables` fills
@@ -143,8 +151,10 @@ impl CktElement for WindGen {
         if let Some(name) = self.dyneq.variable_name(i) {
             return name;
         }
+        // A dump answers its own indices above, so only the classic layout
+        // reaches the classic names.
         let base = self.variable_base();
-        if !self.dyneq.has_dynamic_eq() && (1..=base).contains(&i) {
+        if (1..=base).contains(&i) {
             return self.wgen_variable_name(i);
         }
         let un = self.user_model_num_vars();
@@ -158,10 +168,12 @@ impl CktElement for WindGen {
     }
 
     /// Pascal `TWindGenObj.GetAllVariables` (`WindGen.pas:2793-2812`): the
-    /// `DynamicExp` memory dump when an equation is bound, else the 22 classic
-    /// WindGen variables — and, in **either** case, the `UserModel` values
-    /// appended after it (`:2804-2807` sits at the same nesting level as the
-    /// if/else, not inside its `else`).
+    /// `DynamicExp` memory dump when an equation with variables is bound, else
+    /// the 22 classic WindGen variables
+    /// (`windgen_dynamic_eq_without_variables_keeps_the_classic_layout`) — and,
+    /// in **either** case, the `UserModel` values appended after it
+    /// (`:2804-2807` sits at the same nesting level as the if/else, not inside
+    /// its `else`).
     ///
     /// The one difference from upstream is where the tail starts: Pascal always
     /// writes it at `@States[NumWGenVariables+1]`, i.e. at 23 even when the
@@ -181,7 +193,7 @@ impl CktElement for WindGen {
     /// native 22 from the native sources and the model's own from index 23 up.
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         let base = self.variable_base();
-        if self.dyneq.has_dynamic_eq() {
+        if self.dyneq.num_variables() != 0 {
             for (i, s) in states.iter_mut().enumerate().take(base) {
                 *s = self.dyneq.get_dynamic_eq_val(i);
             }

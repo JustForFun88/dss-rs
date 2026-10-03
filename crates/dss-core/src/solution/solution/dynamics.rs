@@ -105,6 +105,13 @@ fn solve_dynamic_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         if ckt.solution.solution_abort {
             continue;
         }
+        // An element whose states cannot be integrated stops the solve before
+        // the step integrates anything (`CktElement::dynamics_refusal`).
+        for &r in &ckt.pc_elements {
+            if let Some(msg) = env.store.ckt_elem_mut(r).dynamics_refusal() {
+                return Err(msg);
+            }
+        }
         ckt.solution.increment_time();
         let dbl_hour = ckt.solution.dbl_hour;
         match ckt.default_daily_shape_obj.as_mut() {

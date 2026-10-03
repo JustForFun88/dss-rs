@@ -107,12 +107,14 @@ impl Generator {
             for row in self.dyneq.dynamic_eq_vals.iter_mut() {
                 row[1] = 0.0;
             }
-            // Apply initializations that use calculated values (P0/Q0/edp).
+            // Apply initializations that use calculated values (P0/Q0/edp). A
+            // variable without a memory row is skipped: the dynamics solve
+            // refuses that equation before its first step (`dynamics_refusal`).
             let num_pairs = self.dyneq.dynamic_eq_pair.len() / 2;
             for i in 0..num_pairs {
                 let var_idx = self.dyneq.dynamic_eq_pair[i * 2] as usize;
                 let code = self.dyneq.dynamic_eq_pair[i * 2 + 1];
-                if !DynEqPceData::is_init_val(code) {
+                if !DynEqPceData::is_init_val(code) || var_idx >= self.dyneq.dynamic_eq_vals.len() {
                     continue;
                 }
                 if code == 9 {

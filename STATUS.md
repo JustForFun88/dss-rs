@@ -228,6 +228,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - RF-D02-16: the Storage debug trace pins cover the two paths where TotalCurrent writes no record (the direct-solution shortcut and the grid-forming branch) and the dynamics cadence.
 - RF-D02-18 (a multi-step `cmatrix` Capacitor keeps its capacitance on every step after `makeposseq`, the multi-step `Cuf` tail is pinned, the set of memory-mapped LoadShape fixtures is derived by a corpus scan and `corpus_hygiene.rs` checks each one is checked out verbatim).
 - `Circuit.TotalPower`, Summary, Export Summary and the SystemMeter sum the power of every terminal of every source (physics: a two-ended source delivers over both terminals). Both oracles read terminal 1 only, the three two-ended-source corpus cases compare against the oracle's reading plus its terminal-2 powers and each is pinned by a complete-ledger test.
+- A dynamics solve refuses (error 482) a Generator, WindGen, PVSystem or Storage whose `DynamicExp` memory cannot hold what the host integrates, where the engine panicked. A `DynOut` list longer than two outputs is refused, a WindGen keeps its native variables under an equation without variables. Pinned in `exec::tests::dynamic_eq_memory`.
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been

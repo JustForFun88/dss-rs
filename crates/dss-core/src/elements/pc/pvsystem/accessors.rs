@@ -11,6 +11,7 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::temp_shape::TShapeObj;
 use crate::elements::general::xy_curve::XyCurveObj;
+use crate::elements::pc::dyneq_pce::DynEqHost;
 use crate::elements::pc::inv_based_pce::{
     Connection, InvBasedPce, InvBasedPceData, InvDynamicVars, NUM_INV_DYN_VARS,
 };
@@ -97,6 +98,18 @@ impl CktElement for PVSystem {
     /// Pascal `TPVsystemObj.IntegrateStates`.
     fn integrate_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.integrate_states_impl(sys, node_v);
+    }
+
+    /// A linked `DynamicExp` replaces the inverter's built-in current loop
+    /// unless a loaded `UserModel` integrates instead, so its memory must hold
+    /// what the integration reads and writes
+    /// (`pvsystem_dynamic_eq_without_state_variables_refuses_the_dynamics_solve`).
+    fn dynamics_refusal(&self) -> Option<String> {
+        if self.user_model_exists() {
+            return None;
+        }
+        let msg = self.base.dyneq.integration_problem(DynEqHost::Inverter)?;
+        Some(format!("PVSystem.{}: {msg}", self.cd.obj.name()))
     }
 
     /// The linked `DynamicExp`'s memory dump when it has variables, else the 22

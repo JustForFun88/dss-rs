@@ -734,6 +734,14 @@ pub trait CktElement: Send {
         let _ = (sys, node_v);
     }
 
+    /// Why a dynamics solve cannot integrate this element's states, or `None`
+    /// when it can. The dynamics step loop refuses to start while any PC
+    /// element answers. Default `None` — only an element whose integration can
+    /// be ill-defined by its input (a linked `DynamicExp`) answers.
+    fn dynamics_refusal(&self) -> Option<String> {
+        None
+    }
+
     /// Pascal `TPCElement.NumVariables` (`PCElement.pas`): the number of dynamic
     /// state variables this element exposes (Monitor mode 3 reads them). Default
     /// 0 — non-machine elements carry no state variables.

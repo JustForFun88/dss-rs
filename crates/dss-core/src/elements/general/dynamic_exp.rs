@@ -176,8 +176,9 @@ impl DynamicExpObj {
     }
 
     /// Pascal `Get_VarName`: the printable name of memory slot `idx` — the base
-    /// variable name prefixed by `d`/`dN` for the derivative columns.
-    pub fn get_var_name(&self, idx: usize) -> String {
+    /// variable name prefixed by `d`/`dN` for the derivative columns. `None` for
+    /// a row past `VarNames` (an `NVariables` larger than the names it lists).
+    pub fn get_var_name(&self, idx: usize) -> Option<String> {
         let len = DYN_SLOT_LENGTH;
         let row = idx / len;
         let col = idx - (row * len);
@@ -188,7 +189,8 @@ impl DynamicExpObj {
                 diffstr.push_str(&col.to_string());
             }
         }
-        format!("{diffstr}{}", self.var_names[row])
+        let name = self.var_names.get(row)?;
+        Some(format!("{diffstr}{name}"))
     }
 
     /// Pascal `Get_DynamicEqVal`: read memory slot `idx` (row = variable,
@@ -224,6 +226,20 @@ impl DynamicExpObj {
     /// length) — what a host PCE sizes its memory space by.
     pub fn num_state_vars(&self) -> usize {
         self.var_names.len()
+    }
+
+    /// How many memory rows [`Self::solve_eq`] reads or writes: one past the
+    /// highest state-variable slot the compiled equations refer to, 0 when they
+    /// refer to none.
+    pub fn rows_used(&self) -> usize {
+        self.cmds
+            .iter()
+            .filter_map(|t| match t {
+                DynToken::Var(slot) => Some(slot + 1),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0)
     }
 
     /// The compiled stream re-encoded as Pascal `Cmds` cells — the test-only pin

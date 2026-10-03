@@ -20,6 +20,7 @@ mod derived_polar;
 mod derived_seq;
 mod derived_totals;
 mod distribute_uuids;
+mod dynamic_eq_memory;
 mod dynamics;
 mod element_extras;
 mod energymeter_registers;
