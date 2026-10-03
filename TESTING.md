@@ -20,7 +20,8 @@ cargo test --workspace --doc --features dss-core/oracle-parity
 Commands 4-5 run the pinned **`cargo-nextest` 0.9.146** (RETRO_FIXES RF-I00-01;
 `.config/nextest.toml` refuses an older runner; install it with `cargo install
 cargo-nextest --version 0.9.146 --locked` or the prebuilt from `get.nexte.st`):
-every test in its own process, `retries = 0`, `fail-fast = false`, a report-only `slow-timeout`
+every test in its own process, `retries = 0`, `fail-fast = false`, a `slow-timeout` that reports a
+test every 600 s and terminates it at 1800 s (`terminate-after = 3`),
 and nothing else (no override, test group, `default-filter`, `run-extra-args` or setup script) -
 pinned by the allowlist rail `the_nextest_profile_never_retries_and_serializes_nothing`
 (`crates/dss-core/tests/oracle_parity_cfg_gate.rs`: those four settings, one line each, and any
@@ -4034,12 +4035,54 @@ An explicit `DSS_EPRI_WORKER` is honoured verbatim — its freshness is the oper
 
 **The D13 registry tests write a machine-global key.** `crates/dss-epri/tests/protocol.rs`
 poisons `HKCU\Software\OpenDSS\MainSect\BaseFrequency` (or a `37` sentinel) for the
-duration of a worker spawn and restores it on every exit path — rewriting the saved value,
-or DELETING it when the machine had none (`reg_restore`). The key is shared by every lane
-and every worktree, so two lanes running those tests at the same instant can briefly see
-each other's value; the `Engine::new` reset makes that harmless (each worker pins 60 Hz
-regardless of what it read), which is exactly why the reset, not the restore, is the
-load-bearing fix.
+duration of a worker spawn and puts it back exactly as found — rewriting the saved value,
+or DELETING it when the machine had none (`reg_restore`). Each test that writes the key
+holds `protocol::registry_lock`, a file lock in the user profile's temp directory
+(`%LOCALAPPDATA%\Temp`), from its save to its restore, so two tests (in one run or in two
+worktrees) never interleave a save and a restore and put back each other's sentinel. The
+restore runs through a drop guard (`protocol::RegGuard`), so a test that panics or
+reaches its request deadline restores the key too. Only a test process killed from
+outside can still leave it poisoned, and the `Engine::new` reset makes that harmless
+(each worker pins 60 Hz regardless of what it read), which is exactly why the reset, not
+the restore, is the load-bearing fix.
+
+**Every wait on a protocol-test worker is bounded.** `protocol::WorkerProc` reads the
+worker's replies on their own thread and waits at most `REQUEST_DEADLINE` (120 s) for a
+reply and for the exit after `quit`. A worker that misses it is killed and the test fails
+naming the request, and dropping a `WorkerProc` kills a worker still running, so a wedged
+worker never outlives its test. Three tests drive those paths against children that never
+answer or never exit, with no DLL involved:
+`a_request_the_worker_never_answers_kills_it_at_the_deadline`,
+`a_quit_the_worker_never_obeys_kills_it_at_the_deadline` and
+`dropping_a_worker_still_running_kills_it`.
+
+**Dropping an `Engine` frees every circuit before the process exits.** The r4133 DLL's
+process-exit teardown destroys each circuit's solver thread object, and when that thread
+had been created but had not started running before the exit ended it, the teardown polls
+for it forever: one thread, a full core, mostly kernel time. The race is certain at its
+edge and gone a fraction of a millisecond later (measured 2026-10-03 with a Python `ctypes`
+host that loads the DLL, runs the bridge's init, then `new circuit` and `ExitProcess`): 200
+of 200 hosts that exit at once hung, 16 of 400 that exit 50 µs later, and none of 400 at
+200 µs, 1 ms or 10 ms. Of workers that exit without freeing their circuit, a few in a
+hundred hang when `quit` comes in the same write as `new circuit`, and about one in a
+thousand when `quit` comes two requests later, the shape of
+`init_resets_the_default_base_frequency_to_sixty` and
+`clear_resets_the_default_base_frequency_to_sixty` (measured 2026-10-03 by driving the
+worker binary in parallel). So the drop of `Engine` issues `ClearAll` once every actor is
+idle, which ends the solver threads of every actor while the process is still whole.
+`clear` would free only the active actor's circuit: the same host, given a fresh circuit
+on actor 1 and then a second actor made active, hung 11 times in 100 with `clear` before
+the exit and never in 200 with `ClearAll`. The worker, the smoke and the in-process
+`modes` test all leave through that drop, on a return and on an unwind (pinned by
+`protocol::a_worker_that_quits_right_after_new_circuit_exits`). The corpus gate never met
+it because its transport kills a worker right after `quit`.
+
+A process caught in that spin has already set its exit code, so `Get-Process -Id`,
+`Stop-Process` and `taskkill /F` answer that it does not exist, while `tasklist` still
+lists it and it keeps burning a core. `Get-CimInstance Win32_Process -Filter
+"ProcessId=<pid>" | Invoke-CimMethod -MethodName Terminate` ends it, and so does a kill
+through a handle held since the spawn (`Child::kill`, `Popen.kill`), verified 2026-10-03 on
+a host wedged on purpose.
 
 **The bridge suppresses report auto-display — with the engine's own switches, and the
 editor no-op only as the safety net** (GOLDEN_REBASE G1.10a F0 + F0′, coordinator

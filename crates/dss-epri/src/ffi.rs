@@ -17,7 +17,7 @@
 //!
 //! # SAFETY (module-wide invariant)
 //! Every function pointer in [`DllFns`] is obtained from a `libloading`
-//! [`Library`] that [`crate::dss::Engine`] deliberately **leaks** ([`Dll::leak`]),
+//! [`Library`] that [`crate::dss::Engine`] deliberately **leaks** ([`Dll::leak_into_parts`]),
 //! so the DLL stays mapped for the whole process and the pointers never dangle
 //! (unloading it deadlocks — see the `Engine` docs). The DLL is single-threaded
 //! per process; the `epri-worker` binary drives exactly one in-flight request at
@@ -189,8 +189,8 @@ unsafe impl Send for YMatrixFns {}
 
 /// The loaded r4133 DLL: the entry points ([`DllFns`]) plus the owning
 /// [`Library`]. Dropping this `FreeLibrary`s the DLL — which deadlocks in the
-/// r4133 finalization (see [`crate::dss::Engine`]); use [`Dll::leak`] to keep it
-/// loaded for the session instead.
+/// r4133 finalization (see [`crate::dss::Engine`]). Use
+/// [`Dll::leak_into_parts`] to keep it loaded for the session instead.
 pub struct Dll {
     pub fns: DllFns,
     /// The standalone Y-matrix helper exports (capability channel).

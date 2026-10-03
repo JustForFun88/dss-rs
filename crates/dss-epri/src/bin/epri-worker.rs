@@ -306,6 +306,8 @@ fn main() {
             }
         }
     }
+    // Returning drops `engine`, which frees every circuit before the exit (the
+    // `Drop` impl of `Engine`).
 }
 
 #[cfg(not(windows))]

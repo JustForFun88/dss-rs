@@ -107,13 +107,20 @@ class EpriWorker:
         self.request({"cmd": "chdir", "dir": str(path)})
 
     def close(self) -> None:
+        """Ask the worker to exit. One still running 30 s later is killed, then
+        reported, so no worker outlives its driver."""
         try:
             assert self._proc.stdin
             self._proc.stdin.write(json.dumps({"cmd": "quit"}) + "\n")
             self._proc.stdin.flush()
         except Exception:
             pass
-        self._proc.wait(timeout=30)
+        try:
+            self._proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+            self._proc.wait()
+            raise RuntimeError("epri-worker did not exit within 30 s of quit: it was killed")
 
 
 # ---------------------------------------------------------------------------

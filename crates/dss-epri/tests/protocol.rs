@@ -16,14 +16,28 @@
 #![cfg(windows)]
 
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
+/// How long one request may go unanswered, and a `quit` may go unexited, before
+/// the worker is killed and the test fails. Every request these tests send is
+/// answered in under a second, worker start included, and a loaded machine was
+/// seen to stall process exits for up to 18 s, so only a wedged worker reaches
+/// it.
+const REQUEST_DEADLINE: Duration = Duration::from_secs(120);
+
+/// One spawned worker driven over the line-JSON protocol. Every wait on it is
+/// bounded by `deadline`, and dropping the handle kills a worker still running,
+/// so no worker outlives its test.
 struct WorkerProc {
     child: Child,
     stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    /// The child's stdout lines, read on their own thread so a wait can time out.
+    lines: Receiver<String>,
+    deadline: Duration,
 }
 
 impl WorkerProc {
@@ -36,33 +50,59 @@ impl WorkerProc {
     /// "the throwaway init circuit wrote nothing" is a measurement and not a
     /// claim.
     fn spawn_in(dir: Option<&std::path::Path>) -> WorkerProc {
-        let bin = env!("CARGO_BIN_EXE_epri-worker");
-        let mut cmd = Command::new(bin);
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_epri-worker"));
         if let Some(d) = dir {
             cmd.current_dir(d);
         }
+        WorkerProc::spawn_command(cmd, REQUEST_DEADLINE)
+    }
+
+    /// Spawn `cmd` as the worker, with every wait on it bounded by `deadline`.
+    fn spawn_command(mut cmd: Command, deadline: Duration) -> WorkerProc {
+        let program = cmd.get_program().to_string_lossy().into_owned();
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .unwrap_or_else(|e| panic!("cannot spawn {bin}: {e}"));
+            .unwrap_or_else(|e| panic!("cannot spawn {program}: {e}"));
         let stdin = child.stdin.take().expect("worker stdin");
-        let stdout = BufReader::new(child.stdout.take().expect("worker stdout"));
+        let stdout = child.stdout.take().expect("worker stdout");
+        let (tx, lines) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines() {
+                let Ok(line) = line else { break };
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
         WorkerProc {
             child,
             stdin,
-            stdout,
+            lines,
+            deadline,
         }
     }
 
-    /// Send one request line, read one reply line.
+    /// Send one request line, read one reply line. No reply within the deadline
+    /// kills the worker and fails the test, naming the request.
     fn request(&mut self, req: Value) -> Value {
         let line = serde_json::to_string(&req).expect("serialize request");
         writeln!(self.stdin, "{line}").expect("write request");
         self.stdin.flush().expect("flush request");
-        let mut reply = String::new();
-        self.stdout.read_line(&mut reply).expect("read reply");
+        let reply = match self.lines.recv_timeout(self.deadline) {
+            Ok(reply) => reply,
+            Err(RecvTimeoutError::Disconnected) => String::new(),
+            Err(RecvTimeoutError::Timeout) => {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                panic!(
+                    "no reply to {line} within {:?}: the worker was killed",
+                    self.deadline
+                );
+            }
+        };
         assert!(!reply.trim().is_empty(), "worker closed on {line}");
         serde_json::from_str(reply.trim())
             .unwrap_or_else(|e| panic!("bad reply {reply:?} for {line}: {e}"))
@@ -96,11 +136,281 @@ impl WorkerProc {
         self.ok(req)
     }
 
+    /// Ask the worker to exit and wait for it. Still running at the deadline, it
+    /// is killed and the test fails.
     fn quit(mut self) {
         let _ = writeln!(self.stdin, "{}", json!({"cmd": "quit"}));
         let _ = self.stdin.flush();
-        let _ = self.child.wait();
+        if !self.exits_within_deadline() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            panic!(
+                "the worker did not exit within {:?} of quit: it was killed",
+                self.deadline
+            );
+        }
     }
+
+    /// Whether the worker exits within the deadline, polled.
+    fn exits_within_deadline(&mut self) -> bool {
+        let until = Instant::now() + self.deadline;
+        while Instant::now() < until {
+            if self.child.try_wait().expect("poll the worker").is_some() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        false
+    }
+}
+
+impl Drop for WorkerProc {
+    /// A test that fails mid-conversation takes its worker down with it.
+    fn drop(&mut self) {
+        if matches!(self.child.try_wait(), Ok(None)) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+/// The text of a caught panic.
+fn panic_text(payload: Box<dyn std::any::Any + Send>) -> String {
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_default()
+}
+
+/// End a process by id, for a test whose child outlived the path under test.
+fn kill_pid(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/F", "/PID", &pid.to_string()])
+        .output();
+}
+
+/// The image of [`never_exiting_child`], as `tasklist` names it.
+const NEVER_EXITING_IMAGE: &str = "PING.EXE";
+
+/// A child that does not exit by itself while a test runs, whatever it is sent
+/// and whether its stdin is open or closed: `ping` sends one echo a second for
+/// ten minutes and never reads its stdin.
+fn never_exiting_child() -> Command {
+    let mut cmd = Command::new("ping");
+    cmd.args(["-n", "600", "127.0.0.1"]);
+    cmd
+}
+
+/// Whether the [`never_exiting_child`] with this id is gone within `wait`. The
+/// image name keeps a reused id from reading as the child.
+fn child_gone_within(pid: u32, wait: Duration) -> bool {
+    let until = Instant::now() + wait;
+    loop {
+        if !image_pids(NEVER_EXITING_IMAGE).contains(&pid) {
+            return true;
+        }
+        if Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// The deadline path of [`WorkerProc`], driven against a child that reads every
+/// request and never answers: `findstr` prints only the lines equal to its
+/// pattern, and no request line is. The request must fail at the deadline,
+/// naming the request and the deadline, with the child already dead. A
+/// `request` that waits without a deadline is caught by the outer 60 s bound,
+/// one that gives up without the kill by the liveness check.
+#[test]
+fn a_request_the_worker_never_answers_kills_it_at_the_deadline() {
+    let deadline = Duration::from_secs(2);
+    let mut cmd = Command::new("findstr");
+    cmd.args(["/x", "/l", "/c:dss-rs-never-a-reply"]);
+    let w = WorkerProc::spawn_command(cmd, deadline);
+    let pid = w.child.id();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut w = w;
+        let started = Instant::now();
+        let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            w.request(json!({"cmd": "ping"}));
+        }));
+        let waited = started.elapsed();
+        let exited = w.child.try_wait().expect("poll the child");
+        let _ = tx.send((failed.err().map(panic_text), waited, exited));
+    });
+    let Ok((message, waited, exited)) = rx.recv_timeout(Duration::from_secs(60)) else {
+        kill_pid(pid);
+        panic!("request() waited 60 s on a child that never answers: it has no deadline");
+    };
+    let message = message.expect("request() returned a reply the child never sent");
+    assert!(
+        message.contains(r#"{"cmd":"ping"}"#) && message.contains("2s"),
+        "the deadline failure must name the request and the deadline: {message:?}"
+    );
+    assert!(
+        waited >= deadline,
+        "request() gave up after {waited:?}, before its {deadline:?} deadline"
+    );
+    assert!(
+        exited.is_some(),
+        "request() gave up at the deadline but left the child running"
+    );
+}
+
+/// The `quit` path of [`WorkerProc`], driven against a child that never exits:
+/// `quit` must fail at the deadline, naming `quit` and the deadline, and leave
+/// no child running. A `quit` that waits without a deadline is caught by the
+/// outer 60 s bound, one that gives up and leaves the child behind by the
+/// process check.
+#[test]
+fn a_quit_the_worker_never_obeys_kills_it_at_the_deadline() {
+    let deadline = Duration::from_secs(2);
+    let w = WorkerProc::spawn_command(never_exiting_child(), deadline);
+    let pid = w.child.id();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| w.quit()));
+        let _ = tx.send((failed.err().map(panic_text), started.elapsed()));
+    });
+    let Ok((message, waited)) = rx.recv_timeout(Duration::from_secs(60)) else {
+        kill_pid(pid);
+        panic!("quit() waited 60 s on a child that never exits: it has no deadline");
+    };
+    let message = message.expect("quit() returned although the child never exits");
+    assert!(
+        message.contains("quit") && message.contains("2s"),
+        "the quit failure must name quit and the deadline: {message:?}"
+    );
+    assert!(
+        waited >= deadline,
+        "quit() gave up after {waited:?}, before its {deadline:?} deadline"
+    );
+    let gone = child_gone_within(pid, Duration::from_secs(10));
+    if !gone {
+        kill_pid(pid);
+    }
+    assert!(
+        gone,
+        "quit() gave up at the deadline but left the child running"
+    );
+}
+
+/// The drop path of [`WorkerProc`]: a test that fails mid-conversation drops
+/// its worker, and the drop must kill a child still running. Driven against a
+/// child that ignores its closed stdin, so a drop that only closes the pipes
+/// leaves it running and is seen.
+#[test]
+fn dropping_a_worker_still_running_kills_it() {
+    let w = WorkerProc::spawn_command(never_exiting_child(), REQUEST_DEADLINE);
+    let pid = w.child.id();
+    assert!(
+        image_pids(NEVER_EXITING_IMAGE).contains(&pid),
+        "the child {pid} is not running, so the drop below proves nothing"
+    );
+    drop(w);
+    let gone = child_gone_within(pid, Duration::from_secs(10));
+    if !gone {
+        kill_pid(pid);
+    }
+    assert!(gone, "dropping a WorkerProc left its child {pid} running");
+}
+
+/// The worker frees every circuit before it exits: returning from `main` drops
+/// its `Engine`, whose drop issues `ClearAll`. The r4133 DLL's exit-time
+/// teardown spins forever in one thread, mostly in kernel time, when a
+/// circuit's solver thread was created but had not started running when the
+/// exit ended it, and a `quit` sent in the same write as `new circuit` gives a
+/// worker without that drop a few chances in a hundred to hang. Every worker
+/// must answer `new circuit` and exit cleanly. The first hang stops every
+/// thread, since one hang already makes the test red, so a regression reds in
+/// about a minute instead of holding the test slot for one minute per hung
+/// worker. Measured 2026-10-03 with the drop's `ClearAll` removed: red in each
+/// of 3 runs, at 60.0 to 60.2 s.
+#[test]
+fn a_worker_that_quits_right_after_new_circuit_exits() {
+    const WORKERS: usize = 240;
+    const THREADS: usize = 8;
+    // An honest exit takes well under a second, and a loaded machine was seen
+    // to stall process exits for up to 18 s.
+    const EXIT_WAIT: Duration = Duration::from_secs(60);
+    let lines = format!(
+        "{}\n{}\n",
+        json!({"cmd": "exec", "text": "new circuit.quitprobe"}),
+        json!({"cmd": "quit"})
+    );
+    let any_hung = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let per_thread: Vec<(usize, usize, Vec<String>)> = (0..THREADS)
+        .map(|_| {
+            let lines = lines.clone();
+            let any_hung = std::sync::Arc::clone(&any_hung);
+            std::thread::spawn(move || {
+                let stop = || any_hung.load(std::sync::atomic::Ordering::SeqCst);
+                let (mut clean, mut hung, mut bad) = (0, 0, Vec::new());
+                for _ in 0..WORKERS / THREADS {
+                    if stop() {
+                        break;
+                    }
+                    let cmd = Command::new(env!("CARGO_BIN_EXE_epri-worker"));
+                    let mut w = WorkerProc::spawn_command(cmd, EXIT_WAIT);
+                    w.stdin.write_all(lines.as_bytes()).expect("write requests");
+                    w.stdin.flush().expect("flush requests");
+                    let until = Instant::now() + EXIT_WAIT;
+                    let status = loop {
+                        if let Some(status) = w.child.try_wait().expect("poll the worker") {
+                            break Some(status);
+                        }
+                        // Another thread already saw a hang: the drop kills this one.
+                        if stop() {
+                            break None;
+                        }
+                        if Instant::now() >= until {
+                            hung += 1;
+                            any_hung.store(true, std::sync::atomic::Ordering::SeqCst);
+                            break None;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    };
+                    let Some(status) = status else { continue };
+                    let reply = w
+                        .lines
+                        .recv_timeout(Duration::from_secs(10))
+                        .unwrap_or_default();
+                    let answered = serde_json::from_str::<Value>(&reply)
+                        .ok()
+                        .and_then(|r| r.get("ok").and_then(Value::as_bool))
+                        == Some(true);
+                    if answered && status.success() {
+                        clean += 1;
+                    } else {
+                        bad.push(format!("{status}, reply {reply:?}"));
+                    }
+                }
+                (clean, hung, bad)
+            })
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|t| t.join().expect("a worker thread panicked"))
+        .collect();
+    let clean: usize = per_thread.iter().map(|t| t.0).sum();
+    let hung: usize = per_thread.iter().map(|t| t.1).sum();
+    let bad: Vec<&String> = per_thread.iter().flat_map(|t| &t.2).collect();
+    assert_eq!(
+        hung, 0,
+        "{hung} worker(s) did not exit within {EXIT_WAIT:?} of a quit sent right \
+         behind `new circuit` ({clean} had exited cleanly): the worker no longer \
+         frees its circuits before it exits"
+    );
+    assert!(
+        bad.is_empty(),
+        "workers exited without a clean answer to `new circuit`, so they never \
+         had a circuit to free: {bad:?}"
+    );
+    assert_eq!(clean, WORKERS, "not every worker ran");
 }
 
 /// The `gen_protection.py` fuse_blow circuit (a tiny inline radial feeder) plus
@@ -733,38 +1043,135 @@ fn reg_read(name: &str) -> Option<String> {
 /// writing a default `60` there would create machine state the test found
 /// absent, and r4133 reads that key at DLL load).
 fn reg_restore(name: &str, before: Option<&str>) {
+    try_reg_restore(name, before).unwrap_or_else(|e| panic!("{e}"));
+}
+
+/// [`reg_restore`] reporting a failure instead of panicking, for a restore that
+/// runs while the test is already unwinding.
+fn try_reg_restore(name: &str, before: Option<&str>) -> Result<(), String> {
     match before {
-        Some(v) => reg_write(name, v),
-        None => reg_delete(name),
+        Some(v) => try_reg_write(name, v),
+        None => try_reg_delete(name),
     }
 }
 
 /// Delete one value with `reg.exe delete`; a missing value is already the
 /// wanted state, so only a *present* value that survives is an error.
-fn reg_delete(name: &str) {
+fn try_reg_delete(name: &str) -> Result<(), String> {
     let _ = Command::new("reg")
         .args(["delete", REG_KEY, "/v", name, "/f"])
         .output()
-        .expect("run reg delete");
-    assert!(
-        reg_read(name).is_none(),
-        "could not remove value {name:?} under {REG_KEY} (the test found it absent)"
-    );
+        .map_err(|e| format!("cannot run reg delete: {e}"))?;
+    match reg_read(name) {
+        None => Ok(()),
+        Some(_) => Err(format!(
+            "could not remove value {name:?} under {REG_KEY} (the test found it absent)"
+        )),
+    }
 }
 
-/// Restore one `REG_SZ` value with `reg.exe add`.
+/// Write one `REG_SZ` value with `reg.exe add`.
 fn reg_write(name: &str, value: &str) {
+    try_reg_write(name, value).unwrap_or_else(|e| panic!("{e}"));
+}
+
+fn try_reg_write(name: &str, value: &str) -> Result<(), String> {
     let ok = Command::new("reg")
         .args([
             "add", REG_KEY, "/v", name, "/t", "REG_SZ", "/d", value, "/f",
         ])
-        .status()
-        .expect("run reg add")
+        .output()
+        .map_err(|e| format!("cannot run reg add: {e}"))?
+        .status
         .success();
-    assert!(
-        ok,
-        "could not restore value {name:?} under {REG_KEY} to {value:?}"
-    );
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "could not write value {name:?} under {REG_KEY} as {value:?}"
+        ))
+    }
+}
+
+/// How long a test waits for [`registry_lock`] before it fails.
+const REGISTRY_LOCK_WAIT: Duration = Duration::from_secs(300);
+
+/// The lock every test that writes [`REG_KEY`] holds from its save to its
+/// restore. nextest runs each test in its own process and other checkouts run
+/// this file too, so two save-write-restore sequences that overlap would put
+/// back each other's test value instead of the machine's. The lock is a file in
+/// the user profile's own temp directory (`%LOCALAPPDATA%\Temp`, shared even by
+/// a runner that points `TEMP` elsewhere), matching the per-user key, and the
+/// OS releases it when the holding process ends, killed or not.
+fn registry_lock() -> std::fs::File {
+    let dir = std::env::var_os("LOCALAPPDATA")
+        .map(|d| std::path::PathBuf::from(d).join("Temp"))
+        .filter(|d| d.is_dir())
+        .unwrap_or_else(std::env::temp_dir);
+    let path = dir.join("dss-rs-opendss-registry.lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .unwrap_or_else(|e| panic!("cannot open the registry lock {}: {e}", path.display()));
+    let until = Instant::now() + REGISTRY_LOCK_WAIT;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return file,
+            Err(std::fs::TryLockError::WouldBlock) if Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => panic!(
+                "cannot take the registry lock {} within {REGISTRY_LOCK_WAIT:?}: {e}",
+                path.display()
+            ),
+        }
+    }
+}
+
+/// One value of [`REG_KEY`], saved under [`registry_lock`] and put back exactly
+/// as found by [`RegGuard::restore`], or by the drop when the test panics or
+/// times out before it gets there, so a red run cannot leave the key poisoned.
+struct RegGuard {
+    name: &'static str,
+    before: Option<String>,
+    restored: bool,
+    /// Released when the guard is dropped, after the drop's restore.
+    _lock: std::fs::File,
+}
+
+impl RegGuard {
+    fn save(name: &'static str) -> RegGuard {
+        let lock = registry_lock();
+        RegGuard {
+            name,
+            before: reg_read(name),
+            restored: false,
+            _lock: lock,
+        }
+    }
+
+    /// The value the machine had, `None` when it had none.
+    fn before(&self) -> Option<&str> {
+        self.before.as_deref()
+    }
+
+    /// Put the value back now, failing the test if that does not take.
+    fn restore(&mut self) {
+        reg_restore(self.name, self.before.as_deref());
+        self.restored = true;
+    }
+}
+
+impl Drop for RegGuard {
+    fn drop(&mut self) {
+        if !self.restored
+            && let Err(e) = try_reg_restore(self.name, self.before.as_deref())
+        {
+            eprintln!("{e}");
+        }
+    }
 }
 
 /// [`reg_restore`]'s absent-value branch, driven on a scratch value name (the
@@ -775,8 +1182,9 @@ fn reg_write(name: &str, value: &str) {
 #[test]
 fn reg_restore_removes_a_value_the_machine_did_not_have() {
     const PROBE: &str = "DssRsSettleProbe";
+    let mut key = RegGuard::save(PROBE);
     assert!(
-        reg_read(PROBE).is_none(),
+        key.before().is_none(),
         "{PROBE} under {REG_KEY} is not a scratch name after all — pick another"
     );
     reg_write(PROBE, "37");
@@ -785,10 +1193,45 @@ fn reg_restore_removes_a_value_the_machine_did_not_have() {
         Some("37"),
         "the scratch write did not take — the probe proves nothing"
     );
-    reg_restore(PROBE, None);
+    key.restore();
     assert!(
         reg_read(PROBE).is_none(),
         "restoring an absent value must DELETE it, not write a default"
+    );
+}
+
+/// [`RegGuard`]'s drop path, driven on a scratch value name: a test that panics
+/// between its write and its restore still leaves the value exactly as found,
+/// here absent. Without the guard's `Drop` the probe value survives the panic.
+#[test]
+fn a_test_that_panics_still_restores_the_registry_value() {
+    const PROBE: &str = "DssRsGuardProbe";
+    const FAILURE: &str = "the test fails between its write and its restore";
+    let unwound = std::panic::catch_unwind(|| {
+        let key = RegGuard::save(PROBE);
+        assert!(
+            key.before().is_none(),
+            "{PROBE} under {REG_KEY} is not a scratch name after all — pick another"
+        );
+        reg_write(PROBE, "37");
+        assert_eq!(
+            reg_read(PROBE).as_deref(),
+            Some("37"),
+            "the scratch write did not take — the probe proves nothing"
+        );
+        panic!("{FAILURE}");
+    });
+    let message = unwound
+        .err()
+        .and_then(|p| p.downcast_ref::<String>().cloned())
+        .unwrap_or_default();
+    assert_eq!(
+        message, FAILURE,
+        "the probe failed before its deliberate panic"
+    );
+    assert!(
+        reg_read(PROBE).is_none(),
+        "the guard did not put {PROBE} back when its test panicked"
     );
 }
 
@@ -865,7 +1308,8 @@ fn clear_resets_the_default_base_frequency_to_sixty() {
 /// reset removed the read comes back `50` (measured 2026-09-04 on a throwaway
 /// copy of the bridge). The machine key is put back on every exit path — the
 /// saved value rewritten, or the value DELETED when the machine had none
-/// ([`reg_restore`]) — so a regression cannot leave it poisoned.
+/// ([`RegGuard`], which also restores it when a request panics or times out) —
+/// so a regression cannot leave it poisoned.
 ///
 /// `Get DefaultBaseFrequency` needs an active circuit — `DoGetCmd_NoCircuit`
 /// (`Executive/ExecOptions.pas:1510`) does not serve option 73 — hence the
@@ -873,7 +1317,7 @@ fn clear_resets_the_default_base_frequency_to_sixty() {
 /// `DefaultBaseFreq`.
 #[test]
 fn init_resets_the_default_base_frequency_to_sixty() {
-    let before = reg_read("BaseFrequency");
+    let mut key = RegGuard::save("BaseFrequency");
     reg_write("BaseFrequency", "50");
 
     let mut w = WorkerProc::spawn();
@@ -883,7 +1327,8 @@ fn init_resets_the_default_base_frequency_to_sixty() {
     w.quit();
 
     // Restore the machine key before any assertion can unwind.
-    reg_restore("BaseFrequency", before.as_deref());
+    key.restore();
+    let before = key.before();
 
     assert_eq!(
         got,
@@ -925,7 +1370,7 @@ fn init_resets_the_default_base_frequency_to_sixty() {
 /// `60 -> 37`; with it, unchanged.
 #[test]
 fn the_worker_never_writes_the_opendss_registry_key() {
-    let before = reg_read("BaseFrequency");
+    let mut key = RegGuard::save("BaseFrequency");
 
     let mut w = WorkerProc::spawn();
     // Not followed by a `clear`, so this value is what `WriteDSS_Registry` would
@@ -934,10 +1379,9 @@ fn the_worker_never_writes_the_opendss_registry_key() {
     w.quit();
 
     let after = reg_read("BaseFrequency");
-    // Restore the machine's key first, so the assertion below is the only exit
-    // (G1.4a audit settlement T6: the old shape restored inside an `if` and left
-    // an unreachable `assert_ne!` behind it).
-    reg_restore("BaseFrequency", before.as_deref());
+    // Restore the machine's key first, so the assertion below is the only exit.
+    key.restore();
+    let before = key.before();
     assert_ne!(
         after.as_deref(),
         Some("37"),
@@ -999,11 +1443,12 @@ const EDITOR_SENTINEL_B: &str = "DssRsEditorSentinelB.exe";
 /// returns `A`, not the `B` the worker itself last held. `Get Editor` (option
 /// 15, `Executive/ExecOptions.pas:1206`) is served only by `DoGetCmd`, which
 /// needs an active circuit — hence the `new circuit.…`. The key is put back on
-/// every exit path ([`reg_restore`] — rewritten, or DELETED when the machine had
-/// none) before any assertion can unwind.
+/// every exit path ([`RegGuard`] — rewritten, or DELETED when the machine had
+/// none) before any assertion can unwind, and by the guard's drop when a
+/// request panics or times out first.
 #[test]
 fn init_overrides_the_os_editor_and_never_writes_it_back() {
-    let before = reg_read("Editor");
+    let mut key = RegGuard::save("Editor");
     reg_write("Editor", EDITOR_SENTINEL_A);
 
     let mut w = WorkerProc::spawn();
@@ -1016,7 +1461,8 @@ fn init_overrides_the_os_editor_and_never_writes_it_back() {
     w.quit();
 
     let after = reg_read("Editor");
-    reg_restore("Editor", before.as_deref());
+    key.restore();
+    let before = key.before();
 
     assert_eq!(
         got,

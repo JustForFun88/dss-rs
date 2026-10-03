@@ -182,14 +182,42 @@ const RELCALC_TOLERATED: &[i32] = &[52902];
 /// minidump — the process parked in `NtUserMsgWaitForMultipleObjectsEx` inside
 /// `OpenDSSDirect.dll` at exit; the Python host dodged it because interpreter
 /// shutdown does not `FreeLibrary` the Oddie DLL either). Leaking the library is
-/// correct for a test-only worker: it stays loaded until the process exits, which
-/// the OS reclaims cleanly.
+/// correct for a test-only worker: it stays loaded until the process exits.
+///
+/// A normal exit still runs the DLL's finalization, and that finalization spins
+/// forever in one thread, mostly in kernel time, when a circuit's solver thread
+/// had been created but had not started running before the exit ended it. So
+/// dropping an `Engine` frees every circuit while the process is still whole
+/// (the `Drop` impl), and a host lets its `Engine` drop before it exits rather
+/// than leaving through `std::process::exit` with a circuit alive. Pinned by
+/// `tests/protocol.rs` `a_worker_that_quits_right_after_new_circuit_exits`.
 pub struct Engine {
     dll: DllFns,
     ymatrix: YMatrixFns,
     families: FamilyTable,
     version: String,
     dll_path: String,
+}
+
+/// How long dropping an [`Engine`] waits for busy solver actors before it frees
+/// the circuits. A solver thread starts within milliseconds of its circuit, so
+/// an actor still busy after this wait is running and the exit cannot catch it
+/// unstarted.
+const TEARDOWN_IDLE_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+impl Drop for Engine {
+    /// Frees every circuit of every actor (`ClearAll`), which ends their solver
+    /// threads while the process is still whole, on a normal return and on an
+    /// unwind alike (see [`Engine`] for the exit-time spin this prevents). The
+    /// circuits are freed only once every actor is idle: freeing one under a
+    /// running solve is unsafe, and an actor that is running has started, so
+    /// leaving it to the exit is safe.
+    fn drop(&mut self) {
+        if self.actors_idle_within(TEARDOWN_IDLE_WAIT) {
+            let _ = self.raw_command("ClearAll");
+            let _ = self.poll_error();
+        }
+    }
 }
 
 impl Engine {
@@ -730,23 +758,32 @@ impl Engine {
     /// `DSS_EPRI_ACTOR_TIMEOUT_SECS` (default 300) so a wedged solve fails the
     /// case instead of hanging the worker forever.
     fn wait_for_actor(&self) -> Result<(), EngineError> {
-        let deadline = std::time::Instant::now()
-            + std::time::Duration::from_secs(
-                std::env::var("DSS_EPRI_ACTOR_TIMEOUT_SECS")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(300),
-            );
+        let timeout = std::time::Duration::from_secs(
+            std::env::var("DSS_EPRI_ACTOR_TIMEOUT_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(300),
+        );
+        if self.actors_idle_within(timeout) {
+            Ok(())
+        } else {
+            Err(EngineError::Other(
+                "actor did not finish solving within the deadline".to_string(),
+            ))
+        }
+    }
+
+    /// Whether every actor reports done (status != 0) within `wait`, polled.
+    fn actors_idle_within(&self, wait: std::time::Duration) -> bool {
+        let deadline = std::time::Instant::now() + wait;
         loop {
             let status = self.actor_status();
             // All actors done (non-empty and no zero/busy entry).
             if !status.is_empty() && status.iter().all(|&s| s != 0) {
-                return Ok(());
+                return true;
             }
             if std::time::Instant::now() >= deadline {
-                return Err(EngineError::Other(
-                    "actor did not finish solving within the deadline".to_string(),
-                ));
+                return false;
             }
             std::thread::sleep(std::time::Duration::from_micros(200));
         }
