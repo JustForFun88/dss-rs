@@ -1674,9 +1674,18 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // lines), so a column headed "percent" reports `normamps=-1` as a loading
     // of −1 %. Both gating oracles carry it; both lanes now print the `0` the
     // report's own `else` arm already writes for every unrated row.
-    // Zero-footprint: no golden and no gated corpus deck rates an element
-    // negatively (at `normamps=0` the two readings coincide), so nothing moved
-    // but the pin.
+    // Only a negative rating moves a cell (at `normamps=0` the two readings
+    // coincide). The one `Export SeqCurrents` golden (IEEE13) rates every
+    // element positively. Four gated corpus decks carry negative ratings
+    // (measured 2026-10-02 over every gated case): the nine `wires=` lines of
+    // `Test/IEEE13_LineSpacing.dss`, `Test/IEEE13_LineAndCableSpacing.dss` and
+    // `Test/CapControlFollow.dss` take −1/−1 from a WireData that sets no
+    // rating, the class the row's pin covers with `Line.bad`, and
+    // `AutoTrans.at` of `modes/makeposseq/makeposseq_xfmr.dss` derives
+    // −152.848446716868/−208.429700068457, pinned by
+    // `golden_reports.rs::export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct`.
+    // No gating channel compares `Export SeqCurrents` text, so no golden byte
+    // or ledger entry moves.
     (
         "SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING",
         Kind::SplitAlias,
