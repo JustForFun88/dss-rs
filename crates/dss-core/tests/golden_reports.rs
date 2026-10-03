@@ -6801,11 +6801,25 @@ fn query_indmach012_pf_renders_the_live_power_factor() {
 /// oracles carry the quirk; neither lane reproduces it (`GOLDEN_REBASE_PLAN.md`
 /// G2.1c; `issue-12`).
 ///
-/// The site was marked "unpinnable" for the whole port because every element on
-/// IEEE13 is rated positively; this deck rates one line negatively on purpose,
-/// which is why no committed golden and no gated corpus case moved when the
-/// parity lane stopped reproducing it. The positively-rated control line in the
-/// same deck proves the normal percentage path is untouched.
+/// The one committed `Export SeqCurrents` golden (IEEE13) rates every element
+/// positively, so this test's deck rates one line negatively on purpose. Its
+/// positively-rated control line proves the normal percentage path is
+/// untouched.
+///
+/// Four gated corpus decks carry negative ratings (2026-10-02: every gated
+/// case compiled verbatim on each of its gating oracles, the pinned dss-python
+/// reading back every enabled PD element's `normamps`/`emergamps`, the r4133
+/// DLL through `epri-worker` printing a non-positive rating raw in
+/// `Export SeqCurrents`), and no golden byte or ledger entry moves on them
+/// only because no gating channel compares `Export SeqCurrents` text.
+/// The nine `wires=` lines of `Test/IEEE13_LineSpacing.dss`,
+/// `Test/IEEE13_LineAndCableSpacing.dss` and `Test/CapControlFollow.dss` take
+/// −1/−1 from a WireData that sets no rating, the class `Line.bad` pins here:
+/// the pinned dss-python prints `-1` and `-1` in their cells, and the r4133
+/// DLL stops the three decks on error #303 before they solve. `AutoTrans.at`
+/// of `modes/makeposseq/makeposseq_xfmr.dss` derives `normamps`
+/// −152.848446716868 and `emergamps` −208.429700068457, pinned by
+/// [`export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct`].
 #[test]
 fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
     let scratch = scratch_dir("seqcurrents_rating");
@@ -6892,4 +6906,108 @@ fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
         (good_n / good_e - 600.0 / 400.0).abs() < 1e-3,
         "%Normal/%Emergency must be emergamps/normamps = 1.5, got {good_n}/{good_e}"
     );
+}
+
+// EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING): the derived
+// negative rating of a gated corpus deck renders as 0 % in both lanes.
+/// `Export SeqCurrents` on the gated corpus deck
+/// `modes/makeposseq/makeposseq_xfmr.dss` prints `0` in the `%Normal` and
+/// `%Emergency` cells of `AutoTrans.at`, whose ratings are derived and
+/// negative: its winding 1 (series, 4.16 kV) sits below its winding 2 (common,
+/// 12.47 kV), so the series voltage base, and with it `normamps` and
+/// `emergamps`, come out below zero.
+///
+/// Both gating oracles print the rating itself in those cells (2026-10-01, the
+/// deck compiled verbatim and then `Export SeqCurrents`, on the pinned
+/// dss-python and on the r4133 DLL through `epri-worker`): `-152.8` and
+/// `-208.4` in the terminal-1 row, with `normamps`/`emergamps` read back as
+/// `-152.848446716868`/`-208.429700068457` (dss-python) and `-152.85`/`-208.43`
+/// (r4133). The port prints `0` and `0`, the reading of
+/// [`export_seqcurrents_prints_zero_for_an_undefined_rating`]. No gating
+/// channel compares `Export SeqCurrents` text and the case compares no run
+/// file, so no golden byte and no `ledger.json` entry carries the divergence:
+/// this test is its pin.
+///
+/// The terminal-1 `I1` is pinned at the `44.0011` that the port and dss-python
+/// print, so a sign-blind rewrite of the guard (`rating.abs()`) prints a
+/// loading here and fails the pin. The r4133 DLL prints `0` for that `I1`
+/// (2026-10-02, the same recipe): its positive-sequence branch takes the
+/// magnitude of a phase-current array it never loads, so its `0` is an
+/// undefined value and is not pinned.
+#[test]
+fn export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct() {
+    use harness::scratch;
+
+    let vendored = scratch::corpus_root().join("modes/makeposseq/makeposseq_xfmr.dss");
+    assert!(
+        vendored.is_file(),
+        "vendored deck is missing: {}",
+        vendored.display()
+    );
+    let copy = scratch::ScratchCopy::new(&vendored.to_string_lossy(), scratch::PORT);
+    let mut dss = Dss::new();
+    dss.command(&format!("compile \"{}\"", copy.deck()));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    // Sanity leg: the ratings the deck derives are the negative pair both
+    // oracles read back.
+    let mut rating = |prop: &str| -> f64 {
+        dss.command(&format!("? autotrans.at.{prop}"));
+        let rendered = dss.result().to_string();
+        rendered
+            .trim()
+            .parse()
+            .unwrap_or_else(|e| panic!("{prop} renders a number, got {rendered:?}: {e}"))
+    };
+    let (norm, emerg) = (rating("normamps"), rating("emergamps"));
+    assert_eq!(
+        (format!("{norm:.12}"), format!("{emerg:.12}")),
+        (
+            "-152.848446716868".to_string(),
+            "-208.429700068457".to_string()
+        ),
+        "AutoTrans.at derives negative normamps/emergamps from its series voltage base"
+    );
+
+    dss.command(&format!("set datapath=\"{}\"", copy.run_dir().display()));
+    dss.command("export seqcurrents");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let produced = std::fs::read_to_string(dss.last_result_file())
+        .unwrap_or_else(|e| panic!("read seqcurrents: {e}"));
+
+    // Row layout: Element, Terminal, I1, %Normal, %Emergency, I2, %I2/I1, I0,
+    // %I0/I1, Iresidual, %NEMA
+    let line = produced
+        .lines()
+        .skip(1)
+        .find(|l| {
+            let f = l.split(',').next().unwrap_or("").trim().trim_matches('"');
+            f.eq_ignore_ascii_case("AutoTrans.at")
+        })
+        .unwrap_or_else(|| panic!("no AutoTrans.at row in:\n{produced}"));
+    let f: Vec<&str> = line.split(',').map(str::trim).collect();
+    assert_eq!(
+        f[1], "1",
+        "the first AutoTrans.at row is terminal 1: {line}"
+    );
+    let i1: f64 = f[2].parse().expect("I1");
+    assert_eq!(
+        i1, 44.0011,
+        "terminal 1 carries the load current, the 44.0011 dss-python prints (r4133 prints 0 \
+         from a phase-current array it never loads), and a sign-blind guard would print a \
+         loading against it: {line}"
+    );
+    let cells: (f64, f64) = (
+        f[3].parse().expect("%Normal"),
+        f[4].parse().expect("%Emergency"),
+    );
+    assert_eq!(
+        cells,
+        (0.0, 0.0),
+        "a negative rating is undefined, so its loading cells print 0. Both oracles print \
+         the rating itself, -152.8 and -208.4: {line}"
+    );
+
+    drop(dss);
+    copy.finish();
 }
