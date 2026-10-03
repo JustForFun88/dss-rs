@@ -210,6 +210,17 @@ own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-7
 run the doctests, which nextest does not. On a shared machine every gate command
 runs through the queue wrapper,
 `python tools/gate/gatelock.py --label "<who>" -- cargo <args>` (`tools/gate/README.md`).
+
+A landing does not repeat a gate that the same tree already passed (user decision
+2026-10-03). When the lane head passed the seven commands and `update` has not
+moved past the lane's base, the squash commit differs from that head only in
+`STATUS.md` and the record, so it lands on the lane's gate: check
+`git diff --stat <lane head> <landing commit>` shows nothing else, run
+`cargo fmt --all --check` and the doc rails
+(`cargo nextest run -p dss-core --test oracle_parity_cfg_gate`), then push. When
+`update` has moved, or the diff shows any other file, the landing runs the full
+gate.
+
 Since DE_PASCALIZE **Stage F**
 (the `oracle-parity` feature split) the engine ships in **two lanes**, and both
 must be green:
