@@ -52,6 +52,13 @@ impl CktElement for Transformer {
         &self.amp_ratings
     }
 
+    /// The ratings derive from kVA and the winding 1 voltage base, so a negative
+    /// one is still a rating and a loading takes its magnitude. Pinned by
+    /// `export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`.
+    fn loading_rating(&self, rating: f64) -> f64 {
+        rating.abs()
+    }
+
     /// Pascal `TTransfObj.GetLosses` (Transformer.pas l.1635): no-load losses
     /// are the power into `Yprim_Shunt` from each terminal; load losses are the
     /// remainder of the total.

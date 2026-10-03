@@ -1672,8 +1672,12 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`; r4133
     // `Version8/Source/Common/ExportResults.pas:355-358` is the same four
     // lines), so a column headed "percent" reports `normamps=-1` as a loading
-    // of −1 %. Both gating oracles carry it; both lanes now print the `0` the
-    // report's own `else` arm already writes for every unrated row.
+    // of −1 %. Both gating oracles carry it. Both lanes now print the `0` the
+    // report's own `else` arm already writes for every unrated row, and a
+    // Transformer or an AutoTrans, whose negative rating is still a rating,
+    // prints its loading against the magnitude instead, pinned by
+    // `golden_reports.rs::export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`
+    // and the AutoTrans pin named below.
     // Only a negative rating moves a cell (at `normamps=0` the two readings
     // coincide). The one `Export SeqCurrents` golden (IEEE13) rates every
     // element positively. Four gated corpus decks carry negative ratings
@@ -1683,7 +1687,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // rating, the class the row's pin covers with `Line.bad`, and
     // `AutoTrans.at` of `modes/makeposseq/makeposseq_xfmr.dss` derives
     // −152.848446716868/−208.429700068457, pinned by
-    // `golden_reports.rs::export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct`.
+    // `golden_reports.rs::export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`.
     // No gating channel compares `Export SeqCurrents` text, so no golden byte
     // or ledger entry moves.
     (

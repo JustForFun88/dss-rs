@@ -42,7 +42,7 @@ pub(crate) fn export_overloads(
         // Seasonal ratings (dss_capi 0.15.x `55400a29`, WP-U1.5 E2): Pascal
         // `PdElem.GetRatings(iNormal, iEmerg)` — the globally-synced season
         // index overrides norm/emerg for any PDElement with `NumAmpRatings > 1`.
-        let (norm_amps, emerg_amps) = elem.get_ratings(seasonal_idx);
+        let (norm_amps, emerg_amps) = elem.loading_ratings(seasonal_idx);
         let nphases = elem.cd().nphases;
 
         // Terminal-1 max phase current over the first `min(Nphases, 3)` phases

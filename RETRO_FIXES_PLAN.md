@@ -3089,8 +3089,10 @@ are re-measured at the step's HEAD (G1.10b widened the run-file content compare)
   rates `AutoTrans.at` negatively (r4133 prints NormAmps -152.85 / EmergAmps -208.43). This
   row and its pin are owned by RF-D03-01 (`G|G2.1c|AC1|AC-1`, in **After**): it
   corrects the same row prose ("search `negative` near the G2.1c row") and adds the
-  expected-value pin
-  `golden_reports.rs::export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct`.
+  expected-value pin, now
+  `golden_reports.rs::export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`
+  (user decision 2026-10-03: a negative Transformer or AutoTrans rating loads against its
+  magnitude, so the pin asserts 28.79/21.11 in those cells).
   Fix here: verify D03-01's rewording at the lane HEAD (the footprint is zero because no
   gating channel compares `Export SeqCurrents` text - re-check against the G1.10b run-file
   content compare that this deck does not export it, and reword only if D03-01's sentence

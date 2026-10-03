@@ -60,8 +60,8 @@ pub(crate) fn show_currents(
         elem.compute_iterminal(sys, node_v);
         let nterm = elem.cd().nterms;
         let nphases = elem.cd().nphases;
-        let norm_amps = elem.norm_amps();
-        let emerg_amps = elem.emerg_amps();
+        let norm_amps = elem.loading_rating(elem.norm_amps());
+        let emerg_amps = elem.loading_rating(elem.emerg_amps());
         // Pascal excludes capacitors from the overload columns (`CLASSMASK <>
         // CAP_ELEMENT`) — match by class name.
         let is_cap = name

@@ -6789,7 +6789,11 @@ fn query_indmach012_pf_renders_the_live_power_factor() {
 // rating renders as 0 % in both lanes, and a defined one still renders its
 // loading.
 /// `Export SeqCurrents` prints `0` in the `%Normal`/`%Emergency` columns of an
-/// element whose rating is not positive.
+/// element whose rating is not positive and means "no rating", which is every
+/// class but the Transformer and the AutoTrans (their derived ratings load
+/// against the magnitude, pinned by
+/// [`export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`]
+/// and [`export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`]).
 ///
 /// Upstream prints the rating itself: `CalcAndWriteSeqCurrents` seeds
 /// `iNormal := NormAmps` and only *overwrites* it with `I1/NormAmps*100` when
@@ -6816,10 +6820,11 @@ fn query_indmach012_pf_renders_the_live_power_factor() {
 /// `Test/IEEE13_LineAndCableSpacing.dss` and `Test/CapControlFollow.dss` take
 /// −1/−1 from a WireData that sets no rating, the class `Line.bad` pins here:
 /// the pinned dss-python prints `-1` and `-1` in their cells, and the r4133
-/// DLL stops the three decks on error #303 before they solve. `AutoTrans.at`
-/// of `modes/makeposseq/makeposseq_xfmr.dss` derives `normamps`
-/// −152.848446716868 and `emergamps` −208.429700068457, pinned by
-/// [`export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct`].
+/// DLL stops the three decks on error #303 before they solve. The fourth deck,
+/// `modes/makeposseq/makeposseq_xfmr.dss`, carries `AutoTrans.at` with the
+/// derived `normamps` −152.848446716868 and `emergamps` −208.429700068457,
+/// which loads against its magnitude instead
+/// ([`export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`]).
 #[test]
 fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
     let scratch = scratch_dir("seqcurrents_rating");
@@ -6881,7 +6886,7 @@ fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
     assert_eq!(
         (bad_n, bad_e),
         (0.0, 0.0),
-        "a non-positive rating is undefined, so its loading column prints 0 — \
+        "a non-positive Line rating means no rating, so its loading column prints 0 — \
          printing the rating itself is the upstream quirk (ExportResults.pas:409-414)"
     );
 
@@ -6909,33 +6914,34 @@ fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
 }
 
 // EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING): the derived
-// negative rating of a gated corpus deck renders as 0 % in both lanes.
+// negative AutoTrans rating of a gated corpus deck renders its loading against
+// the magnitude in both lanes.
 /// `Export SeqCurrents` on the gated corpus deck
-/// `modes/makeposseq/makeposseq_xfmr.dss` prints `0` in the `%Normal` and
-/// `%Emergency` cells of `AutoTrans.at`, whose ratings are derived and
-/// negative: its winding 1 (series, 4.16 kV) sits below its winding 2 (common,
-/// 12.47 kV), so the series voltage base, and with it `normamps` and
-/// `emergamps`, come out below zero.
+/// `modes/makeposseq/makeposseq_xfmr.dss` prints the loading of `AutoTrans.at`
+/// against the magnitude of its ratings. Its winding 1 (series, 4.16 kV) sits
+/// below its winding 2 (common, 12.47 kV), so the series voltage base, and with
+/// it `normamps` and `emergamps`, come out below zero. A negative current is
+/// still a current: the element stays rated and its ratings stay as stored.
+///
+/// The expected cells derive from the terminal-1 row and the read-back ratings:
+/// `I1 = 44.0011`, `%Normal = I1 / 152.848446716868 · 100 = 28.79` and
+/// `%Emergency = I1 / 208.429700068457 · 100 = 21.11` at the report's four
+/// significant digits.
 ///
 /// Both gating oracles print the rating itself in those cells (2026-10-01, the
 /// deck compiled verbatim and then `Export SeqCurrents`, on the pinned
 /// dss-python and on the r4133 DLL through `epri-worker`): `-152.8` and
 /// `-208.4` in the terminal-1 row, with `normamps`/`emergamps` read back as
 /// `-152.848446716868`/`-208.429700068457` (dss-python) and `-152.85`/`-208.43`
-/// (r4133). The port prints `0` and `0`, the reading of
-/// [`export_seqcurrents_prints_zero_for_an_undefined_rating`]. No gating
-/// channel compares `Export SeqCurrents` text and the case compares no run
-/// file, so no golden byte and no `ledger.json` entry carries the divergence:
-/// this test is its pin.
+/// (r4133). No gating channel compares `Export SeqCurrents` text and the case
+/// compares no run file, so no golden byte and no `ledger.json` entry carries
+/// the divergence: this test is its pin.
 ///
-/// The terminal-1 `I1` is pinned at the `44.0011` that the port and dss-python
-/// print, so a sign-blind rewrite of the guard (`rating.abs()`) prints a
-/// loading here and fails the pin. The r4133 DLL prints `0` for that `I1`
-/// (2026-10-02, the same recipe): its positive-sequence branch takes the
-/// magnitude of a phase-current array it never loads, so its `0` is an
-/// undefined value and is not pinned.
+/// The r4133 DLL prints `0` for that `I1` (2026-10-02, the same recipe): its
+/// positive-sequence branch takes the magnitude of a phase-current array it
+/// never loads, so its `0` is an undefined value and is not pinned.
 #[test]
-fn export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct() {
+fn export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude() {
     use harness::scratch;
 
     let vendored = scratch::corpus_root().join("modes/makeposseq/makeposseq_xfmr.dss");
@@ -6949,8 +6955,7 @@ fn export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct() {
     dss.command(&format!("compile \"{}\"", copy.deck()));
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
 
-    // Sanity leg: the ratings the deck derives are the negative pair both
-    // oracles read back.
+    // The ratings stay as stored: the negative pair both oracles read back.
     let mut rating = |prop: &str| -> f64 {
         dss.command(&format!("? autotrans.at.{prop}"));
         let rendered = dss.result().to_string();
@@ -6977,37 +6982,880 @@ fn export_seqcurrents_derived_negative_autotrans_rating_prints_zero_pct() {
 
     // Row layout: Element, Terminal, I1, %Normal, %Emergency, I2, %I2/I1, I0,
     // %I0/I1, Iresidual, %NEMA
-    let line = produced
-        .lines()
-        .skip(1)
-        .find(|l| {
-            let f = l.split(',').next().unwrap_or("").trim().trim_matches('"');
-            f.eq_ignore_ascii_case("AutoTrans.at")
-        })
-        .unwrap_or_else(|| panic!("no AutoTrans.at row in:\n{produced}"));
-    let f: Vec<&str> = line.split(',').map(str::trim).collect();
+    let f = csv_row(&produced, "AutoTrans.at");
+    assert_eq!(f[1], "1", "the first AutoTrans.at row is terminal 1: {f:?}");
     assert_eq!(
-        f[1], "1",
-        "the first AutoTrans.at row is terminal 1: {line}"
+        f[2], "44.0011",
+        "terminal 1 carries the load current, the 44.0011 dss-python prints (r4133 prints 0 \
+         from a phase-current array it never loads): {f:?}"
+    );
+    assert_eq!(
+        (f[3].as_str(), f[4].as_str()),
+        ("28.79", "21.11"),
+        "a negative AutoTrans rating loads against its magnitude, I1/|rating|*100. Both \
+         oracles print the rating itself, -152.8 and -208.4: {f:?}"
     );
     let i1: f64 = f[2].parse().expect("I1");
     assert_eq!(
-        i1, 44.0011,
-        "terminal 1 carries the load current, the 44.0011 dss-python prints (r4133 prints 0 \
-         from a phase-current array it never loads), and a sign-blind guard would print a \
-         loading against it: {line}"
-    );
-    let cells: (f64, f64) = (
-        f[3].parse().expect("%Normal"),
-        f[4].parse().expect("%Emergency"),
-    );
-    assert_eq!(
-        cells,
-        (0.0, 0.0),
-        "a negative rating is undefined, so its loading cells print 0. Both oracles print \
-         the rating itself, -152.8 and -208.4: {line}"
+        (f[3].clone(), f[4].clone()),
+        (
+            dss_core::util::fmt_g(i1 / norm.abs() * 100.0, 4),
+            dss_core::util::fmt_g(i1 / emerg.abs() * 100.0, 4)
+        ),
+        "the cells are I1 over the rating magnitudes: {f:?}"
     );
 
     drop(dss);
     copy.finish();
+}
+
+/// The fields of the first CSV row whose first field names `elem` (quotes and
+/// case ignored), each trimmed.
+fn csv_row(text: &str, elem: &str) -> Vec<String> {
+    text.lines()
+        .skip(1)
+        .find(|l| {
+            let f = l.split(',').next().unwrap_or("").trim().trim_matches('"');
+            f.eq_ignore_ascii_case(elem)
+        })
+        .unwrap_or_else(|| panic!("no row for {elem} in:\n{text}"))
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect()
+}
+
+/// The whitespace tokens of the first line of a `Show` report that starts with
+/// the quoted name `quoted` (case ignored), or `None`.
+fn show_row(text: &str, quoted: &str) -> Option<Vec<String>> {
+    text.lines()
+        .find(|l| {
+            l.trim_start()
+                .to_ascii_lowercase()
+                .starts_with(&quoted.to_ascii_lowercase())
+        })
+        .map(|l| l.split_whitespace().map(str::to_string).collect())
+}
+
+/// The overloaded Transformer behind the negative-Transformer-rating pins.
+///
+/// `Transformer.tx` (3-phase, 500 kVA, 12.47/0.48 kV wye-wye, `xhl=6`) feeds a
+/// 900 kW load under `EnergyMeter.m`, and `normhkva`/`emerghkva` are set after
+/// the windings, since a winding-1 `kva=` resets both. At `(-550, -750)` the
+/// ratings derive as `normamps` −25.4645267084438 and `emergamps`
+/// −34.7243546024234, the negation of what the defaults `(550, 750)` give, and
+/// the solve is the same: a rating does not enter the admittance. So the port
+/// loads the negative deck exactly as its positive twin, and the twin's oracle
+/// reading is the expected value of every pin below.
+///
+/// Measured 2026-10-03 on both gating oracles (this deck, then each report, on
+/// the pinned dss-python and on the r4133 DLL through `epri-worker`): both
+/// accept the negative `normhkva`/`emerghkva`, read the ratings back as
+/// −25.4645267084438/−34.7243546024234 (dss-python) and −25.465/−34.724
+/// (r4133), and print the same loading at every site, quoted by each pin. A
+/// negative winding 1 `kV` derives the same negative pair on r4133 but is
+/// refused by the pinned dss-python and by the port (`Transformer.tx.kV: Value
+/// (-12.47) cannot be negative.`), so these decks reach the negative rating
+/// through `normhkva`
+/// ([`negative_winding_kv_is_refused_and_the_rating_stays_positive`]).
+fn rated_transformer_deck(norm_hkva: f64, emerg_hkva: f64) -> Vec<String> {
+    transformer_deck("12.47", 900.0, norm_hkva, emerg_hkva)
+}
+
+/// [`rated_transformer_deck`] with the winding 1 `kV` and the load's `kW` given.
+fn transformer_deck(kv1: &str, load_kw: f64, norm_hkva: f64, emerg_hkva: f64) -> Vec<String> {
+    [
+        "clear",
+        "new circuit.neg basekv=12.47 pu=1.0 phases=3 bus1=src mvasc3=20000 mvasc1=21000",
+        "new transformer.tx phases=3 windings=2 xhl=6",
+        &format!("~ wdg=1 bus=src conn=wye kv={kv1} kva=500"),
+        "~ wdg=2 bus=lv conn=wye kv=0.48 kva=500",
+        &format!("~ normhkva={norm_hkva} emerghkva={emerg_hkva}"),
+        &format!("new load.ld bus1=lv phases=3 kv=0.48 kw={load_kw} pf=0.95 model=1"),
+        "new energymeter.m element=transformer.tx terminal=1",
+        "set voltagebases=[12.47, 0.48]",
+        "calcvoltagebases",
+        "solve",
+    ]
+    .iter()
+    .map(|c| c.to_string())
+    .collect()
+}
+
+/// Run [`rated_transformer_deck`] at `(norm_hkva, emerg_hkva)` with its output
+/// in a scratch dir of its own, issue `cmds`, and return the text of the report
+/// file whose name contains `needle`.
+fn rated_transformer_report(
+    tag: &str,
+    norm_hkva: f64,
+    emerg_hkva: f64,
+    cmds: &[&str],
+    needle: &str,
+) -> String {
+    deck_report(
+        tag,
+        &rated_transformer_deck(norm_hkva, emerg_hkva),
+        cmds,
+        needle,
+    )
+}
+
+/// Run `deck` with its output in a scratch dir of its own, issue `cmds`, and
+/// return the text of the report file whose name contains `needle`.
+fn deck_report(tag: &str, deck: &[String], cmds: &[&str], needle: &str) -> String {
+    let scratch = scratch_dir(tag);
+    let mut dss = Dss::new();
+    for c in deck {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{tag}: {:?}", dss.errors());
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    for c in cmds {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{tag}: {:?}", dss.errors());
+    let file = find_file(&scratch, needle)
+        .unwrap_or_else(|| panic!("{tag}: no {needle} file under {}", scratch.display()));
+    let text = std::fs::read_to_string(&file)
+        .unwrap_or_else(|e| panic!("{tag}: read {}: {e}", file.display()));
+    drop(dss);
+    std::fs::remove_dir_all(&scratch).ok();
+    text
+}
+
+/// `Export SeqCurrents` prints the loading of a Transformer with a negative
+/// derived rating against its magnitude, `I1 / |rating| · 100`, and a zero
+/// rating stays unrated.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)` the terminal-1 row of
+/// `Transformer.tx` prints `I1 = 46.1115`, `%Normal = 181.1` and
+/// `%Emergency = 132.8`, byte for byte the report of the positive twin, which
+/// is what both gating oracles print for that twin. On the negative deck both
+/// oracles print the rating itself, `-25.46` and `-34.72`. At `(0, 0)` both
+/// oracles and the port print `0` and `0`.
+#[test]
+fn export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude() {
+    let report = |tag: &str, norm: f64, emerg: f64| {
+        rated_transformer_report(tag, norm, emerg, &["export seqcurrents"], "EXP_SEQCURRENTS")
+    };
+    let neg = report("seqcur_xf_neg", -550.0, -750.0);
+    let f = csv_row(&neg, "Transformer.tx");
+    assert_eq!(
+        (f[1].as_str(), f[2].as_str(), f[3].as_str(), f[4].as_str()),
+        ("1", "46.1115", "181.1", "132.8"),
+        "a negative Transformer rating loads against its magnitude. Both oracles print \
+         the rating itself, -25.46 and -34.72: {f:?}"
+    );
+    assert_eq!(
+        neg,
+        report("seqcur_xf_pos", 550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+
+    let zero = report("seqcur_xf_zero", 0.0, 0.0);
+    let f = csv_row(&zero, "Transformer.tx");
+    assert_eq!(
+        (f[3].as_str(), f[4].as_str()),
+        ("0", "0"),
+        "a zero Transformer rating stays unrated, as on both oracles: {f:?}"
+    );
+}
+
+/// `Show Currents` prints the `%Normal`/`%Emergency` of a Transformer with a
+/// negative derived rating against its magnitude, `Cmax / |rating| · 100`.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)` the `Transformer.tx` row
+/// ends in `181.08 132.79`, the report of the positive twin, which is what both
+/// gating oracles print for that twin. On the negative deck both oracles print
+/// `0.00 0.00`, their reading for an unrated element.
+#[test]
+fn show_currents_negative_transformer_rating_loads_against_its_magnitude() {
+    let report = |tag: &str, norm: f64, emerg: f64| {
+        rated_transformer_report(tag, norm, emerg, &["show currents"], "Curr_Seq")
+    };
+    let neg = report("showcur_xf_neg", -550.0, -750.0);
+    let t = show_row(&neg, "\"Transformer.tx\"")
+        .unwrap_or_else(|| panic!("no Transformer.tx row in:\n{neg}"));
+    assert_eq!(
+        t[t.len() - 2..],
+        ["181.08", "132.79"],
+        "a negative Transformer rating loads against its magnitude. Both oracles print \
+         0.00 and 0.00: {t:?}"
+    );
+    assert_eq!(
+        neg,
+        report("showcur_xf_pos", 550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// `Export Capacity` prints the `%normal`/`%emergency` of a Transformer with a
+/// negative derived rating against its magnitude, `Imax / |rating| · 100`.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)` the `Transformer.tx` row
+/// prints `Imax = 46.1115`, `181.08` and `132.79`, the report of the positive
+/// twin, which is what both gating oracles print for that twin. On the negative
+/// deck both oracles divide by the signed rating and print `-181.08` and
+/// `-132.79`.
+#[test]
+fn export_capacity_negative_transformer_rating_loads_against_its_magnitude() {
+    let report = |tag: &str, norm: f64, emerg: f64| {
+        rated_transformer_report(tag, norm, emerg, &["export capacity"], "EXP_CAPACITY")
+    };
+    let neg = report("capacity_xf_neg", -550.0, -750.0);
+    let f = csv_row(&neg, "Transformer.tx");
+    assert_eq!(
+        (f[1].as_str(), f[2].as_str(), f[3].as_str()),
+        ("46.1115", "181.08", "132.79"),
+        "a negative Transformer rating loads against its magnitude. Both oracles print \
+         -181.08 and -132.79: {f:?}"
+    );
+    assert_eq!(
+        neg,
+        report("capacity_xf_pos", 550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// `Export Overloads` reports a Transformer with a negative derived rating
+/// that its current exceeds, measured against the rating magnitude.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)` the report carries the row
+/// `"Transformer.TX", 1, 46.11, 20.65, 807.50, 181.1, 132.8, 0.0, 0.0, 0.0, 0.0`
+/// (I1, amps and kVA over the normal rating, `%Normal`, `%Emergency`), the
+/// report of the positive twin, which is what both gating oracles print for
+/// that twin. On the negative deck both oracles find no positive rating and
+/// write the header alone.
+#[test]
+fn export_overloads_negative_transformer_rating_reports_the_overload() {
+    let report = |tag: &str, norm: f64, emerg: f64| {
+        rated_transformer_report(tag, norm, emerg, &["export overloads"], "EXP_OVERLOADS")
+    };
+    let neg = report("overloads_xf_neg", -550.0, -750.0);
+    let f = csv_row(&neg, "Transformer.tx");
+    assert_eq!(
+        f[1..7],
+        ["1", "46.11", "20.65", "807.50", "181.1", "132.8"],
+        "a negative Transformer rating its current exceeds is an overload. Both oracles \
+         write no row: {f:?}"
+    );
+    assert_eq!(
+        neg,
+        report("overloads_xf_pos", 550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// `Show Overloads` reports a Transformer with a negative derived rating that
+/// its current exceeds, measured against the rating magnitude.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)` the report carries the
+/// `Transformer.tx` row `1 46.1 20.65 181.1 132.8` (terminal, I1, IOver,
+/// `%Normal`, `%Emerg`), the report of the positive twin, which is what both
+/// gating oracles print for that twin. On the negative deck both oracles find
+/// no positive rating and write the header alone.
+#[test]
+fn show_overloads_negative_transformer_rating_reports_the_overload() {
+    let report = |tag: &str, norm: f64, emerg: f64| {
+        rated_transformer_report(tag, norm, emerg, &["show overloads"], "Overload")
+    };
+    let neg = report("showovl_xf_neg", -550.0, -750.0);
+    let t = show_row(&neg, "\"Transformer.tx\"")
+        .unwrap_or_else(|| panic!("no Transformer.tx row in:\n{neg}"));
+    assert_eq!(
+        t[1..6],
+        ["1", "46.1", "20.65", "181.1", "132.8"],
+        "a negative Transformer rating its current exceeds is an overload. Both oracles \
+         write no row: {t:?}"
+    );
+    assert_eq!(
+        neg,
+        report("showovl_xf_pos", 550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// The excess kVA over a negative derived Transformer rating is measured
+/// against its magnitude, as `Export Powers` shows in its `P_Normal`..
+/// `Q_Emergency` columns (the one excess computation behind `Show Powers`,
+/// `Export SeqPowers` and the EnergyMeter overload registers).
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)` the terminal-1
+/// `Transformer.tx` row prints `405.6, 185.4, 223.7, 102.3`, the report of the
+/// positive twin, which is what both gating oracles print for that twin. On
+/// the negative deck both oracles find the overload factor negative and print
+/// `0.0` four times.
+#[test]
+fn export_powers_negative_transformer_rating_carries_the_excess_kva() {
+    let report = |tag: &str, norm: f64, emerg: f64| {
+        rated_transformer_report(tag, norm, emerg, &["export powers"], "EXP_POWERS")
+    };
+    let neg = report("powers_xf_neg", -550.0, -750.0);
+    let f = csv_row(&neg, "Transformer.tx");
+    assert_eq!(
+        f[1..8],
+        ["1", "905.7", "414.1", "405.6", "185.4", "223.7", "102.3"],
+        "the excess kVA over a negative Transformer rating takes its magnitude. Both \
+         oracles print 0.0 four times: {f:?}"
+    );
+    assert_eq!(
+        neg,
+        report("powers_xf_pos", 550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// The EnergyMeter overload registers of a zone whose Transformer carries a
+/// negative derived rating measure the overload against its magnitude, and the
+/// zone's loads take the overload as their EEN/UE factor.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)`, one daily 1 h step, the
+/// registers of `EnergyMeter.m` equal those of the positive twin: `Overload
+/// kWh Normal` 405.5516011426772, `Overload kWh Emerg` 223.66795966164958,
+/// `Load EEN` 727.9412801382721 and `Load UE` 294.4119473585959, the pinned
+/// dss-python's reading of that twin (r4133 prints 406, 224, 728 and 294 in
+/// `Export Meters`). On the negative deck both oracles register no overload:
+/// `0` and `0`, and the voltage-only `Load EEN` 19.78442521279244 (dss-python,
+/// r4133 prints 20) with `Load UE` 0.
+///
+/// The port's four registers sit within 4.1e-15 relative of those dss-python
+/// readings (measured 2026-10-03, the largest on `Overload kWh Emerg`), the
+/// faer-vs-KLU last-ulp class. The band is the `micro` tier of
+/// `tests/TOLERANCE_NOTES.md` for element powers, 1e-9 relative: one 1 h step
+/// integrates each register once from the element and load powers.
+#[test]
+fn energymeter_negative_transformer_rating_registers_the_overload() {
+    let registers = |norm: f64, emerg: f64| {
+        let mut dss = Dss::new();
+        for c in rated_transformer_deck(norm, emerg) {
+            dss.command(&c);
+        }
+        dss.command("set mode=daily stepsize=1h number=1");
+        dss.command("solve");
+        assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+        dss.meter_registers("m").expect("EnergyMeter.m")
+    };
+    let neg = registers(-550.0, -750.0);
+    let reg = |name: &str| {
+        neg.iter()
+            .find(|(n, _)| n == name)
+            .unwrap_or_else(|| panic!("no register {name}"))
+            .1
+    };
+    let gaps: Vec<(&str, f64, f64, f64)> = [
+        ("Overload kWh Normal", 405.5516011426772),
+        ("Overload kWh Emerg", 223.66795966164958),
+        ("Load EEN", 727.9412801382721),
+        ("Load UE", 294.4119473585959),
+    ]
+    .into_iter()
+    .map(|(name, want)| {
+        let got = reg(name);
+        (name, got, want, ((got - want) / want).abs())
+    })
+    .collect();
+    assert!(
+        gaps.iter().all(|&(_, _, _, rel)| rel <= 1e-9),
+        "a negative Transformer rating registers its overload against the magnitude \
+         (both oracles register no overload): {gaps:?}"
+    );
+    assert_eq!(
+        neg,
+        registers(550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// `DI_Overloads` reports a Transformer with a negative derived rating that its
+/// current exceeds: the rating columns print the rating as stored, and the
+/// percentages measure the current against its magnitude.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)`, one daily 1 h step with
+/// `overloadreport`, the `Transformer.tx` row prints `Normal Amps`
+/// −25.4645267084438, `Emerg Amps` −34.7243546024234, `% Normal`
+/// 181.081128740108 and `% Emerg` 132.792827742746. Both gating oracles print
+/// the percentages for the positive twin, where `Normal Amps`/`Emerg Amps` read
+/// 25.4645267084438/34.7243546024234. On the negative deck both oracles find
+/// no positive rating and write the header alone.
+#[test]
+fn di_overloads_negative_transformer_rating_reports_the_overload() {
+    let neg = di_overloads_row(&di_overloads(
+        "di_xf_neg",
+        &rated_transformer_deck(-550.0, -750.0),
+    ))
+    .expect("a Transformer.tx row in DI_Overloads");
+    // Hour, Element, Normal Amps, Emerg Amps, % Normal, % Emerg, kVBase, I1, I2, I3
+    assert_eq!(
+        neg[2..6],
+        [
+            "-25.4645267084438",
+            "-34.7243546024234",
+            "181.081128740108",
+            "132.792827742746"
+        ],
+        "the rating columns print the rating as stored, and the percentages load against \
+         its magnitude (both oracles write no row): {neg:?}"
+    );
+    let pos = di_overloads_row(&di_overloads(
+        "di_xf_pos",
+        &rated_transformer_deck(550.0, 750.0),
+    ))
+    .expect("a Transformer.tx row in DI_Overloads");
+    assert_eq!(
+        (&neg[..2], &neg[4..]),
+        (&pos[..2], &pos[4..]),
+        "the negative rating loads exactly as its positive twin"
+    );
+    assert_eq!(
+        pos[2..4],
+        ["25.4645267084438", "34.7243546024234"],
+        "the stored ratings are the twin's, negated"
+    );
+}
+
+/// The `DI_Overloads` report of `deck` after one daily 1 h step with
+/// `overloadreport`.
+fn di_overloads(tag: &str, deck: &[String]) -> String {
+    deck_report(
+        tag,
+        deck,
+        &[
+            "set demandinterval=yes",
+            "set overloadreport=yes",
+            "set mode=daily stepsize=1h number=1",
+            "solve",
+            "closedi",
+        ],
+        "DI_Overloads",
+    )
+}
+
+/// The trimmed fields of the `Transformer.tx` row of a `DI_Overloads` report,
+/// or `None`.
+fn di_overloads_row(text: &str) -> Option<Vec<String>> {
+    text.lines()
+        .skip(1)
+        .find(|l| l.to_ascii_lowercase().contains("\"transformer.tx\""))
+        .map(|l| l.split(',').map(|s| s.trim().to_string()).collect())
+}
+
+/// One negative Transformer rating beside a zero one opens the `DI_Overloads`
+/// entry gate by its magnitude, and the row loads against that magnitude.
+///
+/// On [`rated_transformer_deck`] at `(-550, 0)` the `Transformer.tx` row prints
+/// `Normal Amps` −25.4645267084438, `Emerg Amps` 0, `% Normal`
+/// 181.081128740108 and `% Emerg` 0, and at `(0, -750)` it prints 0,
+/// −34.7243546024234, 0 and 132.792827742746. Both gating oracles print the
+/// same rows for the positive twins `(550, 0)` and `(0, 750)`, with the rating
+/// positive, and on the two negative decks find no positive rating and write
+/// the header alone (2026-10-03, these decks then the daily step, on the pinned
+/// dss-python and on the r4133 DLL through `epri-worker`).
+#[test]
+fn di_overloads_one_negative_transformer_rating_opens_the_entry_gate() {
+    for (neg_rating, pos_rating, want) in [
+        (
+            (-550.0, 0.0),
+            (550.0, 0.0),
+            ["-25.4645267084438", "0", "181.081128740108", "0"],
+        ),
+        (
+            (0.0, -750.0),
+            (0.0, 750.0),
+            ["0", "-34.7243546024234", "0", "132.792827742746"],
+        ),
+    ] {
+        let row = |tag: &str, (norm, emerg): (f64, f64)| {
+            di_overloads_row(&di_overloads(tag, &rated_transformer_deck(norm, emerg)))
+                .unwrap_or_else(|| panic!("{tag}: no Transformer.tx row in DI_Overloads"))
+        };
+        let neg = row("di_half_neg", neg_rating);
+        assert_eq!(
+            neg[2..6],
+            want,
+            "{neg_rating:?}: one negative rating opens the entry gate by its magnitude \
+             (both oracles write no row): {neg:?}"
+        );
+        let pos = row("di_half_pos", pos_rating);
+        assert_eq!(
+            (&neg[..2], &neg[4..]),
+            (&pos[..2], &pos[4..]),
+            "{neg_rating:?}: the negative rating loads exactly as its positive twin"
+        );
+    }
+}
+
+/// A Transformer with a negative derived rating whose current stays under the
+/// rating magnitude is no overload: `Export Overloads`, `Show Overloads` and
+/// `DI_Overloads` write no row for it.
+///
+/// [`transformer_deck`] with a 100 kW load carries `I1 = 4.8973` A on terminal
+/// 1, under the 25.46 A magnitude of the `(-550, -750)` rating. Each report
+/// equals that of the positive twin byte for byte, the header alone, which is
+/// what both gating oracles write for either deck (2026-10-03, these decks then
+/// each report, on the pinned dss-python and on the r4133 DLL through
+/// `epri-worker`).
+#[test]
+fn negative_transformer_rating_under_its_magnitude_reports_no_overload() {
+    let light = |norm: f64, emerg: f64| transformer_deck("12.47", 100.0, norm, emerg);
+    let reports = |tag: &str, deck: &[String]| -> [String; 3] {
+        [
+            deck_report(
+                &format!("{tag}_exp"),
+                deck,
+                &["export overloads"],
+                "EXP_OVERLOADS",
+            ),
+            deck_report(
+                &format!("{tag}_show"),
+                deck,
+                &["show overloads"],
+                "Overload",
+            ),
+            di_overloads(&format!("{tag}_di"), deck),
+        ]
+    };
+    let neg = reports("light_neg", &light(-550.0, -750.0));
+    for text in &neg {
+        assert!(
+            !text.to_ascii_lowercase().contains("transformer.tx"),
+            "a current under the magnitude of a negative rating is no overload:\n{text}"
+        );
+    }
+    assert_eq!(
+        neg,
+        reports("light_pos", &light(550.0, 750.0)),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// `Export Unserved` and `Show Unserved` list the zone load of an overloaded
+/// Transformer with a negative derived rating, with the overload as its
+/// unserved-energy factors.
+///
+/// The EnergyMeter sample hands each zone load the overload factor of the
+/// branch that feeds it
+/// ([`energymeter_negative_transformer_rating_registers_the_overload`]), and a
+/// load with a positive factor is unserved. On [`rated_transformer_deck`] at
+/// `(-550, -750)`, one daily 1 h step, both reports in both forms list `ld` at
+/// `lv` with 900 kW, `EEN_Factor` 0.811 and `UE_Factor` 0.328, byte for byte
+/// the reports of the positive twin, which is what both gating oracles print
+/// for that twin in both forms. On the negative deck both oracles find no
+/// overload: the default form lists `ld` with the voltage-only `EEN_Factor`
+/// 0.022 and `UE_Factor` 0.000, and the `UEonly` form writes the header alone
+/// (2026-10-03, this deck then each report, on the pinned dss-python and on the
+/// r4133 DLL through `epri-worker`).
+#[test]
+fn unserved_negative_transformer_rating_flags_the_overloaded_load() {
+    for (i, (cmd, needle)) in [
+        ("export unserved", "EXP_UNSERVED"),
+        ("export unserved ueonly", "EXP_UNSERVED"),
+        ("show unserved", "Unserved"),
+        ("show unserved ueonly", "Unserved"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let report = |tag: &str, norm: f64, emerg: f64| {
+            rated_transformer_report(
+                &format!("{tag}_{i}"),
+                norm,
+                emerg,
+                &["set mode=daily stepsize=1h number=1", "solve", cmd],
+                needle,
+            )
+        };
+        let neg = report("unserved_xf_neg", -550.0, -750.0);
+        let row = if cmd.starts_with("export") {
+            csv_row(&neg, "LD")
+        } else {
+            show_row(&neg, "ld ").unwrap_or_else(|| panic!("{cmd}: no ld row in:\n{neg}"))
+        };
+        assert_eq!(
+            row,
+            ["LD", "lv", "900", "0.811", "0.328"].map(|s| if cmd.starts_with("export") {
+                s.to_string()
+            } else {
+                s.to_ascii_lowercase()
+            }),
+            "{cmd}: the zone load of a negative Transformer rating takes the overload as its \
+             factors. Both oracles find no overload: {row:?}"
+        );
+        assert_eq!(
+            neg,
+            report("unserved_xf_pos", 550.0, 750.0),
+            "{cmd}: the negative rating loads exactly as its positive twin"
+        );
+    }
+}
+
+/// AutoAdd scores each candidate bus by the EnergyMeter registers it names in
+/// `UEregs` (`Overload kWh Emerg` by default), so a metered Transformer with a
+/// negative derived rating counts its overload against the magnitude there too.
+///
+/// On [`rated_transformer_deck`] at `(-550, -750)`, `addtype=generator
+/// genkw=300 genpf=1.0` and `solve mode=autoadd` write the AutoAddLog of the
+/// positive twin byte for byte: the `src` row carries `kW UE`
+/// 223.672400411608, and `lv` wins with the weighted total 0.758933540057766,
+/// which is what both gating oracles write for that twin. On the negative deck
+/// both oracles score no overload: `kW UE` 0 in both rows, and `lv` wins with
+/// 0.0133736745189343, its loss improvement alone (2026-10-03, this deck then
+/// the solve, on the pinned dss-python and on the r4133 DLL through
+/// `epri-worker`).
+///
+/// The port prints the same `kW UE` to all 15 digits and a weighted total
+/// 4.0e-15 relative off (0.758933540057769, measured 2026-10-03), the
+/// faer-vs-KLU last-ulp class. The band on the weighted total is the `micro`
+/// tier of `tests/TOLERANCE_NOTES.md` for element powers, 1e-9 relative, the
+/// powers its loss and overload registers integrate.
+#[test]
+fn autoadd_negative_transformer_rating_scores_the_overload() {
+    let run = |tag: &str, norm: f64, emerg: f64| -> (String, String) {
+        let scratch = scratch_dir(tag);
+        let mut dss = Dss::new();
+        for c in rated_transformer_deck(norm, emerg) {
+            dss.command(&c);
+        }
+        dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+        dss.command("set addtype=generator genkw=300 genpf=1.0");
+        dss.command("solve mode=autoadd");
+        assert!(dss.errors().is_empty(), "{tag}: {:?}", dss.errors());
+        let result = dss.result().to_string();
+        let file = find_file(&scratch, "AutoAddLog")
+            .unwrap_or_else(|| panic!("{tag}: no AutoAddLog under {}", scratch.display()));
+        let log = std::fs::read_to_string(&file)
+            .unwrap_or_else(|e| panic!("{tag}: read {}: {e}", file.display()));
+        drop(dss);
+        std::fs::remove_dir_all(&scratch).ok();
+        (result, log)
+    };
+    let neg = run("autoadd_xf_neg", -550.0, -750.0);
+    // Bus, Base kV, kW Losses, % Improvement, kW UE, % Improvement, Weighted Total, Iterations
+    let src = csv_row(&neg.1, "src");
+    let (bus, weighted) = neg
+        .0
+        .split_once(", ")
+        .unwrap_or_else(|| panic!("GlobalResult is not `<bus>, <figure>`: {:?}", neg.0));
+    let weighted: f64 = weighted.parse().expect("weighted total");
+    assert!(
+        src[4] == "223.672400411608"
+            && bus == "lv"
+            && ((weighted - 0.758933540057766) / 0.758933540057766).abs() <= 1e-9,
+        "AutoAdd scores the overload of a negative Transformer rating against its \
+         magnitude. Both oracles score kW UE 0 and pick lv at 0.0133736745189343: {:?}\n{}",
+        neg.0,
+        neg.1
+    );
+    assert_eq!(
+        neg,
+        run("autoadd_xf_pos", 550.0, 750.0),
+        "the negative rating loads exactly as its positive twin"
+    );
+}
+
+/// The port refuses a negative winding `kV` on the Transformer and on the
+/// AutoTrans, so the winding keeps its previous `kV`, the derived rating stays
+/// positive, and the deck loads as the twin that never set it.
+///
+/// `Transformer.tx` of [`transformer_deck`] with winding 1 at −12.47 kV reports
+/// `Transformer.tx.kV: Value (-12.47) cannot be negative.`, keeps `kVs`
+/// `[12.47, 0.48, ]` and `normamps` 25.4645267084438, and prints the `Export
+/// SeqCurrents` of the deck at 12.47 kV byte for byte (`I1 = 46.1115` at 181.1
+/// and 132.8 %). `AutoTrans.at` with winding 1 at −4.16 kV under winding 2 at
+/// 12.47 kV reports `AutoTrans.at.kV: Value (-4.16) cannot be negative.`,
+/// keeps its default 115 kV (`kVs` `[115, 12.47, ]`, `normamps`
+/// 12.3882823780082) and prints the report of the twin that sets no winding 1
+/// `kV` (`I1 = 197.935` at 1598 and 1172 %).
+///
+/// Measured 2026-10-03 (these decks then each report, on the pinned dss-python
+/// and on the r4133 DLL through `epri-worker`). The pinned dss-python refuses
+/// both values the same way (error #2020032, the same text) and reads back the
+/// same `kVs`, ratings and reports. The r4133 DLL accepts both:
+/// `Transformer.tx` reads `kVs` `[-12.47, 0.48, ]`, `normamps` −25.465 and
+/// `emergamps` −34.724, solves to the same `I1 = 46.1115` and prints −25.46
+/// and −34.72 in `Export SeqCurrents`, and `AutoTrans.at` reads `[-4.16,
+/// 12.47, ]`, −76.378 and −104.15, solves to `I1 = 298.786` and prints −76.38
+/// and −104.2. The port refuses by decision: a winding voltage entered with a
+/// minus sign is an input error.
+#[test]
+fn negative_winding_kv_is_refused_and_the_rating_stays_positive() {
+    let autotrans_deck = |kv1: Option<&str>| -> Vec<String> {
+        [
+            "clear",
+            "new circuit.atn basekv=12.47 pu=1.0 phases=3 bus1=src mvasc3=20000 mvasc1=21000",
+            "new autotrans.at phases=3 windings=2 xhx=5",
+            &match kv1 {
+                Some(kv) => format!("~ wdg=1 bus=lo conn=s kv={kv} kva=2000"),
+                None => "~ wdg=1 bus=lo conn=s kva=2000".to_string(),
+            },
+            "~ wdg=2 bus=src conn=w kv=12.47 kva=2000",
+            "new load.ld bus1=lo phases=3 kv=4.16 kw=2000 pf=0.95 model=1",
+            "set voltagebases=[12.47, 4.16]",
+            "calcvoltagebases",
+            "solve",
+        ]
+        .iter()
+        .map(|c| c.to_string())
+        .collect()
+    };
+    // (class.name, refused deck, twin deck, refusal, kVs, normamps, SeqCurrents I1/%Normal/%Emergency)
+    let cases = [
+        (
+            "Transformer.tx",
+            transformer_deck("-12.47", 900.0, 550.0, 750.0),
+            rated_transformer_deck(550.0, 750.0),
+            "Transformer.tx.kV: Value (-12.47) cannot be negative.",
+            "[12.47, 0.48, ]",
+            "25.4645267084438",
+            ["46.1115", "181.1", "132.8"],
+        ),
+        (
+            "AutoTrans.at",
+            autotrans_deck(Some("-4.16")),
+            autotrans_deck(None),
+            "AutoTrans.at.kV: Value (-4.16) cannot be negative.",
+            "[115, 12.47, ]",
+            "12.3882823780082",
+            ["197.935", "1598", "1172"],
+        ),
+    ];
+    for (elem, deck, twin, refusal, kvs, normamps, loading) in cases {
+        let scratch = scratch_dir(&format!("negkv_{elem}"));
+        let mut dss = Dss::new();
+        for c in &deck {
+            dss.command(c);
+        }
+        let errors: Vec<&str> = dss.errors().iter().map(|e| e.text()).collect();
+        assert_eq!(
+            errors,
+            [refusal],
+            "{elem}: a negative winding kV is refused"
+        );
+        let mut read = |prop: &str| -> String {
+            dss.command(&format!("? {elem}.{prop}"));
+            dss.result().trim().to_string()
+        };
+        assert_eq!(
+            (read("kvs"), read("normamps")),
+            (kvs.to_string(), normamps.to_string()),
+            "{elem}: the winding keeps its previous kV and the rating stays positive"
+        );
+        dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+        dss.command("export seqcurrents");
+        assert_eq!(dss.errors().len(), 1, "{elem}: {:?}", dss.errors());
+        let seq = std::fs::read_to_string(dss.last_result_file())
+            .unwrap_or_else(|e| panic!("{elem}: read seqcurrents: {e}"));
+        drop(dss);
+        std::fs::remove_dir_all(&scratch).ok();
+
+        let f = csv_row(&seq, elem);
+        assert_eq!(
+            f[2..5],
+            loading,
+            "{elem}: the refused deck loads against the positive rating: {f:?}"
+        );
+        assert_eq!(
+            seq,
+            deck_report(
+                &format!("negkv_{elem}_twin"),
+                &twin,
+                &["export seqcurrents"],
+                "EXP_SEQCURRENTS"
+            ),
+            "{elem}: the refused deck loads exactly as the twin that never set the kV"
+        );
+    }
+}
+
+/// A Line rated −1/−2 keeps the oracles' reading at every loading site, where
+/// the Transformer and the AutoTrans take the magnitude. Every site but
+/// `Export Capacity` reads it as no rating, as for a Line built from a WireData
+/// without one (−1/−1). `Export Capacity` guards only a zero rating and divides
+/// by the signed one.
+///
+/// `Line.bad` (1 km, `normamps=-1 emergamps=-2`) feeds a 500 kW load under
+/// `EnergyMeter.m` and carries `I1 = 24.3839` A. `Show Currents` prints `0.00`
+/// and `0.00` in its loading columns, `Export Capacity` divides by the signed
+/// rating (`-2438.39`, `-1219.20`), `Export Overloads`, `Show Overloads` and
+/// `DI_Overloads` write no row for it, `Export Powers` prints the excess kVA as
+/// `0.0` four times, and after one daily 1 h step `Overload kWh Normal`,
+/// `Overload kWh Emerg`, `Load EEN` and `Load UE` stay 0. Both gating oracles
+/// print every one of these readings (2026-10-03, this deck then each report,
+/// on the pinned dss-python and on the r4133 DLL through `epri-worker`).
+#[test]
+fn nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site() {
+    let deck: Vec<String> = [
+        "clear",
+        "new circuit.rating basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000",
+        "new line.bad bus1=src bus2=b length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0 normamps=-1 emergamps=-2",
+        "new load.ld bus1=b phases=3 kv=12.47 kw=500 pf=0.95 model=1",
+        "new energymeter.m element=line.bad terminal=1",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+    ]
+    .iter()
+    .map(|c| c.to_string())
+    .collect();
+    let report = |tag: &str, cmd: &str, needle: &str| deck_report(tag, &deck, &[cmd], needle);
+
+    let currents = report("line_showcur", "show currents", "Curr_Seq");
+    let t = show_row(&currents, "\"line.bad\"")
+        .unwrap_or_else(|| panic!("no Line.bad row in:\n{currents}"));
+    assert_eq!(
+        t[t.len() - 2..],
+        ["0.00", "0.00"],
+        "Show Currents: a non-positive Line rating loads at 0: {t:?}"
+    );
+
+    let capacity = report("line_capacity", "export capacity", "EXP_CAPACITY");
+    let f = csv_row(&capacity, "Line.bad");
+    assert_eq!(
+        f[1..4],
+        ["24.3839", "-2438.39", "-1219.20"],
+        "Export Capacity divides by the signed rating: {f:?}"
+    );
+
+    let powers = report("line_powers", "export powers", "EXP_POWERS");
+    let f = csv_row(&powers, "Line.bad");
+    assert_eq!(
+        f[1..8],
+        ["1", "500.2", "164.9", "0.0", "0.0", "0.0", "0.0"],
+        "Export Powers: a non-positive Line rating carries no excess kVA: {f:?}"
+    );
+
+    for text in [
+        report("line_expovl", "export overloads", "EXP_OVERLOADS"),
+        report("line_showovl", "show overloads", "Overload"),
+        di_overloads("line_di", &deck),
+    ] {
+        assert!(
+            !text.to_ascii_lowercase().contains("line.bad"),
+            "a non-positive Line rating is no overload:\n{text}"
+        );
+    }
+
+    let mut dss = Dss::new();
+    for c in &deck {
+        dss.command(c);
+    }
+    dss.command("set mode=daily stepsize=1h number=1");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let registers = dss.meter_registers("m").expect("EnergyMeter.m");
+    for name in [
+        "Overload kWh Normal",
+        "Overload kWh Emerg",
+        "Load EEN",
+        "Load UE",
+    ] {
+        let got = registers
+            .iter()
+            .find(|(n, _)| n == name)
+            .unwrap_or_else(|| panic!("no register {name}"))
+            .1;
+        assert_eq!(
+            got, 0.0,
+            "{name}: a non-positive Line rating registers no overload"
+        );
+    }
 }

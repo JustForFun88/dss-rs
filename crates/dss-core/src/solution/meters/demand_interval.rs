@@ -774,9 +774,10 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
         if !elem.cd().enabled || elem.is_shunt() {
             continue;
         }
-        // Entry gate: BASE ratings (Pascal `(PdElem.Normamps > 0.0) or
-        // (PdElem.Emergamps > 0.0)`).
-        if !(elem.norm_amps() > 0.0 || elem.emerg_amps() > 0.0) {
+        // Entry gate: a positive base loading rating.
+        if !(elem.loading_rating(elem.norm_amps()) > 0.0
+            || elem.loading_rating(elem.emerg_amps()) > 0.0)
+        {
             continue;
         }
         elem.compute_iterminal(sys, &node_v);
@@ -787,8 +788,10 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
             cmax = cmax.max(elem.cd().iterminal[i].norm());
         }
         // Overload test + reported ratings: SEASONAL (Pascal `GetRatings`-equivalent).
+        // The ratings print as stored, the loading takes the loading ratings.
         let (norm_amps, emerg_amps) = elem.get_ratings(seasonal_idx);
-        if !(cmax > norm_amps || cmax > emerg_amps) {
+        let (norm_load, emerg_load) = elem.loading_ratings(seasonal_idx);
+        if !(cmax > norm_load || cmax > emerg_load) {
             continue;
         }
 
@@ -831,13 +834,13 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
             ov.write_str(&format!(", \"{full_name}\""));
             ov.write_dbl(norm_amps);
             ov.write_dbl(emerg_amps);
-            ov.write_dbl(if norm_amps > 0.0 {
-                cmax / norm_amps * 100.0
+            ov.write_dbl(if norm_load > 0.0 {
+                cmax / norm_load * 100.0
             } else {
                 0.0
             });
-            ov.write_dbl(if emerg_amps > 0.0 {
-                cmax / emerg_amps * 100.0
+            ov.write_dbl(if emerg_load > 0.0 {
+                cmax / emerg_load * 100.0
             } else {
                 0.0
             });
