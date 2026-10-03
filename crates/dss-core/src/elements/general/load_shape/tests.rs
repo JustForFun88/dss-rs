@@ -971,37 +971,211 @@ fn mmf_text_reader_agrees_with_its_non_mapped_twin() {
     }
 }
 
-/// Exactly which gated artifacts can see the accept-set **fix** — measured on
+/// The file arguments of every memory-mapped LoadShape command in one deck's
+/// `text`, as `(argument, file)` pairs: the argument lowercased, the file as
+/// written with `\` turned into `/`.
+///
+/// A command is a `New`/`Edit LoadShape` line (the class name bare, quoted or
+/// after `object=`) with its `~` / `more` continuation lines joined and `!` and
+/// `//` comments stripped. It is memory-mapped when it sets `MemoryMapping` to
+/// a value the engine reads as true (first letter `y` or `t`, optionally
+/// quoted), and then each `file=`, `csvfile=`, `pqcsvfile=`, `sngfile=` and
+/// `dblfile=` argument is one pair.
+fn mapped_file_arguments(text: &str) -> Vec<(String, String)> {
+    let definition =
+        regex::Regex::new(r#"(?i)^\s*(new|edit)\s+(object\s*=\s*)?["'(\[{]?loadshape\."#)
+            .expect("definition pattern");
+    let mapped =
+        regex::Regex::new(r#"(?i)\bmemorymapping\s*=\s*["'(\[{]?[yt]"#).expect("mm pattern");
+    let argument = regex::Regex::new(
+        r#"(?i)\b(file|csvfile|pqcsvfile|sngfile|dblfile)\s*=\s*["']?([^\s"')\]]+)"#,
+    )
+    .expect("file pattern");
+
+    let mut commands: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let code = line.split('!').next().unwrap_or("");
+        let code = code.split("//").next().unwrap_or("").trim();
+        if code.is_empty() {
+            continue;
+        }
+        let more = code.strip_prefix('~').or_else(|| {
+            code.get(..4)
+                .filter(|head| head.eq_ignore_ascii_case("more"))
+                .and(code.get(4..))
+                .filter(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+        });
+        match (more, commands.last_mut()) {
+            (Some(rest), Some(last)) => {
+                last.push(' ');
+                last.push_str(rest);
+            }
+            _ => commands.push(code.to_string()),
+        }
+    }
+
+    commands
+        .iter()
+        .filter(|c| definition.is_match(c) && mapped.is_match(c))
+        .flat_map(|c| argument.captures_iter(c))
+        .map(|cap| (cap[1].to_ascii_lowercase(), cap[2].replace('\\', "/")))
+        .collect()
+}
+
+/// [`mapped_file_arguments`] reads every spelling of a mapped LoadShape the
+/// engine accepts, and nothing else.
+#[test]
+fn mapped_file_arguments_reads_every_mapped_spelling() {
+    let deck = "\
+New Loadshape.a npts=8 interval=1 MemoryMapping=Yes csvfile=a.csv
+New \"LoadShape.b\" npts=8 MemoryMapping=yes mult=(file=b.txt)
+New object=\"LoadShape.c\" npts=8 MemoryMapping=True pqcsvfile=c.csv
+New object=LoadShape.d npts=8 interval=1
+~ MemoryMapping=Y mult=(sngfile=d.sng)
+New LoadShape.e npts=8 interval=1
+more\tMemoryMapping=t dblfile=sub\\e.dbl
+Edit LoadShape.f MemoryMapping=\"yes\" csvfile=f.csv
+New LoadShape.g npts=8 MemoryMapping=No csvfile=g.csv
+New LoadShape.h npts=8 MemoryMapping=false csvfile=h.csv
+New LoadShape.i npts=8 csvfile=i.csv
+moreover MemoryMapping=Yes csvfile=l.csv
+! New LoadShape.j npts=8 MemoryMapping=Yes csvfile=j.csv
+New Load.k bus1=b1 MemoryMapping=Yes file=k.csv
+";
+    let scanned = mapped_file_arguments(deck);
+    let scanned: Vec<(&str, &str)> = scanned
+        .iter()
+        .map(|(k, f)| (k.as_str(), f.as_str()))
+        .collect();
+    assert_eq!(
+        scanned,
+        [
+            ("csvfile", "a.csv"),
+            ("file", "b.txt"),
+            ("pqcsvfile", "c.csv"),
+            ("sngfile", "d.sng"),
+            ("dblfile", "sub/e.dbl"),
+            ("csvfile", "f.csv"),
+        ],
+        "the mapped-LoadShape scan of the probe deck"
+    );
+}
+
+/// The plain-text files the corpus reads through the mapped reader, each with
+/// the decks that read it (both as forward-slashed paths relative to `corpus`).
+///
+/// Found by scanning every `.dss` under `corpus` with [`mapped_file_arguments`]
+/// and resolving each file against the deck's own directory. `sngfile=` /
+/// `dblfile=` arguments and `.sng` / `.dbl` files are binary and skipped.
+/// Redirects are not followed: a redirected deck is a `.dss` file of its own
+/// and is scanned the same way.
+fn mapped_text_fixtures(
+    corpus: &std::path::Path,
+) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+    // `dir` and `name` are forward-slashed; `..` and `.` are folded.
+    let join = |dir: &str, name: &str| -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        for part in dir.split('/').chain(name.split('/')) {
+            match part {
+                "" | "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                p => parts.push(p),
+            }
+        }
+        parts.join("/")
+    };
+
+    let mut found: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        Default::default();
+    let mut stack = vec![corpus.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries =
+            std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
+        for entry in entries {
+            let path = entry.expect("corpus dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("dss"))
+            {
+                continue;
+            }
+            let deck = path
+                .strip_prefix(corpus)
+                .expect("under the corpus")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let deck_dir = deck.rsplit_once('/').map_or("", |(d, _)| d).to_string();
+            let bytes =
+                std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            let text = String::from_utf8_lossy(&bytes);
+
+            for (key, name) in mapped_file_arguments(&text) {
+                let lower = name.to_ascii_lowercase();
+                if key == "sngfile"
+                    || key == "dblfile"
+                    || lower.ends_with(".sng")
+                    || lower.ends_with(".dbl")
+                {
+                    continue;
+                }
+                let file = join(&deck_dir, &name);
+                assert!(
+                    corpus.join(&file).is_file(),
+                    "{deck}: the mapped LoadShape file {name:?} resolves to {file}, which is not \
+                     a corpus file"
+                );
+                found.entry(file).or_default().insert(deck.clone());
+            }
+        }
+    }
+    found
+}
+
+/// Exactly which corpus artifacts can see the accept-set **fix** — measured on
 /// the corpus bytes, because that measurement is what bounds the divergence the
 /// fix opens against the pinned oracle (`compute.rs::mmf_text_value`).
 ///
-/// * The **vendored** mapped text files,
-///   `Examples/MemoryMappingLoadShapes/ckt24/LS_Phase_AOK.{txt,csv}` (loaded by
-///   `master_ckt24-mm-txt-p`, `-mm-txt-pq`, `-mm-csv-pq`), contain nothing but
-///   `.`, digits, the comma separator and the newline — the upstream filter is
-///   the identity there, so those three cases cannot observe the fix and stay
-///   fully oracle-compared.
+/// The fixture set is derived, not listed: [`mapped_text_fixtures`] scans every
+/// corpus deck for the plain-text files a `MemoryMapping=Yes` LoadShape reads,
+/// and the literal below is only the expected value, so a new mapped text deck
+/// or fixture fails here until it is classified.
+///
+/// * The **vendored** `Examples/MemoryMappingLoadShapes/ckt24/LS_Phase_AOK.{txt,csv}`
+///   are read by the four ckt24 MMF-text cases, `master_ckt24-mm-txt-p`,
+///   `-mm-txt-pq`, `-mm-csv-pq` and `-mm-csv-p` (through their
+///   `LS_PhaseA-mm-*.dss` includes; `-mm-csv-p` is listed in
+///   `manifests/skipped_oracle_issue.json`, the pinned oracle aborts it). The
+///   files contain nothing but `.`, digits, the comma separator and the
+///   newline — the upstream filter is the identity there, so those cases
+///   cannot observe the fix.
 /// * The **synthetic** identity-side fixtures — the sibling deck's
 ///   `modes/inputformat/shape_mmf_io/mmpq8_plain.csv` (which carries this
-///   deck's reader coverage forward) and `modes/upgrade/mmf_singlecol/mm8.csv`
-///   (the fourth mapped plain-text deck, gated on the `r4133` channel) — are
-///   plain decimal for the same reason and are asserted here too, so a corpus
-///   refresh that slips a sign or an exponent into either fails this pin
-///   instead of surfacing as an unexplained oracle divergence.
+///   deck's reader coverage forward on `capi_v0145`) and
+///   `modes/upgrade/mmf_singlecol/mm8.csv` (gated on the `r4133` channel) — are
+///   plain decimal for the same reason, so a corpus refresh that slips a sign
+///   or an exponent into either fails this pin instead of surfacing as an
+///   unexplained oracle divergence.
 /// * The **synthetic** `modes/inputformat/shape_mmf/mmpq8.csv` deliberately
 ///   does: its P column is exponent notation (`-` = 45, `e` = 101 are in the
 ///   file), which is why `shape_mmf.dss` was written to observe the quirk and
-///   why it is now the one deck that diverges from the `capi_v0145` oracle
-///   (ledger `mmf-accept-set-honoured-capi`; its unrelated MMF-reader coverage
-///   moved to the sibling `shape_mmf_io.dss`, whose `mmpq8_plain.csv` carries
-///   no stray byte — asserted below).
+///   why it is the one deck that diverges from the `capi_v0145` oracle (ledger
+///   `mmf-accept-set-honoured-capi`; its unrelated MMF-reader coverage lives in
+///   the sibling `shape_mmf_io.dss`).
 ///
 /// So exactly one deck sees it, and this test says so in bytes. If a corpus
 /// refresh moves any half — a sign appearing in the vendored or sibling files,
-/// or `mmpq8.csv` losing its exponents — the record is stale and this fails
-/// instead of the finding silently rotting.
+/// `mmpq8.csv` losing its exponents, a fifth mapped text fixture — the record
+/// is stale and this fails instead of the finding silently rotting.
 #[test]
 fn mmf_accept_set_fix_is_gated_by_exactly_one_deck() {
+    use std::collections::{BTreeMap, BTreeSet};
+
     fn stray_bytes(path: &std::path::Path) -> Vec<u8> {
         let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let mut stray: Vec<u8> = bytes
@@ -1013,45 +1187,80 @@ fn mmf_accept_set_fix_is_gated_by_exactly_one_deck() {
         stray
     }
 
+    const CKT24: &str = "electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24";
+    const OBSERVER: &str = "modes/inputformat/shape_mmf/mmpq8.csv";
     let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus");
+    let found = mapped_text_fixtures(&corpus);
 
-    let vendored =
-        corpus.join("electricdss-tst/Version8/Distrib/Examples/MemoryMappingLoadShapes/ckt24");
-    for name in ["LS_Phase_AOK.txt", "LS_Phase_AOK.csv"] {
-        let stray = stray_bytes(&vendored.join(name));
-        assert!(
-            stray.is_empty(),
-            "{name} left the MMF accept-set (bytes {stray:?}): the three gated \
-             ckt24 MMF-text cases can now see the fix, which the ledger record \
-             says they cannot"
-        );
-    }
-    // Every OTHER corpus fixture read through the mapped plain-text path must
-    // stay on the identity side of the filter, or its deck would diverge from
-    // its gating oracle too and the "exactly one deck" claim would be false.
-    // `shape_mmf_io/mmpq8_plain.csv` carries `shape_mmf`'s reader coverage
-    // forward on `capi_v0145`; `upgrade/mmf_singlecol/mm8.csv` is the fourth
-    // `MemoryMapping=Yes` + text-file deck in the corpus and gates on `r4133`.
-    for rel in [
-        "modes/inputformat/shape_mmf_io/mmpq8_plain.csv",
-        "modes/upgrade/mmf_singlecol/mm8.csv",
-    ] {
-        let stray = stray_bytes(&corpus.join(rel));
-        assert!(
-            stray.is_empty(),
-            "{rel} left the MMF accept-set (bytes {stray:?}): its deck reads the \
-             file through the mapped plain-text reader and is oracle-compared \
-             wholesale, which it can only be while the upstream filter is the \
-             identity on its bytes"
-        );
-    }
+    let expected: BTreeMap<String, BTreeSet<String>> = [
+        (
+            format!("{CKT24}/LS_Phase_AOK.csv"),
+            vec![format!("{CKT24}/LS_PhaseA-mm-csv-pq.dss")],
+        ),
+        (
+            format!("{CKT24}/LS_Phase_AOK.txt"),
+            vec![
+                format!("{CKT24}/LS_PhaseA-mm-csv-p.dss"),
+                format!("{CKT24}/LS_PhaseA-mm-txt-p.dss"),
+                format!("{CKT24}/LS_PhaseA-mm-txt-pq.dss"),
+            ],
+        ),
+        (
+            OBSERVER.to_string(),
+            vec!["modes/inputformat/shape_mmf/shape_mmf.dss".to_string()],
+        ),
+        (
+            "modes/inputformat/shape_mmf_io/mmpq8_plain.csv".to_string(),
+            vec!["modes/inputformat/shape_mmf_io/shape_mmf_io.dss".to_string()],
+        ),
+        (
+            "modes/upgrade/mmf_singlecol/mm8.csv".to_string(),
+            vec!["modes/upgrade/mmf_singlecol/mmf_singlecol.dss".to_string()],
+        ),
+    ]
+    .into_iter()
+    .map(|(file, decks)| (file, decks.into_iter().collect()))
+    .collect();
+    assert_eq!(
+        found, expected,
+        "the corpus's mapped plain-text fixtures (file -> decks reading it) moved: classify \
+         the new or changed fixture against the MMF accept-set and update this expected value"
+    );
 
-    let stray = stray_bytes(&corpus.join("modes/inputformat/shape_mmf/mmpq8.csv"));
+    let stray: BTreeMap<&str, Vec<u8>> = found
+        .keys()
+        .map(|file| (file.as_str(), stray_bytes(&corpus.join(file))))
+        .filter(|(_, stray)| !stray.is_empty())
+        .collect();
+    assert_eq!(
+        stray.keys().copied().collect::<Vec<_>>(),
+        [OBSERVER],
+        "mapped plain-text fixtures carrying bytes outside the MMF accept-set: {stray:?}. Only \
+         {OBSERVER} may; any other file's decks (for LS_Phase_AOK.* the four ckt24 MMF-text \
+         cases master_ckt24-mm-txt-p, -mm-txt-pq, -mm-csv-pq and -mm-csv-p) can now see the \
+         fix, which the ledger record says they cannot"
+    );
+
+    let exponent: Vec<&str> = found
+        .keys()
+        .filter(|file| {
+            std::fs::read(corpus.join(file))
+                .unwrap_or_else(|e| panic!("{file}: {e}"))
+                .iter()
+                .any(|&b| b == b'e' || b == b'E')
+        })
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        exponent,
+        [OBSERVER],
+        "mapped plain-text fixtures in exponent notation"
+    );
+    let observed = &stray[OBSERVER];
     assert!(
-        stray.contains(&101) && stray.contains(&45),
-        "mmpq8.csv no longer carries exponent notation (stray bytes {stray:?}): \
-         shape_mmf.dss was written to observe the accept-set quirk and no longer \
-         does"
+        observed.contains(&b'e') && observed.contains(&b'-'),
+        "{OBSERVER} no longer carries exponent notation (stray bytes {observed:?}): \
+         shape_mmf.dss was written to observe the accept-set quirk and no longer does"
     );
 }
 

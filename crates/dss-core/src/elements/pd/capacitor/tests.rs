@@ -335,10 +335,16 @@ fn make_pos_sequence_cuf_bare_set() {
 /// property and drops the value (`Capacitor.pas:814` +
 /// `DSSObjectHelper.pas:2812-2834`); r4133 applies it but re-scales by 1e-6 a
 /// second time (`Capacitor.pas:829` + `:411`). Neither number appears here:
-/// the port writes the array the r4133 command string would have parsed —
-/// element 1 the value, the remaining steps zeroed, exactly
-/// `InterpretDblArray`'s "fills array with zeros if we run out of numbers"
-/// (`Common/Utilities.pas:788-791`). See
+/// the port writes the array in µF with the value on every step, where the
+/// r4133 command string carries one value and `InterpretDblArray` zero-fills
+/// the remaining steps ("fills array with zeros if we run out of numbers",
+/// `Common/Utilities.pas:788-791`), and
+/// [`make_pos_sequence_cmatrix_multistep_bank_keeps_every_step`] pins the
+/// tail. The value is written at full `f64` precision, where that command
+/// string carries five significant digits (`Format(' Cuf=%-.5g')`): a
+/// precision convention, not reproduced, and invisible on this matrix, whose
+/// reduced value is a whole number of µF (the same convention is stated in the
+/// header comment of `tests/corpus/modes/makeposseq/makeposseq_gic.dss`). See
 /// [`make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`] for the
 /// end-to-end value pin.
 #[test]
@@ -420,6 +426,108 @@ fn make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf() {
             "YPrim[{i}]: reduced {x} vs the `cuf=4` twin {y}"
         );
     }
+}
+
+/// EXPECTED-VALUE-PIN(MAKEPOSSEQ_CUF_LOST_ON_THE_SCALAR_SETTER): the multi-step
+/// half. Every energized step of a `cmatrix` bank stamps the whole matrix, so a
+/// `numsteps=3` bank is three times a one-step bank of the same matrix, and the
+/// reduction keeps that ratio: each of the three steps carries the one value the
+/// one-step bank reduces to.
+///
+/// The three-step bank holds `cuf=[5 6 7]` before the reduction, so a write
+/// that left steps 2..3 alone reads back `[v, 6, 7]`. The one-value command
+/// string of r4133, zero-filled by `InterpretDblArray`, reads `[v, 0, 0]` and
+/// keeps a third of the bank. Measured 2026-10-04 on both oracles (the pinned
+/// dss-python and `epri-worker` on the r4133 DLL), with the reduced `Cuf`
+/// written by hand after `makeposseq` on a stiff 12.47 kV bus: `[4 4 4]`
+/// carries three times the kvar of `[4 0 0]`, and `[12 12 12]` three times
+/// that of `[12 0 0]`, restoring the three-step bank's 2110.4 kvar. The
+/// one-step value itself is pinned by [`make_pos_sequence_cmatrix`].
+#[test]
+fn make_pos_sequence_cmatrix_multistep_bank_keeps_every_step() {
+    use num_complex::Complex64;
+
+    fn read_cuf(dss: &mut crate::exec::Dss, name: &str) -> Vec<f64> {
+        dss.command(&format!("? Capacitor.{name}.cuf"));
+        dss.result()
+            .split(|c: char| c == '[' || c == ']' || c == ',' || c.is_whitespace())
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                s.parse()
+                    .unwrap_or_else(|e| panic!("{name} cuf {s:?}: {e}"))
+            })
+            .collect()
+    }
+    fn assert_three_times_one_step(dss: &crate::exec::Dss, when: &str) {
+        let (order3, y3) = dss.element_yprim("Capacitor.cm3").expect("cm3 YPrim");
+        let (order1, y1) = dss.element_yprim("Capacitor.cm1").expect("cm1 YPrim");
+        assert_eq!(order3, order1, "{when}: the two banks have one order");
+        assert!(
+            y1.iter().any(|y| y.norm() > 1e-6),
+            "{when}: the one-step bank has no admittance: {y1:?}"
+        );
+        for (i, (a, b)) in y3.iter().zip(y1.iter()).enumerate() {
+            let want: Complex64 = *b * 3.0;
+            assert!(
+                (*a - want).norm() <= 1e-18 + 1e-12 * want.norm(),
+                "{when}: YPrim[{i}] of the three-step bank {a} vs three times the one-step \
+                 bank's {want}"
+            );
+        }
+    }
+
+    // The action: one value per step, each the value a one-step bank of the
+    // same matrix reduces to.
+    let reduce = |numsteps| {
+        let mut c = Capacitor::new("cm");
+        c.spec_type = CapacitorSpecType::CMatrix;
+        c.fnumsteps = numsteps;
+        c.cmatrix = Some(vec![
+            10e-6, -2e-6, -2e-6, -2e-6, 10e-6, -2e-6, -2e-6, -2e-6, 10e-6,
+        ]);
+        match c.make_pos_sequence(&PosSeqCtx::default()).actions[2].clone() {
+            PosSeqAction::SetStructF64s(idx, vals) if idx == prop::CUF => vals,
+            a => panic!("expected SetStructF64s(CUF), got {a:?}"),
+        }
+    };
+    let one = reduce(1);
+    assert_eq!(one.len(), 1, "one step: {one:?}");
+    let v = one[0].expect("the one-step value");
+    assert!(v > 0.0, "the reduced capacitance is positive: {v}");
+    assert_eq!(reduce(3), vec![Some(v); 3], "one value per step");
+
+    // The banks: the ratio holds before and after the reduction.
+    let mut dss = crate::exec::Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.cufpsq3 basekv=12.47 phases=3 bus1=src");
+    dss.command("new line.l1 bus1=src bus2=b1 phases=3 r1=0.2 x1=0.5 c1=3 length=1 units=km");
+    dss.command("new capacitor.cm1 bus1=b1 phases=3 cmatrix=[10 | -2 10 | -2 -2 10]");
+    dss.command(
+        "new capacitor.cm3 bus1=b1 phases=3 numsteps=3 cuf=[5 6 7] \
+         cmatrix=[10 | -2 10 | -2 -2 10]",
+    );
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        read_cuf(&mut dss, "cm3"),
+        [5.0, 6.0, 7.0],
+        "cm3 steps before makeposseq"
+    );
+    assert_three_times_one_step(&dss, "before makeposseq");
+
+    dss.command("makeposseq");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let cm1 = read_cuf(&mut dss, "cm1");
+    assert_eq!(cm1.len(), 1, "cm1 steps after makeposseq: {cm1:?}");
+    assert_eq!(
+        read_cuf(&mut dss, "cm3"),
+        [cm1[0]; 3],
+        "cm3 steps after makeposseq: the cm1 value on every step"
+    );
+    assert_three_times_one_step(&dss, "after makeposseq");
 }
 
 /// SpecType 3 single-phase: the CMatrix branch is skipped → no actions at all

@@ -9415,6 +9415,10 @@ fn f<'a>(x: &'a str) -> bool {
 /// review classify it.
 const WALK_SITES: &[(&str, usize)] = &[
     ("crates/dss-core/src/cim/tests.rs", 1),
+    (
+        "crates/dss-core/src/elements/general/load_shape/tests.rs",
+        1,
+    ),
     ("crates/dss-core/src/exec/tests/allocation.rs", 1),
     ("crates/dss-core/src/exec/tests/element_extras.rs", 1),
     ("crates/dss-core/src/exec/tests/in_show_results.rs", 1),
@@ -9427,6 +9431,7 @@ const WALK_SITES: &[(&str, usize)] = &[
     ("crates/dss-core/tests/corpus_gate/manifest.rs", 3),
     ("crates/dss-core/tests/corpus_gate/runner.rs", 3),
     ("crates/dss-core/tests/corpus_gate/scratch.rs", 1),
+    ("crates/dss-core/tests/corpus_hygiene.rs", 1),
     ("crates/dss-core/tests/corpus_manifest.rs", 3),
     ("crates/dss-core/tests/depascalize_metrics_gate.rs", 2),
     ("crates/dss-core/tests/golden_checkpoints.rs", 1),

@@ -1,0 +1,8 @@
+# Memory-mapped LoadShape fixtures: byte layout is load-bearing (the MMF reader
+# indexes by fixed record/line width). Never apply EOL/other normalization
+# (core.autocrlf is on in this repo), so they stay byte-identical on every
+# platform — LF-only text, raw binary floats.
+mm8.sng -text
+mm8.dbl -text
+mmpq8_plain.csv -text
+shape_mmf_io.dss -text
