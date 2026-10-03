@@ -29,23 +29,24 @@
 //! - `reason` — mandatory for every `anchor: "self"` row (G3.6 extends the
 //!   requirement to the rest);
 //! - `produced_by` — which lane is allowed to *write* the artifact. `null` for
-//!   every oracle-anchored row (nothing in this repo produces those bytes);
-//!   `parity` / `lane-invariant` for `self` rows. Until WP-G4 the two lanes
-//!   render different report/JSON bytes, so §1.2 makes the **parity** lane the
-//!   producer of any family with a parity-only byte arm; `lane-invariant` is
-//!   only ever set after a cross-lane regen has *measured* it (never assumed),
-//!   which is WP-G4's closing job (G4.6). The field is bookkeeping today and
-//!   becomes load-bearing in G0.2, where `harness::snapshot_*` refuses to write
-//!   from the non-producing lane.
+//!   every oracle-anchored row (nothing in this repo produces those bytes). For
+//!   a `self` row the [`LANE_INVARIANT`] register decides it: `lane-invariant`
+//!   for a listed family, `parity` for every other one. Until WP-G4 the two
+//!   lanes render different report/JSON bytes, so §1.2 makes the **parity**
+//!   lane the producer of any family with a parity-only byte arm; a family joins
+//!   `LANE_INVARIANT` only after a cross-lane regen has *measured* it (never
+//!   assumed), which is WP-G4's closing job (G4.6). `harness::snapshot_*`
+//!   refuses to write from the non-producing lane, so this field is what keeps
+//!   a parity-produced golden out of the default lane's reach.
 //!
 //! # What this test asserts
 //!
 //! 1. **Every artifact on disk has a row** — a new golden cannot be smuggled in
 //!    unfingerprinted.
-//! 2. **Every row has an artifact on disk** — fail-on-stale. (This also closes
-//!    the `props_roundtrip.rs` hole: that test asserts only that the scenario
-//!    list is non-empty, so deleting a `props/` class file removed coverage
-//!    silently.)
+//! 2. **Every row has an artifact on disk** — fail-on-stale. Deleting a
+//!    `props/` class file therefore reds here, beside the counts
+//!    `props_roundtrip.rs` pins itself (`PROPS_CLASS_FILES`, `PROPS_SCENARIOS`,
+//!    `PROPS_PROPERTY_CELLS`).
 //! 3. **Every digest matches** — a *committed* golden byte cannot move without
 //!    the lock diff moving with it, in the same reviewed commit. "Committed" is
 //!    load-bearing: digests are taken over the git blob (CRLF→LF for text, see
@@ -66,7 +67,8 @@
 //!    `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER`). Re-anchoring an artifact is
 //!    therefore a reviewable *code* edit in a register, never a lock hand-edit
 //!    and never a side effect of a regen run. Additionally `anchor == self` holds
-//!    if and only if `produced_by` is set. Two reason-only registers,
+//!    if and only if `produced_by` is set, and a `self` row's `produced_by` is
+//!    the one [`LANE_INVARIANT`] derives. Two reason-only registers,
 //!    [`NON_ENGINE_RESIDUE`] and [`CAPI_V0145_OVERLAYS`], write a truthful
 //!    reason into a residue row without moving its anchor. Two corpus-side
 //!    rails decide [`CAPI015_ARTIFACTS`] from the artifacts' own evidence: the
@@ -75,25 +77,39 @@
 //!    the sidecar↔payload rail ([`capi015_sidecar_violations`]) keeps every
 //!    payload a capi015 generator call wrote next to its `.meta.json` in it —
 //!    the residue can no longer swallow a capi015 capture, stamped or not.
+//! 5. **Every declared provenance admits the locked anchor.** A JSON artifact
+//!    whose own provenance block names an engine (`engine_spec`, `engine`,
+//!    `oracle`) must be anchored to that engine ([`declared_provenance_violations`]),
+//!    so an artifact no register names cannot take the `capi_v0145` residue
+//!    against its own declaration. `self` rows are exempt (their [`DEANCHORED`]
+//!    reason says why the declared engine is no longer the value authority), and
+//!    [`DECLARED_PROVENANCE_EXCEPTIONS`] holds the reasoned exceptions. A value
+//!    naming several engines counts only when the artifact's own `engine_spec`
+//!    picks one of them, an `oracle` block without an engine name reds, and
+//!    [`DECLARED_PROVENANCE_CENSUS`] pins the declaring population, so a reader
+//!    that stops seeing a declaration reds as well.
 //!
 //! # Regenerate deliberately
 //!
 //! ```text
-//! DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock
+//! DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture
 //! ```
 //!
-//! recomputes every digest from the artifacts currently on disk and rewrites the
-//! lock. Provenance is re-derived from the registers via [`seed_metadata`] —
-//! never carried over from the stored row — so this knob can move digests but
-//! cannot invent, preserve or launder an anchor: a hand-edited one is reset
-//! (loudly, `RE-ANCHORED …` on stderr), a hand-edited unregistered `self` is
-//! refused outright, and a path no register recognizes is announced (`SEEDED …`)
-//! instead of silently acquiring the `capi_v0145` residue. Every rewritten digest
-//! is announced too (`DIGEST MOVED …`, the check arm's label), so "the regen
-//! moved no digest" is read off the regen's own output. Only the *measured*
-//! `produced_by` of a `self` row survives a regen. Run it after reviewing *why*
-//! the bytes moved, and commit the lock diff together with the change that
-//! caused it.
+//! ([`LOCK_REGEN_CMD`]) recomputes every digest from the artifacts currently on
+//! disk and rewrites the lock. Provenance is re-derived from the registers via
+//! [`seed_metadata`] — never carried over from the stored row — so this knob can
+//! move digests but cannot invent, preserve or launder an anchor: a hand-edited
+//! one is reset (loudly, `RE-ANCHORED …` on stderr), a hand-edited unregistered
+//! `self` is refused outright, and a path no register recognizes is announced
+//! (`SEEDED …`) instead of silently acquiring the `capi_v0145` residue.
+//! `produced_by` is re-derived from [`LANE_INVARIANT`] the same way (a reset is
+//! announced `RE-LANED …`). Every rewritten digest is announced too
+//! (`DIGEST MOVED …`, the check arm's label), so "the regen moved no digest" is
+//! read off the regen's own output, and every row whose artifact is gone is
+//! announced `DROPPED …`, with the old and new row counts in the summary line.
+//! `-- --nocapture` is required: the regen run passes, and libtest discards a
+//! passing test's stderr. Run it after reviewing *why* the bytes moved, and
+//! commit the lock diff together with the change that caused it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -104,6 +120,12 @@ use sha2::{Digest, Sha256};
 /// The committed lock, repo-root-relative. It lives inside a scanned root and is
 /// therefore skipped by the scan (it fingerprints artifacts, it is not one).
 const LOCK_PATH: &str = "tests/golden/golden.lock.json";
+
+/// The deliberate regen command every message of this test prints. Its
+/// announcements are a passing test's stderr, which libtest only shows under
+/// `--nocapture`.
+const LOCK_REGEN_CMD: &str =
+    "DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture";
 
 /// Every tree the lock covers (§1.2 "Lock scope"): the golden corpus plus the
 /// registered out-of-tree witness — the r3723 A-Diakoptics reference fixtures,
@@ -130,11 +152,10 @@ const EXCLUDED_TREES: &[(&str, &str)] = &[
     ),
     (
         "tests/corpus/props_r4133",
-        "the vendored G1.1 r4133 property census (R4133_PROPS_PLAN.md RP0.1): frozen *evidence*, \
-         not artifacts — no row is engine output or an oracle capture the suite compares against, \
-         nothing in tools/golden regenerates them (their only re-measurement path is the RP0.2 \
-         DSS_PROPS_CENSUS knob), and none of this lock's anchors describes \"extract of a \
-         local-only census\". Their bytes are locked instead by \
+        "the vendored G1.1 r4133 property census (docs/plans-archive/R4133_PROPS_PLAN.md RP0.1): \
+         frozen *evidence*, not goldens — nothing in tools/golden regenerates them (their only \
+         re-measurement path is the RP0.2 DSS_PROPS_CENSUS knob), and none of this lock's anchors \
+         describes \"extract of a local-only census\". Their bytes are locked instead by \
          crates/dss-core/tests/props_r4133_evidence_lock.rs (SHA-256 over the five verbatim \
          copies, row counts and cross-file equalities for the derived files), so the tree is \
          guarded without minting an anchor \u{a7}1.2 does not define.",
@@ -174,7 +195,8 @@ enum ProducedBy {
     /// the print-emulation kernels live).
     #[serde(rename = "parity")]
     Parity,
-    /// Measured identical in both lanes by a cross-lane regen (WP-G4 outcome).
+    /// Measured identical in both lanes by a cross-lane regen (WP-G4 outcome)
+    /// and listed in [`LANE_INVARIANT`].
     #[serde(rename = "lane-invariant")]
     LaneInvariant,
 }
@@ -230,6 +252,16 @@ const DEANCHORED: &[(&str, &str)] = &[
          r4133 coverage lives in the live controls-family relay decks.",
     ),
 ];
+
+/// The `self` artifacts a cross-lane regen has *measured* identical in both
+/// lanes, as `(pattern, the measurement)`: their `produced_by` is
+/// `lane-invariant`, which `harness::snapshot_*` lets either lane write. Every
+/// other `self` row is produced by the parity lane. Empty until WP-G4 (G4.6)
+/// measures a family. Same pattern convention as [`DEANCHORED`]; an entry must
+/// lie inside a `DEANCHORED` entry (only a `self` row names a lane) and cover a
+/// locked row, so `lane-invariant` is a reviewed register edit, never a lock
+/// hand-edit a regen would carry over.
+const LANE_INVARIANT: &[(&str, &str)] = &[];
 
 /// The seventeen artifacts captured on the retired `capi015` stack. Eleven
 /// declare it in their own provenance block — spelled
@@ -314,8 +346,10 @@ const R4133_FAMILIES: &[(&str, &str)] = &[
          r3723 binary via the retired Oddie bridge, which the artifact's own oracle block records; \
          the anchor is r4133 because that is the only surviving regeneration path \
          (tools/golden/gen_flicker.py, epri-worker) and its payload reproduces the r3723 capture \
-         byte-identically (proven, STATUS 'EPRI bridge parity round'). The pinned 0.14.5 oracle \
-         cannot produce this family at all (its DoFlickerCalculations segfaults).",
+         byte-identically (proven: docs/phase-records/epri-bridge.md \u{a7}\"Parity proof \
+         (committed goldens UNTOUCHED — scratch regen + byte-compare)\", the flicker/pst_demo.json \
+         row). The pinned 0.14.5 oracle cannot produce this family at all (its \
+         DoFlickerCalculations segfaults).",
     ),
     (
         "tests/golden/props/fuse.json",
@@ -351,8 +385,8 @@ const FPC_REASON: &str = "a Free Pascal 3.2.2 RTL print capture (the %g/%f spell
 const R3723_TREE: &str = "crates/dss-core/tests/data/adiakoptics/r3723_ref/";
 
 const R3723_REASON: &str = "the only external A-Diakoptics witness (zll/zcc/y4/voltages), harvested from the official \
-     EPRI r3723 engine by tools/opendss/gen_ad_reference.py; that revision is retired, so the \
-     tree is frozen (§1.2).";
+     EPRI r3723 engine by tools/opendss/gen_ad_reference.py, which c060c0b2 retired together \
+     with that revision (recoverable from history); the tree is frozen (§1.2).";
 
 /// Residue rows whose bytes **no engine wrote** — script-generated input decks
 /// and hand-authored documents. They keep the `capi_v0145` anchor only because
@@ -506,7 +540,8 @@ struct Artifact {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GoldenLock {
-    /// Human note; never compared (documentation may be edited freely).
+    /// Human note, written from [`COMMENT`] by every regen and checked equal to
+    /// it, so the committed note cannot drift from the const.
     #[serde(default)]
     comment: String,
     /// Sorted by `path`; one row per committed golden artifact.
@@ -523,20 +558,26 @@ named with their reason in golden_lock.rs::EXCLUDED_TREES and revisited in G3.6.
 the artifact's content digest and where the truth in those bytes comes from (anchor), plus - for \
 self-anchored rows - a mandatory reason and the lane allowed to (re)produce them. \
 crates/dss-core/tests/golden_lock.rs asserts, fail-on-stale in both directions: every artifact has a \
-row, every row an artifact, every digest matches, and every row's anchor+reason are exactly what the \
-test's provenance registers (DEANCHORED / CAPI015_ARTIFACTS / R4133_FAMILIES / FPC_ARTIFACT / \
-R3723_TREE, capi_v0145 as the residue) derive for its path - so re-anchoring an artifact is a \
-reviewed edit to a register, never a hand-edit here. Digests are taken over the COMMITTED content: \
+row, every row an artifact, every digest matches, and every row's anchor, reason and produced_by are \
+exactly what the test's provenance registers (DEANCHORED / CAPI015_ARTIFACTS / R4133_FAMILIES / \
+FPC_ARTIFACT / R3723_TREE, capi_v0145 as the residue; the reason-only CAPI015_OVERLAYS / \
+NON_ENGINE_RESIDUE / CAPI_V0145_OVERLAYS; LANE_INVARIANT for produced_by) derive for its path - so \
+re-anchoring an artifact, or declaring it lane-invariant, is a reviewed edit to a register, never a \
+hand-edit here. A JSON artifact whose own provenance block declares an engine must be anchored to \
+that engine (self rows and golden_lock.rs::DECLARED_PROVENANCE_EXCEPTIONS aside). Digests are taken \
+over the COMMITTED content: \
 CRLF is normalized to LF for text artifacts (core.autocrlf=true here, so the working tree carries \
 CRLF while git stores LF), while reports/*.bin streams - `binary` in .gitattributes, cross-checked \
 against that file - are hashed raw; an EOL-only working-tree change therefore moves no digest \
 because it moves no committed byte (see the golden_lock.rs module docs, assertion 3, for what that \
 means for G4.3). Regenerate DELIBERATELY with \
-`DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock`; it moves digests only - \
-provenance is re-derived from the registers, and every re-anchored or newly seeded path is announced \
-on stderr - and the diff is the review artifact. The regeneration rules R1-R4 and the operational \
-walkthrough land in TESTING.md with the snapshot helpers (plan sub-step G0.2); until then the \
-authority is the golden_lock.rs module documentation.";
+`DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture` (the flag is \
+required: the regen run passes, and libtest discards a passing test's stderr); it moves digests only \
+- provenance is re-derived from the registers, and every re-anchored, re-laned, newly seeded or \
+dropped path and every moved digest is announced on stderr - and the diff is the review artifact. \
+The regeneration rules R1-R4 and the operational walkthrough are in TESTING.md: the section \
+\"Golden provenance lock (`golden_lock.rs`) and the self-golden write rails\" and, under \
+\"Procedures\", \"Regenerate a self-golden (R1–R4)\".";
 
 fn repo_root() -> PathBuf {
     [env!("CARGO_MANIFEST_DIR"), "..", ".."].iter().collect()
@@ -561,6 +602,45 @@ fn deanchored_entries(path: &str) -> Vec<&'static (&'static str, &'static str)> 
         .collect()
 }
 
+/// The lane that may write the `self` artifact at `path`: `lane-invariant` when
+/// a `lane_invariant` entry (the live one is [`LANE_INVARIANT`]) covers it, else
+/// the parity lane, which holds the strictest byte contract until WP-G4 measures
+/// a family identical in both lanes.
+fn producing_lane(path: &str, lane_invariant: &[(&str, &str)]) -> ProducedBy {
+    if lane_invariant
+        .iter()
+        .any(|(pattern, _)| pattern_covers(pattern, path))
+    {
+        ProducedBy::LaneInvariant
+    } else {
+        ProducedBy::Parity
+    }
+}
+
+/// The `produced_by` violation of one locked row, if any: `anchor == self` iff
+/// `produced_by` is set, and a `self` row names the lane `lane_invariant`
+/// derives ([`producing_lane`]). Parameterized so
+/// `produced_by_is_derived_from_the_lane_invariant_register` can drive it.
+fn produced_by_violation(row: &Artifact, lane_invariant: &[(&str, &str)]) -> Option<String> {
+    let is_self = row.anchor == Anchor::SelfSnapshot;
+    if is_self != row.produced_by.is_some() {
+        return Some(format!(
+            "  PRODUCED_BY MISMATCH: {} is anchored {:?} with produced_by {:?}; exactly the \
+             self-anchored rows name a producing lane\n",
+            row.path, row.anchor, row.produced_by
+        ));
+    }
+    let want = is_self.then(|| producing_lane(&row.path, lane_invariant));
+    (row.produced_by != want).then(|| {
+        format!(
+            "  PRODUCED_BY OUT OF REGISTER: {} is locked produced_by {:?} but LANE_INVARIANT \
+             derives {:?}. A lane-invariant family is a LANE_INVARIANT entry naming the \
+             cross-lane regen that measured it, never a lock hand-edit\n",
+            row.path, row.produced_by, want
+        )
+    })
+}
+
 /// **The** anchor classification: the provenance registers applied to a path.
 /// This is not a seeding heuristic — it is the invariant every locked row is
 /// checked against and the only thing a regen writes, so re-anchoring an
@@ -570,12 +650,10 @@ fn deanchored_entries(path: &str) -> Vec<&'static (&'static str, &'static str)> 
 fn seed_metadata(path: &str) -> (Anchor, String, Option<ProducedBy>) {
     let registered = deanchored_entries(path);
     if let Some((_, reason)) = registered.first() {
-        // §1.2: until WP-G4 proves lane-invariance by a cross-lane regen, the
-        // producing lane is the parity lane (the strictest byte contract).
         return (
             Anchor::SelfSnapshot,
             (*reason).to_string(),
-            Some(ProducedBy::Parity),
+            Some(producing_lane(path, LANE_INVARIANT)),
         );
     }
     if CAPI015_ARTIFACTS.contains(&path) {
@@ -778,6 +856,249 @@ fn capi015_stamped_artifacts(root: &Path, disk: &BTreeMap<String, String>) -> Ve
         .collect()
 }
 
+/// Locked JSON artifacts whose own provenance block declares an engine their
+/// anchor is not, as `(path, the anchor the lock keeps, why)`. Fail-on-stale:
+/// an entry must excuse a live contradiction
+/// ([`declared_provenance_violations`]).
+const DECLARED_PROVENANCE_EXCEPTIONS: &[(&str, Anchor, &str)] = &[(
+    "tests/golden/flicker/pst_demo.json",
+    Anchor::R4133,
+    "declares the official-EPRI r3723 Oddie capture its committed bytes are; anchored r4133 \
+     by R4133_FAMILIES because the r4133 epri-worker regen reproduces every payload key \
+     byte-identically (docs/phase-records/epri-bridge.md \u{a7}\"Parity proof (committed goldens \
+     UNTOUCHED — scratch regen + byte-compare)\", the flicker/pst_demo.json row), and r4133 is \
+     the only surviving regeneration path.",
+)];
+
+/// The declaring population of the locked JSON artifacts, as
+/// [`declared_provenance_census`] measures it: the declaring rows and the
+/// declarations per key. A reader that stops seeing a declaration leaves it
+/// unchecked without a red, so the census is pinned. Re-measure it (the red
+/// prints the measured census) in the commit that moves the population.
+const DECLARED_PROVENANCE_CENSUS: (usize, &[(&str, usize)]) = (
+    173,
+    &[
+        ("engine", 9),
+        ("oracle", 11),
+        ("oracle.engine", 162),
+        ("oracle.engine_spec", 10),
+    ],
+);
+
+/// The r4133 binary's own version banner (`tools/opendss/revisions.json`, its
+/// `expect_version`), which some r4133 captures record as their engine.
+const R4133_VERSION_BANNER: &str = "Version 11.0.0.1 (64-bit build) - Charlottesville";
+
+/// One provenance declaration of a JSON artifact: the key and its value, `None`
+/// when the key carries no engine name as a string (a non-string value, or an
+/// `oracle` block without `engine_spec` / `engine`).
+type Declaration = (&'static str, Option<String>);
+
+/// A locked JSON artifact that declares its provenance.
+struct Declaring {
+    path: String,
+    anchor: Anchor,
+    declarations: Vec<Declaration>,
+}
+
+/// The provenance declarations of a JSON document: a top-level `engine_spec` or
+/// `engine`, and an `oracle` that is either a string or a block carrying
+/// `engine_spec` / `engine`. A block carrying neither is one declaration
+/// without an engine name.
+fn provenance_declarations(doc: &serde_json::Value) -> Vec<Declaration> {
+    let text = |v: &serde_json::Value| v.as_str().map(str::to_string);
+    let mut out: Vec<Declaration> = ["engine_spec", "engine"]
+        .into_iter()
+        .filter_map(|key| doc.get(key).map(|v| (key, text(v))))
+        .collect();
+    match doc.get("oracle") {
+        None => {}
+        Some(serde_json::Value::Object(block)) => {
+            let before = out.len();
+            for (key, name) in [
+                ("engine_spec", "oracle.engine_spec"),
+                ("engine", "oracle.engine"),
+            ] {
+                if let Some(v) = block.get(key) {
+                    out.push((name, text(v)));
+                }
+            }
+            if out.len() == before {
+                out.push(("oracle", None));
+            }
+        }
+        Some(v) => out.push(("oracle", text(v))),
+    }
+    out
+}
+
+/// Every anchor a declared engine string names, empty for an engine this test
+/// does not know. Every spelling on disk is covered (measured over the locked
+/// JSON artifacts): the 0.15.x beta stack, the pinned 0.14.5 oracle, the
+/// retired r3723 and the r4133 engine.
+fn declared_anchors(value: &str) -> Vec<Anchor> {
+    let v = value.to_ascii_lowercase();
+    [
+        (
+            Anchor::Capi015,
+            v.contains("capi015") || v.contains("0.15.0b"),
+        ),
+        (
+            Anchor::CapiV0145,
+            v.contains("capi_v0145") || v.contains("0.14.5"),
+        ),
+        (Anchor::R3723, v.contains("r3723")),
+        (
+            Anchor::R4133,
+            v.contains("r4133") || value.starts_with(R4133_VERSION_BANNER),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(anchor, named)| named.then_some(anchor))
+    .collect()
+}
+
+/// The locked JSON artifacts on disk that declare their provenance, read from
+/// disk (a parse failure panics: fail loud, never skip).
+fn declared_provenance_rows(
+    root: &Path,
+    rows: &[Artifact],
+    disk: &BTreeMap<String, String>,
+) -> Vec<Declaring> {
+    rows.iter()
+        .filter(|row| row.path.ends_with(".json") && disk.contains_key(&row.path))
+        .filter_map(|row| {
+            let abs = root.join(&row.path);
+            let text = std::fs::read_to_string(&abs)
+                .unwrap_or_else(|e| panic!("read {}: {e}", abs.display()));
+            if !text.contains("\"engine") && !text.contains("\"oracle\"") {
+                return None;
+            }
+            let doc: serde_json::Value = serde_json::from_str(&text)
+                .unwrap_or_else(|e| panic!("parse {}: {e}", abs.display()));
+            let declarations = provenance_declarations(&doc);
+            (!declarations.is_empty()).then(|| Declaring {
+                path: row.path.clone(),
+                anchor: row.anchor,
+                declarations,
+            })
+        })
+        .collect()
+}
+
+/// The declared-provenance rail: every declaration names one known engine, and
+/// the locked anchor of a declaring artifact is among the engines it declares,
+/// unless the row is `self` (its [`DEANCHORED`] reason says why the declared
+/// engine stopped being the value authority) or an `exceptions` entry excuses
+/// exactly that path and anchor. A value naming several engines declares none
+/// of them: it passes only when one of its engines is the one a single-engine
+/// `engine_spec` of the same artifact names. An entry that excuses nothing is
+/// stale. One message per violation; parameterized so
+/// `declared_provenance_must_admit_the_locked_anchor` can drive it red.
+fn declared_provenance_violations(
+    declaring: &[Declaring],
+    exceptions: &[(&str, Anchor, &str)],
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut hits = vec![0usize; exceptions.len()];
+    for d in declaring {
+        let specified: Vec<Anchor> = d
+            .declarations
+            .iter()
+            .filter(|(key, _)| key.ends_with("engine_spec"))
+            .filter_map(|(_, value)| match declared_anchors(value.as_deref()?)[..] {
+                [a] => Some(a),
+                _ => None,
+            })
+            .collect();
+        let mut declared = Vec::new();
+        for (key, value) in &d.declarations {
+            let Some(v) = value.as_deref() else {
+                out.push(format!(
+                    "  UNREADABLE PROVENANCE DECLARATION: {} declares `{key}` without a string \
+                     engine name\n",
+                    d.path
+                ));
+                continue;
+            };
+            match declared_anchors(v)[..] {
+                [] => out.push(format!(
+                    "  UNCLASSIFIED PROVENANCE DECLARATION: {} declares `{key}` = {v:?}, an \
+                     engine declared_anchors() does not know — teach it the engine rather \
+                     than leave the declaration unchecked\n",
+                    d.path
+                )),
+                [a] => declared.push(a),
+                ref several => {
+                    if !several.iter().any(|a| specified.contains(a)) {
+                        out.push(format!(
+                            "  AMBIGUOUS PROVENANCE DECLARATION: {} declares `{key}` = {v:?}, \
+                             which names {several:?} while no single-engine `engine_spec` of \
+                             the artifact picks one of them — name the one engine the bytes \
+                             came from\n",
+                            d.path
+                        ));
+                    }
+                }
+            }
+        }
+        if d.anchor == Anchor::SelfSnapshot || declared.is_empty() || declared.contains(&d.anchor) {
+            continue;
+        }
+        match exceptions
+            .iter()
+            .position(|(p, a, _)| *p == d.path && *a == d.anchor)
+        {
+            Some(i) => hits[i] += 1,
+            None => out.push(format!(
+                "  DECLARED PROVENANCE CONTRADICTS ANCHOR: {} is locked {:?} but its own \
+                 provenance block declares {declared:?} ({:?}) — register it where its bytes \
+                 came from, or add a reasoned DECLARED_PROVENANCE_EXCEPTIONS entry\n",
+                d.path, d.anchor, d.declarations
+            )),
+        }
+    }
+    for (i, (path, anchor, _)) in exceptions.iter().enumerate() {
+        if hits[i] == 0 {
+            out.push(format!(
+                "  STALE DECLARED_PROVENANCE_EXCEPTIONS ENTRY: {path:?} ({anchor:?}) excuses no \
+                 locked artifact whose declaration contradicts that anchor\n"
+            ));
+        }
+    }
+    out
+}
+
+/// The census of a declaring population: its row count and its declarations
+/// per key, keys sorted.
+fn declared_provenance_census(declaring: &[Declaring]) -> (usize, Vec<(&'static str, usize)>) {
+    let mut per_key: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for d in declaring {
+        for (key, _) in &d.declarations {
+            *per_key.entry(*key).or_default() += 1;
+        }
+    }
+    (declaring.len(), per_key.into_iter().collect())
+}
+
+/// A red when the measured census of `declaring` is not `pinned`
+/// ([`DECLARED_PROVENANCE_CENSUS`]); parameterized so
+/// `declared_provenance_must_admit_the_locked_anchor` can drive it red.
+fn declared_provenance_census_violation(
+    declaring: &[Declaring],
+    pinned: (usize, &[(&str, usize)]),
+) -> Option<String> {
+    let measured = declared_provenance_census(declaring);
+    (measured.0 != pinned.0 || measured.1 != pinned.1).then(|| {
+        format!(
+            "  DECLARED PROVENANCE CENSUS MOVED: the rail reads {measured:?} (declaring rows, \
+             declarations per key), DECLARED_PROVENANCE_CENSUS pins {pinned:?} — a reader that \
+             stops seeing a declaration leaves it unchecked, so re-measure and update the const \
+             in the commit that moves the population\n"
+        )
+    })
+}
+
 /// `reports/*.bin` are raw little-endian IEEE-754 streams, declared `binary` in
 /// `.gitattributes` precisely so git never EOL-munges them.
 ///
@@ -786,20 +1107,70 @@ fn capi015_stamped_artifacts(root: &Path, disk: &BTreeMap<String, String>) -> Ve
 /// here, and a binary family with another extension would be hashed
 /// EOL-normalized although git stores it raw — either way the digest silently
 /// stops being over the committed content. [`assert_binary_classification_matches_gitattributes`]
-/// binds the two, both directions, over every scanned path.
+/// binds the two over every scanned path, both directions, against the
+/// repo-root `.gitattributes`, and refuses every attribute declaration in the
+/// tree that could decide a locked path's bytes but that this reader does not
+/// see or does not emulate ([`gitattributes_binary_patterns`]). Pathspecs and
+/// attribute file names are compared in any ASCII case, as git compares them
+/// under `core.ignorecase` (on in this checkout), and a pathspec that reaches a
+/// locked path only that way reds ([`binary_classification_violations`]).
 fn is_binary_artifact(rel: &str) -> bool {
     rel.ends_with(".bin")
 }
 
-/// The pathspecs `.gitattributes` marks `binary` (or `-text`) **inside**
-/// [`ROOTS`] — the declarations [`is_binary_artifact`] emulates. Patterns
-/// outside the locked roots (the vendored corpus) cannot classify a golden and
-/// are dropped.
-fn gitattributes_binary_patterns(root: &Path) -> Vec<String> {
-    let path = root.join(".gitattributes");
-    let text =
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    let mut out = Vec::new();
+/// Attributes that change the bytes git stores or checks out for a path, so a
+/// declaration carrying one decides what a locked path's digest is over.
+const CONTENT_ATTRIBUTES: &[&str] = &[
+    "binary",
+    "text",
+    "eol",
+    "crlf",
+    "filter",
+    "working-tree-encoding",
+    "ident",
+];
+
+/// The attribute a `.gitattributes` token sets, unsets or unspecifies
+/// (`-text` and `!text` name `text`, `eol=lf` names `eol`).
+fn attribute_name(token: &str) -> &str {
+    let name = token.trim_start_matches(['-', '!']);
+    name.split_once('=').map_or(name, |(name, _)| name)
+}
+
+/// Is `spec` (a repo-root pathspec without its leading `/`) a locked root or a
+/// path below one, in any ASCII case?
+fn is_rooted(spec: &str) -> bool {
+    ROOTS.iter().any(|r| {
+        spec.get(..r.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(r))
+            && matches!(spec.as_bytes().get(r.len()), None | Some(b'/'))
+    })
+}
+
+/// The pathspecs of the repo-root `.gitattributes` (`text`) that mark a locked
+/// path `binary` or `-text` — the declarations [`is_binary_artifact`] emulates —
+/// and one refusal per declaration that could decide a locked path's bytes but
+/// would otherwise go unread: every attribute file in `nested` (inside or above
+/// a locked root, found by [`nested_gitattributes`]); a content attribute
+/// ([`CONTENT_ATTRIBUTES`]) on a pathspec that does not name a locked root yet
+/// can reach one (a bare name matches at every depth, a glob before the end of
+/// the root's literal prefix matches into it); a content attribute other than
+/// `binary` / `-text` on a locked path; a macro or a quoted pathspec carrying
+/// one. Roots are compared in any ASCII case. A pathspec that cannot reach a
+/// locked root (the vendored corpus) is dropped. Parameterized so
+/// `gitattributes_reader_refuses_what_it_cannot_see` can drive every refusal.
+fn gitattributes_binary_patterns(text: &str, nested: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut patterns = Vec::new();
+    let mut refused: Vec<String> = nested
+        .iter()
+        .map(|p| {
+            format!(
+                "  NESTED .gitattributes: {p} can set attributes on locked paths, and only the \
+                 repo-root .gitattributes is read here — move its declarations there, spelled \
+                 from the repo root\n"
+            )
+        })
+        .collect();
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -809,20 +1180,87 @@ fn gitattributes_binary_patterns(root: &Path) -> Vec<String> {
         let Some(pattern) = fields.next() else {
             continue;
         };
-        if !fields.any(|a| a == "binary" || a == "-text") {
+        let content: Vec<&str> = fields
+            .filter(|a| CONTENT_ATTRIBUTES.contains(&attribute_name(a)))
+            .collect();
+        if content.is_empty() {
             continue;
         }
-        if ROOTS.iter().any(|r| pattern.starts_with(r)) {
-            out.push(pattern.to_string());
+        if pattern.starts_with("[attr]") || pattern.starts_with('"') {
+            refused.push(format!(
+                "  UNREAD DECLARATION: `{line}` is a macro or a quoted pathspec carrying a \
+                 content attribute; this reader neither expands macros nor unquotes, so spell \
+                 the attributes on a plain pathspec\n"
+            ));
+            continue;
+        }
+        let bare = !pattern.trim_end_matches('/').contains('/');
+        let spec = pattern.strip_prefix('/').unwrap_or(pattern);
+        if !bare && is_rooted(spec) {
+            if content.iter().all(|a| *a == "binary" || *a == "-text") {
+                patterns.push(spec.to_string());
+            } else {
+                refused.push(format!(
+                    "  UNEMULATED ATTRIBUTE ON A LOCKED PATH: `{line}` — is_binary_artifact() \
+                     emulates only `binary` / `-text`, so the digest would not be over the bytes \
+                     git stores\n"
+                ));
+            }
+            continue;
+        }
+        let reaches_a_root = bare
+            || spec.find(['*', '?', '[', '\\']).is_some_and(|k| {
+                ROOTS.iter().any(|r| {
+                    r.get(..k)
+                        .is_some_and(|head| head.eq_ignore_ascii_case(&spec[..k]))
+                })
+            });
+        if reaches_a_root {
+            refused.push(format!(
+                "  UNROOTED PATHSPEC REACHES A LOCKED PATH: `{line}` carries a content attribute \
+                 on a pathspec that does not name a locked root {ROOTS:?} but can match inside \
+                 one (a bare name matches at every depth, a leading glob anywhere); spell it \
+                 from a locked root or a directory outside them\n"
+            ));
         }
     }
-    out
+    (patterns, refused)
 }
 
-/// Match one `.gitattributes` pathspec against a repo-relative path. Only the
+/// Every `.gitattributes` other than the repo-root one that can reach a locked
+/// path: one among the scanned artifacts (inside a root, its name in any ASCII
+/// case), or one `exists` reports in a directory between the repo root and a
+/// root. Parameterized so `gitattributes_reader_refuses_what_it_cannot_see` can
+/// drive the directories it probes.
+fn nested_gitattributes(
+    paths: &BTreeMap<String, String>,
+    exists: impl Fn(&str) -> bool,
+) -> Vec<String> {
+    let mut out: std::collections::BTreeSet<String> = paths
+        .keys()
+        .filter(|p| {
+            p.rsplit('/')
+                .next()
+                .is_some_and(|name| name.eq_ignore_ascii_case(".gitattributes"))
+        })
+        .cloned()
+        .collect();
+    for r in ROOTS {
+        for (k, _) in r.match_indices('/') {
+            let candidate = format!("{}/.gitattributes", &r[..k]);
+            if exists(&candidate) {
+                out.insert(candidate);
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// Match one `.gitattributes` pathspec against a repo-relative path,
+/// case-sensitively. Only the
 /// two shapes the file actually uses are supported — a `dir/**` subtree and a
 /// `dir/<glob>` leaf with at most one `*` — and
-/// [`assert_binary_classification_matches_gitattributes`] rejects anything else
+/// [`check_binary_classification`] rejects anything else
 /// rather than silently under-matching it.
 fn attr_pattern_matches(pattern: &str, path: &str) -> bool {
     if let Some(prefix) = pattern.strip_suffix("/**") {
@@ -847,37 +1285,104 @@ fn attr_pattern_matches(pattern: &str, path: &str) -> bool {
 }
 
 /// Bind [`is_binary_artifact`] to the `.gitattributes` declaration it emulates,
-/// both directions, over every scanned artifact.
+/// both directions, over every scanned artifact, after refusing every
+/// declaration [`gitattributes_binary_patterns`] could not read: the repo-root
+/// file and the tree under `root` through [`check_binary_classification`].
 fn assert_binary_classification_matches_gitattributes(
     root: &Path,
     paths: &BTreeMap<String, String>,
 ) {
-    let patterns = gitattributes_binary_patterns(root);
-    assert!(
-        !patterns.is_empty(),
-        ".gitattributes declares no `binary`/`-text` pathspec inside {ROOTS:?}, but \
-         is_binary_artifact() classifies `.bin` artifacts as binary — the two have drifted"
-    );
-    for p in &patterns {
-        let body = p.strip_suffix("/**").unwrap_or(p);
-        assert!(
-            body.matches('*').count() <= 1 && !body.contains('?') && !body.contains('['),
+    let path = root.join(".gitattributes");
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    if let Err(e) = check_binary_classification(&text, |p| root.join(p).is_file(), paths) {
+        panic!("{e}");
+    }
+}
+
+/// The checks [`assert_binary_classification_matches_gitattributes`] runs, the
+/// first failure being the error: `text` is the repo-root `.gitattributes` and
+/// `exists` probes the directories above each locked root
+/// ([`nested_gitattributes`]). In order, it reds a declaration the reader
+/// refuses, the absence of any `binary` / `-text` pathspec, a pathspec shape
+/// [`attr_pattern_matches`] does not implement, and a case-variant or drifted
+/// classification of `paths` ([`binary_classification_violations`]).
+/// Parameterized so `gitattributes_reader_refuses_what_it_cannot_see` can drive
+/// each one red.
+fn check_binary_classification(
+    text: &str,
+    exists: impl Fn(&str) -> bool,
+    paths: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let (patterns, refused) =
+        gitattributes_binary_patterns(text, &nested_gitattributes(paths, exists));
+    if !refused.is_empty() {
+        return Err(format!(
+            "attribute declarations that can decide the committed bytes of a locked path are \
+             not all readable here:\n{}",
+            refused.concat()
+        ));
+    }
+    if patterns.is_empty() {
+        return Err(format!(
+            ".gitattributes declares no `binary`/`-text` pathspec inside {ROOTS:?}, but \
+             is_binary_artifact() classifies `.bin` artifacts as binary — the two have drifted"
+        ));
+    }
+    if let Some(p) = patterns.iter().find(|p| {
+        let body = p.strip_suffix("/**").unwrap_or(p.as_str());
+        body.matches('*').count() > 1 || body.contains('?') || body.contains('[')
+    }) {
+        return Err(format!(
             ".gitattributes pathspec {p:?} uses a glob shape attr_pattern_matches() does not \
              implement; teach it that shape rather than letting the match silently fail"
-        );
+        ));
     }
-    for rel in paths.keys() {
+    let drift = binary_classification_violations(&patterns, paths.keys().map(String::as_str));
+    if !drift.is_empty() {
+        return Err(format!(
+            "the `.gitattributes` declarations do not decide the locked paths' bytes the way \
+             is_binary_artifact() says:\n{}",
+            drift.concat()
+        ));
+    }
+    Ok(())
+}
+
+/// The locked paths whose bytes the declared `binary` / `-text` pathspecs
+/// (`patterns`) do not decide the way [`is_binary_artifact`] says: a path a
+/// pathspec reaches only in another ASCII case (git applies it under
+/// `core.ignorecase`, not on a case-sensitive checkout, so the stored bytes
+/// would depend on the platform), and a path the predicate classifies
+/// otherwise than the declaration. Parameterized so
+/// `gitattributes_reader_refuses_what_it_cannot_see` can drive both red.
+fn binary_classification_violations<'a>(
+    patterns: &[String],
+    paths: impl IntoIterator<Item = &'a str>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for rel in paths {
         let declared = patterns.iter().any(|p| attr_pattern_matches(p, rel));
-        assert_eq!(
-            is_binary_artifact(rel),
-            declared,
-            "golden artifact {rel}: is_binary_artifact() says {}, .gitattributes says {} \
-             ({patterns:?}). The digest would be taken over bytes git does not store; keep the \
-             predicate and the attribute in lockstep.",
-            is_binary_artifact(rel),
-            declared
-        );
+        let folded = patterns
+            .iter()
+            .any(|p| attr_pattern_matches(&p.to_ascii_lowercase(), &rel.to_ascii_lowercase()));
+        if folded != declared {
+            out.push(format!(
+                "  CASE-VARIANT PATHSPEC: {patterns:?} reaches {rel} only in another ASCII case, \
+                 which git applies under core.ignorecase (on in this checkout) but not on a \
+                 case-sensitive checkout — spell the pathspec in the case of the paths it names\n"
+            ));
+        } else if is_binary_artifact(rel) != declared {
+            out.push(format!(
+                "  BINARY CLASSIFICATION DRIFT: golden artifact {rel}: is_binary_artifact() says \
+                 {}, .gitattributes says {declared} ({patterns:?}). The digest would be taken \
+                 over bytes git does not store; keep the predicate and the attribute in \
+                 lockstep.\n",
+                is_binary_artifact(rel)
+            ));
+        }
     }
+    out
 }
 
 /// Strip the `\r` of every `\r\n` pair. Reproduces git's `core.autocrlf`
@@ -1008,20 +1513,67 @@ enum Seeded {
     /// regen that moved no golden byte is provable from its own output (the
     /// RF-D08-06 audit found that claim unfalsifiable while regens were silent).
     DigestMoved(String),
+    /// The stored `produced_by` (first) disagreed with [`LANE_INVARIANT`] and
+    /// was reset to it (second); the anchor did not move.
+    ReLaned(Option<ProducedBy>, Option<ProducedBy>),
+    /// The stored row's artifact (stored anchor carried here) is gone from
+    /// disk, so the row and the coverage it stood for leave the lock.
+    Dropped(Anchor),
+}
+
+/// The stderr lines of a regen: the summary with the old and new row counts,
+/// then one line per [`Seeded`] entry, so no provenance movement, digest move or
+/// dropped row is silent.
+fn regen_announcements(
+    lock: &str,
+    stored_rows: usize,
+    written_rows: usize,
+    report: &[(String, Seeded)],
+) -> Vec<String> {
+    let delta = written_rows as i64 - stored_rows as i64;
+    let mut out = vec![format!(
+        "golden lock regenerated: {lock} ({stored_rows} -> {written_rows} artifacts, {delta:+})"
+    )];
+    // A new path inherits the `capi_v0145` residue only because no register
+    // claimed it, which is a claim about where its bytes came from and must be
+    // confirmed by a human.
+    out.extend(report.iter().map(|(p, what)| match what {
+        Seeded::New(a) => format!(
+            "  SEEDED {p} as {a:?} — confirm this artifact really came from that source; \
+             if not, add it to the matching register in golden_lock.rs and regenerate"
+        ),
+        Seeded::ReAnchored(from, to) => {
+            format!("  RE-ANCHORED {p}: {from:?} -> {to:?} (the registers are the truth)")
+        }
+        Seeded::DigestMoved(locked) => format!(
+            "  DIGEST MOVED {p}: locked {locked} rewritten from disk — commit it only \
+             together with the change that moved the bytes"
+        ),
+        Seeded::ReLaned(from, to) => format!(
+            "  RE-LANED {p}: produced_by {from:?} -> {to:?} (the LANE_INVARIANT register is \
+             the truth)"
+        ),
+        Seeded::Dropped(a) => format!(
+            "  DROPPED {p} (was {a:?}): the artifact is gone from disk, so its row and the \
+             coverage it stood for leave the lock — confirm the deletion was intended"
+        ),
+    }));
+    out
 }
 
 /// Rebuild the row set from disk. Provenance always comes from
 /// [`seed_metadata`] — the registers are the invariant, so a regen can neither
-/// invent an anchor nor preserve a hand-edited one; only the *measured*
-/// `produced_by` of a `self` row survives. Refuses outright to write an
-/// unregistered `self` anchor: de-anchoring is a [`DEANCHORED`] edit, never a
-/// regen side effect.
+/// invent an anchor or a producing lane nor preserve a hand-edited one. Refuses
+/// outright to write an unregistered `self` anchor: de-anchoring is a
+/// [`DEANCHORED`] edit, never a regen side effect. Every stored row without an
+/// artifact on disk is reported [`Seeded::Dropped`].
 fn regenerate(
     disk: &BTreeMap<String, String>,
     stored: &BTreeMap<String, Artifact>,
     report: &mut Vec<(String, Seeded)>,
 ) -> Vec<Artifact> {
-    disk.iter()
+    let rows: Vec<Artifact> = disk
+        .iter()
         .map(|(path, sha256)| {
             let registered = deanchored_entries(path);
             assert!(
@@ -1030,9 +1582,8 @@ fn regenerate(
                  reason per artifact",
                 registered.len()
             );
-            let (anchor, reason, seed_produced_by) = seed_metadata(path);
-            let prev = stored.get(path);
-            if let Some(prev) = prev {
+            let (anchor, reason, produced_by) = seed_metadata(path);
+            if let Some(prev) = stored.get(path) {
                 assert!(
                     prev.anchor != Anchor::SelfSnapshot || anchor == Anchor::SelfSnapshot,
                     "{path} is anchored `self` in the lock but no DEANCHORED entry covers it. \
@@ -1041,6 +1592,8 @@ fn regenerate(
                 );
                 if prev.anchor != anchor {
                     report.push((path.clone(), Seeded::ReAnchored(prev.anchor, anchor)));
+                } else if prev.produced_by != produced_by {
+                    report.push((path.clone(), Seeded::ReLaned(prev.produced_by, produced_by)));
                 }
                 if prev.sha256 != *sha256 {
                     report.push((path.clone(), Seeded::DigestMoved(prev.sha256.clone())));
@@ -1048,15 +1601,6 @@ fn regenerate(
             } else {
                 report.push((path.clone(), Seeded::New(anchor)));
             }
-            // Only the measured lane of a self row survives; everything else is
-            // the register's.
-            let produced_by = match anchor {
-                Anchor::SelfSnapshot => Some(
-                    prev.and_then(|a| a.produced_by)
-                        .unwrap_or(ProducedBy::Parity),
-                ),
-                _ => seed_produced_by,
-            };
             Artifact {
                 path: path.clone(),
                 sha256: sha256.clone(),
@@ -1065,7 +1609,13 @@ fn regenerate(
                 produced_by,
             }
         })
-        .collect()
+        .collect();
+    for (path, prev) in stored {
+        if !disk.contains_key(path) {
+            report.push((path.clone(), Seeded::Dropped(prev.anchor)));
+        }
+    }
+    rows
 }
 
 fn by_path(artifacts: &[Artifact]) -> BTreeMap<String, Artifact> {
@@ -1098,46 +1648,32 @@ fn golden_lock_matches_the_committed_artifacts() {
         let artifacts = regenerate(&disk, &stored, &mut report);
         std::fs::write(&path, serialize_lock(&artifacts))
             .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
-        eprintln!(
-            "golden lock regenerated: {} ({} artifacts)",
-            path.display(),
-            artifacts.len()
-        );
-        // Provenance movements are never silent: a new path inherits the
-        // `capi_v0145` residue only because no register claimed it, which is a
-        // claim about where its bytes came from and must be confirmed by a human.
-        for (p, what) in &report {
-            match what {
-                Seeded::New(a) => eprintln!(
-                    "  SEEDED {p} as {a:?} — confirm this artifact really came from that source; \
-                     if not, add it to the matching register in golden_lock.rs and regenerate"
-                ),
-                Seeded::ReAnchored(from, to) => {
-                    eprintln!("  RE-ANCHORED {p}: {from:?} -> {to:?} (the registers are the truth)")
-                }
-                Seeded::DigestMoved(locked) => eprintln!(
-                    "  DIGEST MOVED {p}: locked {locked} rewritten from disk — commit it only \
-                     together with the change that moved the bytes"
-                ),
-            }
+        let lock = path.display().to_string();
+        for line in regen_announcements(&lock, stored.len(), artifacts.len(), &report) {
+            eprintln!("{line}");
         }
         return;
     }
 
     assert!(
         path.is_file(),
-        "golden provenance lock missing: {} — bootstrap it with \
-         `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock`",
+        "golden provenance lock missing: {} — bootstrap it with `{LOCK_REGEN_CMD}`",
         path.display()
     );
     let lock = read_lock(&path);
     let rows = by_path(&lock.artifacts);
     assert!(
         lock.artifacts.windows(2).all(|w| w[0].path < w[1].path),
-        "{LOCK_PATH} is not sorted by path; regenerate it with DSS_UPDATE_GOLDEN_LOCK=1"
+        "{LOCK_PATH} is not sorted by path; regenerate it with `{LOCK_REGEN_CMD}`"
     );
 
     let mut diff = String::new();
+    if lock.comment != COMMENT {
+        diff.push_str(&format!(
+            "  COMMENT OUT OF SYNC: the lock's comment is not golden_lock.rs::COMMENT (regenerate \
+             with `{LOCK_REGEN_CMD}` after editing the const, never hand-edit the lock)\n"
+        ));
+    }
 
     // (1) every artifact on disk has a row; (3) every digest matches.
     for (p, sha) in &disk {
@@ -1166,6 +1702,7 @@ fn golden_lock_matches_the_committed_artifacts() {
     let mut r3723_hits = 0usize;
     let mut non_engine_hits = vec![0usize; NON_ENGINE_RESIDUE.len()];
     let mut capi_v0145_overlay_hits = vec![0usize; CAPI_V0145_OVERLAYS.len()];
+    let mut lane_invariant_hits = vec![0usize; LANE_INVARIANT.len()];
     for row in &lock.artifacts {
         for (i, (pattern, _)) in NON_ENGINE_RESIDUE.iter().enumerate() {
             if pattern_covers(pattern, &row.path) {
@@ -1194,9 +1731,14 @@ fn golden_lock_matches_the_committed_artifacts() {
         } else if row.reason != want_reason {
             diff.push_str(&format!(
                 "  REASON OUT OF SYNC: {} does not carry its register's reason (regenerate with \
-                 DSS_UPDATE_GOLDEN_LOCK=1 after editing the register)\n",
+                 `{LOCK_REGEN_CMD}` after editing the register)\n",
                 row.path
             ));
+        }
+        for (i, (pattern, _)) in LANE_INVARIANT.iter().enumerate() {
+            if pattern_covers(pattern, &row.path) {
+                lane_invariant_hits[i] += 1;
+            }
         }
         if CAPI015_ARTIFACTS.contains(&row.path.as_str()) {
             let i = CAPI015_ARTIFACTS
@@ -1257,13 +1799,10 @@ fn golden_lock_matches_the_committed_artifacts() {
         // the reason check above pins it to its DEANCHORED entry, and
         // `provenance_registers_are_well_formed` rejects an empty entry.
         //
-        // `anchor == self` <=> the artifact is (re)producible in-repo.
-        if is_self != row.produced_by.is_some() {
-            diff.push_str(&format!(
-                "  PRODUCED_BY MISMATCH: {} is anchored {:?} with produced_by {:?}; exactly the \
-                 self-anchored rows name a producing lane\n",
-                row.path, row.anchor, row.produced_by
-            ));
+        // `anchor == self` <=> the artifact is (re)producible in-repo, by the
+        // lane LANE_INVARIANT derives.
+        if let Some(v) = produced_by_violation(row, LANE_INVARIANT) {
+            diff.push_str(&v);
         }
     }
     // Fail-on-stale for every register, not just DEANCHORED: an entry that
@@ -1322,6 +1861,23 @@ fn golden_lock_matches_the_committed_artifacts() {
             ));
         }
     }
+    for (i, (pattern, _)) in LANE_INVARIANT.iter().enumerate() {
+        if lane_invariant_hits[i] == 0 {
+            diff.push_str(&format!(
+                "  STALE LANE_INVARIANT ENTRY: {pattern:?} covers no locked artifact\n"
+            ));
+        }
+    }
+
+    // (5) every JSON artifact's own declared provenance admits its anchor, over
+    // the pinned declaring population.
+    let declaring = declared_provenance_rows(&root, &lock.artifacts, &disk);
+    for v in declared_provenance_violations(&declaring, DECLARED_PROVENANCE_EXCEPTIONS) {
+        diff.push_str(&v);
+    }
+    if let Some(v) = declared_provenance_census_violation(&declaring, DECLARED_PROVENANCE_CENSUS) {
+        diff.push_str(&v);
+    }
 
     // The two capi015 rails, over what is on disk. The stamp rail binds the
     // register to the artifacts that declare capi015 themselves (both
@@ -1352,8 +1908,7 @@ fn golden_lock_matches_the_committed_artifacts() {
          A golden byte NEVER moves to make a red gate green (GOLDEN_REBASE_PLAN.md \u{a7}1.2 R2): \
          fix the engine, pin the intended new value with an expected-value test, and only then \
          regenerate — the diff must move exactly the predicted artifacts. Regenerate \
-         deliberately with:\n  \
-         DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock\n\
+         deliberately with:\n  {LOCK_REGEN_CMD}\n\
          and commit golden.lock.json together with the change that moved the bytes.",
         disk.len(),
         rows.len(),
@@ -1513,6 +2068,49 @@ fn provenance_registers_are_well_formed() {
          beta stack, so no family pattern may de-anchor them to `self`"
     );
     assert!(R3723_TREE.ends_with('/'));
+
+    // LANE_INVARIANT names `self` families only, once each: an entry outside
+    // DEANCHORED would give an oracle-anchored row a producing lane.
+    for (i, (pattern, measurement)) in LANE_INVARIANT.iter().enumerate() {
+        assert!(
+            DEANCHORED.iter().any(|(d, _)| pattern_covers(d, pattern)),
+            "LANE_INVARIANT entry {pattern:?} lies outside every DEANCHORED entry"
+        );
+        assert!(
+            !measurement.trim().is_empty(),
+            "LANE_INVARIANT entry {pattern:?} names no cross-lane measurement"
+        );
+        for (other, _) in LANE_INVARIANT.iter().skip(i + 1) {
+            assert!(
+                !patterns_overlap(pattern, other),
+                "LANE_INVARIANT entries {pattern:?} and {other:?} overlap"
+            );
+        }
+    }
+
+    // A declared-provenance exception names one locked JSON artifact, keeps the
+    // anchor its register derives, and says why.
+    for (i, (path, anchor, reason)) in DECLARED_PROVENANCE_EXCEPTIONS.iter().enumerate() {
+        assert!(
+            path.ends_with(".json") && ROOTS.iter().any(|r| path.starts_with(r)),
+            "DECLARED_PROVENANCE_EXCEPTIONS entry {path:?} is not a JSON artifact inside {ROOTS:?}"
+        );
+        assert_eq!(
+            seed_metadata(path).0,
+            *anchor,
+            "DECLARED_PROVENANCE_EXCEPTIONS entry {path:?} keeps an anchor its register does not derive"
+        );
+        assert!(
+            !reason.trim().is_empty(),
+            "DECLARED_PROVENANCE_EXCEPTIONS entry {path:?} has no reason"
+        );
+        for (other, _, _) in DECLARED_PROVENANCE_EXCEPTIONS.iter().skip(i + 1) {
+            assert_ne!(
+                path, other,
+                "DECLARED_PROVENANCE_EXCEPTIONS has duplicate entries"
+            );
+        }
+    }
 
     // The two reason-only residue registers: well-formed, one reason per
     // artifact, and disjoint from every anchor-deciding register — an overlap
@@ -1870,4 +2468,660 @@ fn residue_reasons_and_capi015_payloads_classify_as_registered() {
     // frozen capi_v0145 capture.
     let (_, schema_port_reason, _) = seed_metadata("tests/golden/json/schema_full_port.json");
     assert!(!schema_port_reason.contains("frozen"));
+}
+
+/// A regen that loses a row says so: every stored row whose artifact is gone is
+/// announced `DROPPED` with its stored anchor, and the summary line carries the
+/// old and new row counts, so the direction that loses coverage is as loud as
+/// the `SEEDED` direction.
+#[test]
+fn regen_announces_every_dropped_row_and_the_row_count_delta() {
+    let row = |path: &str| Artifact {
+        path: path.to_string(),
+        sha256: "aa".to_string(),
+        anchor: Anchor::CapiV0145,
+        reason: String::new(),
+        produced_by: None,
+    };
+    let kept = "tests/golden/reports/dump_loadshape.txt";
+    let gone = "tests/golden/reports/export_vanished.txt";
+    let stored = by_path(&[row(kept), row(gone)]);
+    let disk: BTreeMap<String, String> = [(kept.to_string(), "aa".to_string())].into();
+
+    let mut report = Vec::new();
+    let rows = regenerate(&disk, &stored, &mut report);
+    assert_eq!(rows, [row(kept)]);
+    let lines = regen_announcements("lock", stored.len(), rows.len(), &report);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(
+        lines[0],
+        "golden lock regenerated: lock (2 -> 1 artifacts, -1)"
+    );
+    assert!(
+        lines[1].starts_with(
+            "  DROPPED tests/golden/reports/export_vanished.txt (was CapiV0145): the artifact is \
+             gone from disk"
+        ),
+        "{lines:?}"
+    );
+
+    // A regen that changes nothing announces nothing but the summary.
+    let mut report = Vec::new();
+    let rows = regenerate(&disk, &by_path(&[row(kept)]), &mut report);
+    assert_eq!(
+        regen_announcements("lock", 1, rows.len(), &report),
+        ["golden lock regenerated: lock (1 -> 1 artifacts, +0)"]
+    );
+
+    // The new-path direction, for contrast: SEEDED and a positive delta.
+    let mut report = Vec::new();
+    let rows = regenerate(&disk, &BTreeMap::new(), &mut report);
+    let lines = regen_announcements("lock", 0, rows.len(), &report);
+    assert_eq!(
+        lines[0],
+        "golden lock regenerated: lock (0 -> 1 artifacts, +1)"
+    );
+    assert!(lines[1].starts_with("  SEEDED tests/golden/reports/dump_loadshape.txt as CapiV0145"));
+}
+
+/// `produced_by` is a register decision like the anchor: a `self` row names the
+/// lane [`LANE_INVARIANT`] derives, so a hand-flipped `lane-invariant` reds, a
+/// regen resets it and announces `RE-LANED`, and only a register entry makes a
+/// family lane-invariant.
+#[test]
+fn produced_by_is_derived_from_the_lane_invariant_register() {
+    let recloser = "tests/golden/props/recloser.json";
+    let self_row = |produced_by| Artifact {
+        path: recloser.to_string(),
+        sha256: "aa".to_string(),
+        anchor: Anchor::SelfSnapshot,
+        reason: String::new(),
+        produced_by,
+    };
+    let parity = self_row(Some(ProducedBy::Parity));
+    let flipped = self_row(Some(ProducedBy::LaneInvariant));
+
+    // The live register lists no family: every self row is parity-produced.
+    assert_eq!(seed_metadata(recloser).2, Some(ProducedBy::Parity));
+    assert_eq!(produced_by_violation(&parity, LANE_INVARIANT), None);
+
+    // A hand-flipped `lane-invariant` reds...
+    let v = produced_by_violation(&flipped, LANE_INVARIANT).expect("a hand-flipped row reds");
+    assert!(
+        v.contains("PRODUCED_BY OUT OF REGISTER: tests/golden/props/recloser.json"),
+        "{v}"
+    );
+    // ...and a regen resets it to the register's lane, loudly.
+    let disk: BTreeMap<String, String> = [(recloser.to_string(), "aa".to_string())].into();
+    let mut report = Vec::new();
+    let rows = regenerate(&disk, &by_path(std::slice::from_ref(&flipped)), &mut report);
+    assert_eq!(rows[0].produced_by, Some(ProducedBy::Parity));
+    let lines = regen_announcements("lock", 1, rows.len(), &report);
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(
+        lines[1].starts_with(
+            "  RE-LANED tests/golden/props/recloser.json: produced_by Some(LaneInvariant) -> \
+             Some(Parity)"
+        ),
+        "{lines:?}"
+    );
+
+    // A register entry is what makes a family lane-invariant; then the parity
+    // spelling is the one out of register.
+    let measured = [(recloser, "a cross-lane regen measured both lanes identical")];
+    assert_eq!(
+        producing_lane(recloser, &measured),
+        ProducedBy::LaneInvariant
+    );
+    assert_eq!(
+        producing_lane("tests/golden/props/relay.json", &measured),
+        ProducedBy::Parity
+    );
+    assert_eq!(produced_by_violation(&flipped, &measured), None);
+    assert!(
+        produced_by_violation(&parity, &measured)
+            .is_some_and(|v| v.contains("PRODUCED_BY OUT OF REGISTER"))
+    );
+
+    // The iff rule keeps its own message, in both directions.
+    assert!(
+        produced_by_violation(&self_row(None), LANE_INVARIANT)
+            .is_some_and(|v| v.contains("PRODUCED_BY MISMATCH"))
+    );
+    let oracle_row = Artifact {
+        anchor: Anchor::CapiV0145,
+        ..parity.clone()
+    };
+    assert!(
+        produced_by_violation(&oracle_row, LANE_INVARIANT)
+            .is_some_and(|v| v.contains("PRODUCED_BY MISMATCH"))
+    );
+}
+
+/// The regen command const [`LOCK_REGEN_CMD`] and its one spelling in
+/// [`COMMENT`], which the lock carries verbatim, carry `-- --nocapture`: the
+/// regen run passes, and libtest discards a passing test's stderr,
+/// announcements included. The messages are not read here: each formats the
+/// const instead of spelling the command.
+#[test]
+fn the_regen_command_const_and_comment_carry_nocapture() {
+    assert!(
+        LOCK_REGEN_CMD
+            .starts_with("DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock")
+            && LOCK_REGEN_CMD.ends_with(" -- --nocapture"),
+        "{LOCK_REGEN_CMD}"
+    );
+    let spelled = COMMENT.matches("--test golden_lock").count();
+    assert_eq!(
+        spelled, 1,
+        "COMMENT spells the regen command {spelled} times"
+    );
+    assert_eq!(
+        COMMENT.matches(LOCK_REGEN_CMD).count(),
+        spelled,
+        "COMMENT spells a regen command without `-- --nocapture`"
+    );
+}
+
+/// The `.gitattributes` reader refuses every declaration in the tree that could
+/// decide a locked path's bytes but that it would not read: a nested attribute
+/// file (inside a root, or probed in each directory above one), an unrooted
+/// pathspec that can reach a locked root, an attribute the classifier does not
+/// emulate on a locked path, and a macro or quoted pathspec, in any ASCII case.
+/// A pathspec that reaches a locked path only in another case reds, and so does
+/// a classification drift. The check the scan runs reds each of these in its
+/// order. The live shapes stay readable.
+#[test]
+fn gitattributes_reader_refuses_what_it_cannot_see() {
+    let read = |text: &str| gitattributes_binary_patterns(text, &[]);
+    let live = "# comment\n\ntests/corpus/electricdss-tst/** -text\ntests/corpus/SHA256SUMS -text\n\
+                tests/golden/reports/*.bin binary\n";
+    assert_eq!(
+        read(live),
+        (vec!["tests/golden/reports/*.bin".to_string()], Vec::new())
+    );
+    // A leading `/` anchors at the repo root, like no slash at all.
+    assert_eq!(
+        read("/tests/golden/reports/*.txt -text").0,
+        ["tests/golden/reports/*.txt"]
+    );
+    // Attributes that leave the stored bytes alone, and a root-name near miss.
+    for quiet in [
+        "*.py diff=python",
+        "tests/golden/reports/*.txt -diff linguist-generated",
+        "tests/goldenX/*.bin binary",
+    ] {
+        assert_eq!(read(quiet), (Vec::new(), Vec::new()), "{quiet}");
+    }
+
+    for (line, label) in [
+        ("*.txt -text", "UNROOTED PATHSPEC REACHES A LOCKED PATH"),
+        (
+            "SHA256SUMS -text",
+            "UNROOTED PATHSPEC REACHES A LOCKED PATH",
+        ),
+        ("*.csv eol=crlf", "UNROOTED PATHSPEC REACHES A LOCKED PATH"),
+        (
+            "**/reports/*.txt -text",
+            "UNROOTED PATHSPEC REACHES A LOCKED PATH",
+        ),
+        (
+            "*/golden/reports/x.txt binary",
+            "UNROOTED PATHSPEC REACHES A LOCKED PATH",
+        ),
+        (
+            "tests/*/reports/*.txt -text",
+            "UNROOTED PATHSPEC REACHES A LOCKED PATH",
+        ),
+        (
+            "tests/golden*/x.txt !text",
+            "UNROOTED PATHSPEC REACHES A LOCKED PATH",
+        ),
+        (
+            "crates/dss-core/tests/data/*/r3723_ref/x.txt filter=lfs",
+            "UNROOTED PATHSPEC REACHES A LOCKED PATH",
+        ),
+        (
+            "Tests/*/reports/*.txt -text",
+            "UNROOTED PATHSPEC REACHES A LOCKED PATH",
+        ),
+        (
+            "TESTS/GOLDEN/reports/*.txt eol=crlf",
+            "UNEMULATED ATTRIBUTE ON A LOCKED PATH",
+        ),
+        (
+            "tests/golden/json/*.json eol=crlf",
+            "UNEMULATED ATTRIBUTE ON A LOCKED PATH",
+        ),
+        (
+            "tests/golden/reports/*.txt text",
+            "UNEMULATED ATTRIBUTE ON A LOCKED PATH",
+        ),
+        (
+            "tests/golden/reports/*.bin binary filter=lfs",
+            "UNEMULATED ATTRIBUTE ON A LOCKED PATH",
+        ),
+        ("[attr]raw -text -diff", "UNREAD DECLARATION"),
+        ("\"tests/golden/a b.txt\" -text", "UNREAD DECLARATION"),
+    ] {
+        let (patterns, refused) = read(line);
+        assert!(patterns.is_empty(), "{line}: {patterns:?}");
+        assert_eq!(refused.len(), 1, "{line}: {refused:?}");
+        assert!(
+            refused[0].contains(label) && refused[0].contains(line),
+            "{line}: {refused:?}"
+        );
+    }
+
+    // A case-variant pathspec is read as rooted, and the classifier reds every
+    // locked path it reaches only in another case; the live one stays clean,
+    // and a `.bin` outside it or a declared non-`.bin` drifts.
+    for (line, rel) in [
+        (
+            "Tests/Golden/reports/*.txt -text",
+            "tests/golden/reports/x.txt",
+        ),
+        (
+            "tests/golden/reports/*.TXT -text",
+            "tests/golden/reports/x.txt",
+        ),
+        (
+            "Crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/*.csv -text",
+            "crates/dss-core/tests/data/adiakoptics/r3723_ref/ieee13/zll.csv",
+        ),
+        (
+            "tests/golden/reports/*.bin binary",
+            "tests/golden/reports/X.BIN",
+        ),
+    ] {
+        let (patterns, refused) = read(line);
+        assert!(refused.is_empty(), "{line}: {refused:?}");
+        assert_eq!(patterns.len(), 1, "{line}: {patterns:?}");
+        let v = binary_classification_violations(&patterns, [rel]);
+        assert_eq!(v.len(), 1, "{line}: {v:?}");
+        assert!(
+            v[0].contains("CASE-VARIANT PATHSPEC") && v[0].contains(rel),
+            "{line}: {v:?}"
+        );
+    }
+    let bin = read(live).0;
+    assert_eq!(
+        binary_classification_violations(
+            &bin,
+            ["tests/golden/reports/x.bin", "tests/golden/reports/x.txt"]
+        ),
+        Vec::<String>::new()
+    );
+    for (patterns, rel) in [
+        (bin, "tests/golden/json/x.bin"),
+        (
+            read("tests/golden/reports/* -text").0,
+            "tests/golden/reports/x.txt",
+        ),
+    ] {
+        let v = binary_classification_violations(&patterns, [rel]);
+        assert_eq!(v.len(), 1, "{rel}: {v:?}");
+        assert!(
+            v[0].contains("BINARY CLASSIFICATION DRIFT: golden artifact") && v[0].contains(rel),
+            "{rel}: {v:?}"
+        );
+    }
+
+    // The check the scan runs passes the live shape and reds each failing
+    // input with its own message.
+    let tree = |paths: &[&str]| -> BTreeMap<String, String> {
+        paths
+            .iter()
+            .map(|p| (p.to_string(), "d".to_string()))
+            .collect()
+    };
+    let clean = tree(&["tests/golden/reports/x.bin", "tests/golden/reports/x.txt"]);
+    let case_variant = tree(&["tests/golden/reports/X.BIN"]);
+    let drifted = tree(&["tests/golden/json/x.bin"]);
+    assert_eq!(check_binary_classification(live, |_| false, &clean), Ok(()));
+    for (text, ancestors, paths, label) in [
+        (
+            live,
+            true,
+            &clean,
+            "NESTED .gitattributes: crates/.gitattributes",
+        ),
+        (
+            "*.py diff=python\n",
+            false,
+            &clean,
+            "declares no `binary`/`-text` pathspec",
+        ),
+        (
+            "tests/golden/reports/*.b*n binary\n",
+            false,
+            &clean,
+            "uses a glob shape attr_pattern_matches() does not implement",
+        ),
+        (
+            live,
+            false,
+            &case_variant,
+            "CASE-VARIANT PATHSPEC: [\"tests/golden/reports/*.bin\"] reaches \
+             tests/golden/reports/X.BIN",
+        ),
+        (
+            live,
+            false,
+            &drifted,
+            "BINARY CLASSIFICATION DRIFT: golden artifact tests/golden/json/x.bin",
+        ),
+    ] {
+        let e = check_binary_classification(text, |_| ancestors, paths).expect_err(label);
+        assert!(e.contains(label), "{label}: {e}");
+    }
+
+    // A nested attribute file is refused whatever the root file says.
+    let nested = ["tests/golden/reports/.gitattributes".to_string()];
+    let (patterns, refused) = gitattributes_binary_patterns(live, &nested);
+    assert_eq!(patterns, ["tests/golden/reports/*.bin"]);
+    assert_eq!(refused.len(), 1, "{refused:?}");
+    assert!(refused[0].contains("NESTED .gitattributes: tests/golden/reports/.gitattributes"));
+    // The finder reports the scanned ones in any case, and probes exactly the
+    // directories between the repo root and each locked root.
+    let scanned: BTreeMap<String, String> = [
+        ("tests/golden/x/.gitattributes", "d"),
+        ("tests/golden/y/.GitAttributes", "d"),
+        ("tests/golden/x/a.gitattributes.txt", "d"),
+    ]
+    .map(|(p, d)| (p.to_string(), d.to_string()))
+    .into();
+    assert_eq!(
+        nested_gitattributes(&scanned, |_| false),
+        [
+            "tests/golden/x/.gitattributes",
+            "tests/golden/y/.GitAttributes"
+        ]
+    );
+    assert_eq!(
+        nested_gitattributes(&BTreeMap::new(), |_| true),
+        [
+            "crates/.gitattributes",
+            "crates/dss-core/.gitattributes",
+            "crates/dss-core/tests/.gitattributes",
+            "crates/dss-core/tests/data/.gitattributes",
+            "crates/dss-core/tests/data/adiakoptics/.gitattributes",
+            "tests/.gitattributes",
+        ]
+    );
+    let present = [
+        "tests/.gitattributes",
+        "crates/dss-core/tests/data/.gitattributes",
+        "tests/corpus/.gitattributes",
+    ];
+    assert_eq!(
+        nested_gitattributes(&BTreeMap::new(), |p| present.contains(&p)),
+        [
+            "crates/dss-core/tests/data/.gitattributes",
+            "tests/.gitattributes"
+        ]
+    );
+    // The real directories above each locked root hold none.
+    assert_eq!(
+        nested_gitattributes(&BTreeMap::new(), |p| repo_root().join(p).is_file()),
+        Vec::<String>::new()
+    );
+}
+
+/// The declared-provenance rail: every engine spelling on disk classifies, an
+/// artifact whose own block names another engine than its anchor reds (the
+/// residue swallowing an r4133 capture included), a `self` row is exempt, and
+/// the one exception excuses exactly `flicker/pst_demo.json` and goes stale
+/// when it excuses nothing. A value naming several engines reds unless a
+/// single-engine `engine_spec` of the artifact picks one, an `oracle` block
+/// without an engine name reds, and the census reds on any move.
+#[test]
+fn declared_provenance_must_admit_the_locked_anchor() {
+    for (value, anchor) in [
+        ("capi015", Anchor::Capi015),
+        (
+            "DSS C-API Library version 0.15.0b4 revision e936d2101d745e0f0ea6872d7a",
+            Anchor::Capi015,
+        ),
+        (
+            "dss_capi 0.15.0b4 (OpenDSS SVN r4103); regenerated for WP-U1.6 D12",
+            Anchor::Capi015,
+        ),
+        (
+            "DSS C-API Library version 0.14.5 revision 87d85c2622c8281b92255335bc7c09b11191b21d \
+             based on OpenDSS SVN 3723 [FPC 3.2.2]",
+            Anchor::CapiV0145,
+        ),
+        ("official-EPRI-r3723 (Oddie)", Anchor::R3723),
+        ("oddie:r4133", Anchor::R4133),
+        ("r4133", Anchor::R4133),
+        (
+            "Version 11.0.0.1 (64-bit build) - Charlottesville; License Status: Open",
+            Anchor::R4133,
+        ),
+        (
+            "r4133 bridge (dss-epri) + wm4model.dll native twin",
+            Anchor::R4133,
+        ),
+        (
+            "EPRI OpenDSS r4133 (v11.0.0.1 Charlottesville) via AltDSS Oddie",
+            Anchor::R4133,
+        ),
+    ] {
+        assert_eq!(declared_anchors(value), [anchor], "{value}");
+    }
+    assert!(declared_anchors("OpenDSS 9.4 (Oddie)").is_empty());
+    // A value that names several engines names them all.
+    assert_eq!(
+        declared_anchors(
+            "EPRI OpenDSS r4133 via AltDSS Oddie; the pinned 0.14.5 oracle cannot render this \
+             surface"
+        ),
+        [Anchor::CapiV0145, Anchor::R4133]
+    );
+    assert_eq!(
+        declared_anchors("official-EPRI-r3723 (Oddie); payload byte-identical under r4133"),
+        [Anchor::R3723, Anchor::R4133]
+    );
+
+    let parse = |s: &str| -> serde_json::Value { serde_json::from_str(s).expect("fixture") };
+    let some = |s: &str| Some(s.to_string());
+    assert_eq!(
+        provenance_declarations(&parse(
+            r#"{"oracle": "capi015", "engine": "DSS C-API 0.15.0b4"}"#
+        )),
+        [
+            ("engine", some("DSS C-API 0.15.0b4")),
+            ("oracle", some("capi015"))
+        ]
+    );
+    assert_eq!(
+        provenance_declarations(&parse(
+            r#"{"oracle": {"engine_spec": "r4133", "engine": "Version 11.0.0.1", "rev": "r4133"}}"#
+        )),
+        [
+            ("oracle.engine_spec", some("r4133")),
+            ("oracle.engine", some("Version 11.0.0.1"))
+        ]
+    );
+    assert_eq!(
+        provenance_declarations(&parse(r#"{"engine": 3, "oracle": null}"#)),
+        [("engine", None), ("oracle", None)]
+    );
+    // An `oracle` block without an engine name is a declaration without one.
+    assert_eq!(
+        provenance_declarations(&parse(
+            r#"{"oracle": {"tool": "x", "rev": "r4133"}, "data": 1}"#
+        )),
+        [("oracle", None)]
+    );
+    assert!(provenance_declarations(&parse(r#"{"data": {"engine": "r4133"}}"#)).is_empty());
+    assert!(provenance_declarations(&parse(r#"["engine", "oracle"]"#)).is_empty());
+
+    let declaring = |path: &str, anchor, value: &str| Declaring {
+        path: path.to_string(),
+        anchor,
+        declarations: vec![("oracle.engine", some(value))],
+    };
+    let pst = "tests/golden/flicker/pst_demo.json";
+    let exceptions = [(pst, Anchor::R4133, "byte-proven regen")];
+    let clean = [
+        declaring(
+            "tests/golden/checkpoints/ieee13_daily.json",
+            Anchor::CapiV0145,
+            "DSS C-API Library version 0.14.5",
+        ),
+        declaring(
+            "tests/golden/props/relay.json",
+            Anchor::SelfSnapshot,
+            "EPRI OpenDSS r4133 via AltDSS Oddie",
+        ),
+        declaring(pst, Anchor::R4133, "official-EPRI-r3723 (Oddie)"),
+    ];
+    assert_eq!(
+        declared_provenance_violations(&clean, &exceptions),
+        Vec::<String>::new()
+    );
+
+    // An r4133 capture no register names falls to the capi_v0145 residue: red.
+    let v = declared_provenance_violations(
+        &[declaring(
+            "tests/golden/protection/unregistered.json",
+            Anchor::CapiV0145,
+            "oddie:r4133",
+        )],
+        &[],
+    );
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains(
+        "DECLARED PROVENANCE CONTRADICTS ANCHOR: tests/golden/protection/unregistered.json is \
+         locked CapiV0145"
+    ));
+
+    // Without its exception pst_demo reds; an exception for another anchor
+    // excuses nothing and goes stale; so does one whose artifact needs none.
+    let v = declared_provenance_violations(&clean, &[]);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(
+        v[0].contains("DECLARED PROVENANCE CONTRADICTS ANCHOR: tests/golden/flicker/pst_demo.json")
+    );
+    let v = declared_provenance_violations(&clean, &[(pst, Anchor::Capi015, "x")]);
+    assert_eq!(v.len(), 2, "{v:?}");
+    assert!(v[0].contains("CONTRADICTS ANCHOR: tests/golden/flicker/pst_demo.json"));
+    assert!(v[1].contains(
+        "STALE DECLARED_PROVENANCE_EXCEPTIONS ENTRY: \"tests/golden/flicker/pst_demo.json\""
+    ));
+    let v = declared_provenance_violations(&clean[..2], &exceptions);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains("STALE DECLARED_PROVENANCE_EXCEPTIONS ENTRY"));
+
+    // An unknown engine and a declaration without a string engine name red,
+    // self row or not.
+    let odd = Declaring {
+        path: "tests/golden/props/relay.json".to_string(),
+        anchor: Anchor::SelfSnapshot,
+        declarations: vec![("engine", some("OpenDSS 9.4 (Oddie)")), ("oracle", None)],
+    };
+    let v = declared_provenance_violations(&[odd], &[]);
+    assert_eq!(v.len(), 2, "{v:?}");
+    assert!(v[0].contains(
+        "UNCLASSIFIED PROVENANCE DECLARATION: tests/golden/props/relay.json declares `engine`"
+    ));
+    assert!(v[1].contains(
+        "UNREADABLE PROVENANCE DECLARATION: tests/golden/props/relay.json declares `oracle` \
+         without a string engine name"
+    ));
+
+    // A value naming several engines declares none of them: an r4133 capture
+    // whose prose also names the pinned oracle cannot pass as the residue, and
+    // only a single-engine `engine_spec` among its engines settles it.
+    let several = "EPRI OpenDSS r4133 via AltDSS Oddie; the pinned 0.14.5 oracle cannot \
+                   render this surface";
+    let v = declared_provenance_violations(
+        &[declaring(
+            "tests/golden/protection/unregistered.json",
+            Anchor::CapiV0145,
+            several,
+        )],
+        &[],
+    );
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains(
+        "AMBIGUOUS PROVENANCE DECLARATION: tests/golden/protection/unregistered.json declares \
+         `oracle.engine`"
+    ));
+    let specified = |spec: &str, anchor| Declaring {
+        path: "tests/golden/props/swtcontrol.json".to_string(),
+        anchor,
+        declarations: vec![
+            ("oracle.engine_spec", some(spec)),
+            ("oracle.engine", some(several)),
+        ],
+    };
+    assert_eq!(
+        declared_provenance_violations(&[specified("r4133", Anchor::R4133)], &[]),
+        Vec::<String>::new()
+    );
+    let v = declared_provenance_violations(&[specified("r3723", Anchor::R3723)], &[]);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains("AMBIGUOUS PROVENANCE DECLARATION"));
+    let v = declared_provenance_violations(&[specified("r4133", Anchor::CapiV0145)], &[]);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].contains("DECLARED PROVENANCE CONTRADICTS ANCHOR"));
+    // Only a single-engine value under an `engine_spec` key picks: a
+    // multi-engine `engine_spec` does not settle itself, and a single-engine
+    // `engine` beside the multi-engine value does not settle it.
+    for declarations in [
+        vec![("oracle.engine_spec", some(several))],
+        vec![
+            ("engine", some("DSS C-API Library version 0.14.5")),
+            ("oracle.engine", some(several)),
+        ],
+    ] {
+        let key = declarations.last().map(|(key, _)| *key).expect("fixture");
+        let d = Declaring {
+            path: "tests/golden/protection/unregistered.json".to_string(),
+            anchor: Anchor::CapiV0145,
+            declarations,
+        };
+        let v = declared_provenance_violations(&[d], &[]);
+        assert_eq!(v.len(), 1, "{key}: {v:?}");
+        assert!(
+            v[0].contains(&format!(
+                "AMBIGUOUS PROVENANCE DECLARATION: tests/golden/protection/unregistered.json \
+                 declares `{key}`"
+            )),
+            "{key}: {v:?}"
+        );
+    }
+
+    // The census counts declaring rows and declarations per key, and reds on
+    // any move.
+    assert_eq!(
+        declared_provenance_census(&clean),
+        (3, vec![("oracle.engine", 3)])
+    );
+    assert_eq!(
+        declared_provenance_census_violation(&clean, (3, &[("oracle.engine", 3)])),
+        None
+    );
+    for pinned in [
+        (2, &[("oracle.engine", 3)][..]),
+        (3, &[("oracle.engine", 2), ("oracle.engine_spec", 1)][..]),
+        (3, &[("engine", 3)][..]),
+    ] {
+        let v = declared_provenance_census_violation(&clean, pinned);
+        assert!(
+            v.as_deref()
+                .is_some_and(|v| v.contains("DECLARED PROVENANCE CENSUS MOVED")),
+            "{pinned:?}: {v:?}"
+        );
+    }
+
+    // The live register holds exactly the one reasoned exception.
+    let live: Vec<(&str, Anchor)> = DECLARED_PROVENANCE_EXCEPTIONS
+        .iter()
+        .map(|(p, a, _)| (*p, *a))
+        .collect();
+    assert_eq!(live, [(pst, Anchor::R4133)]);
 }
