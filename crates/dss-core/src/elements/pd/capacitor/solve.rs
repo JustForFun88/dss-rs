@@ -250,7 +250,8 @@ impl CktElement for Capacitor {
     /// - 2 (Cuf): a *bare* `Phases := 1` — a single Set with no surrounding
     ///   `BeginEdit`/`EndEdit` (the applier auto-brackets it).
     /// - 3 (CMatrix, only when multi-phase): average the self/mutual of `CMatrix`
-    ///   into `Cuf` (the mutual loop includes the 2..N diagonals, as in Pascal).
+    ///   into `Cuf`, the same value on every step (the mutual loop includes the
+    ///   2..N diagonals, as in Pascal).
     ///
     /// # The `Cuf` write of the `CMatrix` arm
     ///
@@ -285,14 +286,19 @@ impl CktElement for Capacitor {
     /// What both revisions *intend* is unambiguous — r4133 spells the array
     /// write out — so `GOLDEN_REBASE_PLAN.md` G2.5 performs it in both lanes
     /// (CLAUDE.md 2026-08-02: upstream bugs are never reproduced): the array
-    /// write the parser would have made, in the property's own µF units, so the
-    /// `SpecType := 2` the side effect sets is backed by the capacitance the
-    /// reduction computed. The gated deck that sees it
+    /// write, in the property's own µF units, so the `SpecType := 2` the side
+    /// effect sets is backed by the capacitance the reduction computed. Every
+    /// energized step of the bank stamps the whole `cmatrix`, so every step of
+    /// the reduced bank carries the value (pinned by
+    /// `elements::pd::capacitor::tests::make_pos_sequence_cmatrix_multistep_bank_keeps_every_step`).
+    /// The gated deck that sees it
     /// (`modes/makeposseq/makeposseq_shunt.dss`, `Capacitor.cap_cmat`) then
     /// diverges from the `capi_v0145` oracle across the whole post-`makeposseq`
     /// model; that is ledgered (`tests/corpus/ledger.json`
-    /// `makeposseq-cuf-applied-capi`) and the correct value pinned by
+    /// `makeposseq-cuf-applied-capi`) and the applied value pinned by
     /// `elements::pd::capacitor::tests::make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`.
+    ///
+    /// The value is written at full `f64` precision.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop::*;
 
@@ -341,17 +347,12 @@ impl CktElement for Capacitor {
                         }
                     }
                     cm /= npf * (npf - 1.0) / 2.0;
-                    // `Cs - Cm` is the positive-sequence capacitance, and it is
-                    // written to the **array** property `Cuf` — element 1 the
-                    // value, steps 2..N zeroed — in the property's own µF units
-                    // (`PropertyScale = 1.0e-6`, `Capacitor.pas:243`, applied by
-                    // the setter; `Cmatrix` is stored in farads, `:255`, so the
-                    // difference is divided back out here). See the doc comment
-                    // above for why this is the reading both oracle revisions
-                    // meant and neither performs.
+                    // `Cs - Cm` goes to the array property `Cuf` in its own µF
+                    // units (`Cmatrix` is stored in farads), one value per
+                    // step: every energized step stamps the whole `cmatrix`, so
+                    // every step of the reduced bank carries it.
                     let nsteps = self.fnumsteps.max(1) as usize;
-                    let mut new_cuf: Vec<Option<f64>> = vec![Some(0.0); nsteps];
-                    new_cuf[0] = Some((cs - cm) / CUF_SCALE);
+                    let new_cuf: Vec<Option<f64>> = vec![Some((cs - cm) / CUF_SCALE); nsteps];
                     vec![
                         PosSeqAction::BeginEdit,
                         PosSeqAction::SetI32(PHASES, 1),
