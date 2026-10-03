@@ -59,6 +59,30 @@ fn fixed_interval_prices_and_stats() {
     assert!((get(&cls, &obj, "StdDev").parse::<f64>().unwrap() - want_std).abs() < 1e-9);
 }
 
+// EXPECTED-VALUE-PIN(stddev_single_point): the PriceShape observable.
+/// A one-point PriceShape's `stddev` property, read the way a deck reads it:
+/// `0` in both lanes, because one sample has no spread.
+///
+/// Upstream prints the sample itself: the pinned oracle answers `-12.25` for
+/// this deck's `? PriceShape.pr.stddev` (r4133 computes it in the same
+/// one-point branch as the LoadShape), a negative standard deviation. Not
+/// reproduced (GOLDEN_REBASE G2.1a; `issue-11`). `mean` is -12.25, so a broken
+/// accessor cannot fake the result by returning nothing.
+#[test]
+fn single_point_shape_stddev_property_is_zero() {
+    use crate::exec::Dss;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command("New PriceShape.pr npts=1 interval=1 price=(-12.25)");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    dss.command("? PriceShape.pr.mean");
+    assert_eq!(dss.result(), "-12.25");
+    dss.command("? PriceShape.pr.stddev");
+    assert_eq!(dss.result(), "0");
+}
+
 #[test]
 fn hour_auto_sets_variable_interval() {
     // Unlike TempShape, setting Hour clears Interval to 0 (no explicit

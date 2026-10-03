@@ -499,7 +499,11 @@ fn randomize_gaussian_with_yearly_uses_shape_mean_std() {
 /// Upstream's `StdDev := Data^[1];` (r4133
 /// `Version8/Source/Shared/mathutil.pas:405`) makes the same shape draw
 /// `G01·0.4 + 0.4` — a ±100 %-of-mean spread on a sample that has none, with a
-/// tail of *negative* multipliers turning the load into a source. Not
+/// tail of *negative* multipliers turning the load into a source. For seed
+/// 12345 on the FPC MT19937 stream the port shares with dss_capi 0.14.5, that
+/// is `(Σ12 − 6)·0.4 + 0.4` with `Σ12` = 6.173185993684456, so upstream draws
+/// 0.4692743974737823 where the port draws 0.4. r4133's Delphi-built `Random`
+/// is another generator and sums another `Σ12` for the same seed. Not
 /// reproduced in either lane (GOLDEN_REBASE G2.1a; `issue-11`), and pinned here
 /// because no gated deck reaches this path: every Monte deck runs
 /// `random=none`.
@@ -517,6 +521,10 @@ fn randomize_gaussian_with_single_point_yearly_is_constant() {
     let mut rng = FpcRng::from_seed(12345);
     load.randomize(RandomType::Gaussian, &mut rng);
     assert_eq!(load.random_mult, 0.4);
+    // The upstream draw on the same FPC stream, from the seed's first `Gauss(0,1)`.
+    let upstream = f64::from_bits(RND_G01_0_BITS) * 0.4 + 0.4;
+    assert_eq!(upstream, 0.4692743974737823);
+    assert_ne!(load.random_mult, 0.4692743974737823);
 }
 
 #[test]

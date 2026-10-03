@@ -297,6 +297,8 @@ mod tests {
     use crate::elements::general::load_shape::{self, LoadShapeObj};
     use crate::elements::traits::ElemStore;
     use crate::obj::base::DssObject;
+    use crate::obj::dss_enum::EnumRegistry;
+    use crate::obj::props::PropEngine;
     use dss_parser::{Parser, ParserVars};
 
     const SEED: u32 = 12345;
@@ -324,6 +326,33 @@ mod tests {
         s
     }
 
+    /// A one-point shape built through its own `npts`/`interval`/`mult` edits,
+    /// so `mean()`/`std_dev()` compute the statistics instead of reading the
+    /// preset that `shape_with_mean_std` writes.
+    fn one_point_shape(mult: &str) -> LoadShapeObj {
+        let enums = EnumRegistry::new();
+        let cls = load_shape::class_props(&enums);
+        let mut s = LoadShapeObj::new("mc_shape");
+        let mut parser = Parser::new();
+        let vars = ParserVars::new();
+        let mut errors = crate::diag::ErrorLog::new();
+        for (name, value) in [("npts", "1"), ("interval", "1"), ("mult", mult)] {
+            let idx = cls.property_index(name).expect("known property");
+            let mut eng = PropEngine {
+                parser: &mut parser,
+                vars: &vars,
+                enums: &enums,
+                errors: &mut errors,
+                foreign: None,
+                was_quoted: false,
+            };
+            cls.edit_property(&mut s, idx, value, &mut eng).unwrap();
+        }
+        s.end_edit(&crate::elements::traits::SysCtx::parse_default());
+        assert!(errors.is_empty(), "{errors:?}");
+        s
+    }
+
     // --- draw_load_multiplier (SolveMonte2/SolveMonte3 LoadMultiplier draw) ---
 
     #[test]
@@ -341,6 +370,36 @@ mod tests {
         draw_load_multiplier(&mut ckt, RandomType::Gaussian, true);
         let expected = f64::from_bits(G01_0_BITS) * 0.20 + 0.75;
         assert_eq!(ckt.load_multiplier, expected);
+    }
+
+    // EXPECTED-VALUE-PIN(stddev_single_point): the `Set random=gaussian`
+    // LoadMultiplier draw over the DefaultDaily shape's statistics.
+    /// A one-point DefaultDaily shape draws a constant LoadMultiplier: one
+    /// sample has no spread, so `std_dev()` is 0 and `Gauss(m, 0)` is the mean
+    /// whatever the RNG draws.
+    ///
+    /// Upstream takes the sample itself (0.4) as the one-point std-dev, so on
+    /// the FPC MT19937 stream the port shares with dss_capi 0.14.5 its first
+    /// draw for seed 12345 is `G01·0.4 + 0.4` = 0.4692743974737823 against the
+    /// port's 0.4. r4133's Delphi-built `Random` is another generator and draws
+    /// another `G01` for the same seed. Not reproduced in either lane
+    /// (GOLDEN_REBASE G2.1a; `issue-11`), and pinned here because no gated deck
+    /// reaches this path: every Monte deck runs `random=none`.
+    #[test]
+    fn draw_load_multiplier_gaussian_with_single_point_default_daily_is_the_mean() {
+        let mut ckt = seeded_ckt();
+        ckt.default_daily_shape_obj = Some(one_point_shape("(0.4)"));
+        let shape = ckt.default_daily_shape_obj.as_ref().unwrap();
+        assert_eq!(shape.mean(), 0.4);
+        assert_eq!(shape.std_dev(), 0.0);
+
+        let upstream_first_draw = f64::from_bits(G01_0_BITS) * 0.4 + 0.4;
+        assert_eq!(upstream_first_draw, 0.4692743974737823);
+        for draw in 0..4 {
+            ckt.load_multiplier = f64::NAN; // sentinel that MUST be overwritten
+            draw_load_multiplier(&mut ckt, RandomType::Gaussian, true);
+            assert_eq!(ckt.load_multiplier, 0.4, "draw {draw}");
+        }
     }
 
     #[test]
