@@ -41,12 +41,23 @@ binding invariants that survive it are:
   TESTING.md). See `tools/opendss/README.md` for the artifact + bridge.
 - Any phase may freely refactor earlier code; passing tests are the only contract.
 
-## Policy (2026-08-02, user decision — binding): r4133 is the behavioral authority; bugs are NEVER reproduced
+## Policy (user decisions 2026-08-02 and 2026-10-03 — binding): physics is the only authority; bugs are NEVER reproduced
 
-- The official EPRI OpenDSS **r4133** trunk (`.inputs/electricdss-code-r4133-trunk`)
-  is the **primary behavioral reference**. The pinned dss_capi 0.14.5 is outdated:
-  it remains a *numeric oracle only* (goldens, the `capi_v0145` corpus channel) and
-  is **never** a behavioral authority over r4133.
+- **No engine is an authority.** The authority is the answer that is right by
+  physics and power engineering: conservation of complex power, the circuit
+  laws, what the quantity means to an engineer. A behaviour question is decided
+  from physics first (a derivation plus a measured balance), never from what a
+  code base happens to do. When r4133 and dss_capi agree on a physically wrong
+  number, both are wrong and the engine computes the right one.
+- **Only where physics is indifferent** (the DSS script language, property and
+  command semantics, report layout) the official EPRI OpenDSS **r4133** trunk
+  (`.inputs/electricdss-code-r4133-trunk`) is the reference, and only when its
+  behaviour is logically sound and not a bug. An accident of the implementation
+  is not a rule to copy. "r4133 does it" alone is never sufficient evidence.
+- The pinned dss_capi 0.14.5 is outdated: it remains a *numeric oracle only*
+  (goldens, the `capi_v0145` corpus channel) and never outranks r4133 or physics.
+- A doubtful case goes to the user with the physical argument, not with a
+  source-code citation as the reason.
 - **Upstream bugs are never reproduced — in any lane, parity included.** The engine
   computes the correct value; each resulting divergence from an oracle channel is
   excluded field-by-field and pinned by its own expected-value test (lane.rs
