@@ -222,6 +222,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - dss-epri exit hang (an r4133 DLL bug: a process that exits before the circuit's solver thread has started spins forever in the DLL's exit cleanup). `Engine`'s drop frees every circuit, every wait of the `protocol` tests is bounded and kills the worker, the registry tests restore under a cross-process lock, the guard tests clear their fixture sidecar, and the nextest profile terminates a test at 1800 s (`terminate-after = 3`, user decision 2026-10-03).
 - RF-D02-19 (every consumer of the one-point standard deviation is pinned, the Follow CapControl clone's switching is pinned, r4133 aborts that clone's solve with 484/482).
 - RF-D00-02 (the CIM export reads the full wye-load grounding ladder and the line's spacing flag, flag-down wire references are pinned).
+- RF-D01-05 (Save restores a LineGeometry's, Transformer's and AutoTrans's cursor, the save round-trip test compares every property of every object and scopes its exclusions per deck).
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been

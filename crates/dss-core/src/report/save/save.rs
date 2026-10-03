@@ -77,6 +77,9 @@
 //!   reproduced; the divergence is pinned by
 //!   `exec::tests::report::save_hoists_numsteps_so_a_capacitor_bank_reloads_whole`
 //!   and the all-classes `save_writes_every_sizing_property_ahead_of_its_arrays`.
+//!   A LineGeometry or transformer line also closes on its active conductor or
+//!   winding when the override's table would leave the reload on another one
+//!   ([`restore_cursor`]).
 //!
 //! [`DssObjData::next_property_set`]: crate::obj::base::DssObjData::next_property_set
 //! [`ClassProps::get_value`]: crate::obj::props::ClassProps::get_value
@@ -406,6 +409,47 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Hoist {
     }
 }
 
+/// Close the line of an object whose `?` reads per-conductor or per-winding
+/// properties through a cursor — a LineGeometry's `Cond`, a transformer's
+/// `Wdg`, which a later `Edit` also follows — with ` <cursor>=<k>` when the
+/// live cursor `k` is not where the reload leaves it: on the last
+/// ` <cursor>=` the class override wrote, or on `unwritten` when it wrote none
+/// (`None`: nothing to restore). `written` is where the override's tokens
+/// start in `out`. Pinned by
+/// `crates/dss-core/tests/save_roundtrip.rs::save_restores_the_active_linegeometry_conductor`
+/// and `::save_restores_the_active_transformer_winding`.
+fn restore_cursor(
+    out: &mut String,
+    written: usize,
+    cx: &SaveCtx,
+    obj: &dyn DssObject,
+    cursor: &str,
+    unwritten: Option<i64>,
+) {
+    let Some(prop) = cx.cls.property_index(cursor) else {
+        return;
+    };
+    let token = format!(" {cursor}=");
+    let Some(reloaded) = out[written..]
+        .rfind(&token)
+        .and_then(|at| {
+            out[written + at + token.len()..]
+                .split(' ')
+                .next()?
+                .parse::<i64>()
+                .ok()
+        })
+        .or(unwritten)
+    else {
+        return;
+    };
+    let live = cx.cls.get_value(obj, prop, cx.enums);
+    if live.trim().parse::<i64>().is_ok_and(|k| k != reloaded) {
+        out.push_str(&token);
+        out.push_str(live.trim());
+    }
+}
+
 /// Pascal `WriteDSSObject` (`Utilities.pas:1221-1235`): one script line —
 /// `<New|Edit> "Class.name"` (the full name always double-quoted) +
 /// [`save_write`] + ` ENABLED=NO` when the object is a **disabled** circuit
@@ -470,14 +514,20 @@ pub fn write_dss_object(
     // (`CAPI:PCElements/DynEqPCE.pas:252-273`, the `UserDynInit` tail, appended
     // below because Pascal calls `inherited SaveWrite` first). 0.14.5's ninth,
     // `TLoadShapeObj.SaveWrite`, is the `LoadShape` rule of [`save_write`].
+    // The overrides that write a per-winding or per-conductor table end with
+    // the reload's cursor on its last row; `restore_cursor` puts it back.
+    let written = out.len();
     if let Some(xf) = arena.get::<crate::elements::pd::transformer::Transformer>(idx) {
         xf.save_write_body(out, cx);
+        restore_cursor(out, written, cx, xf, "Wdg", None);
     } else if let Some(at) = arena.get::<crate::elements::pd::auto_trans::AutoTrans>(idx) {
         at.save_write_body(out, cx);
+        restore_cursor(out, written, cx, at, "Wdg", None);
     } else if let Some(lg) =
         arena.get::<crate::elements::general::line_geometry::LineGeometryObj>(idx)
     {
         lg.save_write_body(out, cx);
+        restore_cursor(out, written, cx, lg, "Cond", Some(1));
     } else if let Some(ln) = arena.get::<crate::elements::pd::line::Line>(idx) {
         ln.save_write_body(out, cx);
     } else if let Some(xy) = arena.get::<crate::elements::general::xy_curve::XyCurveObj>(idx) {
@@ -486,6 +536,7 @@ pub fn write_dss_object(
         rc.save_write_body(out, cx);
     } else if let Some(xc) = arena.get::<crate::elements::general::xfmr_code::XfmrCodeObj>(idx) {
         xc.save_write_body(out, cx);
+        restore_cursor(out, written, cx, xc, "Wdg", None);
     } else {
         save_write(out, cx, arena.obj(idx));
     }
