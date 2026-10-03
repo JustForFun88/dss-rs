@@ -846,11 +846,18 @@ solve";
 /// reference — controlled and monitored element, the user model, both
 /// snapshots — and never `ctrlSignalShape` (`:169`), so its clone has nothing
 /// to follow and aborts the solve on its first sample with message 10362.
-/// r4133 shares the omission (`Version8/Source/Controls/CapControl.pas:410-465`,
-/// field `myShapeObj` at `:76`) and copies the `PropertyValue` array on top
-/// (`:460`), which hides the loss from a property read while leaving the same
-/// dead controller. Both gating oracles carry it; neither lane reproduces it
-/// (GOLDEN_REBASE G2.1b; `issue-15`).
+/// r4133 shares the omission in `TCapControl.MakeLike` (field `myShapeObj`) and
+/// copies the `PropertyValue` array on top, which hides the loss from a
+/// property read. Its clone raises no 10362: the FOLLOW arm of
+/// `TCapControlObj.Sample` has no nil test and dereferences the missing shape.
+/// `TSolutionObj.SampleControlDevices` catches that access violation as
+/// message 484 and aborts the solve, so `Solve` fails with message 482
+/// ("Error Encountered in Solve: Solution aborted.") and the clone's bank
+/// never switches. The no-shape corpus deck
+/// `capcontrol/capcontrol_follow_noshape.dss` is gated `capi_v0145` only
+/// because its expected abort text is the 10362 message, which r4133 does not
+/// print. Both gating oracles carry the omission, and neither lane reproduces
+/// it (GOLDEN_REBASE G2.1b; `issue-15`).
 ///
 /// Expected values, not tolerances, and three of them, because the fix has
 /// three separable halves: the *name* (what `? CapControl.dst.ControlSignal`
@@ -897,10 +904,18 @@ fn make_like_copies_the_control_signal() {
 /// The unit pin above calls `make_like` directly; this one drives the exec
 /// applier, so it also covers the property observable
 /// (`? CapControl.b.ControlSignal`, `accessors.rs` `CONTROLSIGNAL`) and the
-/// abort path the clone used to take — upstream's clone raises message 10362
-/// ("Type is set to \"Follow\", but not \"ControlSignal\" was provided.
+/// abort path the clone used to take — the pinned oracle's clone raises message
+/// 10362 ("Type is set to \"Follow\", but not \"ControlSignal\" was provided.
 /// Aborting solution.") on the first sample, which is the error text this deck
 /// must *not* produce (GOLDEN_REBASE G2.1b; `issue-15`).
+///
+/// The positive observable is a switch the clone alone can make. The signal is
+/// `0`, the clone `b` controls only `c2` and `d` has no control at all, so a
+/// live clone opens `c2` (`[ 0]`) while `d` stays closed (`[ 1]`). Both gating
+/// oracles give exactly these states when `b` is written longhand. Written
+/// `like=`, the pinned oracle raises 10362 and r4133 fails the solve with
+/// message 482, and both leave `c2` closed (`[ 1]`, the value this pin
+/// rejects).
 #[test]
 fn like_on_a_follow_capcontrol_keeps_following() {
     use crate::exec::Dss;
@@ -909,9 +924,11 @@ clear
 new circuit.t basekv=12.47 phases=3 bus1=sb R1=0.01 X1=0.03 R0=0.01 X0=0.03
 new line.l phases=3 bus1=sb bus2=b1 length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0
 new capacitor.c bus1=b1 phases=3 kv=12.47 kvar=600
-new loadshape.sig npts=1 interval=1 mult=[1.0]
+new capacitor.c2 bus1=b1 phases=3 kv=12.47 kvar=600
+new capacitor.d bus1=b1 phases=3 kv=12.47 kvar=600
+new loadshape.sig npts=1 interval=1 mult=[0.0]
 new capcontrol.a element=line.l terminal=1 capacitor=c type=follow ControlSignal=sig
-new capcontrol.b like=a
+new capcontrol.b like=a capacitor=c2
 set voltagebases=[12.47]
 calcvoltagebases
 solve";
@@ -942,6 +959,19 @@ solve";
     // …and so does the name, through the property a user reads.
     dss.command("? capcontrol.b.ControlSignal");
     assert_eq!(dss.result().trim(), "sig");
+    // The clone samples the signal and acts on it: `c2` opens, controlled by
+    // `b` alone, while the control-less `d` keeps its default closed state.
+    let states = |dss: &mut Dss, cap: &str| {
+        dss.command(&format!("? capacitor.{cap}.states"));
+        dss.result().trim().to_string()
+    };
+    assert_eq!(
+        states(&mut dss, "c"),
+        "[ 0]",
+        "the donor opens its own bank"
+    );
+    assert_eq!(states(&mut dss, "c2"), "[ 0]", "the clone must open c2");
+    assert_eq!(states(&mut dss, "d"), "[ 1]", "no control, no switch");
     // Sanity, not discrimination: this 3-bus deck converges either way —
     // `solve_snap` (`solution/solution/power_flow.rs:448-494`) never reads
     // `solution_abort`, and `converged_flag` is set by the voltage-mismatch test

@@ -65,6 +65,29 @@ fn fixed_interval_temps_and_stats() {
     assert!((get(&cls, &obj, "StdDev").parse::<f64>().unwrap() - want_std).abs() < 1e-9);
 }
 
+// EXPECTED-VALUE-PIN(stddev_single_point): the TShape observable.
+/// A one-point TShape's `stddev` property, read the way a deck reads it: `0`
+/// in both lanes, because one sample has no spread.
+///
+/// Upstream prints the sample itself: the pinned oracle answers `3.5` for this
+/// deck's `? TShape.t.stddev` (r4133 computes it in the same one-point branch
+/// as the LoadShape). Not reproduced (GOLDEN_REBASE G2.1a; `issue-11`). `mean`
+/// is 3.5, so a broken accessor cannot fake the result by returning nothing.
+#[test]
+fn single_point_shape_stddev_property_is_zero() {
+    use crate::exec::Dss;
+    let mut dss = Dss::new();
+    dss.command("clear");
+    dss.command("new circuit.p");
+    dss.command("New TShape.t npts=1 interval=1 temp=(3.5)");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+
+    dss.command("? TShape.t.mean");
+    assert_eq!(dss.result(), "3.5");
+    dss.command("? TShape.t.stddev");
+    assert_eq!(dss.result(), "0");
+}
+
 #[test]
 fn second_and_minute_interval_aliases() {
     let (cls, obj, errs) = edited(&[("npts", "4"), ("sinterval", "900"), ("temp", "1 2 4 8")]);
