@@ -324,10 +324,21 @@ fn get_var_idx_classifies_state_vars_constants_and_misses() {
 #[test]
 fn get_var_name_prefixes_derivative_columns() {
     let o = compile(&["speed", "mass"], "speed dt = mass");
-    assert_eq!(o.get_var_name(0), "speed"); // row 0, col 0 (value)
-    assert_eq!(o.get_var_name(1), "dspeed"); // row 0, col 1 (1st derivative)
-    assert_eq!(o.get_var_name(2), "mass"); // row 1, col 0
-    assert_eq!(o.get_var_name(3), "dmass"); // row 1, col 1
+    assert_eq!(o.get_var_name(0).as_deref(), Some("speed")); // row 0, col 0 (value)
+    assert_eq!(o.get_var_name(1).as_deref(), Some("dspeed")); // row 0, col 1 (1st derivative)
+    assert_eq!(o.get_var_name(2).as_deref(), Some("mass")); // row 1, col 0
+    assert_eq!(o.get_var_name(3).as_deref(), Some("dmass")); // row 1, col 1
+    // A row past `VarNames` has no name.
+    assert_eq!(o.get_var_name(4), None);
+}
+
+#[test]
+fn rows_used_is_one_past_the_highest_slot_the_equations_touch() {
+    let o = compile(&["a", "b", "c"], "a dt = c");
+    assert_eq!(o.rows_used(), 3);
+    let o = compile(&["a", "b", "c"], "a dt = b");
+    assert_eq!(o.rows_used(), 2, "the unused `c` is not counted");
+    assert_eq!(DynamicExpObj::new("empty").rows_used(), 0);
 }
 
 #[test]

@@ -39,6 +39,22 @@ pub enum DynInitValue {
     Text(String),
 }
 
+/// The output slots `DynOut` fills: speed and angle for a machine, and an
+/// inverter reads the first as its current.
+pub const DYN_OUT_SLOTS: usize = 2;
+
+/// How a host integrates its linked `DynamicExp` each dynamics step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DynEqHost {
+    /// A machine (Generator, WindGen): integrates the speed and angle outputs
+    /// `DynOut[0..2]` and loads every calculated value.
+    Machine,
+    /// An inverter (PVSystem, Storage): integrates the current output
+    /// `DynOut[0]` per phase and loads the calculated values that are not
+    /// initializations, `imag` excepted (the current is the state itself).
+    Inverter,
+}
+
 /// `TDynEqPCE` shared data. The host PC element embeds this and exposes it via the
 /// [`DynEqPce`] trait so the edit loop and the dynamics step loop reach it
 /// polymorphically.
@@ -153,9 +169,11 @@ impl DynEqPceData {
     }
 
     /// Pascal `TDynEqPCE.SetDynOutputNames`: resolve `DynOut=[names]` to the output
-    /// variable indices via `DynamicExp.Get_Out_Idx`. Errors (no linked equation,
-    /// or a name that is not a defined output) are returned for the host to push
-    /// onto its object error list (Pascal `DoSimpleMsg` 50007/50008).
+    /// variable indices via `DynamicExp.Get_Out_Idx`. Errors are returned for the
+    /// host to push onto its object error list: 50007 with no linked equation,
+    /// 50009 for more names than the [`DYN_OUT_SLOTS`] output slots (the list is
+    /// refused whole and `DynOut` is unchanged), 50008 for a name that is not a
+    /// defined output.
     pub fn set_dyn_output_names(&mut self, names: &[String]) -> Vec<crate::diag::DssDiagnostic> {
         let mut errors = Vec::new();
         let Some(eq) = &self.dynamic_eq_obj else {
@@ -170,10 +188,25 @@ impl DynEqPceData {
             ));
             return errors;
         };
+        // A name past the slots has no output to drive, so the list is refused
+        // whole and the slots keep their outputs
+        // (`every_host_refuses_a_dynout_longer_than_two_outputs`).
+        if names.len() > DYN_OUT_SLOTS {
+            errors.push(crate::diag::DssDiagnostic::msg(
+                format!(
+                    "DynOut takes at most {DYN_OUT_SLOTS} output variables, but {} were \
+                     given: [{}]. DynOut is unchanged.",
+                    names.len(),
+                    names.join(", ")
+                ),
+                Some(50009),
+            ));
+            return errors;
+        }
         // Pascal `SetLength(DynOut, 2)` — always two output slots (speed + angle).
         // A 1-element `DynOut=[Speed]` leaves slot 1 = 0 (the integration reads
-        // `DynOut[1]` as the angle var); >2 names overrun (Pascal range error).
-        self.dyn_out = vec![0; 2];
+        // `DynOut[1]` as the angle var).
+        self.dyn_out = vec![0; DYN_OUT_SLOTS];
         for (idx, name) in names.iter().enumerate() {
             let var_idx = eq.get_out_idx(name);
             if var_idx < 0 {
@@ -193,13 +226,15 @@ impl DynEqPceData {
 
     /// Pascal `TDynEqPCE.GetDynOutputNames`: the `DynOut=` dump — reconstruct the
     /// output names from the resolved indices (`Get_VarName(DynOut[idx] * 2)`).
+    /// A slot whose variable has no name is left out, so an equation without
+    /// `VarNames` reads back no outputs.
     pub fn get_dyn_output_names(&self) -> Vec<String> {
         let Some(eq) = &self.dynamic_eq_obj else {
             return Vec::new();
         };
         self.dyn_out
             .iter()
-            .map(|&i| eq.get_var_name(i * DYN_SLOT_LENGTH))
+            .filter_map(|&i| eq.get_var_name(i * DYN_SLOT_LENGTH))
             .collect()
     }
 
@@ -216,13 +251,63 @@ impl DynEqPceData {
     /// Pascal `TDynEqPCE.VariableName(i)` (1-based): the memory-slot name, or
     /// `None` when there is no equation / `i` is out of range (the host then falls
     /// back to its classic name table). Pascal guards `i > NVariables*Len` (the
-    /// last valid index is exactly `NVariables*Len`).
+    /// last valid index is exactly `NVariables*Len`). A memory row past
+    /// `VarNames` is named by the empty string.
     pub fn variable_name(&self, i: usize) -> Option<String> {
         let eq = self.dynamic_eq_obj.as_ref()?;
         if i < 1 || i > self.num_variables() {
             return None;
         }
-        Some(eq.get_var_name(i - 1))
+        Some(eq.get_var_name(i - 1).unwrap_or_default())
+    }
+
+    /// Why the linked equation cannot be integrated in a dynamics solve, or
+    /// `None` when it can (or none is linked). The memory must hold a row for
+    /// every output `host` integrates, every calculated value it loads each
+    /// step and every variable the equations refer to. An equation with
+    /// `NVariables=0` holds no state at all, so it defines no dynamics.
+    pub fn integration_problem(&self, host: DynEqHost) -> Option<String> {
+        let eq = self.dynamic_eq_obj.as_ref()?;
+        let name = crate::obj::base::DssObject::data(eq).name();
+        let rows = self.dynamic_eq_vals.len();
+        if rows == 0 {
+            return Some(format!(
+                "DynamicExp.{name} declares no state variables (NVariables=0). Set \
+                 NVariables to the number of its VarNames."
+            ));
+        }
+        let outputs = match host {
+            DynEqHost::Machine => 2,
+            DynEqHost::Inverter => 1,
+        };
+        let Some(outs) = self.dyn_out.get(..outputs) else {
+            return Some(format!(
+                "DynOut is not set. Name the output variables of DynamicExp.{name} with \
+                 DynOut=[...]."
+            ));
+        };
+        let loads = |code: i32| match host {
+            DynEqHost::Machine => true,
+            DynEqHost::Inverter => !Self::is_init_val(code) && code != 4,
+        };
+        let pairs = self
+            .dynamic_eq_pair
+            .chunks_exact(2)
+            .filter(|p| loads(p[1]))
+            .map(|p| p[0].max(0) as usize + 1);
+        let used = outs
+            .iter()
+            .map(|&o| o + 1)
+            .chain(pairs)
+            .chain(std::iter::once(eq.rows_used()))
+            .max()
+            .unwrap_or(0);
+        (used > rows).then(|| {
+            format!(
+                "DynamicExp.{name} declares NVariables={rows} but its equations use {used} \
+                 state variables. Set NVariables to the number of its VarNames."
+            )
+        })
     }
 
     /// Pascal `DynamicEqObj.Get_DynamicEqVal(i, DynamicEqVals)` — read memory slot

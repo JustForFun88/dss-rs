@@ -3088,3 +3088,125 @@ per listed case: `isource_snap_total_power_closes_the_complete_ledger`,
 byte or tolerance moved. `Circuit.Losses` leaving shunt elements out is a
 separate upstream choice this row does not touch, which is why the pins use the
 complete ledger and not loads plus `Circuit.Losses`.
+
+## A `DynamicExp` without the memory its host integrates refuses the dynamics solve — 2026-10-04
+
+**Observable.** A Generator, WindGen, PVSystem or Storage linked by
+`DynamicEq=` integrates the equation's memory, one row per declared variable
+(`NVariables`, default 0 in the port). When that memory has no row, when
+`DynOut` is not set, or when the outputs, the calculated values or the
+equations reach past its last row, the integration has nothing to read or
+write. The port refuses the dynamics `Solve` before its first step with error
+482, `Error Encountered in Solve: Generator.e1: DynamicExp.de declares no state
+variables (NVariables=0). Set NVariables to the number of its VarNames.` (or the
+`DynOut is not set` and `declares NVariables=1 but its equations use 2 state
+variables` forms), and the solution aborts. Entering dynamics stays silent. A
+`DynOut` read of an equation without `VarNames` answers the empty value, and a
+memory row past `VarNames` is named by the empty string.
+
+**Measured 2026-10-04** with the epri-worker on the r4133 DLL and the pinned
+dss-python 0.15.7, on the pins' deck for each host (dss_capi 0.14.5 has no
+WindGen):
+
+- No state and no `DynOut`, `nvariables=0` with two `VarNames` and `DynOut`, and
+  a two-variable equation without `DynOut`: both oracles fail the `Solve` with
+  482 `Error Encountered in Solve: Access violation` (r4133 adds the address in
+  `OpenDSSDirect.dll`).
+- `nvariables=1` for an equation that uses two variables: neither oracle
+  reports an error. The second row is written past the memory
+  (`Version8/Source/PCElements/generator.pas:2843-2849`,
+  `PCElements/WindGen.pas:2697-2703`), and one r4133 PVSystem run of that deck
+  hung in the DLL.
+- `nvariables=1` with `DynOut=[a]` inside the memory, for an equation that reads
+  a second variable (`a dt = b`) or for a calculated value on it
+  (`vac=Vmag` under `a dt = a`): neither oracle reports an error on any host.
+  The step reads the second row past the memory or writes `Vmag` there
+  (`PCElements/generator.pas:2836`, `PCElements/PVsystem.pas:2509`,
+  `PCElements/Storage.pas:3643`). The r4133 WindGen raises 303 on the one-name
+  `DynOut`, and with `DynOut=[a a]` it solves without an error.
+- Initial values `theta=Edp pm=P0` on two variables past a one-row memory (the
+  init pins' deck): dss_capi 0.14.5 solves the Generator without an error, and
+  r4133 fails its `Solve` with 482 `Access violation`. The r4133 WindGen raises
+  303 on the deck's one-name `DynOut=[Speed]`, since it reads a second name
+  (`PCElements/WindGen.pas:1098-1101`), and with `DynOut=[Speed Speed]` it
+  solves without an error.
+- Two `VarNames` with `NVariables` omitted: r4133 integrates, because its
+  `NumVars` defaults to 20 (`General/DynamicExp.pas:305`). dss_capi 0.14.5
+  defaults `NVariables` to 0 (`src/General/DynamicExp.pas:218`) and fails the
+  `Solve` with 482 `Access violation`. The port keeps 0 and refuses.
+- `DynOut` read back after an unresolved `DynOut=` on an equation without
+  `VarNames`: both oracles raise 303 `List index out of bounds (0)`
+  (`PCElements/PCElement.pas:205`).
+- A WindGen linked to an equation without variables reads its 22 native
+  variables on r4133, as the port does.
+
+**Decision.** An equation whose memory cannot hold what its host integrates
+defines no dynamics for that host. The oracles' access violation, out-of-range
+write and hang are accidents of their implementation, not a rule. The port
+refuses with a message naming the element and the property to set, and never
+falls back to the built-in model in place of the equation the user linked. For
+no state and no `DynOut` that is the oracles' outcome class (a failed `Solve`,
+482, aborted). For a too small or omitted `NVariables` the port refuses where
+r4133 integrates. Whether the port should take r4133's default of 20 is a
+separate language question, open (the 0.14.5 default 0 is in the
+`dynamicexp_default` props golden).
+
+**Pins** (`crates/dss-core/src/exec/tests/dynamic_eq_memory.rs`, both lanes):
+`windgen_`, `generator_`, `pvsystem_` and
+`storage_dynamic_eq_without_state_variables_refuses_the_dynamics_solve`,
+`an_omitted_nvariables_holds_no_state_variables`,
+`a_dynamic_eq_without_dynout_refuses_the_dynamics_solve`,
+`a_dynamic_eq_with_too_few_rows_refuses_the_dynamics_solve`,
+`generator_init_values_without_a_memory_row_refuse_the_dynamics_solve`,
+`windgen_init_values_without_a_memory_row_refuse_the_dynamics_solve`,
+`every_host_refuses_an_equation_that_reads_past_its_memory`,
+`every_host_refuses_a_calculated_value_past_its_memory`,
+`windgen_dynamic_eq_without_variables_keeps_the_classic_layout`,
+`every_host_names_an_unnamed_memory_row_by_the_empty_string` and
+`every_host_reads_back_no_dynout_from_an_equation_without_var_names`, with
+`a_dynamic_eq_with_its_memory_integrates` as the control. No ledger entry,
+exclusion, golden byte or tolerance moved: the corpus decks that link a
+`DynamicExp` give it a row per variable and set `DynOut`.
+
+## `DynOut` with more names than its two output slots is refused — 2026-10-04
+
+**Observable.** `DynOut` fills two output slots: speed and angle on a
+Generator or a WindGen, and a PVSystem or a Storage reads the first as its
+current. A `DynOut=` list of three or more names is refused whole with error
+50009, `DynOut takes at most 2 output variables, but 3 were given: [a, b, c].
+DynOut is unchanged.`, and the element keeps the outputs it had. The length is
+checked before any name is resolved, so `DynOut=[b c nosuch]` gets the same
+refusal and no 50008. The code is the port's own, the next number after the
+`DynamicExp` messages 50001-50008.
+
+**Measured 2026-10-04** with the epri-worker on the r4133 DLL and the pinned
+dss-python 0.15.7, on the pin's deck (`nvariables=3 varnames=[a b c]`, after a
+valid `DynOut=[c a]` where noted):
+
+- `DynOut=[a b c]` on a Generator, PVSystem or Storage writes past the two
+  slots on both oracles (dss_capi `src/PCElements/DynEqPCE.pas:218-228`, r4133
+  `Version8/Source/PCElements/PCElement.pas:223-236`). dss_capi 0.14.5 dies a
+  few commands later (0xC0000409, 0xC0000374 for one Storage run). r4133
+  reports no error and reads `DynOut` back as `[a,da,]` (a Storage reads back
+  `''`, as for any list), then its worker does not quit (killed after 30 s),
+  and the edit itself hung on a Storage that had `DynOut=[c a]`.
+- The same list on an r4133 WindGen: no error. Its `SetDynOutput` reads exactly
+  the first two names (`PCElements/WindGen.pas:1098`) and drops the third
+  without a word.
+- `DynOut=[b c nosuch]` after `DynOut=[c a]`: both oracles raise 50008 for
+  `nosuch` and take `b` and `c` (dss_capi reads back `[b, c]`). The r4133
+  WindGen raises nothing.
+
+**Decision.** A third name has no slot and no output to drive: every host
+integrates at most the first two. The oracles' write past the array, the crash
+and the hang that follow are accidents, and the r4133 WindGen's silent
+truncation hides the input error. The port refuses the list where it is
+written, names the property, and keeps the outputs last set, so the next
+dynamics solve integrates those or refuses with `DynOut is not set`. The length
+decides whatever the names resolve to, so a long list with an unknown name is
+refused the same way instead of taking its first two names as both oracles do.
+
+**Pin** (`crates/dss-core/src/exec/tests/dynamic_eq_memory.rs`, both lanes):
+`every_host_refuses_a_dynout_longer_than_two_outputs`. No corpus deck, golden
+or test deck names more than two outputs (the corpus writes `[Speed theta]` and
+`[it]`), so no ledger entry, exclusion, golden byte or tolerance moved.

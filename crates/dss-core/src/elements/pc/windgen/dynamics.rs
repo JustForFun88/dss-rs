@@ -133,7 +133,9 @@ impl WindGen {
             }
         }
 
-        // DynamicEqObj <> NIL: seed the user equation's memory and exit.
+        // DynamicEqObj <> NIL: seed the user equation's memory and exit. A
+        // variable without a memory row is skipped here: the dynamics solve
+        // refuses that equation before its first step (`dynamics_refusal`).
         if self.dyneq.has_dynamic_eq() {
             for row in self.dyneq.dynamic_eq_vals.iter_mut() {
                 row[1] = 0.0;
@@ -142,7 +144,7 @@ impl WindGen {
             for i in 0..num_pairs {
                 let var_idx = self.dyneq.dynamic_eq_pair[i * 2] as usize;
                 let code = self.dyneq.dynamic_eq_pair[i * 2 + 1];
-                if !DynEqPceData::is_init_val(code) {
+                if !DynEqPceData::is_init_val(code) || var_idx >= self.dyneq.dynamic_eq_vals.len() {
                     continue;
                 }
                 if code == 9 {
@@ -373,11 +375,12 @@ impl WindGen {
     }
 
     /// How many variables sit ahead of the `UserModel` tail: the linked
-    /// `DynamicExp`'s memory dump when one is bound (`WindGen.pas:2798-2802`),
-    /// else the 22 native WindGen variables. The single source of truth for
-    /// `num_variables` / `variable_name` / `get_all_variables` /
-    /// `set_user_model_variable`, so the four can never disagree about where the
-    /// tail begins (upstream they do — see `accessors::get_all_variables`).
+    /// `DynamicExp`'s memory dump when one with variables is bound
+    /// (`WindGen.pas:2798-2802`), else the 22 native WindGen variables. The
+    /// single source of truth for `num_variables` / `variable_name` /
+    /// `get_all_variables` / `set_user_model_variable`, so the four can never
+    /// disagree about where the tail begins (upstream they do — see
+    /// `accessors::get_all_variables`).
     pub(super) fn variable_base(&self) -> usize {
         let n = self.dyneq.num_variables();
         if n != 0 { n } else { self.num_wgen_variables() }
