@@ -615,8 +615,8 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 
 // The two **CIM attribute-name** rows are gone the same way
 // (`GOLDEN_REBASE_PLAN.md` G2.2c): the delta shunt arm writes
-// `ShuntCompensator.grounded` — the name its own wye sibling six lines above
-// uses and the only class CIM100 declares `grounded` on — and the
+// `ShuntCompensator.grounded` — the name its own wye sibling uses and the only
+// class CIM100 declares `grounded` on — and the
 // symmetrical-components line writer closes its `bch`/`gch`/`b0ch` quartet with
 // `ACLineSegment.g0ch`, the name the `PerLengthSequenceImpedance` sibling
 // spells. Both lanes now write them; `tests/golden_cim.rs` applies the two
