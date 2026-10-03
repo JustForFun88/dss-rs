@@ -377,11 +377,9 @@ impl CktElement for Storage {
             cd.iterminal_updated = true;
         }
         self.cd.mark_iterminal_solved(sys.solution_count);
-        // r4133 `TStorageObj.GetTerminalCurrents` (`Storage.pas:2874`): the record
-        // is written after the inherited body, so only on the path that actually
-        // reaches it — never on the `LastSolutionWasDirect` shortcut (which
-        // returns inside `TPCElement.GetCurrents`) and never on the GFM branch
-        // (`TStorageObj.GetCurrents` `:2898-2930` never calls `inherited`).
+        // The record follows the full terminal-current body only: the direct-solve
+        // shortcut and the GFM branch above return without one
+        // (`exec::tests::storage::the_total_current_record_skips_the_direct_shortcut_and_the_gfm_branch`).
         self.write_trace_record("TotalCurrent", sys, node_v);
     }
 }
