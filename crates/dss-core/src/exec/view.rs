@@ -716,11 +716,12 @@ fn upstream_row_index(classes: &[DssClass], ckt: &Circuit, rows: &[String]) -> V
 ///
 /// No `enabled` filter: upstream walks the raw pointer lists for `LineLosses` /
 /// `SubstationLosses` / `AllElementLosses`, and a disabled element contributes
-/// `CZERO` through `TDSSCktElement.Get_Losses`'s own guard
-/// (`Common/CktElement.pas:707-712`), which
-/// [`crate::elements::traits::CktElement::losses`] mirrors. `Circuit.Losses` is
-/// the one aggregate that *does* filter, and it filters in [`Circuit::losses`]
-/// where Pascal filters (`Common/Circuit.pas:2436-2440`).
+/// zero through the `enabled` guard of
+/// [`crate::elements::traits::CktElement::losses`] (pinned by
+/// `exec::tests::aggregates::line_losses_sum_the_lines_list`). `Circuit.Losses`
+/// is the one aggregate that *does* filter, on enabled and not shunt, in
+/// [`Circuit::losses`] (pinned by
+/// `exec::tests::aggregates::losses_skip_shunt_elements`).
 fn sum_list_losses(
     classes: &mut [DssClass],
     refs: &[ElemId],
@@ -2950,8 +2951,11 @@ impl Dss {
             .to_ascii_lowercase()
         };
         AggregateTerms {
-            // `Common/Circuit.pas:2436-2440`: enabled AND not shunt — the one
-            // aggregate upstream filters (mirrored by `Circuit::losses`).
+            // Enabled AND not shunt — the one aggregate upstream filters, the
+            // same test as `Circuit::losses` (pinned by
+            // `exec::tests::aggregates::losses_skip_shunt_elements` for shunts
+            // and `exec::tests::aggregates::line_losses_sum_the_lines_list` for
+            // disabled elements).
             losses: ckt
                 .pd_elements
                 .iter()

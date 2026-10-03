@@ -223,6 +223,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - RF-D02-19 (every consumer of the one-point standard deviation is pinned, the Follow CapControl clone's switching is pinned, r4133 aborts that clone's solve with 484/482).
 - RF-D00-02 (the CIM export reads the full wye-load grounding ladder and the line's spacing flag, flag-down wire references are pinned).
 - RF-D01-05 (Save restores a LineGeometry's, Transformer's and AutoTrans's cursor, the save round-trip test compares every property of every object and scopes its exclusions per deck).
+- RF-D02-11 (the aggregate pins witness the TotalPower terminal-1 walk, the Iteration sum over control passes and the losses filter, their rationales name the Rust items).
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been

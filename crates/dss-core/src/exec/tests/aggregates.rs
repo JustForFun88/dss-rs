@@ -174,7 +174,7 @@ fn substation_losses_exclude_autotrans() {
 }
 
 // Expected-value pin, Circuit.Losses skips shunts: `Get_Losses` skips shunt PD
-// elements (`Common/Circuit.pas:2438-2440`, `{Ignore Shunt Elements}`). A shunt
+// elements (`Common/Circuit.pas:2438-2441`, `If Not pdElem.IsShunt`). A shunt
 // capacitor's "loss" is its whole reactive rating, so a missing `IsShunt` test
 // is a kvar-scale error in the imaginary part.
 /// A shunt capacitor is in `AllElementLosses` but never in `Circuit.Losses`.
@@ -235,7 +235,7 @@ fn losses_skip_shunt_elements() {
 // walks the raw `Lines` pointer list with no `enabled` filter
 // (`DDLL/DCircuit.pas:313-320`, `CAPI_Circuit.pas:156-159`); a disabled line
 // stays a term and contributes `CZERO` through `Get_Losses`'s own guard
-// (`Common/CktElement.pas:707-712`).
+// (`Common/CktElement.pas:742`).
 /// `LineLosses` is kW/kvar over every `Lines` entry, disabled ones included as
 /// exact zeros.
 #[test]
@@ -272,6 +272,9 @@ fn line_losses_sum_the_lines_list() {
 // `Power[1]` — terminal 1 only — over the `Sources` list and rescales by 0.001
 // (`DDLL/DCircuit.pas:356-362`, `CAPI_Circuit.pas:329-333`), and `Get_Power`
 // multiplies by 3 under `PositiveSequence` (`Common/CktElement.pas:666-703`).
+// A source whose terminal 2 is the grounded zero node puts nothing on terminal
+// 2, so the two-ended `Isource.itie` (`bus2=b2`) is the witness that the walk
+// stops at terminal 1: its terminal 2 carries the injection back out at `b2`.
 /// `TotalPower` is terminal 1 of every source, in kW/kvar, x3 in a
 /// positive-sequence circuit.
 #[test]
@@ -285,17 +288,24 @@ fn total_power_is_terminal_one_of_every_source() {
         "New Vsource.s2 bus1=sb2 basekv=12.47 pu=1.02 phases=3 mvasc3=150 mvasc1=140",
         "New Line.l2 bus1=sb2 bus2=b2 phases=3 r1=0.30 x1=0.90 r0=0.9 x0=2.7 c1=3.0 c0=1.5 length=1 units=km",
         "New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.95 model=1",
+        // A third source with a live terminal 2, between the two islands.
+        "New Isource.itie bus1=b1 bus2=b2 phases=3 amps=8 angle=15",
         "Set voltagebases=[12.47]",
         "Calcvoltagebases",
     ]);
 
     let terms = dss.aggregate_terms();
-    assert_eq!(terms.total_power, vec!["vsource.source", "vsource.s2"]);
+    assert_eq!(
+        terms.total_power,
+        vec!["vsource.source", "vsource.s2", "isource.itie"]
+    );
 
     // Hand-sum terminal 1 of each source out of the per-conductor snapshot
-    // (kW/kvar already): the first `nconds` entries of `powers`.
+    // (kW/kvar already): the first `nconds` entries of `powers`. The sum over
+    // every terminal is kept beside it as the reading a widened walk would give.
     let snaps = dss.snapshot_elements();
     let (mut p_kw, mut q_kvar) = (0.0, 0.0);
+    let (mut all_p_kw, mut all_q_kvar) = (0.0, 0.0);
     for name in &terms.total_power {
         let (i, _) = find(&snaps, name);
         let s = &snaps[i];
@@ -305,15 +315,44 @@ fn total_power_is_terminal_one_of_every_source() {
             p_kw += p.re;
             q_kvar += p.im;
         }
+        for p in &s.powers {
+            all_p_kw += p.re;
+            all_q_kvar += p.im;
+        }
     }
     assert!(
         p_kw < -1000.0,
         "the sources must deliver megawatts (negative kW into terminal 1), got {p_kw}"
     );
+    // Non-vacuity: the Isource's terminal 2 moves the all-terminals sum by its
+    // whole injection at `b2` (8 A on each of 3 phases at about 7.2 kV to
+    // ground, about 170 kVA).
+    let (i_tie, _) = find(&snaps, "Isource.itie");
+    let tie = &snaps[i_tie];
+    let tie_conds = tie.powers.len() / tie.bus_names.len();
+    assert_eq!(tie.bus_names.len(), 2, "Isource.itie has two terminals");
+    let tie_t2: num_complex::Complex64 = tie.powers[tie_conds..].iter().sum();
+    assert!(
+        tie_t2.norm() > 100.0,
+        "Isource.itie terminal 2 must carry power for the witness to bite, got {tie_t2} kVA"
+    );
+    let widened = num_complex::Complex64::new(all_p_kw - p_kw, all_q_kvar - q_kvar);
+    assert!(
+        (widened - tie_t2).norm() <= 1e-9 * tie_t2.norm(),
+        "only the Isource has a live terminal 2: all-terminals minus terminal-1 sum \
+         {widened} kVA vs Isource.itie terminal 2 {tie_t2} kVA"
+    );
 
     let (tp_re, tp_im) = dss.total_power();
     close(tp_re, p_kw, 1e-12, 1e-9, "TotalPower.re");
     close(tp_im, q_kvar, 1e-12, 1e-9, "TotalPower.im");
+    // ... and not the all-terminals sum, which sits a whole terminal away.
+    let off = num_complex::Complex64::new(tp_re - all_p_kw, tp_im - all_q_kvar);
+    assert!(
+        off.norm() > 100.0,
+        "TotalPower must leave out terminal 2: it reads ({tp_re}, {tp_im}) kW/kvar, \
+         the all-terminals sum ({all_p_kw}, {all_q_kvar})"
+    );
 
     // The x3 of `Get_Power`: flipping `CktModel` scales the *report*, not the
     // solution (the flag is read at read time), so the factor is exact.
@@ -325,13 +364,19 @@ fn total_power_is_terminal_one_of_every_source() {
 }
 
 // Expected-value pin, Totaliterations is an alias: `Solution.Totaliterations`
-// (`DDLL/DSolution.pas:218-220` — `SolutionI` mode 40) literally returns
-// `Solution.Iteration`, and dss_capi's `CAPI_Solution.pas:731-738` says so in
-// its own comment ("Same as Iterations interface"). The name says "total"; the
-// value is the LAST step's inner iteration count, never an accumulation — the
-// engine's real accumulator (`TotalIterations`, `Common/Solution.pas:2703`) is
-// exposed by NEITHER oracle surface. That is why G1.9 carries this field as an
-// in-engine alias pin instead of a second oracle comparison.
+// (`DDLL/DSolution.pas:218-220` — `SolutionI` mode 40) returns
+// `Solution.Iteration`, the field `Solution.Iterations` (mode 7) returns, and
+// dss_capi's `CAPI_Solution.pas:731-738` says so in its own comment ("Same as
+// Iterations interface"). `Iteration` is itself the per-solve accumulator:
+// `SolveSnap` sums the inner iterations of every control iteration into its
+// local `TotalIterations` and stores the sum in `Iteration` at its end
+// (`Common/Solution.pas:2724`), as `solution::solution::power_flow::solve_snap`
+// does, and `exec::tests::controls::control_loop_regulates_two_bus_to_oracle_tap`
+// pins that sum against the pinned dss-python's count. Both oracle surfaces
+// therefore read the accumulator, reset by every `SolveSnap`, so a multi-step
+// run reports its LAST step's total and nothing sums over the steps. That is
+// why this field is pinned in-engine as an alias instead of being
+// oracle-compared a second time.
 /// `Totaliterations` is `Iteration`: a multi-step run reports the last step's
 /// count, not the sum over steps.
 #[test]
@@ -341,7 +386,7 @@ fn total_iterations_is_an_alias_of_iterations() {
     deck.push("Edit Load.ld1 daily=ls");
     deck.push("Set mode=daily stepsize=1h");
 
-    // Three single-step solves: the per-step inner iteration counts.
+    // Three single-step solves: each step's own `Iteration` total.
     let mut stepwise = build(&deck);
     stepwise.command("Set number=1");
     let mut per_step = Vec::new();
@@ -374,7 +419,7 @@ fn total_iterations_is_an_alias_of_iterations() {
     );
     assert!(
         sol.iteration < sum,
-        "an accumulating Totaliterations would read {sum}, not {}",
+        "a Totaliterations summed over the steps would read {sum}, not {}",
         sol.iteration
     );
     // Its companion scalar `MostIterationsDone` is a max too — but only over the
