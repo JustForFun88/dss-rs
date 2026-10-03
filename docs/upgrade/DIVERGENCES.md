@@ -3005,3 +3005,86 @@ oracles' reading, the signed `Export Capacity` division included. No
 transformer rating (`makeposseq_xfmr.dss`,
 `AutoTrans.at` loaded to 28.8 %) has no overload, no EnergyMeter, no AutoAdd
 and no compared report, so no gated channel moves.
+
+## TotalPower adds every terminal of every source, both oracles add terminal 1 alone — user decision 2026-10-03
+
+**Observable.** `Circuit.TotalPower`, the `Summary` power lines and loss
+percentage, the `Export Summary` `TotalMW`/`TotalMvar`/`pctLosses` columns and
+the system meter (its demand-interval kW/kvar row and its kWh, kvarh, peak kW
+and peak kVA registers) report the power the sources supply. Both oracles add
+the power at terminal 1 of every Vsource, Isource and GICsource and drop
+terminal 2. Where terminal 2 is earthed, the default, the two readings are the
+same number. Where it sits on a live bus (a Vsource or Isource with an explicit
+`bus2`, and every GICsource, which is spliced in series into a line) the
+terminal-1 reading is wrong by the terminal-2 power, in either direction.
+
+**Physics.** With KCL at every node the complex power into all conductors of
+all elements sums to zero (Tellegen), so the power the sources supply to the
+rest of the circuit is minus the sum over all of their conductors. Two
+measurements decide it without presupposing either definition. Writing a
+two-ended source with `bus1` and `bus2` swapped and its phasor turned by 180°
+changes no current and no voltage, yet moves the terminal-1 total (below), and
+the all-terminals sum stays put. Raising every potential by U changes the power
+of a set of conductors by U·conj(ΣI), which is zero over a whole element but not
+over one terminal of a two-ended source, so the terminal-1 total depends on
+where the circuit touches earth. For a two-terminal source the all-terminals sum
+is Σ (V1 − V2)·conj(I1), the voltage across the source times the current
+through it, which is what the r4133 `Circuit` interface documentation promises
+("the total power in kW and kvar supplied to the circuit by all Vsource and
+Isource objects").
+
+**Sources.** r4133 `Version8/Source/Common/Utilities.pas:2297-2309`
+(`GetTotalPowerFromSources`, `Caccum(Result, Cnegate(CktElem.power[1,ActorID]))`
+at `:2306`), read by the Summary (`Executive/ExecHelper.pas:3417`, loss
+percentage `:3421`), `Export Summary` (`Common/ExportResults.pas:3309`, `:3313`)
+and `TSystemMeter.TakeSample` (`Meters/EnergyMeter.pas:3490`, registers
+`:3492-3497`). The API property repeats the walk: `DDLL/DCircuit.pas:359`
+(`CircuitV` mode 3) and `DLL/ImplCircuit.pas:382`. The pinned dss_capi 0.14.5
+carries the same walk at `src/Common/Utilities.pas:1330` and
+`src/CAPI/CAPI_Circuit.pas:332`, read at `src/Executive/ExecHelper.pas:3486`,
+`src/Common/ExportResults.pas:3043` and `src/Meters/EnergyMeter.pas:3495`.
+
+**Measured 2026-10-03** with the pinned dss-python and with epri-worker on the
+r4133 DLL, which agree to 1e-10 kW or better (kW, TotalPower against the sum of
+the sources' `Powers` over every terminal): the paper circuit (100 V at A, 1 Ω
+A–B, 9 Ω B–earth, a 5 A Isource `bus1=A bus2=B`) −1.4499998 against −1.0224998,
+written end for end −0.5224999 against the same −1.0224998, where the network
+absorbs 1022.5 W by hand. Two 12.47 kV islands tied by
+`Isource.itie bus1=b1 bus2=b2` −1472.906666 against −1303.468626, end for end
+−1138.845018 against −1303.468626. A 5 % series booster on a 900 kW feeder
+−1767.611241 against −905.177254, end for end −3.451251 against −905.177254.
+The corpus cases `asymmetric/isource/isource_snap.dss` −1553.393 against
+−1389.463, `asymmetric/gic/gicsource_gic.dss` −20.287 against −22.134 and
+`asymmetric/gic/gic_midi.dss` −4.676 against −7.056. On the tie deck both
+oracles' Summary prints `1.47291 MW` and a loss share of `0.2361 %` (`0.3054 %`
+end for end), where 3.4776 kW of 1303.47 kW is 0.2668 %.
+
+**Decision (user, 2026-10-03, on a physics verdict).** The terminal-1 walk is
+an upstream bug shared by both oracles and is not reproduced. The engine adds
+every conductor of every terminal of every enabled source
+(`Circuit::source_power`, ×3 in a positive-sequence circuit), and
+`Dss::total_power` and the system meter's `total_power_from_sources` read it,
+so the Summary, `Export Summary` and the SystemMeter registers follow. A circuit
+whose sources all keep terminal 2 earthed is bit-identical to before, since
+terminal 2 adds an exact zero. Upstream report
+`investigations/to_opendss/81-totalpower-reads-terminal-one-of-two-ended-sources.md`
+(local-only).
+
+**Exclusion and pins.** The corpus gate's `Circuit.TotalPower` arm compares the
+three cases above against the oracle's reading plus its sources' accepted
+terminal-2 powers, `harness::lane::total_power_counts_every_source_terminal`,
+and asserts the list both ways (an unlisted case with material terminal-2 power
+fails, and so does a listed case without it). Its membership arm rebuilds each
+oracle's `TotalPower` from that oracle's own terminal-1 powers on every case.
+In-engine and oracle-free (`exec::tests::aggregates`):
+`total_power_sums_every_terminal_of_every_source`,
+`total_power_closes_the_complete_ledger`,
+`total_power_does_not_move_when_a_source_is_written_end_for_end`,
+`total_power_of_the_paper_circuit_is_its_network_power`,
+`the_source_power_readers_report_every_terminal`, and one complete-ledger pin
+per listed case: `isource_snap_total_power_closes_the_complete_ledger`,
+`gicsource_gic_total_power_closes_the_complete_ledger` and
+`gic_midi_total_power_closes_the_complete_ledger`. No `ledger.json` entry, golden
+byte or tolerance moved. `Circuit.Losses` leaving shunt elements out is a
+separate upstream choice this row does not touch, which is why the pins use the
+complete ledger and not loads plus `Circuit.Losses`.

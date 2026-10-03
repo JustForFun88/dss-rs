@@ -309,15 +309,11 @@ fn pd_full_name(store: &dyn ElemStore, r: crate::elements::traits::ElemId) -> St
     format!("{cls}.{}", store.obj(r).data().name())
 }
 
-/// Pascal `GetTotalPowerFromSources` (Utilities.pas:1327): `-Σ` over the
-/// circuit sources of `Power[1]` (VA).
+/// The power the circuit's sources deliver (VA), every terminal of every
+/// source: the negated [`Circuit::source_power`].
 fn total_power_from_sources(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) -> Complex64 {
-    let node_v = &ckt.solution.node_v;
-    let mut total = Complex64::ZERO;
-    for &r in &ckt.sources {
-        total -= store.ckt_elem_mut(r).terminal_power(sys, node_v, 1);
-    }
-    total
+    // From +0 so a circuit whose sources all read zero delivers +0, not -0.
+    Complex64::ZERO - ckt.source_power(store, sys)
 }
 
 /// The first meter of the circuit's EnergyMeter list (Pascal

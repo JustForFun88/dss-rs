@@ -1448,8 +1448,8 @@ impl Dss {
         // Extended-column scalars first (they need the &mut element walk).
         let (tp_re_kw, tp_im_kvar) = self.total_power(); // kW/kvar
         let (loss_re_w, loss_im_var) = self.losses(); // W/var
-        // GetTotalPowerFromSources = -Σ source power[1] (VA); ×1e-6 → MVA.
-        // total_power() = Σ source power[1] × 0.001 (kW), so MVA = -kW × 0.001.
+        // total_power() is the power into every source terminal in kW, so the
+        // delivered MVA is -kW × 0.001.
         let total_mw = -tp_re_kw * 0.001;
         let total_mvar = -tp_im_kvar * 0.001;
         let mw_losses = loss_re_w * 1e-6;

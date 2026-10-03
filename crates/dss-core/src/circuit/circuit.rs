@@ -978,4 +978,28 @@ impl Circuit {
         }
         total
     }
+
+    /// Complex power (W, var) into the circuit's sources, summed over every
+    /// conductor of every terminal of every enabled source and x3 in a
+    /// positive-sequence circuit: the negative of the power the sources supply
+    /// to the rest of the circuit. A source whose terminal 2 sits on a live bus
+    /// exchanges power there too, so only the sum over its terminals is its own
+    /// contribution. Pinned by
+    /// `exec::tests::aggregates::total_power_sums_every_terminal_of_every_source`
+    /// and the conservation, relabelling and paper-circuit pins beside it.
+    pub fn source_power(
+        &self,
+        store: &mut dyn ElemStore,
+        sys: &crate::elements::traits::SysCtx,
+    ) -> Complex64 {
+        let node_v = &self.solution.node_v;
+        let mut total = Complex64::ZERO;
+        for &r in &self.sources {
+            let elem = store.ckt_elem_mut(r);
+            for t in 1..=elem.cd().nterms {
+                total += elem.terminal_power(sys, node_v, t);
+            }
+        }
+        total
+    }
 }

@@ -594,13 +594,20 @@ exactly by
 `corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
 so a new deck-wide element scope reds until its author acknowledges that it also
 switches that deck's aggregate value arm off (coordinator decision D11(2)'s rule
-for the analogous bus-array suppression). `Circuit.TotalPower` is unrebuildable
-from a per-element cap (it reads terminal 1 and the capture carries no
-`nconds`), so instead of being dropped whenever a source merely appears in the
-rewrite map it absorbs the accepted `powers` divergence summed over **all** of
-that source's conductors — the same documented conservative superset its
-allowance already uses. An entry that scopes only `currents` no longer switches
-the arm off. The membership and identity arms never soften: they run on the raw
+for the analogous bus-array suppression). `Circuit.TotalPower` is split by
+terminal with the port's own snapshot layout. Its membership arm rebuilds the
+oracle's aggregate from the oracle's terminal-1 source powers, which is how both
+oracles compute it. The engine adds every terminal of every source (conservation
+of complex power, pinned in-engine by
+`dss_core::exec::tests::aggregates::total_power_sums_every_terminal_of_every_source`
+and the ledger, relabelling and paper-circuit pins beside it), so the value arm's
+reference on the cases `harness::lane::total_power_counts_every_source_terminal`
+lists is the oracle's aggregate plus its sources' accepted terminal-2 powers.
+The arm asserts that list both ways: a case whose sources carry material power
+past terminal 1 must be on it, and a listed case that no longer does is stale.
+The envelope absorbs the accepted `powers` divergence summed over **all** of a
+source's conductors, so an entry that scopes only `currents` does not switch the
+arm off. The membership and identity arms never soften: they run on the raw
 oracle capture on every case, ledger-scoped ones included. Net effect on the
 ledger: **0** entries and 0 new `LEDGER_FIELDS`. Bands and their derivations:
 `tests/TOLERANCE_NOTES.md` §"G1.9 circuit aggregates + solution scalars".
