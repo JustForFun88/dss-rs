@@ -157,12 +157,9 @@ fn corpus_gate_all_cases_match_engines() {
             let first = f.reason.lines().next().unwrap_or("<no message>");
             msg.push_str(&format!("  {}\n      {first}\n", f.label));
         }
-        // Printed BEFORE the panic on purpose (G1.5 audit settlement): a panic
-        // message travels through the process-global panic hook, which any code
-        // in the process may have replaced (the harness's `reds` helpers do, in
-        // their own test binary). The run report is the only diagnosis a red
-        // gate leaves behind — a 2026-09-05 red printed the summary and the
-        // ledger table but no case list at all — so it goes out on its own.
+        // Printed BEFORE the panic: a panic message travels through the
+        // process-global panic hook, which code in the process may replace, and
+        // the run report is the only diagnosis a red gate leaves behind.
         eprintln!("{msg}");
         panic!("{msg}");
     }
@@ -209,10 +206,10 @@ fn corpus_gate_all_cases_match_engines() {
     //
     // Counted at the gating call site — `corpus_gate/runner.rs`'s derived loop,
     // which records the arm `harness::compare_element_seq` hands it back — and
-    // never inside that comparator (coordinator decision D24, 2026-09-05), for
-    // the reason the r4133 props guard below counts at its call site rather than
-    // off the tables: other callers drive the comparator too, among them
-    // `harness::seq_floors`' 24 fixtures, six of them on the very arm counted.
+    // never inside that comparator (coordinator decision D24), for the reason
+    // the r4133 props guard below counts at its call site rather than off the
+    // tables: other callers drive the comparator too, the `harness::seq_floors`
+    // fixtures among them, and a census inside it would count them all.
     harness::assert_seq_arm_population();
     // And for G2.4's monitor-channel normalization, which needs it for the
     // opposite reason: since both lanes' engines now report the empty channel, a

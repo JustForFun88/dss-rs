@@ -1380,21 +1380,7 @@ fn compare_one(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::tol_for;
-
-    /// Run `f` and return the panic message (each harness test module keeps its
-    /// own private extractor, which a shared helper could replace).
-    fn panic_message(f: impl FnOnce()) -> String {
-        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .expect_err("the arm must panic");
-        if let Some(m) = payload.downcast_ref::<&str>() {
-            (*m).to_string()
-        } else if let Some(m) = payload.downcast_ref::<String>() {
-            m.clone()
-        } else {
-            "<non-string panic payload>".to_string()
-        }
-    }
+    use crate::harness::{panic_message, tol_for};
 
     fn file(name: &str, oracle: &str, port: &str) -> MatchedRunFile {
         MatchedRunFile {

@@ -4,8 +4,9 @@
 //! same dss_capi engine the Pascal source in `.inputs` builds) and committed
 //! under `tests/golden/` at the repository root. See PORTING_PLAN.md §4.
 //!
-//! Dead-code analysis is off module-wide: private items only the self-tests
-//! use are dead in the non-test build, and some schema fields are never read.
+//! Dead-code analysis is off module-wide: it covers the private items that are
+//! dead only in the non-test build (only the self-tests read them) and the two
+//! never-read schema fields of `regen.rs`.
 //!
 //! **Stage F (`DE_PASCALIZE_PLAN.md` Part IV.2):** the suite runs in two lanes.
 //! Everything lane-dependent lives in [`lane`] — the drift-model table turned
@@ -41,11 +42,6 @@ pub mod regen;
 /// WP-G3 call sites use: `harness::regen()` / `harness::snapshot_text()` /
 /// `harness::snapshot_bytes()`. The module keeps its own name (type namespace)
 /// alongside the function (value namespace).
-///
-/// `allow(unused_imports)` suppresses nothing: this re-export is reachable
-/// from the crate root, and the lint never reports an exported `use`, whether
-/// or not a driver calls these entry points.
-#[allow(unused_imports)]
 pub use regen::{regen, snapshot_bytes, snapshot_text};
 
 /// `GOLDEN_REBASE_PLAN.md` WP-G1 rails (G1.0): the "flag set but the oracle
@@ -98,6 +94,21 @@ pub mod export_policies;
 /// [`run_files`] is.
 #[cfg(windows)]
 pub mod run_file_contents;
+
+/// Run `f` and return its panic message, for the self-tests that prove a
+/// comparator arm fires.
+#[cfg(test)]
+pub(crate) fn panic_message(f: impl FnOnce()) -> String {
+    let payload =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).expect_err("the arm must panic");
+    if let Some(m) = payload.downcast_ref::<&str>() {
+        (*m).to_string()
+    } else if let Some(m) = payload.downcast_ref::<String>() {
+        m.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
+}
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -296,9 +307,8 @@ pub enum ValueVerdict {
     /// `|a − e| / |e|`, or `|a − e|` when `e == 0`. That is the census's
     /// `max_rel` column.
     ///
-    /// **Verification breadth** (re-measured 2026-08-22, RP0.2 audit — the
-    /// earlier "94 203 multi-number rows" reading of the census was wrong and is
-    /// retracted): the formula reproduces **all 95 317** `value_numeric` rows of
+    /// **Verification breadth** (RP0.2 audit): the formula reproduces **all
+    /// 95 317** `value_numeric` rows of
     /// the 2026-08-08 census, each at its own case's tier floor. But that is a
     /// far weaker cross-check than the row count suggests — 95 180 of those rows
     /// carry a SINGLE number, where "max over the offenders" and "max over all
@@ -405,7 +415,7 @@ pub fn assert_value_matches_tol(actual: &str, expected: &str, rel: f64, abs: f64
         } => {
             // `assert!(cond, "msg")` panics with exactly the formatted message
             // (no `assert_eq!`-style left/right preamble), so a plain `panic!`
-            // with the same string is byte-identical to the old failure text.
+            // with the same string is byte-identical to the `assert!` form.
             panic!(
                 "{ctx}: number {i} differs: actual {a} vs expected {e} \
                  (from {actual:?} vs {expected:?})"
@@ -701,9 +711,7 @@ mod props_015x_tests {
     /// row's whole defence is that it is INERT wherever the oracle knows the
     /// name.
     ///
-    /// What this test discriminates (RP1.4 audit round — the original comment
-    /// claimed a failure mode it could not tell apart, and both auditors
-    /// mutation-proved it):
+    /// What this test discriminates (RP1.4 audit round, mutation-proved):
     ///  * a regression that turned the row into a **value mask** (a
     ///    [`SKIP_PROPS`]-shaped skip) — nothing else goes red for that, because a
     ///    value skip panics nowhere;
@@ -714,8 +722,7 @@ mod props_015x_tests {
     ///    caught loudly, and first, by
     ///    [`allowlisted_present_in_oracle_value_mismatch_panics`] on the
     ///    synthetic table: it fails on the count assert, never silently;
-    ///  * deletion of the row itself (the `prop_015x` assert below) — today the
-    ///    only exerciser of the row, the RP2.1 replay being unlanded.
+    ///  * deletion of the row itself (the `prop_015x` assert below).
     #[test]
     fn shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it() {
         use super::{PROPS_015X, prop_015x};
@@ -1833,7 +1840,7 @@ impl ElemChannels {
     /// `Get_Powers`/`Get_Losses`/`GetPhaseLosses` take — so it is dropped for
     /// the same `POWERS_REUSE_STALE_NEWTON_ITERMINAL` teardown row, in **both**
     /// lanes, and measured first — by the **live gate**, on **both** channels,
-    /// with this bit forced ON (G1.3c F5, 2026-09-06; step 0,
+    /// with this bit forced ON (G1.3c F5; step 0,
     /// `Vsource.source` terminal 0): `modes/newton/newton.dss` port
     /// `(-1339.5781272745278, -548.8069881927757)` kW/kvar vs capi
     /// `(-1339.5777198832018, -548.8067934353601)`, |d|
@@ -1937,8 +1944,8 @@ pub fn compare_element_channels(
     // Captured by the live gate only; old checkpoint goldens leave it empty.
     // The allowed error is the exact accumulation of the per-conductor power
     // tolerance: losses = Σ_k S_k, so |δ(losses)| ≤ Σ_k (abs·|V_k| + rel·|S_k|)
-    // — no new tolerance class, just the conductor policy summed. Since
-    // GOLDEN_REBASE G1.9 that sum lives in
+    // — no new tolerance class, just the conductor policy summed. That sum
+    // lives in
     // `aggregates::element_loss_allowance_kw`, so the circuit-aggregate
     // comparator propagates the identical envelope instead of a second one.
     if channels.losses && exp.loss_w.len() == 2 {
@@ -1951,7 +1958,7 @@ pub fn compare_element_channels(
         // per-conductor powers (`losses = Σ_k S_k`, W) before we trust it as a
         // cross-engine reference. capi015 (dss_capi 0.15.x) has a stale-cache
         // quirk here: in a multi-step *daily* run `CktElement.Losses` freezes at
-        // the step-0 value while `Powers` scales correctly (probed 2026-07-12 on a
+        // the step-0 value while `Powers` scales correctly (probed on a
         // plain grid-connected daily Load AND the islanded GFM decks — general,
         // unrelated to GFM/B5; DIVERGENCES.md §capi015-daily-losses). Rust — like
         // 0.14.5 and EPRI r4133 — recomputes losses fresh, so comparing the two is
@@ -2766,8 +2773,8 @@ mod derived_polar_floors {
 ///   (`:442-449`), whose `MeterObj.Name` read is itself guarded by
 ///   `HasEnergyMeter` at `:444`.
 ///
-/// **Each channel's own sentinel, not both** (G1.3d(i) audit settlement,
-/// 2026-09-05). Folding `'0'` on the capi channel too would have been free
+/// **Each channel's own sentinel, not both** (G1.3d(i) audit settlement).
+/// Folding `'0'` on the capi channel too would be free
 /// blindness: capi never spells "no meter" that way, so there `0` is a name
 /// like any other and a port that lost a meter named `0` reds
 /// (`a_meter_named_zero_reds_instead_of_passing`). Symmetrically, an empty
@@ -3070,7 +3077,7 @@ pub fn compare_element_extras(
 }
 
 // ---------------------------------------------------------------------------
-// The multi-control census (G1.3d(ii) audit settlement, 2026-09-05)
+// The multi-control census (G1.3d(ii) audit settlement)
 // ---------------------------------------------------------------------------
 
 /// Oracle `NumControls` values the **gating** extras compare has seen…
@@ -3086,7 +3093,7 @@ static CONTROL_CENSUS_MULTI: std::sync::atomic::AtomicUsize =
 static CONTROL_CENSUS_MULTI_OCP: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-/// The measured `(multi, multi_ocp)` population, 2026-09-05 — see
+/// The measured `(multi, multi_ocp)` population — see
 /// [`assert_no_multi_control_element`] for the two deck families behind it and
 /// why every one of those lists is Relay-only. Fail-on-stale in both directions.
 const CONTROL_CENSUS_MULTI_MEASURED: (usize, usize) = (18, 18);
@@ -3181,7 +3188,7 @@ pub fn assert_no_multi_control_element() {
 /// [`assert_no_multi_control_element`]); `seen`/`controlled` are floors, loose on
 /// purpose (another lane may add or retire a deck) but non-vacuous: a census that
 /// stopped counting — the extras request re-masked, the recording call dropped —
-/// fails here instead of greening. Measured 2026-09-05 over the full gated
+/// fails here instead of greening. Measured over the full gated
 /// population: 298 565 / 3 184 / 18 / 18.
 fn check_control_census(seen: usize, controlled: usize, multi: usize, multi_ocp: usize) {
     assert_eq!(
@@ -3201,7 +3208,7 @@ fn check_control_census(seen: usize, controlled: usize, multi: usize, multi_ocp:
     assert!(
         seen > 0 && controlled >= 1_000,
         "the control census looks broken: {seen} element row(s), {controlled} with \
-         a control (measured 2026-09-05 over the full gated population: \
+         a control (measured over the full gated population: \
          298 565 / 3 184). A zero `seen` means the gating extras compare never ran \
          at all."
     );
@@ -3340,7 +3347,7 @@ pub fn total_power_band(
 /// conductors. No tolerance is calibrated here.
 ///
 /// **The `phase_losses` ledger sub-channel exists because the live drive
-/// measured it** (G1.3d(ii) F4, 2026-09-05), not on speculation: the unfiltered
+/// measured it** (G1.3d(ii) F4), not on speculation: the unfiltered
 /// 523-case gate reported eight (case, channel) pairs failing here, every one of
 /// them on a deck that already carries an `element` scope selecting
 /// `powers`/`losses` for the same cause. `corpus_gate/ledger.rs` therefore
@@ -4026,7 +4033,7 @@ mod element_extras_pins {
         use PropsChannel::{CapiV0145 as CAPI, R4133 as R4};
         assert_eq!(oracle_meter_name("", CAPI), None);
         assert_eq!(oracle_meter_name("0", R4), None);
-        // Each channel folds its OWN spelling only (audit settlement 2026-09-05):
+        // Each channel folds its OWN spelling only:
         // capi never says `'0'`, so there it is a name; r4133 never says `''`, so
         // there an empty answer is unexpected and reds instead of being absorbed.
         assert_eq!(oracle_meter_name("0", CAPI), Some("0"));
@@ -4060,7 +4067,7 @@ mod element_extras_pins {
     }
 
     /// …and the **other** direction of that same collision, asserted rather than
-    /// assumed (G1.3d(i) audit settlement, 2026-09-05): a port that *lost* a
+    /// assumed (G1.3d(i) audit settlement): a port that *lost* a
     /// meter named `0` compares `None == None` on r4133 and **passes**. The fold
     /// is therefore not self-detecting, and the corpus census — not the fold —
     /// is what keeps the case unreachable. On **capi** the same pair reds,
@@ -4448,9 +4455,9 @@ mod element_extras_pins {
 /// probe.** r4133 does not *write down* its `Ap2s`; it computes it by running
 /// `TcMatrix.Invert` on the truncated `A`, so the constant depends on the
 /// inversion's own rounding. `SymComp::official()` is the port of that routine
-/// on that input, which is exactly why the variant is kept — the offline probe
-/// that seeded this sub-step used `numpy.linalg.inv` instead and landed on
-/// `5.229591207093893e-10`, a **different algorithm's** rounding of the same
+/// on that input, which is exactly why the variant is kept — `numpy.linalg.inv`
+/// gives `5.229591207093893e-10` instead, a **different algorithm's**
+/// rounding of the same
 /// inverse (`1.1e-16` absolute, `2.1e-7` relative away). The two are
 /// indistinguishable in the live measurement, whose worst gap sits at `0.857`
 /// … `0.866 ×` this term, so nothing rides on the choice — but the in-tree
@@ -4522,7 +4529,7 @@ pub fn seq_band(phase_mags: &[f64], rel: f64, abs: f64, c012: f64) -> f64 {
 /// whose `element` scope rewrites a polar sub-channel the base is therefore the
 /// port's magnitude there, the property those two bands already have; the
 /// rewritten divergences are ULP-scale, so the band moves in its last digits
-/// (G1.3b audit settlement, 2026-09-05).
+/// (G1.3b audit settlement).
 pub fn seq_power_band(bv: f64, bi: f64, v012: f64, i012: f64) -> f64 {
     SEQ_KVA_SCALE * (bv * (i012.abs() + bi) + v012.abs() * bi)
 }
@@ -4671,9 +4678,9 @@ fn no_total_power_payload(kw: &[f64], kvar: &[f64]) -> bool {
     (kw.is_empty() && kvar.is_empty()) || (kw == [0.0] && kvar == [0.0])
 }
 
-/// The sequence-arm census as measured over the whole gated population on
-/// 2026-09-05, in both lanes: `(element rows, 1-phase-posseq rows on
-/// capi_v0145, 1-phase-posseq rows on r4133)`.
+/// The sequence-arm census as measured over the whole gated population, in
+/// both lanes: `(element rows, 1-phase-posseq rows on capi_v0145,
+/// 1-phase-posseq rows on r4133)`.
 ///
 /// Only the last number is *pinned*: it is the load-bearing one (see
 /// [`check_seq_arm_population`]). The other two are railed by
@@ -4681,14 +4688,10 @@ fn no_total_power_payload(kw: &[f64], kvar: &[f64]) -> bool {
 /// legitimately retire or re-gate a deck, so a census that moved by a deck must
 /// not red the gate, while a census that collapsed must.
 ///
-/// **The r4133 count was `0` until G1.3b landed on `update`** (coordinator
-/// decision **D31**, 2026-09-05). The landing brought the sub-step's sequence
-/// surface together with D12/D14's new r4133-gated deck
+/// **The r4133 count is the four elements of one deck**,
 /// `modes/makeposseq/makeposseq_gic.dss`, whose `solve -> makeposseq -> solve`
 /// tail puts all four of its elements on the 1-phase positive-sequence arm of
-/// the `r4133` channel - the first and only corpus case that does. The count
-/// was re-derived from the merged tree's own full default-lane run, exactly as
-/// the guard below demanded before it could move, and the deck carries the
+/// the `r4133` channel - the only corpus case that does. The deck carries the
 /// ledger entry `r4133-posseq-seqpowers-slot-gic` (scope `element` /
 /// `seq_powers`) plus the both-numbers pin
 /// `the_gic_posseq_deck_keeps_every_terminal_power_in_its_positive_slot`.
@@ -4696,19 +4699,14 @@ const SEQ_ARM_CENSUS_MEASURED: (usize, usize, usize) = (297_867, 78, 4);
 
 /// The floors under the two measured counts of [`SEQ_ARM_CENSUS_MEASURED`].
 ///
-/// `seen` (measured 297 867 on the merged `update` tree - 297 896 on lane
-/// `lane-e`, the two populations differing by the lanes' own micro decks)
-/// catches a compare that stopped running or a mass un-gating of
-/// `compare_derived`; `posseq_capi` (measured 78, contributed by the six
-/// `modes/makeposseq/*` decks - 79 on `lane-e`, one row fewer here because D14
-/// moved `makeposseq_shunt.dss`'s `GICTransformer` to the r4133-gated
-/// `makeposseq_gic.dss`) catches the collapse D-b1's ledgering rests on - the
-/// correct 1-phase-posseq layout is oracle-gated on that channel alone, so if
-/// all but one of those decks stopped gating the arm the claim would be carried
-/// by the in-engine pin only. Both floors sit well
-/// under the measurement (about 2/3 and 3/4 of it) so that D14's split of
-/// `makeposseq_shunt`, D12's four GICTransformer re-gatings or one retired deck
-/// pass; they are re-derived - never lowered - when a population change is
+/// `seen` catches a compare that stopped running or a mass un-gating of
+/// `compare_derived`; `posseq_capi` (contributed by the six
+/// `modes/makeposseq/*` decks) catches the collapse D-b1's ledgering rests on -
+/// the correct 1-phase-posseq layout is oracle-gated on that channel alone, so
+/// if all but one of those decks stopped gating the arm the claim would be
+/// carried by the in-engine pin only. Both floors sit well under the
+/// measurement (about 2/3 and 3/4 of it) so that a re-gated or retired deck
+/// passes; they are re-derived - never lowered - when a population change is
 /// deliberate.
 const SEQ_ARM_CENSUS_FLOORS: (usize, usize) = (200_000, 60);
 
@@ -4732,13 +4730,10 @@ static SEQ_ARM_POSSEQ_R4133: std::sync::atomic::AtomicUsize =
 /// The single caller is the corpus gate's derived loop
 /// (`corpus_gate/runner.rs`, the `c.compare_derived` block), which records the
 /// arm [`compare_element_seq`] hands back; the comparator itself records
-/// nothing (coordinator decision **D24**, 2026-09-05). That is what keeps the
-/// census the *gating* population whoever else calls the comparator:
-/// `seq_floors` calls it at 24 fixture sites — six of them deliberately on the
-/// 1-phase positive-sequence arm, four of those with [`PropsChannel::R4133`] —
-/// and those run in this crate's own lib test binary, apart from the gate, so
-/// the statics count the runner's calls alone by construction, not because no
-/// other caller happens to share the gate's process. Pinned by
+/// nothing (coordinator decision **D24**). That is what keeps the census the
+/// *gating* population whoever else calls the comparator: the `seq_floors`
+/// fixtures call it too, some of them on the 1-phase positive-sequence arm with
+/// [`PropsChannel::R4133`], and move no counter. Pinned by
 /// `seq_floors::a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census`.
 pub fn record_seq_arm(arm: SeqArm, channel: PropsChannel) {
     use std::sync::atomic::Ordering::Relaxed;
@@ -4774,10 +4769,9 @@ pub fn seq_arm_counters() -> (usize, usize, usize) {
 /// (`CAPI/CAPI_Alt.pas:555`, `:562`) is right. The port emits capi's layout
 /// because it is the correct one, and the gated corpus reaches that arm on the
 /// **r4133** channel through exactly one deck —
-/// `modes/makeposseq/makeposseq_gic.dss`, which D12/D14 moved to that channel and
+/// `modes/makeposseq/makeposseq_gic.dss`, which is gated on that channel and
 /// whose `solve → makeposseq → solve` tail leaves all four of its elements
-/// 1-phase (coordinator decision **D31**, 2026-09-05, taken at G1.3b's landing on
-/// `update`; neither side of that merge carried the interaction alone). Those four
+/// 1-phase. Those four
 /// rows are the ledger entry `r4133-posseq-seqpowers-slot-gic`, scoped
 /// `element`/`seq_powers` and nothing else because `SeqCurrents`/`SeqVoltages` are
 /// right on r4133 and stay compared, with the both-numbers pin
@@ -4789,7 +4783,7 @@ pub fn seq_arm_counters() -> (usize, usize, usize) {
 ///
 /// That population fact is load-bearing, so it is re-derived on every full run
 /// instead of stated in prose (the D15/D16 precedent, and
-/// [`assert_no_multi_control_element`] one sub-step earlier): the moment ANOTHER
+/// [`assert_no_multi_control_element`]): the moment ANOTHER
 /// case brings the arm onto the r4133 channel — or that one deck stops gating it
 /// — this fails and says so, instead of the case quietly reddening on a slot
 /// mismatch.
@@ -4814,11 +4808,11 @@ pub fn assert_seq_arm_population() {
 /// gate has moved them, so both directions are pinned offline
 /// (`seq_floors::the_seq_arm_population_*`).
 ///
-/// **What is pinned and what is railed** (G1.3b audit settlement, 2026-09-05,
-/// the [`check_control_census`] shape): the r4133 count is pinned *exactly* at
+/// **What is pinned and what is railed** (the [`check_control_census`] shape):
+/// the r4133 count is pinned *exactly* at
 /// [`SEQ_ARM_CENSUS_MEASURED`]`.2` — it is the one number that would hide a
-/// wrong comparison, and it moves only with a ledger entry and a pin beside it
-/// (D31 moved it `0 → 4`). The other two are the measured population under the
+/// wrong comparison, and it moves only with a ledger entry and a pin beside
+/// it. The other two are the measured population under the
 /// documented [`SEQ_ARM_CENSUS_FLOORS`], not literals: a lane that retires or
 /// re-gates a deck moves them by design, while the two failures this guard
 /// exists for — the compare not running at all, and the capi-side gating of the
@@ -4829,10 +4823,9 @@ fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize
     assert_eq!(
         posseq_r4133, want_r4133,
         "the 1-phase positive-sequence arm reached the r4133 channel on \
-         {posseq_r4133} element row(s), where GOLDEN_REBASE_PLAN.md G1.3b and \
-         coordinator decision D31 measured {want_r4133} - the four elements of \
-         `modes/makeposseq/makeposseq_gic.dss`, the one deck D12/D14 gated on \
-         r4133 whose `makeposseq` leaves every element 1-phase, carried by the \
+         {posseq_r4133} element row(s), where the measured census is {want_r4133} - \
+         the four elements of `modes/makeposseq/makeposseq_gic.dss`, the one \
+         r4133-gated deck whose `makeposseq` leaves every element 1-phase, carried by the \
          ledger entry `r4133-posseq-seqpowers-slot-gic` and the pin \
          `the_gic_posseq_deck_keeps_every_terminal_power_in_its_positive_slot`. \
          r4133 `DDLL/DCktElement.pas:760`/`:768` writes that arm's SeqPowers into \
@@ -4846,8 +4839,8 @@ fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize
     assert!(
         seen >= floor_seen,
         "the sequence-arm census counted {seen} element row(s), under the floor \
-         {floor_seen} ({want_seen} measured 2026-09-05 over the full gated \
-         population). Zero means the gating sequence compare never ran at all; a \
+         {floor_seen} ({want_seen} measured over the full gated population). \
+         Zero means the gating sequence compare never ran at all; a \
          large shrink means `compare_derived` was un-gated over much of the \
          corpus - re-derive the population before this floor moves."
     );
@@ -4855,8 +4848,8 @@ fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize
         posseq_capi >= floor_capi,
         "only {posseq_capi} gated element row(s) took the 1-phase \
          positive-sequence arm on the capi_v0145 channel, under the floor \
-         {floor_capi} ({want_capi} measured 2026-09-05, out of {seen} classified \
-         rows). That arm's correct layout is oracle-gated ONLY there - the six \
+         {floor_capi} ({want_capi} measured, out of {seen} classified rows). \
+         That arm's correct layout is oracle-gated ONLY there - the six \
          `modes/makeposseq/*` decks - so a collapse here leaves D-b1 gated by \
          nothing but its in-engine pin \
          `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`. \
@@ -4917,9 +4910,9 @@ fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize
 /// the rows the D-b1 population guard counts (enabled, at least one terminal,
 /// shapes agreed), `None` on the two structural early returns. The corpus gate's
 /// runner feeds that straight into [`record_seq_arm`]; **this comparator records
-/// nothing** (coordinator decision **D24**, 2026-09-05, the
-/// [`record_control_census`] precedent), so the 24 `seq_floors` fixture calls,
-/// or any other caller's, cannot move the shipped counters. There is one
+/// nothing** (coordinator decision **D24**, the [`record_control_census`]
+/// precedent), so no `seq_floors` fixture call, nor any other caller's, can
+/// move the shipped counters. There is one
 /// classification and not two: the arm is `snap.seq_arm`, read once here and
 /// handed out.
 pub fn compare_element_seq(
@@ -6619,8 +6612,7 @@ mod seq_floors {
     }
 
     /// The D-b1 population guard, every direction, over **injected** counters —
-    /// driven at the census actually measured on 2026-09-05
-    /// ([`super::SEQ_ARM_CENSUS_MEASURED`]).
+    /// driven at the measured census ([`super::SEQ_ARM_CENSUS_MEASURED`]).
     #[test]
     fn the_seq_arm_population_holds_at_the_measured_census() {
         let (seen, capi, r4133) = super::SEQ_ARM_CENSUS_MEASURED;
@@ -6654,10 +6646,10 @@ mod seq_floors {
         check_seq_arm_population(seen, 0, r4133);
     }
 
-    /// The shrink the old `> 0` rail could not see (G1.3b audit settlement):
-    /// five of the six `modes/makeposseq/*` decks moving off `capi_v0145` would
-    /// leave one deck's worth of rows and D-b1 gated by its in-engine pin
-    /// alone. That is a failure now, not a green.
+    /// A shrink that a `> 0` rail cannot see (G1.3b audit settlement): five of
+    /// the six `modes/makeposseq/*` decks moving off `capi_v0145` would leave
+    /// one deck's worth of rows and D-b1 gated by its in-engine pin alone, and
+    /// the capi floor reds on it.
     #[test]
     #[should_panic(expected = "only 13 gated element row(s) took")]
     fn the_seq_arm_population_fires_when_the_capi_arm_collapses() {
@@ -6672,31 +6664,16 @@ mod seq_floors {
         check_seq_arm_population(0, capi, r4133);
     }
 
-    /// **The D24 immunity rail** (coordinator decision, 2026-09-05): a fixture
-    /// call to the comparator must leave the shipped census alone, so that the
-    /// numbers `assert_seq_arm_population` judges are the *gating* population
-    /// and nothing else. The rail is this module itself — the calls below are the
-    /// 1φ-positive-sequence arm on `PropsChannel::R4133`, i.e. exactly the shape
-    /// whose four fixture rows made the epilogue guard read
-    /// `(297 915, 81, 4)` and fail under `cargo test --workspace` while the same
-    /// tree passed a one-test run at `(297 896, 79, 0)`. The comparator now only
-    /// *returns* the arm; [`super::record_seq_arm`] is the runner's call.
-    ///
-    /// **Why a bounded delta and not `== 0`** (coordinator decision **D31**,
-    /// 2026-09-05): the gating population contributes
-    /// [`super::SEQ_ARM_CENSUS_MEASURED`]`.2` rows to `SEQ_ARM_POSSEQ_R4133`
-    /// (`modes/makeposseq/makeposseq_gic.dss`), and the rail is written to hold
-    /// even in a process that also runs the gate. This test runs in the harness's
-    /// own lib test binary, which links no gate, and asserts the bound all the
-    /// same: the gate's total contribution over the whole run is that constant, so
-    /// driving the comparator strictly more than that many times and requiring the
-    /// counter to move by at most that much fails the instant the comparator
-    /// records even once — deterministically, whatever the interleaving.
+    /// **The D24 immunity rail:** a fixture call to the comparator leaves the
+    /// shipped census alone. The calls below take the 1φ-positive-sequence arm
+    /// on `PropsChannel::R4133`, the one count the census pins exactly; the
+    /// comparator only *returns* the arm, and [`super::record_seq_arm`] is the
+    /// call of the corpus gate's runner, which runs in another binary, so none
+    /// of the three counters may move.
     #[test]
     fn a_fixture_call_on_the_r4133_posseq_arm_does_not_move_the_census() {
-        let gate_max = super::SEQ_ARM_CENSUS_MEASURED.2;
-        let calls = gate_max + 4;
-        let before = seq_arm_counters().2;
+        let calls = 4;
+        let before = seq_arm_counters();
         for _ in 0..calls {
             let (snaps, cap) = posseq_pair();
             let arm = compare_element_seq(
@@ -6714,15 +6691,14 @@ mod seq_floors {
                  census has no other source"
             );
         }
-        let moved = seq_arm_counters().2 - before;
-        assert!(
-            moved <= gate_max,
+        let after = seq_arm_counters();
+        assert_eq!(
+            after, before,
             "{calls} fixture calls to `compare_element_seq` moved the shipped \
-             sequence-arm census by {moved} row(s), where the corpus gate itself can \
-             contribute at most {gate_max} over the whole run. The census must be \
-             recorded by the corpus gate's runner only (coordinator decision D24): a \
-             comparator-side census counts these fixtures too, and the epilogue guard \
-             then judges the gating population plus whatever this module ran."
+             sequence-arm census from {before:?} to {after:?}. The census is recorded by \
+             the corpus gate's runner only (coordinator decision D24): a comparator-side \
+             census would count every caller of the comparator in its process, and the \
+             rule keeps the census the runner's."
         );
     }
 }
@@ -7086,8 +7062,8 @@ mod cplx_seq_and_total_power_floors {
     // Fixture 10 — the one-copy band walk
     // ---------------------------------------------------------------------
 
-    /// A literal transcription of the per-terminal walk `compare_element_seq`
-    /// and the ledger's `envelope_element` each ran inline before G1.3c: the
+    /// A literal, independent transcription of the per-terminal walk that
+    /// `compare_element_seq` and the ledger's `envelope_element` share: the
     /// `(channel, arm)` `c012` key, the `taken = 3 | 1` conductor slice and the
     /// `chunks(nconds)` zip over the oracle's polar magnitudes.
     fn inline_copy(
@@ -7779,8 +7755,8 @@ pub struct PropsCap {
 /// is skipped). Populated only after the Phase-A pilot triage proves a prop
 /// non-comparable (path echo / RNG / oracle UB); empty until then.
 ///
-/// **Known structural gap — no liveness guard** (recorded by the RP3.8 audit
-/// settlement, 2026-09-02; pre-dates it). `skip_props_disposition_tests`
+/// **Known structural gap — no liveness guard** (RP3.8 audit settlement).
+/// `skip_props_disposition_tests`
 /// enforces that every row is *decided* and that the two channel lists partition
 /// it, but nothing checks that a row still masks a real cell. A row that has become dead
 /// is accepted silently — and for the (g) rows that matters in a specific way:
@@ -7828,7 +7804,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     `'(0 |0 0 |0 0 0 )'` against r4133 `''` — the echo, exactly as read
     //     off the Pascal.
     //
-    //     RP2.3 DID NOT re-file them (2026-08-23, part A finding F7): while the
+    //     No echo row re-files them (RP2.3 part A finding F7): while the
     //     skip stands, an echo row here would exempt nothing on either side —
     //     see the identical disposition at the `FaultRate` rows of note (d)
     //     below for the full argument and the RP4.1-or-later schedule.
@@ -7856,13 +7832,13 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     sub-step). Unmasking it here would put 386 unowned cells into RP4.1's
     //     residual.
     //
-    //     **RP2.2 TRIAGE (2026-08-23): the row stays exactly as it is, and no
+    //     **RP2.2 TRIAGE: the row stays exactly as it is, and no
     //     RP3.5+ sub-step opens for it.** Reading the getter settles the
     //     question: `Fault.pas:695-718` emits `'('`, fills the lower triangle
     //     only `If Assigned(Gmatrix)` (`:703`) and closes with `')'`, and an
     //     `r=`-specified fault never allocates `Gmatrix` at all. The proof of
     //     that last step is the pointer's life cycle, not the field comment
-    //     (`:76-77`) the first draft of this paragraph cited: `Create` sets
+    //     (`:76-77`): `Create` sets
     //     `Gmatrix := nil` (`:411`) and the ONLY two writers are `DoGmatrix`
     //     (`:196-209`, reached from Edit arm 6 at `:286`) and `MakeLike`
     //     (`:364-367`, which itself re-nils when the source has none). So both
@@ -7877,12 +7853,11 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     stay value-skipped on both channels under this very row and RP4.1 owes
     //     no ledger entry for them.
     //
-    //     **What that skip still owes, and now has (RP2.2 audit settlement,
-    //     2026-08-23).** `both_channel_rows_stay_skipped_everywhere` only
-    //     asserts the skip is still configured; it says nothing about what the
-    //     two sides render, so the triage's factual claim was unpinned — while
-    //     its sibling in the same family, `generator.dynout`, is routed to RP2.3
-    //     as a *tagged* exclusion PLUS an expected-value pin. CLAUDE.md's rule
+    //     **What that skip owes (RP2.2 audit settlement).**
+    //     `both_channel_rows_stay_skipped_everywhere` only asserts the skip is
+    //     configured; it says nothing about what the two sides render — while
+    //     its sibling in the same family, `generator.dynout`, is a *tagged*
+    //     exclusion (RP2.3) PLUS an expected-value pin. CLAUDE.md's rule
     //     is that a deliberate divergence is excluded field-by-field AND pinned
     //     by its own expected-value test, so the port's half is pinned by
     //     `fault_gmatrix_renders_a_materialised_zero_matrix_when_unset` below —
@@ -7945,21 +7920,18 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //        ([`SKIP_PROPS_BOTH_CHANNELS`]) and hand the echo case to RP2.3,
     //        rather than putting 1 729 unowned cells into RP4.1's residual.
     //
-    //     RP2.3 AS EXECUTED (2026-08-23, part A finding F7): **no row landed**,
-    //     and the deferral moves to RP4.1-or-later. Landing one now would be
-    //     dead at both ends — the two rows stay in
+    //     **No echo row covers the pair** (RP2.3 part A finding F7; deferred to
+    //     RP4.1-or-later): one would be dead at both ends — the two rows stay in
     //     [`SKIP_PROPS_BOTH_CHANNELS`], so the r4133 compare never reaches the
     //     pair (no live hit, and `props_norm::assert_echo_rows_are_live` would
     //     have to exempt it) and the frozen extracts hold no example row for it,
     //     which `props_r4133_replay::every_echo_row_claims_at_least_one_example
-    //     _row` reports as a table row exempting nothing. The measurement above
-    //     stands and is what a later sub-step re-uses: unmasking these two rows
-    //     for r4133 is an RP4.1-or-later decision that lands the unmask, the
-    //     `EchoDefault` row and its pin **in one commit**, so neither half is
-    //     ever dead. §1.1(e) staging is why RP2.3 did not move the mask itself.
-    //     The three `Capacitor.CMatrix`/`Reactor.RMatrix`/`Reactor.XMatrix` rows
-    //     above, whose (a) comment offers RP2.3 the same re-file, are deferred
-    //     on the same reasoning and the same schedule.
+    //     _row` reports as a table row exempting nothing. Unmasking these two
+    //     rows for r4133 lands the unmask, the `EchoDefault` row and its pin
+    //     **in one commit**, so neither half is ever dead; §1.1(e) staging keeps
+    //     the mask until then. The three `Capacitor.CMatrix`/`Reactor.RMatrix`/
+    //     `Reactor.XMatrix` rows above are deferred on the same reasoning and the
+    //     same schedule.
     ("Capacitor", "FaultRate"),
     ("Capacitor", "pctperm"),
     ("Reactor", "FaultRate"),
@@ -8017,7 +7989,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     ("Fuse", "FuseCurve"),
     ("Fuse", "RatedCurrent"),
     // (g) THE FIVE `SilentReadOnly` READ-ONLY RESULTS r4133 RENDERS **LIVE**
-    //     (`R4133_PROPS_PLAN.md` §RP3.8, landed 2026-09-02). Neither UB nor a
+    //     (`R4133_PROPS_PLAN.md` §RP3.8). Neither UB nor a
     //     changed default: the pinned 0.14.5 oracle renders `''` where BOTH
     //     r4133 and this engine render a live computed number, so every cell is
     //     a `value_structure` difference (a number vs `''`) that no value
@@ -8074,7 +8046,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
     //     ported from, so masking it there would mask the only channel that can
     //     witness it live — the same argument `tests/TOLERANCE_NOTES.md:2305-2310`
     //     makes for (e)'s `RevThreshold`. Measured with the §1.1(e) mask bypassed
-    //     (`DSS_PROPS_CENSUS=claims`, 2026-09-02, 27 cases covering every case
+    //     (`DSS_PROPS_CENSUS=claims`, 27 cases covering every case
     //     that holds either class): the five pairs together leave **105**
     //     divergent cells on the r4133 channel (89 in scope), of which **103**
     //     are claimed by RP2.4's display floor — the port renders
@@ -8130,7 +8102,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 ///    only channel that can witness the render the sub-step ported.
 ///
 /// **Every row here was measured, not assumed** (RP2.1 probe: a full
-/// `DSS_PROPS_CENSUS=1` walk, 2026-08-23, 439 cases × 2 channels, run with all
+/// `DSS_PROPS_CENSUS=1` walk, 439 cases × 2 channels, run with all
 /// twelve [`SKIP_PROPS`] rows unmasked on r4133 so the census could see what
 /// each one does there). Result on the r4133 channel: `Fuse.FuseCurve`,
 /// `Fuse.RatedCurrent`, `Capacitor.pctperm` and `Reactor.pctperm` produce **no
@@ -8139,7 +8111,7 @@ const SKIP_PROPS: &[(&str, &str)] = &[
 /// echo-table row and its pin, never a reason to mask the channel.
 ///
 /// **RP3.8's five (g) rows were measured the same way** and separately
-/// (`DSS_PROPS_CENSUS=claims` over the affected families, 2026-09-02, with the
+/// (`DSS_PROPS_CENSUS=claims` over the affected families, with the
 /// §1.1(e) property mask bypassed): on r4133 they leave only the display-class
 /// cells RP2.4's floor claims, plus the two `modes:makeposseq/
 /// makeposseq_ctrl.dss` cells of an upstream r4133 `MakePosSequence` bug on a
@@ -8184,9 +8156,9 @@ const SKIP_PROPS_CAPI_ONLY: &[(&str, &str)] = &[
 ///
 /// These cells are invisible in the vendored census (its walk ran with the skips
 /// active), so nothing here is validated by the RP2.1 replay; the echo-shaped
-/// ones are candidates for `PROPS_ECHO_R4133`, and `Fault.GMatrix` — the one
-/// row RP2.1 handed to RP2.2's triage — was **settled there** (2026-08-23):
-/// both renders denote "no G matrix specified", so the row stays on both
+/// ones are candidates for `PROPS_ECHO_R4133`, and `Fault.GMatrix` is
+/// **settled** by RP2.2's triage: both renders denote "no G matrix specified",
+/// so the row stays on both
 /// channels, no RP3.5+ sub-step opens and RP4.1 owes it no ledger entry. The
 /// evidence and the argument are at the row itself, and the port's half of the
 /// claim is pinned by
@@ -8208,8 +8180,7 @@ const SKIP_PROPS_BOTH_CHANNELS: &[(&str, &str)] = &[
 /// inherited `ActiveCircuit.Fundamental` (Monitor.pas:472 == r4133:552; the
 /// value is what selects mode-4 flicker's lamp curve), and this engine inherits
 /// like every other element. Both gating oracles report the 60.0, so the
-/// exclusion applies in **both** lanes since GOLDEN_REBASE G2.2b (it was
-/// default-lane-only while the parity lane still reproduced the hard pin). The
+/// exclusion applies in **both** lanes. The
 /// property *name* and its index order are still checked in both lanes, and the
 /// value is pinned by its own expected-value test
 /// `exec::tests::base_frequency::monitor_basefreq_inherits_the_fundamental`,
@@ -8243,9 +8214,7 @@ const LANE_SKIP_PROPS: &[(&str, &str)] = &[("Monitor", "BaseFreq")];
 ///    splits it by [`SKIP_PROPS_CAPI_ONLY`] / [`SKIP_PROPS_BOTH_CHANNELS`].
 pub fn skip_prop(class: &str, prop: &str, channel: PropsChannel) -> bool {
     // LANE-EXCLUSION(monitor_base_frequency): both lanes inherit the circuit
-    // fundamental now, so both drop the value compare on `Monitor.BaseFreq`.
-    // Under the split this list was consulted in the default lane only, behind
-    // a lane read on this very line.
+    // fundamental, so both drop the value compare on `Monitor.BaseFreq`.
     let lane_skipped = LANE_SKIP_PROPS
         .iter()
         .any(|(c, p)| class.eq_ignore_ascii_case(c) && prop.eq_ignore_ascii_case(p));
@@ -8278,8 +8247,8 @@ mod skip_props_disposition_tests {
     /// Every [`SKIP_PROPS`] row is dispositioned for r4133 **exactly once**: the
     /// two lists partition the table. A row added without a disposition — or
     /// listed in both, or listed but deleted from `SKIP_PROPS` — fails here, so
-    /// a future skip cannot silently inherit "masked on r4133 too" (which after
-    /// RP4.1 would value-mask the r4133 channel by accident, plan §1.2).
+    /// a future skip cannot silently inherit "masked on r4133 too" (which
+    /// would value-mask the r4133 channel by accident, plan §1.2).
     #[test]
     fn every_skip_props_row_has_an_r4133_disposition() {
         let key = |(c, p): &(&str, &str)| (c.to_lowercase(), p.to_lowercase());
@@ -8379,7 +8348,7 @@ mod skip_props_disposition_tests {
     }
 
     /// **The expected-value pin the `Fault.GMatrix` both-channel skip owes**
-    /// (RP2.2 audit settlement, 2026-08-23; the row's comment carries the
+    /// (RP2.2 audit settlement; the row's comment carries the
     /// argument).
     ///
     /// The skip drops 386 cells from the value compare on BOTH channels on the
@@ -8697,10 +8666,10 @@ mod props_policy_tests {
 
     /// **What the capi channel's property compare actually costs** — the bound
     /// the display floor's justification rests on, measured instead of asserted
-    /// in prose (RP2.4 audit round, which caught "the capi property compare is
-    /// exact / at zero tolerance" in five places; it is not — `compare_prop_lists`
-    /// gets `tol.i_rel`/`tol.i_abs` from [`compare_all_properties`], and
-    /// `value_verdict` passes a number when `|a−e| <= abs + rel*|e|`).
+    /// in prose (RP2.4 audit round): the capi property compare is not exact —
+    /// `compare_prop_lists` gets `tol.i_rel`/`tol.i_abs` from
+    /// [`compare_all_properties`], and `value_verdict` passes a number when
+    /// `|a−e| <= abs + rel*|e|`.
     ///
     /// So the honest statement is a *tier* statement, and this test is what
     /// keeps it true: on the kinds that carry the corpus the capi floors are
@@ -8765,8 +8734,8 @@ mod props_policy_tests {
     /// The refusals are the load-bearing half. A floor is a tolerance, so what
     /// keeps it a *classification* is the list of shapes it declines: a gap
     /// above it at any magnitude, a 0-vs-nonzero pair, a differing non-numeric
-    /// skeleton (an enum, a boolean, an empty render), and — since the RP2.4
-    /// audit settlement — **any gap, however small, that is not our value
+    /// skeleton (an enum, a boolean, an empty render), and **any gap, however
+    /// small, that is not our value
     /// rounded to the digits r4133 printed**. That last clause is what covers
     /// an integer-spelled value differing by one (`'4'` vs `'3'`, but also
     /// `'5001'` vs `'5000'` at 2.0e-4, which the metric alone would fold) and
@@ -8829,8 +8798,8 @@ mod props_policy_tests {
     ///   The oracle spelling is deliberately still a render of ours, so this
     ///   corner is the METRIC clause alone;
     /// * r4133 + the same property 1.1e-5 apart but no `%.Ng` render of our
-    ///   value → **fails** — the MECHANISM clause alone, the corner the RP2.4
-    ///   audit settlement added;
+    ///   value → **fails** — the MECHANISM clause alone (RP2.4 audit
+    ///   settlement);
     /// * r4133 + the same property rendered non-numerically → **fails raw**;
     /// * r4133 + a neighbour property above the floor → **fails** (the floor is
     ///   not element-scoped either);
@@ -8921,13 +8890,8 @@ mod props_policy_tests {
     /// (`regcontrol.idleforward` is one of the five pure-echo bin-1 pairs;
     /// `regcontrol.band` takes no row at all). This test drives the REAL
     /// comparator, so a prop with a normalization row would move that row's
-    /// process-global visit counter without ever folding anything, and any
-    /// sibling test of this binary that reads that counter would then see a
-    /// visit it did not make. The gate's own liveness guard,
-    /// `assert_norm_rows_are_live()`, runs once at the end of the gate in the
-    /// corpus-gate binary, which links the harness without its tests.
-    /// The ECHO counters this test does move all end with `hits > 0`, which is
-    /// what their own guard asks.
+    /// process-global visit counter, and under `cargo test` a sibling test of
+    /// this binary that reads that counter would see a visit it did not make.
     ///
     /// [`compare_prop_lists`]: super::compare_prop_lists
     #[test]
@@ -8988,16 +8952,12 @@ mod props_policy_tests {
     /// `load.yearly` and `reactor.bus2` are two of the 20 MIXED pairs — each
     /// holds a `CaseFold` normalization row AND an echo row — which is what the
     /// two tests below need. The neighbour prop each list carries (`kW`, `kV`)
-    /// deliberately has NO row of either kind, so driving it moves no
-    /// process-global counter (a neighbour like `Daily`, which DOES have a
-    /// `CaseFold` row, would move one that no assertion of these tests
-    /// accounts for).
+    /// has NO row of either kind, so driving it moves no counter the tests'
+    /// exact-delta assertions read.
     ///
-    /// The two tests use **different** pairs on purpose, and each leaves every
-    /// row it touches with `hits > 0`: `cargo test` may run them concurrently
-    /// with each other and with the other counter-reading tests of this binary,
-    /// so a shared pair would make the exact-delta assertions order-dependent,
-    /// and `hits > 0` is the state the gate's liveness guard asks of a row.
+    /// The two tests use **different** pairs because `cargo test` runs the tests
+    /// of this binary concurrently in one process, where a shared pair would
+    /// make those exact deltas order-dependent.
     ///
     /// [`compare_prop_lists`]: super::compare_prop_lists
     fn run_props(
@@ -9045,16 +9005,15 @@ mod props_policy_tests {
     ///
     /// The observable is the mixed pair's own accounting: swapping the two lines
     /// in `compare_prop_lists` leaves `reactor.bus2`'s normalization counters
-    /// still, which after RP4.1 silently disarms `assert_norm_rows_are_live` for
-    /// all 20 mixed rows (it is silent when `visits == 0`). Before the RP2.3
-    /// audit settlement that swap left the entire suite green — the order was
-    /// pinned in the two offline copies of the chain and nowhere at the seam.
+    /// still, which silently disarms `assert_norm_rows_are_live` for all 20
+    /// mixed rows (it is silent when `visits == 0`), and the two offline copies
+    /// of the chain cannot see the swap.
     ///
-    /// **What RP4.1 P1's narrowing changed here.** `reactor.bus2` is one of the
-    /// 20 narrowed rows, so the echo seam now counts only the cells the row
-    /// covers: the foldable cell arrives at the exclusion already folded
-    /// (`b2.0` on both sides), which is not one of the row's measured spellings,
-    /// so it is no longer an echo visit. The swap is still caught, by the other
+    /// **What the narrowing means here.** `reactor.bus2` is one of the 20
+    /// narrowed rows, so the echo seam counts only the cells the row covers: the
+    /// foldable cell arrives at the exclusion already folded (`b2.0` on both
+    /// sides), which is not one of the row's measured spellings, so it is not an
+    /// echo visit. The swap is still caught, by the other
     /// half of the same accounting — under echo-first the row's own measured
     /// cell would be excluded before the typed rule ever saw it, and the
     /// normalization counters below would move by one instead of two.
@@ -9062,12 +9021,10 @@ mod props_policy_tests {
     /// The measured spelling is `rust 'b2.0'` vs `r4133 'b2.0.0.0'`
     /// (`tests/corpus/props_r4133/examples_full.txt:545`) — r4133 answers the
     /// padded `GetBus(2)` snapshot, the port the live terminal — and this test
-    /// drives it in that orientation since the narrowing made the orientation
-    /// load-bearing.
+    /// drives it in that orientation, which the narrowing makes load-bearing.
     ///
-    /// Counter hygiene: this test owns `reactor.bus2` (no other test drives it)
-    /// and leaves both of its rows with `hits > 0` — the foldable cell for the
-    /// norm row, the echo cell for the echo row.
+    /// Counter hygiene: this test owns `reactor.bus2` (no other test drives it),
+    /// so its exact deltas hold under `cargo test` too.
     #[test]
     fn the_normalization_seam_runs_before_the_exclusion_on_a_mixed_pair() {
         let run = |actual: &[(&str, &str)], oracle: &[(&str, &str)]| {
@@ -9087,11 +9044,11 @@ mod props_policy_tests {
             super::props_norm::norm_counters("reactor", "bus2"),
             Some((norm_before.0 + 1, norm_before.1 + 1)),
             "the normalization seam must see and fold the mixed pair's foldable cell BEFORE the \
-             echo row is consulted — that hit is what keeps the row provably live after RP4.1"
+             echo row is consulted — that hit is what keeps the row provably live"
         );
         // The echo row saw the same cell — already folded to `b2.0` on both
-        // sides — and since RP4.1 P1 that is not one of its measured spellings,
-        // so it is neither a visit nor a hit.
+        // sides — and that is not one of its measured spellings, so it is
+        // neither a visit nor a hit.
         assert_eq!(
             super::props_norm::echo_counters("reactor", "bus2"),
             Some(echo_before)
@@ -9114,36 +9071,30 @@ mod props_policy_tests {
         );
     }
 
-    /// **A mixed pair's exclusion covers only the spellings it measured** — the
-    /// replacement RP2.3's audit settlement (2026-08-23) asked for and RP4.1's
-    /// precondition 1 landed (2026-09-03).
+    /// **A mixed pair's exclusion covers only the spellings it measured.**
     ///
     /// `load.yearly`'s `CaseFold` row cannot fold `'day'` against `'night'` —
     /// that is a genuine divergence, the kind the row exists to keep comparable.
-    /// Until the narrowing the pair-scoped echo row masked it on r4133 all the
-    /// same, because the exclusion was asked about the PAIR, and the capi
-    /// channel was the whole of the port's live protection on those 20 pairs.
-    /// Now `props_norm::ECHO_NARROWED` holds the row to the 23 spellings the
-    /// census credits to it (`examples_full.txt:267-306`, all of the form
-    /// `'<shape>'` vs `''`), so `'day'` vs `'night'` falls out of the exclusion
-    /// and the r4133 channel fails on it too.
-    ///
-    /// This is the test the settlement wrote to be *replaced, not deleted*: its
-    /// first assertion is the flipped one, and the capi and neighbour assertions
-    /// are unchanged, so the diff shows exactly which behaviour moved.
+    /// `props_norm::ECHO_NARROWED` holds the pair's echo row to the 23 spellings
+    /// the census credits to it (`examples_full.txt:267-306`, all of the form
+    /// `'<shape>'` vs `''`), so `'day'` vs `'night'` falls outside the exclusion
+    /// and the r4133 channel fails on it, as the capi channel does.
     #[test]
     fn a_mixed_pairs_echo_row_masks_the_cells_its_rule_refuses() {
-        // Counter hygiene first, and it is per TEST, not per binary: this one
-        // drives `load.yearly`'s normalization row on cells it cannot fold. One
-        // foldable cell up front leaves that row with `hits > 0` whatever else
-        // drives it, the state the liveness guard asks of a row (the guard runs
-        // in the corpus-gate binary alone). The echo row gets its own hit from
-        // the measured-spelling assertion at the end.
+        // This test owns `load.yearly`, so its counters move by exact deltas:
+        // the foldable cell is one visit and one hit of the normalization row.
+        let norm_before =
+            super::props_norm::norm_counters("load", "yearly").expect("a CaseFold row");
         assert!(run_load(
             PropsChannel::R4133,
             &[("Yearly", "day"), ("kW", "10")],
             &[("Yearly", "DAY"), ("kW", "10")],
         ));
+        assert_eq!(
+            super::props_norm::norm_counters("load", "yearly"),
+            Some((norm_before.0 + 1, norm_before.1 + 1)),
+            "the CaseFold row must see and fold the foldable cell"
+        );
         let divergent = (
             [("Yearly", "day"), ("kW", "10")],
             [("Yearly", "night"), ("kW", "10")],
@@ -9151,7 +9102,7 @@ mod props_policy_tests {
         assert!(
             !run_load(PropsChannel::R4133, &divergent.0, &divergent.1),
             "the narrowed echo row covers only its measured spellings, so a refused cell of a \
-             mixed pair is compared on r4133 too (RP4.1 precondition 1)"
+             mixed pair is compared on r4133 too"
         );
         assert!(
             !run_load(PropsChannel::CapiV0145, &divergent.0, &divergent.1),
@@ -9286,10 +9237,10 @@ pub const PROPS_015X: &[(&str, &[&str])] = &[
     ("Fuse", &["CurveMultiplier", "InterruptingRating"]),
     // WP-U2.4 C4 (EPRI r4133 `Controls/SwtControl.pas`, props 8->9): the new
     // informational `RatedCurrent`. r4133-only (absent from BOTH the 0.14.5 and
-    // capi015 property tables). This name-based row (not the `PropFlags::HIDE_R4133`
-    // flag, dropped at U2.5 when the SwtControl surface went full-r4133) is what
+    // capi015 property tables). This name-based row (the SwtControl surface is
+    // full-r4133 and carries no `PropFlags::HIDE_R4133` flag) is what
     // excludes it from the count/order/name walk on every default-oracle capture
-    // (0.14.5 and capi015). Since R4133_PROPS RP4.1 (2026-09-03) r4133-oracle
+    // (0.14.5 and capi015). r4133-oracle
     // cases DO property-compare, and there this row is inert in exactly the way
     // the `Generator` row below is: the r4133 capture's own name list carries
     // `RatedCurrent`, so `filter_015x` keeps it and it compares in full.
@@ -9334,7 +9285,7 @@ pub const PROPS_015X: &[(&str, &[&str])] = &[
     // `filter_015x` keeps it, full name+value compare) and active on r4133 only.
     // **Dormant until a gendispatcher deck gates r4133**: all three
     // `controls:gendispatcher/*` decks are `engines: "capi_v0145"` and stay so —
-    // measured 2026-08-23 (RP1.4 STATUS record), r4133 cannot receive their
+    // measured (RP1.4 STATUS record), r4133 cannot receive their
     // `weights=[3, 1]` at all, so it dispatches the equal split and the whole
     // solved state moves (12-step `gendispatcher.dss`, kW: 48 % apart at the
     // worst of steps 1-11 and 54.5x at step 0, where r4133 holds both machines
@@ -9349,7 +9300,7 @@ pub const PROPS_015X: &[(&str, &[&str])] = &[
     // `PROPS_015X` rows carry no live counters (§1.1(d)), so nothing goes stale;
     // the row's exercisers are
     // `props_015x_tests::shipped_gendispatcher_weights_row_is_inert_when_the_oracle_knows_it`
-    // (the capi-side inertness) and, since RP2.1 part C, the offline replay over
+    // (the capi-side inertness) and the offline replay (RP2.1 part C) over
     // the full `shape.txt` — `crates/dss-core/tests/props_r4133_replay.rs`,
     // `the_shape_allowlist_rows_are_exercised_by_shape_txt`, which is where this
     // row is the ONE that fires on the r4133 side.
@@ -9369,9 +9320,7 @@ pub fn prop_015x(allowlist: &[(&str, &[&str])], class: &str, prop: &str) -> bool
 /// oracle know this prop?" set that gates the [`PROPS_015X`] exclusion.
 ///
 /// Shared verbatim by the gating walk ([`compare_prop_lists`]) and the census
-/// walk ([`collect_element_divergences`]) so the two cannot drift apart
-/// (`R4133_PROPS_PLAN.md` RP0.2 audit: the pre-walk policy used to be written
-/// twice).
+/// walk ([`collect_element_divergences`]) so the two cannot drift apart.
 fn oracle_name_set(oracle: &[(String, String)]) -> BTreeSet<String> {
     oracle.iter().map(|(n, _)| n.to_lowercase()).collect()
 }
@@ -9502,8 +9451,8 @@ fn compare_prop_lists(
         }
         // THE NORMALIZATION SEAM (plan §1.2): the channel-scoped, strictly
         // value-preserving re-spelling of both sides. Identity on the capi
-        // channel — always, by contract — so the assert below sees exactly the
-        // strings it saw before RP2.1.
+        // channel — always, by contract — so there the assert below sees the
+        // raw strings.
         let (aval, eval) = policy.normalize(class, ename, aval, eval);
         // THE EXCLUSION SEAM (plan §1.2, RP2.3), the chain's third link: a
         // cited `PROPS_ECHO_R4133` pair whose two renderings are not two
@@ -9558,7 +9507,8 @@ fn compare_prop_lists(
 /// `channel` (RP2.1) says which oracle produced `exp`. It selects the
 /// whole-element skips ([`skip_whole_element`]), the value-skip set
 /// ([`skip_prop`]) and the normalization seam ([`PropsPolicy`]); on
-/// [`PropsChannel::CapiV0145`] all three are what they were before RP2.1.
+/// [`PropsChannel::CapiV0145`] Relay and Recloser are skipped whole, every
+/// [`SKIP_PROPS`] row skips its value and the seam is the identity.
 pub fn compare_all_properties(
     dss: &mut Dss,
     exp: &[PropsCap],
@@ -9621,11 +9571,10 @@ pub fn compare_all_properties(
 /// this library cannot depend on, so the channel cannot travel as that
 /// type (plan §1.2, the channel-threading trap). The corpus_gate call sites map
 /// `EngineChannel` onto this (`EngineChannel::props_channel`). **Both** property
-/// walks read it since RP2.1: the gating [`compare_all_properties`] (through
-/// [`PropsPolicy`]) and the census [`collect_prop_divergences`]. Since
-/// GOLDEN_REBASE G1.3d(i) [`compare_element_extras`] reads it too (its no-meter
-/// sentinel is channel-specific), so the name is historical: this is the
-/// harness's channel type, not a property-only one.
+/// walks read it, the gating [`compare_all_properties`] (through
+/// [`PropsPolicy`]) and the census [`collect_prop_divergences`], and so does
+/// [`compare_element_extras`] (its no-meter sentinel is channel-specific): this
+/// is the harness's channel type, not a property-only one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropsChannel {
     /// The pinned dss-python oracle (dss_capi 0.14.5).
@@ -9663,8 +9612,8 @@ impl PropsChannel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PropsPolicy {
     channel: PropsChannel,
-    /// Whether the channel's VALUE policy — [`PropsPolicy::normalize`], and
-    /// after RP2.3/RP2.4 the echo table and the display floor — is ARMED.
+    /// Whether the channel's VALUE policy — [`PropsPolicy::normalize`], the
+    /// echo table and the display floor — is ARMED.
     ///
     /// The gate always arms it. The census knob's **plain** mode
     /// (`DSS_PROPS_CENSUS=1`) deliberately does not: plain is "the
@@ -9812,8 +9761,8 @@ impl PropsPolicy {
     /// (`compare_all_properties` passes `tol.i_rel`/`tol.i_abs`, 1e-9/1e-6 on
     /// `micro` and 1e-7/1e-5 on `feeder` — orders under this floor), and a floor
     /// leaking onto it would relax every numeric property of every `both` case
-    /// to 2e-4 at once. "Byte-exact" is what this comment used to say and it was
-    /// wrong (RP2.4 audit round); the tier floors are pinned by
+    /// to 2e-4 at once. The compare is not byte-exact: the tier floors are
+    /// pinned by
     /// [`props_policy_tests::the_capi_property_compare_runs_at_the_case_tier_floors`].
     ///
     /// [`assert_value_matches_tol`]: super::assert_value_matches_tol
@@ -9901,8 +9850,8 @@ impl CensusBlindSpots {
 ///    capture (see [`compare_all_properties`]), which is an argument about the
 ///    capi channel only. On [`PropsChannel::R4133`] both classes are compared —
 ///    plan §1.2; without this the census's 22 relay/recloser pairs would not
-///    exist. Every skip is COUNTED into [`CensusBlindSpots`]. Since RP2.1 the
-///    predicate itself is the shared [`skip_whole_element`], so the gate and the
+///    exist. Every skip is COUNTED into [`CensusBlindSpots`]. The predicate
+///    itself is the shared [`skip_whole_element`], so the gate and the
 ///    census cannot drift apart on it.
 ///
 /// Never panics on a divergence and never asserts.
@@ -10096,7 +10045,7 @@ mod census_walk_tests {
     /// seam, and either one reaching the wrong arm is exactly the drift this
     /// pin exists to catch.
     ///
-    /// **The scope of the biconditional, stated since RP2.4.** Two of the
+    /// **The scope of the biconditional.** Two of the
     /// gate's four chain links have no census twin *by design* — the exclusion
     /// ([`PropsPolicy::echo_excluded`]) and the display floor
     /// ([`PropsPolicy::under_display_floor`]) drop a value assert the census
@@ -11322,7 +11271,7 @@ fn check_pd_elements_compare_ran(capi: (usize, usize), r4133: (usize, usize)) {
     assert!(
         capi.1 > 0 && r4133.1 > 0,
         "the PDElements compare never reached one of the two channels: capi_v0145 {} walk(s) / \
-         {} element(s), r4133 {} walk(s) / {} element(s). Since GOLDEN_REBASE G1.6b every live \
+         {} element(s), r4133 {} walk(s) / {} element(s). Every live \
          non-`large` case compares its full PDElements walk on every channel it gates \
          (`corpus_gate/scheduler.rs::force_pdelements`, pinned by \
          `FORCED_PDELEMENTS_POPULATION`). A zero here means the request was masked off, a \
@@ -12173,10 +12122,10 @@ static DISTANCE_BUSES: AtomicUsize = AtomicUsize::new(0);
 /// FLAG (this surface sets none of its own, it rides `compare_bus`) and
 /// `MODES_REQUIRED` the deck PATH, never that a deck still builds a meter zone.
 ///
-/// Read off a COMPLETED full default-lane gate on 2026-09-05 (526/526 cases
-/// passed, 223.6 s — the run's own `corpus_gate distance:` line), once micro-part
-/// F2's one measured divergence was settled by the `distance` ledger exclusion
-/// (coordinator decision D29 step 3). Never guessed: 867 gating compares over
+/// Read off a COMPLETED full default-lane gate (526/526 cases passed, 223.6 s —
+/// the run's own `corpus_gate distance:` line), with micro-part F2's one
+/// measured divergence excluded by the `distance` ledger entry (coordinator
+/// decision D29 step 3). Never guessed: 867 gating compares over
 /// both channels and every gated step carried at least one non-zero
 /// `DistFromMeter`, and 79 137 individual buses did — the 70 metered cases
 /// times their channels, steps and bus counts.
@@ -12388,11 +12337,8 @@ pub fn compare_bus_distances(
 /// per-bus siblings use ([`bus_comparator_tests`], [`bus_short_circuit_tests`],
 /// [`bus_seq_vll_comparator_tests`]).
 ///
-/// G1.4b shipped the surface with the plan-sanctioned *scratch* corruption only
-/// (a corrupted `exec/view.rs`, run once and reverted), so nothing in the tree
-/// held the comparator's failing direction, and its own doc claimed drives that
-/// did not exist (G1.4b audit AC-1 / AT-1, settled 2026-09-06). These are those
-/// drives: they perturb the ORACLE side of a live port capture, so no product
+/// They hold the comparator's failing direction in the tree (G1.4b audit AC-1 /
+/// AT-1): they perturb the ORACLE side of a live port capture, so no product
 /// code is touched, and each rail is pinned by its own panic message.
 ///
 /// The one assertion no offline drive can reach is the "port invents no
@@ -12802,8 +12748,7 @@ static SC_STUDY_BUSES: std::sync::atomic::AtomicUsize = std::sync::atomic::Atomi
 /// count is ten, and the bus figure is those five decks' bus counts summed over
 /// both channels. Both halves are MEASURED, not predicted: the live run prints
 /// them on its own `corpus_gate short-circuit:` line, and moving either one is
-/// a deliberate act (2026-09-05, lane `lane-b`, 525/525 green in both lanes;
-/// re-measured unchanged at the merge into `update`, 526/526).
+/// a deliberate act.
 const SC_STUDY_POPULATION: (usize, usize) = (10, 646);
 
 /// Record one gating short-circuit compare that carried `buses` full matrices.
@@ -14192,12 +14137,12 @@ mod bus_short_circuit_tests {
 // **Tolerances: one shared constant, [`SEQ_C012`]**, and no existing band
 // moves. The r4133 channel transforms 012 quantities with a measurably
 // different matrix (truncated `sin 60°`, numerically inverted), and the term
-// this surface adds on rows 1 and 2 is the SAME one lane-e's G1.3b element
-// sequence surface adds — deduped to one definition at the 2026-09-06 merge
-// (D7/D21), reconciled by the analytic ceiling
+// this surface adds on rows 1 and 2 is the SAME one the G1.3b element
+// sequence surface adds — one definition (D7/D21), reconciled by the analytic
+// ceiling
 // `2 · (0.8660254037844387 − 0.866025403) / 3 = 5.229591574599605e-10` and kept
 // at the *tight* row-sum value [`SEQ_C012`] derived from `SymComp::official()`,
-// never at the larger `5.30e-10` this sub-step had rounded it up to. The row
+// never at a rounded-up `5.30e-10`. The row
 // sum is an upper bound on every gap this surface can measure
 // (`|Δ·Vph|_k ≤ (Σ_j |Δ_kj|)·max_j |Vph_j|`), and it is attained, so the
 // measured live worst `5.229587392548124e-10` (`0.99999948 ×` the kept value)
@@ -14431,7 +14376,7 @@ pub struct SeqVllPopulation {
 /// the class is not excluded, it is counted).
 ///
 /// The live run prints all four on its own `corpus_gate seq/vll:` line; move
-/// them only deliberately. **Measured** (G1.4c F5, full gate 2026-09-05): ten
+/// them only deliberately. **Measured** (G1.4c F5, full gate): ten
 /// decks carry this one — the two `NEVTestCase` masters (55 buses each),
 /// `Examples/GICExample/GIC_Example` (7), the two `asymmetric:gic` micro decks
 /// (3 each), `Test/indmachtest/Master` (2), and one bus each in
@@ -14802,10 +14747,9 @@ pub fn compare_bus_seq_and_vll(
         // arm's above, and like it UNCONDITIONAL: the port's own S-VLL shape,
         // its `V_a − V_b` values and the `puVLL = VLL / BaseFactor_LL` identity
         // are asserted on EVERY bus, on both channels, whatever the oracle's
-        // walk did and whether or not values are excluded. They used to run only
-        // inside the `direct` branch below, which left `exec::view`'s accessor
-        // unwitnessed by the live gate on exactly the buses where the two walks
-        // disagree — the buses this sub-step exists for (G1.4c audit-code AC-1).
+        // walk did and whether or not values are excluded, so `exec::view`'s
+        // accessor is witnessed by the live gate on exactly the buses where the
+        // two walks disagree too.
         match port_vll_pairs(&nodes) {
             None => assert!(
                 v.vll.is_none() && v.pu_vll.is_none(),
@@ -15028,8 +14972,8 @@ mod bus_seq_vll_comparator_tests {
     use num_complex::Complex64;
 
     /// The ten bus classes the corpus actually holds, measured live on both
-    /// channels for the G1.4c spec (§3.1, 209 211 buses / 511 live cases) and
-    /// re-probed at HEAD on 2026-09-05. `capi` = the bounded partner scan,
+    /// channels for the G1.4c spec (§3.1, 209 211 buses / 511 live cases).
+    /// `capi` = the bounded partner scan,
     /// `r4133` = the unbounded one.
     ///
     /// This is the harness' half of the two-transcription cross-check: the same
@@ -15202,11 +15146,10 @@ mod bus_seq_vll_comparator_tests {
     }
 
     /// [`SEQ_C012`] is the truncated-`sin 60°` gap this surface shares with the
-    /// element sequence surface — one definition since the 2026-09-06 merge
-    /// (D7/D21). It is the **tight** L1 row-sum norm of the two 012 matrices'
-    /// difference, which the analytic triangle-inequality ceiling `2·Δsin60/3`
-    /// bounds from above; the merge kept it in preference to this sub-step's
-    /// rounded-up `5.30e-10`, which is a widening with no evidence behind it.
+    /// element sequence surface — one definition (D7/D21). It is the **tight**
+    /// L1 row-sum norm of the two 012 matrices' difference, which the analytic
+    /// triangle-inequality ceiling `2·Δsin60/3` bounds from above; a rounded-up
+    /// value such as `5.30e-10` would be a widening with no evidence behind it.
     /// The line-to-line base factor is the `√3` one, with the live `1.0` arm.
     #[test]
     fn the_seq_and_line_to_line_bands_are_the_documented_images() {
@@ -15516,10 +15459,9 @@ mod bus_seq_vll_comparator_tests {
         });
         assert!(msg.contains("VLL[2] (nodes 3-4) differs"), "{msg:?}");
 
-        // The same two arms on the OTHER channel, and the `puVLL` arm on both:
-        // before the G1.4c audit settlement no drive anywhere reddened a `puVLL`
-        // cell, and every `VLL` red on record was `[CapiV0145]`, so the §1.1(f)
-        // acceptance was argued rather than measured there (audit-tests).
+        // The same two arms on the OTHER channel, and the `puVLL` arm on both,
+        // so that a `puVLL` red and an r4133 `VLL` red are each measured, not
+        // argued.
         // `puVLL` is the same difference over `BaseFactor_LL`, so the drive is
         // the same step divided by that base.
         for channel in [PropsChannel::CapiV0145, PropsChannel::R4133] {
@@ -15819,7 +15761,7 @@ pub struct AtBusPopulation {
 /// asserted EXACTLY, so it fails on a drop AND on a growth — the D15/D16 shape:
 /// the class is not excluded, it is counted.
 ///
-/// Read off a COMPLETED full default-lane gate (G1.4d F3, 2026-09-06,
+/// Read off a COMPLETED full default-lane gate (G1.4d F3,
 /// 526/526 cases, `tmp/g14d/f3_default_gate.log`); the live run prints all four
 /// on its own `corpus_gate at-bus:` line, and the number is never guessed. The
 /// carrying decks are the 3-winding `Transformer`/`AutoTrans` families
@@ -15862,11 +15804,11 @@ const CAPI_NODEREF_ADDS: (usize, usize) = (8, 11);
 /// makes a future PC-class divergence a GATE failure that must be triaged
 /// rather than a number that quietly grows.
 ///
-/// The two channels are NOT symmetric here (G1.4d audit settlement T3): on
-/// `R4133` the replayed PCE predicate is character-for-character the property
-/// [`assert_port_at_bus_is_s4`] now asserts of the port's own `pce`, so that
-/// channel can no longer move this counter at all — a port omission reds per
-/// bus first. Only `CapiV0145`, whose walk reads node references instead of
+/// The two channels are NOT symmetric here: on `R4133` the replayed PCE
+/// predicate is character-for-character the property
+/// [`assert_port_at_bus_is_s4`] asserts of the port's own `pce`, so that
+/// channel cannot move this counter at all — a port omission reds per bus
+/// first. Only `CapiV0145`, whose walk reads node references instead of
 /// names, can still reach it, which is where the growth direction was witnessed
 /// (F4's disabled-`Load` drive).
 const PCE_AT_BUS_DECLINES: (usize, usize) = (0, 0);
@@ -16451,8 +16393,8 @@ mod bus_at_bus_comparator_tests {
         &'static [&'static str],
     );
 
-    /// **capi 0.14.5, MEASURED** on this deck through the pinned dss-python on
-    /// 2026-09-06 (`tmp/g14d/f_F1.md`), verbatim — including the facade's
+    /// **capi 0.14.5, MEASURED** on this deck through the pinned dss-python
+    /// (`tmp/g14d/f_F1.md`), verbatim — including the facade's
     /// trailing `''` and its `['None']` substitution (`dss/IBus.py`).
     ///
     /// `b3` is the class-B record: capi drops the never-enabled `Line.dead`
@@ -16836,7 +16778,7 @@ mod bus_at_bus_comparator_tests {
     }
 
     /// **capi 0.14.5, MEASURED** on [`node_less_fixture`]'s deck through the
-    /// pinned dss-python on 2026-09-06 (`tmp/g14d/settle/probe_nodeless.py`),
+    /// pinned dss-python (`tmp/g14d/settle/probe_nodeless.py`),
     /// verbatim. `gnd` is the arm: its fast path can match nothing there (the
     /// bus has no node reference of its own, and the reactor's second terminal
     /// is all ground), yet capi answers `Reactor.grnd` — the name test.
@@ -17591,9 +17533,8 @@ impl RelCalcOutcome {
 /// a 17-significant-digit token as `significand as f64` then one multiply or
 /// divide by a power of ten, i.e. two roundings. That is exactly the defect
 /// coordinator decision **D11** fixes workspace-wide (`serde_json` +
-/// `float_roundtrip`); **D18** landed the identical hunk on this branch, so the
-/// gate already decodes every oracle float exactly and the artifact is gone.
-/// It was a transport artifact throughout, never a port or oracle value.
+/// `float_roundtrip`, D18), so the gate decodes every oracle float exactly. It
+/// is a transport artifact, never a port or oracle value.
 /// So this surface stays exact and gains no floor — derivation in
 /// `tests/TOLERANCE_NOTES.md` §"The `Meters` reliability surface (G1.6(i))",
 /// both numbers pinned by
@@ -17739,8 +17680,8 @@ pub struct ReliabilitySkipRow {
 /// zero-initializes both arrays (`elements/meter/meter_element.rs:106,111`), so
 /// it is right and upstream is undefined.
 ///
-/// The one exception is `controls:energymeter/midi_relcalc.dss`, added by
-/// G1.6(i) part F3 for exactly this reason: it ends in `AllocateLoads`, so both
+/// The one exception is `controls:energymeter/midi_relcalc.dss` (G1.6(i) part
+/// F3), which exists for exactly this reason: it ends in `AllocateLoads`, so both
 /// fields are defined there and compared on **both** channels with no exclusion
 /// at all — see the Scope paragraph below and
 /// `crates/dss-core/tests/reliability_pins.rs`.
@@ -17862,14 +17803,13 @@ pub fn reliability_walk_counters() -> (usize, usize, usize, usize) {
 /// What [`compare_bus_reliability`] has counted in this process, as
 /// `(capi payloads, capi buses, r4133 payloads, r4133 buses)`.
 ///
-/// **The shipped counters are the gate's alone.** These statics are
-/// process-global and the live gate's epilogue (`corpus_gate.rs`) asserts on
-/// them through [`assert_bus_reliability_compare_ran`]. This module's own drive
-/// of [`compare_bus_reliability`] (`every_bus_reliability_column_is_compared_per_bus`)
-/// runs in the harness's lib test binary, which links no gate, and panics before
-/// the counters move all the same, and both directions of the rule are pinned
-/// over injected counters ([`check_bus_reliability_compare_ran`]), so no test
-/// needs the shipped counters to hold a value.
+/// Two callers drive [`compare_bus_reliability`]: the corpus gate, whose
+/// epilogue (`corpus_gate.rs`) asserts on these counters through
+/// [`assert_bus_reliability_compare_ran`], and
+/// `every_bus_reliability_column_is_compared_per_bus`, in the failing direction
+/// only. Every drive of that test panics before the counters move, so they count
+/// the gate's payloads alone, and both directions of the rule are pinned over
+/// injected counters ([`check_bus_reliability_compare_ran`]).
 pub fn bus_reliability_walk_counters() -> (usize, usize, usize, usize) {
     (
         BUS_RELIABILITY_WALKS[0].load(AtomicOrd::Relaxed),
@@ -18476,8 +18416,8 @@ fn check_reliability_compare_ran(capi: (usize, usize), r4133: (usize, usize)) {
     assert!(
         capi.1 > 0 && r4133.1 > 0,
         "the reliability compare never reached one of the two channels: capi_v0145 {} \
-         payload(s) / {} meter(s), r4133 {} payload(s) / {} meter(s). Since GOLDEN_REBASE \
-         G1.6(i) the `compare_reliability` manifest flag drives the executive `RelCalc` on all \
+         payload(s) / {} meter(s), r4133 {} payload(s) / {} meter(s). The \
+         `compare_reliability` manifest flag drives the executive `RelCalc` on all \
          three engines and compares the whole `Meters` reliability surface; the flag is set by \
          the manifests (never scheduler-forced — the predicate \"has an EnergyMeter\" is not a \
          manifest field), so a zero here means the rows were lost, a transport stopped honoring \
@@ -18518,8 +18458,8 @@ fn check_bus_reliability_compare_ran(capi: (usize, usize), r4133: (usize, usize)
     assert!(
         capi.1 > 0 && r4133.1 > 0,
         "the per-bus reliability compare never reached one of the two channels: capi_v0145 {} \
-         payload(s) / {} bus(es), r4133 {} payload(s) / {} bus(es). Since GOLDEN_REBASE \
-         G1.6(ii) every reliability payload carries the eight `IBus` reliability columns for \
+         payload(s) / {} bus(es), r4133 {} payload(s) / {} bus(es). Every \
+         reliability payload carries the eight `IBus` reliability columns for \
          every bus under its `buses` key, on both transports; a zero here means a transport \
          stopped emitting the block, the manifest rows were lost, or the call was dropped from \
          `compare_reliability`.",

@@ -2060,10 +2060,10 @@ fn every_deck_that_enables_demand_interval_declares_compare_di() {
 /// `(case label, scratch name)` with no channel in it, so a `both` case that
 /// declines the same name on both channels is one row either way, and the
 /// process-wide visit counter counts every caller in the process, not only the
-/// gate's cases. That is why the population is read off the decline TABLE and
-/// restricted to labels the manifests actually carry — every other label must
-/// be a `unit:` fixture's (the `harness::run_files` fixtures run in the
-/// harness's own lib test binary), which the assertion checks, not assumes.
+/// gate's cases. That is why the population is read off the decline TABLE, and
+/// every label in it must be one the manifests carry: the harness's `unit:`
+/// fixtures run in its own lib test binary, so a row of any other label is a
+/// foreign producer and fails.
 const SCRATCH_FILE_DECLINES: (usize, usize) = (9, 9);
 
 /// The D25/Q2 census, re-derived from this run and pinned in both directions —
@@ -2098,25 +2098,19 @@ pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
             cases.iter().map(|uc| uc.label.as_str()).collect();
         let table = harness::run_files::scratch_decline_table();
         let census = harness::run_files::scratch_census();
-        // Rows any `unit:` fixture wrote into the process-wide census (the
-        // `harness::run_files` fixtures write theirs in the harness's own lib
-        // test binary) are separated by label, and a row is REFUSED when it is
-        // neither a manifest case nor a `unit:` fixture's — a typo'd or foreign
-        // label must never be absorbed into the pinned population.
-        let (gate_rows, fixture_rows): (Vec<_>, Vec<_>) = table
-            .iter()
-            .partition(|(case, _)| gate_labels.contains(case.as_str()));
-        let foreign: Vec<&String> = fixture_rows
+        // Every row is a manifest case's: no fixture runs in this process, so a
+        // typo'd or foreign label is never absorbed into the pinned population.
+        let gate_rows: Vec<_> = table.iter().collect();
+        let foreign: Vec<&String> = gate_rows
             .iter()
             .map(|(case, _)| *case)
-            .filter(|case| !case.starts_with("unit:"))
+            .filter(|case| !gate_labels.contains(case.as_str()))
             .collect();
         assert!(
             foreign.is_empty(),
             "the D25/Q2 scratch census carries the label(s) {foreign:?}, which are \
-             neither a manifest case nor a `unit:` fixture's. The \
-             pinned population is a fact about the corpus, so an unrecognized \
-             producer fails instead of being counted or dropped."
+             not manifest cases. The pinned population is a fact about the corpus, \
+             so an unrecognized producer fails instead of being counted or dropped."
         );
         let measured = (
             gate_rows.len(),
@@ -2145,9 +2139,7 @@ pub(crate) fn assert_scratch_declines_are_the_pinned_population() {
         }
         eprintln!(
             "corpus_gate run files: D25/Q2 engine-scratch declines {measured:?} \
-             (+{} unit fixture row(s); {} channel visit(s) and {} set compare(s) \
-             process-wide)\n  {}",
-            fixture_rows.len(),
+             ({} channel visit(s) and {} set compare(s) process-wide)\n  {}",
             census.visits,
             census.compared,
             report.join("\n  ")
@@ -2618,27 +2610,20 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
     {
         let gate_labels: std::collections::BTreeSet<&str> =
             cases.iter().map(|uc| uc.label.as_str()).collect();
-        // Rows any `unit:` fixture wrote into the process-wide accounting (the
-        // `harness::di` fixtures write theirs in the harness's own lib test
-        // binary) are separated by label, and a row is REFUSED when it is
-        // neither a manifest case nor a `unit:` fixture's — a typo'd or foreign
-        // label must never be absorbed into the pinned population (the D25/Q2
-        // scratch census's rule, one surface over).
-        let account = harness::di::di_account();
-        let (gate_rows, fixture_rows): (Vec<_>, Vec<_>) = account
-            .iter()
-            .partition(|((label, _), _)| gate_labels.contains(label.as_str()));
-        let foreign: Vec<&String> = fixture_rows
+        // Every row is a manifest case's: no fixture runs in this process, so a
+        // typo'd or foreign label is never absorbed into the pinned population
+        // (the D25/Q2 scratch census's rule, one surface over).
+        let gate_rows = harness::di::di_account();
+        let foreign: Vec<&String> = gate_rows
             .iter()
             .map(|((label, _), _)| label)
-            .filter(|label| !label.starts_with("unit:"))
+            .filter(|label| !gate_labels.contains(label.as_str()))
             .collect();
         assert!(
             foreign.is_empty(),
             "the G1.10c demand-interval census carries the label(s) {foreign:?}, which are \
-             neither a manifest case nor a `unit:` fixture's. The pinned \
-             population is a fact about the corpus, so an unrecognized producer fails instead \
-             of being counted or dropped."
+             not manifest cases. The pinned population is a fact about the corpus, so an \
+             unrecognized producer fails instead of being counted or dropped."
         );
         // One row per (case, CHANNEL) since the audit settlement (AT3-3), so the
         // producer list is the DISTINCT labels — the rows are sorted by label
@@ -2715,9 +2700,8 @@ pub(crate) fn assert_di_census_is_the_pinned_population() {
             return;
         }
         eprintln!(
-            "corpus_gate demand interval: census {measured:?} (+{} unit fixture row(s)); \
+            "corpus_gate demand interval: census {measured:?}; \
              ledger-excluded column(s): {excluded:?}\n  {}",
-            fixture_rows.len(),
             report.join("\n  ")
         );
         assert_eq!(

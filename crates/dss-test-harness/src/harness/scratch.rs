@@ -1,4 +1,4 @@
-//! Per-run scratch copies (RETRO_FIXES_PLAN.md RF-I00-01, `INFRA|1`).
+//! Per-run scratch copies.
 //!
 //! The corpus gate never runs a producer inside `tests/corpus/`: every
 //! (case, producer) run gets a FRESH directory
@@ -7,9 +7,8 @@
 //! COPY's deck, and the copy is removed afterwards within one bounded budget
 //! ([`COPY_REMOVE_ATTEMPTS`] x [`COPY_REMOVE_PAUSE`]). A copy that outlives the
 //! budget fails the case naming its producer. For the port, whose engine lives
-//! in the gate's own process, that is the D32(2) engine-leak rail on its new
-//! footing (a handle the engine still holds blocks the removal exactly as it
-//! blocked the old sweep). An oracle producer's process is gone before its copy
+//! in the gate's own process, that is the engine-leak rail: a handle the engine
+//! still holds blocks the removal. An oracle producer's process is gone before its copy
 //! is removed (a pooled worker is recycled after every case unless
 //! `DSS_GATE_RECYCLE_AFTER` > 1, a one-shot exits), so its lifetime handles,
 //! the dss_capi Storage `DebugTrace` class among them, are released by then:
@@ -18,20 +17,19 @@
 //! `engines::transport_cwd_tests` keep a worker alive to prove the step back
 //! out of the copy.
 //!
-//! Why: parent (`Test/`) and child (`Test/AutoTrans/`) case directories ran
-//! concurrently in ONE shared tree, and a recursive snapshot reading a sibling
-//! case's report without `FILE_SHARE_DELETE` turned into "leaked dropping"
-//! reds (28 of 41 red runs over waves 1-2, RETRO_FIXES §6). Three producers of
-//! one case now get three copies, so an engine leak can no longer poison the
-//! next producer and no order-coupling can hide a gap.
+//! Why: case directories nest (`Test/` holds `Test/AutoTrans/`) and cases run
+//! concurrently, so in ONE shared tree a recursive snapshot would read a
+//! sibling case's report without `FILE_SHARE_DELETE` and red as a "leaked
+//! dropping". Three producers of one case get three copies, so an engine leak
+//! cannot poison the next producer and no order-coupling can hide a gap.
 //!
 //! Every surface is read from the copy the producer ran in: the transports'
 //! created-file set is the listing diff against the copy's initial listing
 //! (their guards snapshot the copy before the run), the CONTENTS and the
 //! demand-interval tree are copied out to the gate's sidecars before the reply,
 //! and the sidecars stay keyed by the VENDORED deck path
-//! (`engines::build_run_request`'s `key`), so their location and bytes are the
-//! ones the gate had before the copies.
+//! (`engines::build_run_request`'s `key`), so their location and bytes do not
+//! depend on the copy.
 //!
 //! Both oracle engines leave the process working directory in the deck's
 //! folder after a compile (r4133 `Executive/ExecHelper.pas:752-754`,
@@ -40,22 +38,18 @@
 //! transports step back to their startup directory before they reply
 //! (`tools/oracle/oracle_server.py::main`, `dss-epri`'s `epri-worker`).
 //!
-//! Shared (RF-I00-01 part 1, coordinator ruling 2026-09-26 14:30): the corpus
-//! gate re-exports this module (`corpus_gate/scratch.rs`, which keeps the
-//! rails), and every test binary that part 1 measured WRITING into the tree
+//! Shared: the corpus gate re-exports this module (`corpus_gate/scratch.rs`,
+//! which keeps the rails), every test binary whose decks write into the tree
 //! compiles a copy made here (`di_pins`, `run_files_pins`,
 //! `run_file_contents_pins`, `props_r4133_pins`), and `dss-epri`'s IEEE13 smoke
 //! and mode walk make theirs with `dss_epri::smoke::Ieee13Copy`. All of them remove
 //! their copies within the one budget of `dss_epri::guard`
 //! ([`COPY_REMOVE_ATTEMPTS`] x [`COPY_REMOVE_PAUSE`]). "No test writes under
 //! `tests/corpus/`" is a MEASURED property, not a structural one: the lib unit
-//! tests and several pin binaries still compile vendored decks that carry no
-//! writing verb in place, read-only (part 1 attributed 72 targets x 0 changes),
-//! nothing refuses a plain in-place compile, and [`TreePhoto`] sees a writer
-//! only while it overlaps the corpus gate's own walk.
-// This allowance suppresses nothing: no item of this file is dead code in
-// either build, and the harness's module-wide one covers the file as well.
-#![allow(dead_code)]
+//! tests and several pin binaries compile vendored decks that carry no writing
+//! verb in place, read-only, nothing refuses a plain in-place compile, and
+//! [`TreePhoto`] sees a writer only while it overlaps the corpus gate's own
+//! walk.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
@@ -149,9 +143,7 @@ pub fn is_under(p: &Path, dir: &Path) -> bool {
 /// tree below `root` sparsely (only the members above), so a `../` reference
 /// climbs to the same file. Copying the whole ancestor instead would move
 /// ~11 GB per gate run (38 decks climb to `Version8/Distrib`, 126 MB each);
-/// the sparse closures move ~0.58 GB per lane through the scheduler (1784
-/// copies, 30 746 files, measured 2026-09-26) plus ~0.1 GB through the AD
-/// sweep (72 copies), and a member a closure missed would show as a
+/// the sparse closures move under a gigabyte per lane, and a member a closure missed would show as a
 /// port compile error that no manifest `expect_warnings` covers
 /// (`runner::assert_expected_warnings`), never as a silent change.
 #[derive(Debug, Clone)]
@@ -532,8 +524,7 @@ impl ScratchCopy {
              attempts {:?} apart; still there: {}. A handle held for the \
              producer's lifetime (an unclosed trace/report file, a working \
              directory left inside the copy) blocks the removal — fix the \
-             producer, never widen the budget (RETRO_FIXES RF-I00-01, the \
-             D32(2) rail).",
+             producer, never widen the budget (the D32(2) rail).",
             self.producer,
             self.run_dir,
             self.case,
@@ -590,8 +581,7 @@ pub fn in_copy<T>(case_path: &str, producer: &'static str, f: impl FnOnce(&str) 
 /// `p` itself when it lies OUTSIDE the vendored corpus ([`corpus_root`]);
 /// panics naming `who` when it lies inside it.
 ///
-/// RETRO_FIXES RF-I00-01 part 2 (`INFRA|2`, guard reuse on the copy): the three
-/// corpus guards, the port's `RunFileProbe` and the two oracle transports keep
+/// Guard reuse on the copy: the three corpus guards, the port's `RunFileProbe` and the two oracle transports keep
 /// their snapshot / classify / sweep / `sweep_failed` jobs, but only ever on a
 /// scratch copy. The gate-side entry points that hand a directory to one of
 /// them call this (`runner::CorpusGuard::new`, `run_files::RunFileProbe::start`,
@@ -607,8 +597,8 @@ pub fn not_vendored<'a>(p: &'a Path, who: &str) -> &'a Path {
     let abs = lexical(&std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()));
     assert!(
         !is_under(&abs, &corpus_root()),
-        "{who}: {} lies inside the vendored corpus {}. Since RETRO_FIXES RF-I00-01 \
-         every producer runs in a fresh scratch copy (`harness::scratch::ScratchCopy`) \
+        "{who}: {} lies inside the vendored corpus {}. Every producer runs in a \
+         fresh scratch copy (`harness::scratch::ScratchCopy`) \
          and every corpus guard brackets that copy, never the vendored tree — run \
          the deck through a copy instead of pointing the guard at `tests/corpus/`.",
         p.display(),
@@ -621,8 +611,7 @@ pub fn not_vendored<'a>(p: &'a Path, who: &str) -> &'a Path {
 /// below it (relative, forward-slashed), each with its kind, length and
 /// modification time.
 ///
-/// The read-only-tree rail of RETRO_FIXES RF-I00-01 (`INFRA|2`):
-/// `scheduler::run_gate` photographs `tests/corpus/` before its first case and
+/// The read-only-tree rail: `scheduler::run_gate` photographs `tests/corpus/` before its first case and
 /// after its last, and `GateRun::assert_complete` fails the gate on any
 /// difference; a writer in another test process is seen only while it
 /// overlaps that window. A producer that swept what it wrote still moves its folder's
@@ -631,7 +620,7 @@ pub fn not_vendored<'a>(p: &'a Path, who: &str) -> &'a Path {
 /// left a dropping. Each entry is read through its OWN handle
 /// (`symlink_metadata`): a `DirEntry`'s metadata on Windows is the parent
 /// index's copy of the times, which NTFS updates lazily, so two photographs of
-/// an untouched fixture differed that way. A link is photographed as itself and
+/// an untouched fixture could differ that way. A link is photographed as itself and
 /// never followed out of the tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreePhoto(BTreeMap<String, (bool, u64, Option<std::time::SystemTime>)>);

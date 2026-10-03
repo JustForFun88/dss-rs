@@ -92,11 +92,9 @@
 //! The accounting is re-derived on every run — cases with a non-empty tree,
 //! (case, channel) comparisons performed, files compared, cells compared. What
 //! the scheduler pins fail-on-stale in BOTH directions is [`di_account`], the
-//! per-case-LABEL table: [`di_census`]'s three process-global counters also
-//! carry this module's own `unit:` fixtures and would move with the test
-//! filter, which is why they are a lower bound for the unit drives and never
-//! the pinned population (the same reason [`DI_ACCOUNT`]'s own doc gives;
-//! corrected by the G1.10c audit settlement, finding AT1-2). So "the comparator
+//! per-case-LABEL table: [`di_census`]'s three process-global counters count
+//! every caller in the process, so they are a lower bound for the unit drives
+//! and never the pinned population (see [`DI_ACCOUNT`]). So "the comparator
 //! ran and compared nothing" cannot pass. An EMPTY tree is a
 //! legitimate answer (a deck that issues `CloseDI` without `DemandInterval`
 //! writes no DI file on any of the three producers); an ABSENT capture on a case
@@ -577,17 +575,14 @@ static CELLS: AtomicUsize = AtomicUsize::new(0);
 /// population`, G1.10c F3).
 ///
 /// The three counters above are process-wide and count every caller in the
-/// process, so a census read off them would hold whatever else the process ran
-/// (this module's `unit:` fixtures run in the harness's own lib test binary,
-/// but a census must not rest on that). Keyed by label the
-/// scheduler can do what the D25/Q2 scratch census does one surface over
-/// (`harness::run_files::scratch_decline_table`): partition the rows into
-/// manifest cases and `unit:` fixtures, refuse a label that is neither, and pin
-/// the manifest half.
-/// Keyed by (label, CHANNEL) since the G1.10c audit settlement (finding AT3-3):
-/// the totals alone cannot tell a channel SWAP — the same case compared twice
-/// on one channel — from a correct pair, so the scheduler asserts each
-/// producer's channel set as well as the pinned totals.
+/// process, so a census read off them would hold whatever else the process ran.
+/// Keyed by label the scheduler can do what the D25/Q2 scratch census does one
+/// surface over (`harness::run_files::scratch_decline_table`): refuse a row
+/// whose label is not a manifest case and pin the rest.
+/// Keyed by (label, CHANNEL) because the totals alone cannot tell a channel
+/// SWAP — the same case compared twice on one channel — from a correct pair, so
+/// the scheduler asserts each producer's channel set as well as the pinned
+/// totals.
 static DI_ACCOUNT: Mutex<BTreeMap<DiAccountKey, DiAccountRow>> = Mutex::new(BTreeMap::new());
 
 /// One row of [`DI_ACCOUNT`]: `(case label, channel tag)`.
@@ -640,9 +635,9 @@ pub fn di_excluded_columns() -> Vec<(String, String)> {
 }
 
 /// The census BY (CASE LABEL, CHANNEL) — `((label, channel), (comparisons,
-/// files, cells))`, see [`DI_ACCOUNT`]. The scheduler pins the manifest half of
-/// this table, asserts each producer's channel set, and refuses a label that is
-/// neither a manifest case nor a `unit:` fixture.
+/// files, cells))`, see [`DI_ACCOUNT`]. The scheduler pins this table, asserts
+/// each producer's channel set, and refuses a label that is not a manifest
+/// case.
 pub fn di_account() -> Vec<(DiAccountKey, DiAccountRow)> {
     lock(&DI_ACCOUNT)
         .iter()
@@ -923,21 +918,8 @@ fn compare_cell(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::panic_message;
     use dss_core::exec::Dss;
-
-    /// Run `f` and return the panic message — every refusal in this module is
-    /// proven to fire, not merely assumed to.
-    fn panic_message(f: impl FnOnce()) -> String {
-        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-            .expect_err("the comparator must fail this input");
-        if let Some(s) = payload.downcast_ref::<&str>() {
-            (*s).to_string()
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "<non-string panic payload>".to_string()
-        }
-    }
 
     fn tol() -> Tolerances {
         super::super::tol_for("feeder")

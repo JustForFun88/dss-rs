@@ -100,6 +100,16 @@ pub const PARITY: bool = dss_core::compat::ORACLE_PARITY;
 /// part of `cargo test` at all.
 pub const ITER_SLACK: i32 = 1;
 
+/// The records the default lane deliberately answers differently from the
+/// parity lane, keyed by `(case label, record kinds)`: the lane-vs-lane job
+/// (`examples/lane_dump.rs`) measures and prints them but does not fail on
+/// them, and fails on an entry that matched no record.
+///
+/// Empty: both lanes recompute every element read at the converged `NodeV`, so
+/// every record is held to the job's ordinary bound. [`LANE_SKIP_ELEM_POWERS`]
+/// is an exclusion against the oracles, in both lanes, and has no row here.
+pub const DOCUMENTED_DIVERGENCES: &[(&str, &[&str])] = &[];
+
 /// The corpus cases whose element `Powers`/`Losses`/`PhaseLosses` **neither**
 /// lane oracle-compares — the drift model's "deliberate divergences … excluded
 /// field-by-field" row, and the only such exclusion in the suite.

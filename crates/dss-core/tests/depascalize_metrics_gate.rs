@@ -1,14 +1,11 @@
 //! `DE_PASCALIZE_PLAN.md` §Verification — the plan's **success metrics**, as a
-//! test instead of a paragraph (Stage F.5, the plan's last step).
+//! test instead of a paragraph.
 //!
-//! Every metric in that section was written as an `rg` invocation with a target
-//! ("→ **zero**", "→ boundary accessors only", "shrinks to the keep-list
-//! families"), re-measured by hand at each stage and recorded in prose. That
-//! made them a *report*, not a contract: nothing re-ran them, so a later WP
-//! could reintroduce a downcast, an `Rc`, or a flat-offset index and no gate
-//! would notice — the whole point of Parts I–III was to make those shapes
-//! impossible to have, and a de-Pascalized codebase that quietly re-Pascalizes
-//! is exactly the failure mode this plan exists to prevent.
+//! Every metric in that section is an `rg` invocation with a target ("→
+//! **zero**", "→ boundary accessors only", "shrinks to the keep-list
+//! families"). This test re-runs them, so a downcast, an `Rc`, or a flat-offset
+//! index that comes back reds the gate: a de-Pascalized codebase that quietly
+//! re-Pascalizes is exactly the failure mode the plan exists to prevent.
 //!
 //! Two shapes of assertion, matching the two shapes of metric:
 //!
@@ -23,10 +20,9 @@
 //! # Why "in code" needs saying
 //!
 //! The metrics are greps, and a grep counts prose too. `lib.rs` documents the
-//! ban with the very words it bans ("nothing uses `Rc`/`RefCell`/statics"), and
-//! `plot/tests.rs` explains what the pre-R1 design used. A gate that counted
-//! those would either be permanently red or force the documentation to stop
-//! naming what it forbids. So a hit counts only when it occurs **before** any
+//! ban with the very words it bans ("nothing uses `Rc`/`RefCell`/statics"). A
+//! gate that counted those would either be permanently red or force the
+//! documentation to stop naming what it forbids. So a hit counts only when it occurs **before** any
 //! `//` on its line — the same "the marker must be a marker, not prose"
 //! discipline `oracle_parity_cfg_gate.rs` applies to the compat tag.
 
@@ -39,9 +35,8 @@ fn repo_root() -> PathBuf {
 
 /// Crates under `crates/` whose `src/` is test code by construction and so
 /// outside every engine metric: `dss-test-harness` is the golden harness of
-/// the dss-core integration tests (moved out of `crates/dss-core/tests/
-/// harness/` by RETRO_FIXES RF-I00-04; `publish = false`, a dev-dependency
-/// only), whose seam counters and panic silencers are `thread_local!`s.
+/// the dss-core integration tests (`publish = false`, a dev-dependency only),
+/// whose seam counters and panic silencers are `thread_local!`s.
 /// `oracle_parity_cfg_gate.rs::no_product_crate_links_a_test_only_crate` reads
 /// this list and reds on an entry that is not a test-only package's directory.
 const TEST_ONLY_CRATES: &[&str] = &["dss-test-harness"];
@@ -51,9 +46,8 @@ const TEST_ONLY_CRATES: &[&str] = &["dss-test-harness"];
 ///
 /// Deliberately `src` only: the metrics are about the **engine**, and test
 /// code legitimately builds the shapes they ban (a `#[cfg(test)]` sink may hold
-/// an `Rc<RefCell<_>>` if that is what a probe needs — `plot/tests.rs` explains
-/// why the real one no longer does). For the same reason the test-only
-/// crates of [`TEST_ONLY_CRATES`] are never walked.
+/// an `Rc<RefCell<_>>` if that is what a probe needs). For the same reason the
+/// test-only crates of [`TEST_ONLY_CRATES`] are never walked.
 fn engine_sources(root: &Path, only: &[&str]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let crates = root.join("crates");
@@ -93,9 +87,8 @@ fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
 /// literal would only ever *under*-count, i.e. make this gate miss a hit on a
 /// line that already contains a comment marker in a string.
 ///
-/// Such lines do exist: measured 2026-08-01, ~19–26 lines under
-/// `crates/{dss-core,dss-parser,dss-sparse}/src` carry a `//` strictly inside a
-/// string literal (CIM/schema namespace URLs, help-catalog text, the
+/// Such lines do exist: lines under `crates/{dss-core,dss-parser,dss-sparse}/src`
+/// carry a `//` strictly inside a string literal (CIM/schema namespace URLs, help-catalog text, the
 /// `Dump`/monitor writers that emit literal `// Hour=` headers, a parser test's
 /// `"conn=delta // trailing comment"`). None of them carries a metric needle
 /// *after* the in-string `//`, so the hole is real but currently unexploited.
@@ -152,10 +145,8 @@ fn assert_walk_reaches(root: &Path, files: &[PathBuf], min: usize, anchor: &str)
 /// **Part I / R3** — `rg "downcast_ref|downcast_mut|as_any" crates/dss-core/src`
 /// → zero.
 ///
-/// The typed-arena store made every element reachable by its own type, so the
-/// `Any` round-trip that the 1:1 port inherited (369 downcasts / 716
-/// `as_any|as_ckt_element` at the 2026-07-26 measurement) has no reason to
-/// exist. Reintroducing one means a new heterogeneous store went in without an
+/// The typed-arena store makes every element reachable by its own type, so an
+/// `Any` round-trip has no reason to exist. Reintroducing one means a new heterogeneous store went in without an
 /// `ElemId`, which is the regression this metric was written for.
 #[test]
 fn part1_metric_no_downcasting_in_the_engine() {
@@ -210,10 +201,10 @@ fn p7_metric_no_shared_mutability_or_statics() {
 
 /// **P8** — `rg "term_ref\["` → zero outside `TermRef`.
 ///
-/// The flat `(terminal-1)*ncond + conductor` arithmetic was the single most
-/// error-prone shape in the port (it is the mechanism of the `Iresidual`
-/// upstream bug this stage fixed). P8 replaced it with terminal×conductor views;
-/// indexing the raw buffer again outside those accessors reopens the class.
+/// The flat `(terminal-1)*ncond + conductor` arithmetic is the most error-prone
+/// shape (it is the mechanism of the `Iresidual` upstream bug). The
+/// terminal×conductor views encapsulate it; indexing the raw buffer outside
+/// those accessors reopens the class.
 #[test]
 fn p8_metric_no_raw_term_ref_indexing() {
     let root = repo_root();
@@ -233,10 +224,8 @@ fn p8_metric_no_raw_term_ref_indexing() {
 /// **P1 (deferred tail)** — `rg "pub const .*: i32 = " crates/dss-core/src/elements`
 /// → zero.
 ///
-/// The plan's target was "shrinks to the keep-list families only" (7 lines at
-/// the 2026-07-26 measurement); the P1 deferred tail closed all of them, so the
-/// metric is now a plain zero. Every element-level integer family is an enum:
-/// a new `pub const … : i32` in `elements/` is a Pascal ordinal coming back.
+/// Every element-level integer family is an enum: a new `pub const … : i32` in
+/// `elements/` is a Pascal ordinal coming back.
 ///
 /// Scoped to `elements/` exactly as the plan wrote it — `support/`,
 /// `solution/` and `compat.rs` legitimately keep i32 constants (unit codes,
@@ -277,8 +266,8 @@ fn p1_metric_no_i32_constant_families_in_elements() {
 // The "ceiling" metrics — audited populations that may only shrink
 // ---------------------------------------------------------------------------
 
-/// **P14** — `for … in 1..=` in `elements/`: 106 at the P14 audit settle, every
-/// one verified STAYS-by-design (report text, the 1-based user API, Pascal
+/// **P14** — `for … in 1..=` in `elements/`: 106, every one audited
+/// STAYS-by-design (report text, the 1-based user API, Pascal
 /// state arrays that are 1-based on the wire).
 const CEILING_ONE_BASED_LOOPS: usize = 106;
 
@@ -287,21 +276,16 @@ const CEILING_ONE_BASED_LOOPS: usize = 106;
 ///
 /// **15**, which is what this gate actually counts: [`code_of`] drops
 /// comment-only lines, so the 17 a raw `rg` reports include two lines of prose
-/// in `elements/ckt.rs`. The ceiling sat at 17 until F-settle W4, i.e. two
-/// free slots — a new flat-offset call site could land with the gate green.
+/// in `elements/ckt.rs`.
 ///
 /// Not "all accessor-internal", either: four of the survivors are not view
 /// accessors — `elements/control/relay/logic.rs` (×2, TD21 sample indexing),
 /// `elements/meter/meter_element.rs`, and
-/// `report/export/seq_currents.rs`, whose `(j - 1) * ncond` is the *default*
-/// lane's `Iresidual` base and exists precisely because F.3c fixed that
-/// upstream bug. Each stays because the offset is what the code is about; the
+/// `report/export/seq_currents.rs`, whose `(j - 1) * ncond` is the row's own
+/// terminal base of `Iresidual`. Each stays because the offset is what the code is about; the
 /// metric's point is that the number may only shrink.
 ///
-/// The plan's original wording also named a third form, `(… - 1) *`. It is not
-/// gated here (24 sites in `dss-core/src`, up one from base for the
-/// `seq_currents` fix above) — retired as too noisy to gate, recorded rather
-/// than dropped silently.
+/// A third form, `(… - 1) *`, is not gated here: it is too noisy to gate.
 const CEILING_FLAT_OFFSET: usize = 15;
 
 /// The two audited populations Parts III left standing may shrink, never grow.

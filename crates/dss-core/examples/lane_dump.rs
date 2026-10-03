@@ -78,6 +78,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use dss_core::exec::Dss;
+use dss_test_harness::harness::lane::DOCUMENTED_DIVERGENCES;
 
 // ---------------------------------------------------------------------------
 // The documented bounds
@@ -105,30 +106,6 @@ const ABS: f64 = 1e-6;
 /// against the *oracle*). An ulp-level kernel difference can flip the
 /// convergence test one step early or late and nothing more.
 const ITER_SLACK: i64 = 1;
-
-/// The rows that make the default lane deliberately answer something the parity
-/// lane does not, keyed by `(case label, record kinds)`.
-///
-/// These are **not** silently skipped: the diff measures them like everything
-/// else and prints what it measured, it just does not fail on them. Every entry
-/// is hand-mirrored from an exclusion the corpus gate carries in
-/// `harness::lane`, kept as this example's own list rather than read from the
-/// harness. Nothing checks the two lists against each other, so keep them in
-/// step by hand; what *is* checked is that every entry here still fires, so a
-/// stale one cannot sit around un-gating a field (fail-on-stale, added F-settle
-/// W4 — the discipline the ledger, `ESCAPE_REGISTER` and `expected_rerounded`
-/// already carry).
-///
-/// **Empty since `GOLDEN_REBASE_PLAN.md` G2.3.** Its only rows were the two
-/// `modes:newton/` decks' `pow`/`loss`, where the parity lane reproduced
-/// upstream's one-step-stale post-Newton `Iterminal` cache while the default
-/// lane recomputed at the converged `NodeV` (`CLAUDE.md` upstream bug 5). Both
-/// lanes now recompute, so those records are held to the ordinary bound like
-/// every other one — and the exclusion that survives the teardown is against
-/// the *oracles* (`harness::lane::LANE_SKIP_ELEM_POWERS`, now unconditional),
-/// which this job never consults. A future lane split that is deliberate rather
-/// than a bug adds its rows back here.
-const DOCUMENTED_DIVERGENCES: &[(&str, &[&str])] = &[];
 
 // ---------------------------------------------------------------------------
 // Corpus enumeration
@@ -442,14 +419,10 @@ fn diff(a: &Path, b: &Path) {
                 let (kb, key_b, vb) = split_record(&rb, b, n);
                 if ka == "lane" {
                     // The two headers must name *different* lanes, and between
-                    // them exactly {default, parity}. Skipping the comparison
-                    // (what this did until F-settle W4) meant the one job that
-                    // certifies default ≈ oracle could not tell a lane from
-                    // itself: two dumps both headed `default` diffed clean and
-                    // exited 0, so a Cargo slip that stopped `oracle-parity`
-                    // reaching the example, or a stale `parity.dump` under
-                    // `-SkipDump`, read as a green "bit-identical" run that
-                    // proved nothing. Verified by probe.
+                    // them exactly {default, parity}: otherwise two dumps of one
+                    // lane (a Cargo slip that stops `oracle-parity` reaching the
+                    // example, or a stale `parity.dump` under `-SkipDump`) diff
+                    // clean and read as a "bit-identical" run that proved nothing.
                     lanes = Some((key_a.clone(), key_b.clone()));
                     continue;
                 }
@@ -486,8 +459,7 @@ fn diff(a: &Path, b: &Path) {
                 // reach the statistics). A default lane that started producing
                 // NaN voltages while still flagging converged is the single
                 // worst regression this job exists to catch, so it is a hard
-                // failure regardless of `deliberate` (probe-confirmed silent
-                // pass before F-settle W4).
+                // failure regardless of `deliberate`.
                 for (side, vals) in [(a, &va), (b, &vb)] {
                     if let Some(bad) = vals.iter().find(|x| !x.is_finite()) {
                         nonfinite.push(format!("  {where_}: {bad} in {}", side.display()));

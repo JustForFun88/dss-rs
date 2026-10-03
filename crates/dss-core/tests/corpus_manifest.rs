@@ -164,29 +164,22 @@ fn every_dss_is_accounted_for_exactly_once() {
     );
 }
 
-/// The population guard behind the G1.3d(i) no-meter sentinel normalization
+/// The population guard behind the no-meter sentinel normalization
 /// (`harness::oracle_meter_name`): **no vendored deck names an EnergyMeter `0`**,
 /// so the r4133 `CktElementS` default (`DDLL/DCktElement.pas:421`) can never
 /// collide with a real name in this corpus.
 ///
 /// It lives in this oracle-free hygiene binary, not next to the comparator in
-/// `harness/mod.rs`: it is a fact about the corpus, so the scan runs **once**
-/// per gate run. Measured 2026-09-04 (G1.3d(i) F5): decks then wrote their
-/// exports into the corpus tree while they solved, and reading one mid-write
-/// failed with a Windows sharing violation - a probe replicating this walk
-/// against the live gate hit `EPRITestCircuits/ckt7/ckt7_Power_elem_kVA.txt`
-/// "Permission denied", which is how this test once failed in `corpus_gate`.
-/// That separation USED to rest on `cargo` running test binaries one at a time
-/// (coordinator decision D13). Since RETRO_FIXES RF-I00-01 it rests on a
-/// measured property of the tree: no test WRITES under it (every former writer
-/// and every corpus-gate producer runs a scratch copy, `harness::scratch`, while
-/// decks with no writing verb are still compiled in place, read-only, measured
-/// 72 targets x 0 changes), the gate-side guard entry points refuse a vendored
-/// folder (`harness::scratch::not_vendored`), and the corpus gate fails on a
-/// change of `tests/corpus/` during its own walk (`GateRun::assert_complete`).
+/// the harness: it is a fact about the corpus, so the scan runs **once** per
+/// gate run. Walking the tree while the gate runs is safe because no test
+/// writes under it: every corpus-gate producer and every deck with a writing
+/// verb runs a scratch copy (`harness::scratch`), decks with no writing verb
+/// are compiled in place, read-only, the gate-side guard entry points refuse a
+/// vendored folder (`harness::scratch::not_vendored`), and the corpus gate
+/// fails on a change of `tests/corpus/` during its own walk
+/// (`GateRun::assert_complete`).
 ///
-/// No run leaves an export in the tree any more; the count stays `>=` only
-/// because another lane may add a deck.
+/// The count stays `>=` because another lane may add a deck.
 ///
 /// This census is the **load-bearing** guard for that collision, not a
 /// belt-and-braces one: on the r4133 channel a meter named `0` is
@@ -195,8 +188,7 @@ fn every_dss_is_accounted_for_exactly_once() {
 /// (`harness::element_extras_pins::a_meter_named_zero_reds_instead_of_passing`),
 /// but a port that LOST it would compare `None == None` and pass
 /// (`..::the_r4133_zero_sentinel_is_undecidable_and_the_census_is_the_guard`).
-/// What makes the case unreachable is this walk (G1.3d(i) audit settlement,
-/// 2026-09-05).
+/// What makes the case unreachable is this walk.
 mod extras_population {
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
