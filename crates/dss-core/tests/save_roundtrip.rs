@@ -16,9 +16,21 @@
 //! through the F-FMT seam, so this is the test that says a rendering change may
 //! not alter the model the deck rebuilds — and it says it on the admittance
 //! matrix, which a power flow cannot absorb.
+//!
+//! Every object's full property list (the `?` surface) is compared as well
+//! ([`property_snapshot`], [`assert_properties_round_trip`]): a property lost in
+//! the emitted deck — a `Ratings` array, a geometry's active conductor, a
+//! transformer's active winding — moves no solve observable. The reloaded side
+//! is rendered
+//! at the pre-save node voltages ([`property_snapshot_at`]), so a property a
+//! solve feeds compares the element model alone, and a disabled circuit element
+//! is expected absent, because `Save circuit` writes none
+//! ([`skipped_by_save_circuit`]).
 
 use dss_core::exec::Dss;
-use std::collections::BTreeSet;
+use dss_core::report::export::json::JsonOpts;
+use dss_core::report::export::json::schema::DSS_CLASS_LIST_ORDER;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 /// Repo-root-relative path under the vendored corpus.
@@ -149,8 +161,9 @@ fn bus_kv_bases(dss: &Dss) -> std::collections::BTreeMap<String, f64> {
 }
 
 /// Solve `master`, `save circuit` to a scratch dir, `clear`, re-compile the
-/// emitted `Master.dss`, re-solve, and assert node voltages (≤1e-6 rel) +
-/// iteration count match the pre-save solution.
+/// emitted `Master.dss`, re-solve, and assert every object's property list,
+/// the node voltages (≤1e-6 rel) and the iteration count match the pre-save
+/// ones.
 ///
 /// The IEEE masters embed a `Solve` (e.g. IEEE13 l.149), so a circuit reaches
 /// this test already converged — the regulator taps are settled. To compare
@@ -175,7 +188,8 @@ fn round_trip(tag: &str, master: PathBuf) {
 /// on both the pre-save and post-recompile solves to reach the same fixpoint.
 /// `vtol` is the node-voltage relative tolerance (1e-6 for the clean-round-trip
 /// feeders; a proven Save-precision floor for IEEE-8500, see that test). Discrete
-/// control state (reg taps + cap banks) is always compared **exactly**.
+/// control state (reg taps + cap banks) is always compared **exactly**, and
+/// every object's property list by [`assert_properties_round_trip`].
 fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str], vtol: f64) {
     round_trip_watch(tag, master, pre_only, both, vtol, &[]);
 }
@@ -282,6 +296,7 @@ fn round_trip_watch(
         "{tag}: no bus carries a kVBase pre-save — the compare below would be vacuous"
     );
     assert!(!pre_y.is_empty(), "{tag}: empty checkpoint Y pre-save");
+    let pre_props = property_snapshot(&mut dss, tag);
 
     dss.command(&format!(
         "save circuit dir=\"{}\"",
@@ -324,6 +339,12 @@ fn round_trip_watch(
     let post_discrete = discrete_state(&dss);
     let post_bases = bus_kv_bases(&dss);
     let post_y = y_checkpoint(&mut dss);
+    // Last read of the reloaded solution: this one replaces its node voltages.
+    let post_props = property_snapshot_at(&mut dss, tag, &pre);
+
+    // Every object and every property the emitted deck carries — the most
+    // specific report of a Save loss, so it is asserted first.
+    assert_properties_round_trip(tag, &pre_props, &post_props);
 
     // The sizing-property contract of every watched element (see `SizedArrays`):
     // emitted order first, then the reloaded values.
@@ -653,8 +674,8 @@ fn save_roundtrip_capacitor_numsteps_hoist() {
 /// values cannot show it here, because `mtx601` carries the line's own season
 /// count (`exec::tests::report::
 /// save_hoists_a_sizer_only_to_behind_the_reference_that_resets_it` pins a
-/// reference with a smaller one). Ratings move no solve observable, so the
-/// watch is the only compare that sees them.
+/// reference with a smaller one). Ratings move no solve observable, so only the
+/// property compare and the watch see them.
 #[test]
 fn save_roundtrip_seasons_ratings_hoist() {
     round_trip_watch(
@@ -691,15 +712,19 @@ fn save_roundtrip_seasons_ratings_hoist() {
 /// `[open, closed, closed, ]`. `Save` must serialize this surface such that OUR
 /// own parser re-reads the identical model (the WP8.5 round-trip convention).
 ///
-/// The gate: snapshot **every** property of each control via `element_properties`
-/// (the byte-proven `?` surface), `save circuit`, `clear`, re-compile the emitted
-/// tree on our engine, and assert each control's full property list is unchanged
-/// (numeric-token compare — pins the renamed/new-prop names, values, and array
-/// renders through the Save→re-parse boundary). Node voltages + the discrete
-/// control decision are also compared. The r4133 property VALUES themselves are
-/// cross-checked against oddie:r4133 by the `oracle:"r4133"` controls decks +
-/// `props/*.json`; here we pin that `Save` does not drop or corrupt the r4133
-/// surface on the way out and back.
+/// The gate: snapshot **every** property of every object via `element_properties`
+/// (the byte-proven `?` surface, [`property_snapshot`]), `save circuit`, `clear`,
+/// re-compile the emitted tree on our engine, and assert every object — the four
+/// controls included — comes back with its full property list unchanged
+/// ([`assert_properties_round_trip`], numeric-token compare — pins the
+/// renamed/new-prop names, values, and array renders through the Save→re-parse
+/// boundary). Node voltages + the discrete control decision are also compared.
+/// The r4133 property values themselves are compared live against the r4133
+/// DLL (epri-worker) by the corpus gate's `r4133`-channel decks under
+/// `tests/corpus/controls/`. The `tests/golden/props/` goldens of
+/// `props_roundtrip.rs` pin these classes' property reads to stored values, not
+/// to live r4133 output. Here we pin that `Save` does not drop or corrupt the
+/// r4133 surface on the way out and back.
 #[test]
 fn save_roundtrip_protection() {
     let out = scratch_dir("protection");
@@ -766,16 +791,10 @@ fn save_roundtrip_protection() {
     );
     let (pre, pre_iter) = snapshot(&dss);
     assert!(!pre.is_empty(), "no nodes pre-save");
-    let pre_props: Vec<(String, Vec<(String, String)>)> = controls
-        .iter()
-        .map(|el| {
-            (
-                el.to_string(),
-                dss.element_properties(el)
-                    .unwrap_or_else(|| panic!("{el} not found pre-save")),
-            )
-        })
-        .collect();
+    let pre_props = property_snapshot(&mut dss, "protection");
+    for el in controls {
+        assert!(pre_props.contains_key(el), "{el} not found pre-save");
+    }
 
     dss.command(&format!(
         "save circuit dir=\"{}\"",
@@ -804,24 +823,11 @@ fn save_roundtrip_protection() {
     );
     let (post, post_iter) = snapshot(&dss);
 
-    // Every control's full r4133 property surface must round-trip through our own
-    // parser (renamed/new prop names + values + `[..]` array renders).
-    for (el, pre_list) in &pre_props {
-        let post_list = dss
-            .element_properties(el)
-            .unwrap_or_else(|| panic!("{el} missing after round-trip"));
-        assert_eq!(
-            pre_list.len(),
-            post_list.len(),
-            "{el}: property count changed across save round-trip ({} -> {})",
-            pre_list.len(),
-            post_list.len()
-        );
-        for ((pn, pv), (qn, qv)) in pre_list.iter().zip(&post_list) {
-            assert_eq!(pn, qn, "{el}: property name order changed ({pn} vs {qn})");
-            assert_prop_token_eq(pv, qv, &format!("{el}.{pn}"));
-        }
-    }
+    // Every object's full property surface, the controls' r4133 one included,
+    // must round-trip through our own parser (renamed/new prop names + values +
+    // `[..]` array renders).
+    let post_props = property_snapshot_at(&mut dss, "protection", &pre);
+    assert_properties_round_trip("protection", &pre_props, &post_props);
 
     // Iteration count + node voltages round-trip (the physics is unaffected by the
     // controls at snapshot, but a corrupted re-parse would perturb both).
@@ -851,10 +857,336 @@ fn save_roundtrip_protection() {
     std::fs::remove_dir_all(&out).ok();
 }
 
+/// `Save circuit` closes a LineGeometry line on its active conductor — the one
+/// `?` reads `Wire`/`X`/`H`/`Units` from — when the conductor block would leave
+/// the reload on another: a `like=` clone and a geometry that a closing `cond=1`
+/// leaves on conductor 1, and a geometry with no wire on any conductor, whose
+/// block writes no row, left on conductor 2. The clone sets `cond=1` itself, so
+/// the pin holds wherever `like=` leaves the cursor. A geometry whose cursor is
+/// on its last conductor gets no extra token, and a Save of the reload writes
+/// the same `LineGeometry.dss`.
+#[test]
+fn save_restores_the_active_linegeometry_conductor() {
+    let tag = "lgcursor";
+    let out = scratch_dir(tag);
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.lgc basekv=12.47 bus1=src phases=3",
+        "new wiredata.w diam=0.721 gmrac=0.0244 rac=0.306 normamps=530 runits=mi \
+         radunits=in gmrunits=ft",
+        "new linegeometry.g3 nconds=3 nphases=3 cond=1 wire=w x=-4 h=28 units=ft \
+         cond=2 wire=w x=-1.5 h=28 units=ft cond=3 wire=w x=3 h=24 units=ft",
+        "new linegeometry.cloned like=g3 cond=1",
+        "new linegeometry.back nconds=2 nphases=2 cond=1 wire=w x=-1 h=30 units=ft \
+         cond=2 wire=w x=1 h=32 units=ft cond=1",
+        "new linegeometry.bare nconds=3 nphases=3 cond=2",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: deck errors: {:?}",
+        dss.errors()
+    );
+    let (nodes, _) = snapshot(&dss);
+    let pre = property_snapshot(&mut dss, tag);
+    let active = |snap: &PropSnapshot, object: &str| -> Vec<String> {
+        ["Cond", "X", "H"]
+            .iter()
+            .map(|name| {
+                snap[object]
+                    .iter()
+                    .find(|(n, _)| n.eq_ignore_ascii_case(name))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_else(|| panic!("{tag}: {object}.{name}: no such property"))
+            })
+            .collect()
+    };
+    assert_eq!(active(&pre, "linegeometry.g3"), ["3", "3", "24"]);
+    assert_eq!(active(&pre, "linegeometry.cloned"), ["1", "-4", "28"]);
+    assert_eq!(active(&pre, "linegeometry.back"), ["1", "-1", "30"]);
+    assert_eq!(active(&pre, "linegeometry.bare"), ["2", "0", "0"]);
+
+    let save = |dss: &mut Dss, dir: &std::path::Path| {
+        std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("mkdir {}: {e}", dir.display()));
+        dss.command(&format!(
+            "save circuit dir=\"{}\"",
+            dir.to_string_lossy().replace('\\', "/")
+        ));
+        assert!(
+            dss.errors().is_empty(),
+            "{tag}: save errors: {:?}",
+            dss.errors()
+        );
+    };
+    let first = out.join("first");
+    save(&mut dss, &first);
+    let conds = |object: &str| -> Vec<String> {
+        emitted_line(&first, tag, object)
+            .split(' ')
+            .filter_map(|t| t.strip_prefix("cond="))
+            .map(str::to_string)
+            .collect()
+    };
+    assert_eq!(conds("linegeometry.g3"), ["1", "2", "3"]);
+    assert_eq!(conds("linegeometry.cloned"), ["1", "2", "3", "1"]);
+    assert_eq!(conds("linegeometry.back"), ["1", "2", "1"]);
+    assert_eq!(conds("linegeometry.bare"), ["2"]);
+
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        first
+            .join("Master.dss")
+            .to_string_lossy()
+            .replace('\\', "/")
+    ));
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: reload errors: {:?}",
+        dss.errors()
+    );
+    let post = property_snapshot_at(&mut dss, tag, &nodes);
+    assert_eq!(active(&post, "linegeometry.cloned"), ["1", "-4", "28"]);
+    assert_eq!(active(&post, "linegeometry.back"), ["1", "-1", "30"]);
+    assert_eq!(active(&post, "linegeometry.bare"), ["2", "0", "0"]);
+    assert_properties_round_trip(tag, &pre, &post);
+
+    let second = out.join("second");
+    save(&mut dss, &second);
+    let geometries = |dir: &std::path::Path| {
+        let file = dir.join("LineGeometry.dss");
+        std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("read {}: {e}", file.display()))
+    };
+    assert_eq!(
+        geometries(&first),
+        geometries(&second),
+        "{tag}: a Save of the reload writes another LineGeometry.dss"
+    );
+    std::fs::remove_dir_all(&out).ok();
+}
+
+/// `Save circuit` closes a Transformer, XfmrCode or AutoTrans line on its
+/// active winding (`Wdg`, the one `?` reads `Bus`/`Conn`/`kV`/`kVA`/`%R` from)
+/// when the per-winding `Wdg=1 … Wdg=N` tail would leave the reload on the
+/// last one — here after an `Edit … wdg=1` behind the definition. The reload
+/// reads winding 1 again. A Transformer and an AutoTrans defined winding by
+/// winding, so on their last winding, get no extra token.
+#[test]
+fn save_restores_the_active_transformer_winding() {
+    let tag = "wdgcursor";
+    let out = scratch_dir(tag);
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.wdg basekv=115 bus1=src phases=3",
+        "new transformer.t phases=3 windings=2 buses=[src b1] conns=[delta wye] \
+         kvs=[115 12.47] kvas=[5000 5000] xhl=6",
+        "edit transformer.t wdg=1 kv=115",
+        "new xfmrcode.xc phases=3 windings=2 conns=[delta wye] kvs=[115 12.47] \
+         kvas=[5000 5000] xhl=6",
+        "edit xfmrcode.xc wdg=1 kv=115",
+        "new autotrans.a1 phases=3 windings=2",
+        "~ wdg=1 bus=src conn=s kv=115 kva=50000 %r=0.21",
+        "~ wdg=2 bus=b2 conn=w kv=69 kva=50000 %r=0.19",
+        "edit autotrans.a1 wdg=1",
+        "new transformer.last phases=3 windings=2 xhl=6",
+        "~ wdg=1 bus=src conn=delta kv=115 kva=5000",
+        "~ wdg=2 bus=b3 conn=wye kv=12.47 kva=5000",
+        "new autotrans.a2 phases=3 windings=2",
+        "~ wdg=1 bus=src conn=s kv=115 kva=50000 %r=0.21",
+        "~ wdg=2 bus=b4 conn=w kv=69 kva=50000 %r=0.19",
+        "new load.l bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95",
+        "set voltagebases=[115 69 12.47]",
+        "calcvoltagebases",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: deck errors: {:?}",
+        dss.errors()
+    );
+    let (nodes, _) = snapshot(&dss);
+    let pre = property_snapshot(&mut dss, tag);
+    let active = |snap: &PropSnapshot, object: &str| -> Vec<String> {
+        ["Wdg", "kV"]
+            .iter()
+            .map(|name| {
+                snap[object]
+                    .iter()
+                    .find(|(n, _)| n.eq_ignore_ascii_case(name))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_else(|| panic!("{tag}: {object}.{name}: no such property"))
+            })
+            .collect()
+    };
+    assert_eq!(active(&pre, "transformer.t"), ["1", "115"]);
+    assert_eq!(active(&pre, "xfmrcode.xc"), ["1", "115"]);
+    assert_eq!(active(&pre, "autotrans.a1")[0], "1");
+    assert_eq!(active(&pre, "transformer.last"), ["2", "12.47"]);
+    assert_eq!(active(&pre, "autotrans.a2")[0], "2");
+
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        out.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: save errors: {:?}",
+        dss.errors()
+    );
+    for (object, tokens) in [
+        ("transformer.t", &["1", "2", "1"][..]),
+        ("xfmrcode.xc", &["1", "2", "1"][..]),
+        ("autotrans.a1", &["1", "2", "1"][..]),
+        ("transformer.last", &["1", "2"][..]),
+        ("autotrans.a2", &["1", "2"][..]),
+    ] {
+        let wdgs: Vec<String> = emitted_line(&out, tag, object)
+            .split(' ')
+            .filter_map(|t| t.strip_prefix("wdg="))
+            .map(str::to_string)
+            .collect();
+        assert_eq!(wdgs, tokens, "{tag}: {object}");
+    }
+
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        out.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: reload errors: {:?}",
+        dss.errors()
+    );
+    let post = property_snapshot_at(&mut dss, tag, &nodes);
+    assert_eq!(active(&post, "transformer.t"), ["1", "115"]);
+    assert_eq!(active(&post, "xfmrcode.xc"), ["1", "115"]);
+    assert_eq!(active(&post, "autotrans.a1")[0], "1");
+    assert_eq!(active(&post, "transformer.last"), ["2", "12.47"]);
+    assert_eq!(active(&post, "autotrans.a2")[0], "2");
+    assert_properties_round_trip(tag, &pre, &post);
+    std::fs::remove_dir_all(&out).ok();
+}
+
+/// `Save circuit` writes no line for a disabled circuit element, so the
+/// reloaded circuit holds none — the rule [`skipped_by_save_circuit`] gives the
+/// property compare. `Save <class>` writes the same element, with
+/// ` ENABLED=NO` (`golden_reports.rs::save_class_disabled_load_writes_enabled_no`).
+/// The enabled line and load next to them are written and reloaded.
+#[test]
+fn save_circuit_writes_no_disabled_circuit_element() {
+    let tag = "disabled";
+    let out = scratch_dir(tag);
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.dis basekv=12.47 bus1=src phases=3",
+        "new line.main bus1=src bus2=b1 phases=3 r1=0.1 x1=0.3 r0=0.3 x0=0.9 c1=0 c0=0 length=1",
+        "new line.sw bus1=b1 bus2=b2 phases=3 switch=yes enabled=no",
+        "new load.on bus1=b1 phases=3 kv=12.47 kw=100 pf=0.95",
+        "new load.off bus1=b1 phases=3 kv=12.47 kw=50 pf=0.95",
+        "load.off.enabled=no",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: deck errors: {:?}",
+        dss.errors()
+    );
+    let (nodes, _) = snapshot(&dss);
+    let pre = property_snapshot(&mut dss, tag);
+    for (object, disabled) in [
+        ("line.main", false),
+        ("line.sw", true),
+        ("load.on", false),
+        ("load.off", true),
+    ] {
+        assert_eq!(
+            skipped_by_save_circuit(&pre[object]),
+            disabled,
+            "{tag}: {object} disabled"
+        );
+    }
+
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        out.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: save errors: {:?}",
+        dss.errors()
+    );
+    let emitted: Vec<String> = emitted_set(&out)
+        .iter()
+        .filter(|rel| rel.ends_with(".dss"))
+        .flat_map(|rel| {
+            let text = std::fs::read_to_string(out.join(rel))
+                .unwrap_or_else(|e| panic!("{tag}: read {rel}: {e}"));
+            text.lines()
+                .map(str::to_ascii_lowercase)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for object in ["line.sw", "load.off"] {
+        let head = format!("new \"{object}\"");
+        assert!(
+            !emitted.iter().any(|l| l.starts_with(&head)),
+            "{tag}: Save circuit wrote the disabled {object}"
+        );
+    }
+    for object in ["line.main", "load.on"] {
+        emitted_line(&out, tag, object);
+    }
+
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        out.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    dss.command("solve");
+    assert!(
+        dss.errors().is_empty(),
+        "{tag}: reload errors: {:?}",
+        dss.errors()
+    );
+    for object in ["line.sw", "load.off"] {
+        assert!(
+            dss.element_properties(object).is_none(),
+            "{tag}: the reload holds the disabled {object}"
+        );
+    }
+    let post = property_snapshot_at(&mut dss, tag, &nodes);
+    assert_properties_round_trip(tag, &pre, &post);
+    std::fs::remove_dir_all(&out).ok();
+}
+
 /// Numeric-token equality (WP8.1 skeleton compare): non-numeric structure exact,
 /// numbers within a tight relative floor. A Save→re-parse must reproduce a
 /// property string exactly modulo last-digit `%g` rendering.
 fn assert_prop_token_eq(a: &str, b: &str, ctx: &str) {
+    if let Err(why) = prop_token_diff(a, b) {
+        panic!("{ctx}: {why}");
+    }
+}
+
+/// The comparison [`assert_prop_token_eq`] asserts: `Err` names the first
+/// difference between `a` and `b`.
+fn prop_token_diff(a: &str, b: &str) -> Result<(), String> {
     fn split(s: &str) -> (String, Vec<f64>) {
         let mut skel = String::new();
         let mut nums = Vec::new();
@@ -903,18 +1235,20 @@ fn assert_prop_token_eq(a: &str, b: &str, ctx: &str) {
     }
     let (sa, na) = split(a);
     let (sb, nb) = split(b);
-    assert_eq!(sa, sb, "{ctx}: structure differs ({a:?} vs {b:?})");
-    assert_eq!(
-        na.len(),
-        nb.len(),
-        "{ctx}: number count differs ({a:?} vs {b:?})"
-    );
-    for (x, y) in na.iter().zip(&nb) {
-        assert!(
-            (x - y).abs() <= 1e-9 + 1e-9 * y.abs(),
-            "{ctx}: number differs ({x} vs {y}) in {a:?} vs {b:?}"
-        );
+    if sa != sb {
+        return Err(format!("structure differs ({a:?} vs {b:?})"));
     }
+    if na.len() != nb.len() {
+        return Err(format!("number count differs ({a:?} vs {b:?})"));
+    }
+    for (x, y) in na.iter().zip(&nb) {
+        // Written as "within the floor" so a NaN difference is a difference.
+        let within = (x - y).abs() <= 1e-9 + 1e-9 * y.abs();
+        if !within {
+            return Err(format!("number differs ({x} vs {y}) in {a:?} vs {b:?}"));
+        }
+    }
+    Ok(())
 }
 
 /// [`assert_prop_token_eq`] compares the text between numbers exactly and the
@@ -933,6 +1267,323 @@ fn prop_token_compare_checks_separators_and_values() {
     );
     assert!(red("[ 600 700]", "[ 600 0]"), "a value");
     assert!(red("[ 1 2]", "[ 1 2 3]"), "a count");
+}
+
+/// Every object of a circuit — circuit elements and general objects alike —
+/// keyed by its lowercased `class.name`, mapped to its full `?` property list
+/// ([`Dss::element_properties`]: every property, in property-index order).
+type PropSnapshot = BTreeMap<String, Vec<(String, String)>>;
+
+/// Snapshot every object's property list. The class batches of the JSON export
+/// name the objects of every registered class; only their `Name` is read. The
+/// snapshot must hold every circuit element of the circuit's device list,
+/// disabled ones included.
+fn property_snapshot(dss: &mut Dss, tag: &str) -> PropSnapshot {
+    let mut names = Vec::new();
+    for class in DSS_CLASS_LIST_ORDER {
+        let batch = dss
+            .class_batch_to_json(class, JsonOpts::NONE)
+            .unwrap_or_else(|| panic!("{tag}: class {class} is not registered"));
+        let objs: serde_json::Value = serde_json::from_str(&batch)
+            .unwrap_or_else(|e| panic!("{tag}: the {class} batch is not JSON: {e}"));
+        let objs = objs
+            .as_array()
+            .unwrap_or_else(|| panic!("{tag}: the {class} batch is not an array"));
+        for obj in objs {
+            let name = obj["Name"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{tag}: a {class} object without a Name: {obj}"));
+            names.push(format!("{class}.{name}"));
+        }
+    }
+    let snap: PropSnapshot = names
+        .into_iter()
+        .map(|full| {
+            let props = dss
+                .element_properties(&full)
+                .unwrap_or_else(|| panic!("{tag}: {full} is in its class batch but not found"));
+            (full.to_ascii_lowercase(), props)
+        })
+        .collect();
+    assert!(!snap.is_empty(), "{tag}: the circuit holds no object");
+    // Each device name must name at least as many snapshot objects as the
+    // device list holds it (a name may repeat across classes).
+    let mut held: BTreeMap<&str, usize> = BTreeMap::new();
+    for key in snap.keys() {
+        let name = key.split_once('.').map_or(key.as_str(), |(_, n)| n);
+        *held.entry(name).or_default() += 1;
+    }
+    let mut devices: BTreeMap<String, usize> = BTreeMap::new();
+    for name in dss.circuit().expect("a circuit").device_list.iter() {
+        *devices.entry(name.to_ascii_lowercase()).or_default() += 1;
+    }
+    let missing: Vec<&String> = devices
+        .iter()
+        .filter(|(name, n)| held.get(name.as_str()).copied().unwrap_or(0) < **n)
+        .map(|(name, _)| name)
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "{tag}: circuit elements missing from the property snapshot: {missing:?}"
+    );
+    snap
+}
+
+/// [`property_snapshot`] of the reloaded circuit with its node voltages
+/// replaced by the pre-save ones (`pre`, from [`snapshot`]), matched by node
+/// name. A property a solve feeds (`Transformer.WdgCurrents`) then renders from
+/// the same operating point on both sides and compares the element model
+/// alone; the two solved states are compared by the node-voltage compare. Call
+/// it after every other read of the reloaded solution.
+fn property_snapshot_at(dss: &mut Dss, tag: &str, pre: &[(String, f64, f64)]) -> PropSnapshot {
+    let by_name: std::collections::HashMap<&str, (f64, f64)> = pre
+        .iter()
+        .map(|(n, re, im)| (n.as_str(), (*re, *im)))
+        .collect();
+    let ckt = dss.circuit_mut().expect("circuit solved");
+    for j in 1..=ckt.num_nodes {
+        let name = ckt.node_name(j);
+        let &(re, im) = by_name.get(name.as_str()).unwrap_or_else(|| {
+            panic!("{tag}: node {name} of the reloaded circuit has no pre-save voltage")
+        });
+        let v = &mut ckt.solution.node_v[j];
+        v.re = re;
+        v.im = im;
+    }
+    property_snapshot(dss, tag)
+}
+
+/// A named exclusion from the property compare, `(deck, class, property,
+/// reason, pin)`: on the round trip tagged `deck` the reloaded `class.property`
+/// differs for `reason`, and the test `pin` pins the value each side holds. The
+/// pin is the test function itself, so the compiler checks that it exists.
+type PropertyExclusion = (&'static str, &'static str, &'static str, &'static str, fn());
+
+/// The property compare's exclusions, matched case-blind on class and property
+/// ([`excuse_reds`]). An entry its deck does not hit reds that deck
+/// ([`assert_properties_round_trip`]).
+const PROPERTY_EXCLUSIONS: &[PropertyExclusion] = &[];
+
+/// An object `Save circuit` writes no line for, so the reload holds none: a
+/// circuit element whose `Enabled` reads `No` (`Save <class>` writes it, with
+/// ` ENABLED=NO`). Pinned by [`save_circuit_writes_no_disabled_circuit_element`].
+fn skipped_by_save_circuit(props: &[(String, String)]) -> bool {
+    props
+        .iter()
+        .any(|(n, v)| n.eq_ignore_ascii_case("Enabled") && v.trim().eq_ignore_ascii_case("No"))
+}
+
+/// Split the `reds` of the round trip tagged `deck` by `table`: the reds no
+/// entry of that deck names, and the deck's entries that name none of them. An
+/// object-level red (empty `property`) is never excused.
+fn excuse_reds(
+    deck: &str,
+    reds: Vec<PropRed>,
+    table: &[PropertyExclusion],
+) -> (Vec<PropRed>, Vec<PropertyExclusion>) {
+    let entries: Vec<PropertyExclusion> = table.iter().copied().filter(|e| e.0 == deck).collect();
+    let mut hit = vec![false; entries.len()];
+    let mut left = Vec::new();
+    for red in reds {
+        let class = red.object.split('.').next().unwrap_or_default();
+        let entry = entries.iter().position(|&(_, c, p, _, _)| {
+            !red.property.is_empty()
+                && c.eq_ignore_ascii_case(class)
+                && p.eq_ignore_ascii_case(&red.property)
+        });
+        match entry {
+            Some(i) => hit[i] = true,
+            None => left.push(red),
+        }
+    }
+    let stale = entries
+        .into_iter()
+        .zip(hit)
+        .filter(|&(_, hit)| !hit)
+        .map(|(e, _)| e)
+        .collect();
+    (left, stale)
+}
+
+/// One difference between two [`PropSnapshot`]s: a property whose reloaded
+/// value differs ([`prop_token_diff`]), or an object on one side only, or a
+/// disabled circuit element the reload holds (`property` empty, `pre`/`post`
+/// say which side holds it).
+struct PropRed {
+    object: String,
+    property: String,
+    pre: String,
+    post: String,
+}
+
+/// Every difference between the pre-save and the reloaded snapshot. The
+/// reload is expected to hold every object but the ones
+/// [`skipped_by_save_circuit`].
+fn property_reds(pre: &PropSnapshot, post: &PropSnapshot) -> Vec<PropRed> {
+    let mut reds = Vec::new();
+    for (object, pre_list) in pre {
+        let skipped = skipped_by_save_circuit(pre_list);
+        let Some(post_list) = post.get(object) else {
+            if !skipped {
+                reds.push(PropRed {
+                    object: object.clone(),
+                    property: String::new(),
+                    pre: "present".into(),
+                    post: "missing".into(),
+                });
+            }
+            continue;
+        };
+        if skipped {
+            reds.push(PropRed {
+                object: object.clone(),
+                property: String::new(),
+                pre: "disabled".into(),
+                post: "present".into(),
+            });
+            continue;
+        }
+        let names = |l: &[(String, String)]| l.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            names(pre_list),
+            names(post_list),
+            "{object}: the property table differs between the two snapshots"
+        );
+        for ((name, a), (_, b)) in pre_list.iter().zip(post_list) {
+            if prop_token_diff(a, b).is_err() {
+                reds.push(PropRed {
+                    object: object.clone(),
+                    property: name.clone(),
+                    pre: a.clone(),
+                    post: b.clone(),
+                });
+            }
+        }
+    }
+    for object in post.keys().filter(|o| !pre.contains_key(*o)) {
+        reds.push(PropRed {
+            object: object.clone(),
+            property: String::new(),
+            pre: "missing".into(),
+            post: "present".into(),
+        });
+    }
+    reds
+}
+
+/// Assert that the reloaded deck reproduces every object and every property
+/// value the circuit held before the Save, bar the [`PROPERTY_EXCLUSIONS`] of
+/// the round trip tagged `tag`, listing every difference found, and that each
+/// of those exclusions names a difference.
+fn assert_properties_round_trip(tag: &str, pre: &PropSnapshot, post: &PropSnapshot) {
+    let (reds, stale) = excuse_reds(tag, property_reds(pre, post), PROPERTY_EXCLUSIONS);
+    assert!(
+        reds.is_empty(),
+        "{tag}: {} differences across save round-trip:\n{}",
+        reds.len(),
+        reds.iter()
+            .map(|r| format!("  {}.{}: {:?} -> {:?}", r.object, r.property, r.pre, r.post))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let stale: Vec<String> = stale
+        .iter()
+        .map(|&(_, class, property, reason, _)| format!("{class}.{property} ({reason})"))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "{tag}: property exclusions no difference hits: {stale:?}"
+    );
+}
+
+/// [`excuse_reds`] drops the red its deck's entry names, keeps a red that only
+/// another deck's entry names and an object-level red, and returns the deck's
+/// entries that no red hits.
+#[test]
+fn a_property_exclusion_excuses_its_own_deck_and_goes_stale_unhit() {
+    fn a_pin() {}
+    let red = |object: &str, property: &str| PropRed {
+        object: object.into(),
+        property: property.into(),
+        pre: "1".into(),
+        post: "2".into(),
+    };
+    let table: &[PropertyExclusion] = &[
+        ("d1", "Capacitor", "kvar", "a reason", a_pin),
+        ("d1", "Line", "Rmatrix", "a reason", a_pin),
+        ("d1", "Line", "", "an object", a_pin),
+        ("d2", "Load", "kW", "a reason", a_pin),
+    ];
+    let (left, stale) = excuse_reds(
+        "d1",
+        vec![
+            red("capacitor.c1", "KVAR"),
+            red("load.l1", "kW"),
+            red("line.l1", ""),
+        ],
+        table,
+    );
+    let left: Vec<String> = left
+        .iter()
+        .map(|r| format!("{}.{}", r.object, r.property))
+        .collect();
+    assert_eq!(left, ["load.l1.kW", "line.l1."]);
+    let stale: Vec<(&str, &str, &str)> = stale
+        .iter()
+        .map(|&(deck, class, property, _, _)| (deck, class, property))
+        .collect();
+    assert_eq!(stale, [("d1", "Line", "Rmatrix"), ("d1", "Line", "")]);
+}
+
+/// [`property_reds`] reports a changed value, an object the reload lost, an
+/// object it added and a disabled circuit element it holds, and nothing for a
+/// reload that holds every other object unchanged.
+#[test]
+fn property_compare_reports_changed_lost_and_added_objects() {
+    let snap = |entries: &[(&str, &[(&str, &str)])]| -> PropSnapshot {
+        entries
+            .iter()
+            .map(|(object, props)| {
+                let props = props
+                    .iter()
+                    .map(|(n, v)| (n.to_string(), v.to_string()))
+                    .collect();
+                (object.to_string(), props)
+            })
+            .collect()
+    };
+    let pre = snap(&[
+        ("capacitor.c1", &[("kvar", "[ 150 150]"), ("NumSteps", "2")]),
+        ("line.l1", &[("Enabled", "Yes")]),
+        ("line.sw", &[("Enabled", "No")]),
+        ("load.off", &[("Enabled", "No")]),
+    ]);
+    let reload = snap(&[
+        ("capacitor.c1", &[("kvar", "[ 150 150]"), ("NumSteps", "2")]),
+        ("line.l1", &[("Enabled", "Yes")]),
+    ]);
+    assert!(
+        property_reds(&pre, &reload).is_empty(),
+        "every object but the disabled ones, unchanged"
+    );
+    let post = snap(&[
+        ("capacitor.c1", &[("kvar", "[ 75 75]"), ("NumSteps", "2")]),
+        ("load.l2", &[("kW", "1")]),
+        ("load.off", &[("Enabled", "No")]),
+    ]);
+    let got: Vec<String> = property_reds(&pre, &post)
+        .iter()
+        .map(|r| format!("{}.{}: {} -> {}", r.object, r.property, r.pre, r.post))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            "capacitor.c1.kvar: [ 150 150] -> [ 75 75]",
+            "line.l1.: present -> missing",
+            "load.off.: disabled -> present",
+            "load.l2.: missing -> present",
+        ]
+    );
 }
 
 /// Collect the set of emitted files relative to `root`, using `/` separators.
@@ -996,6 +1647,7 @@ fn save_forms_structural_file_set() {
         dss.errors()
     );
     let (pre, pre_iter) = snapshot(&dss);
+    let pre_props = property_snapshot(&mut dss, "saveforms");
     dss.command(&format!(
         "save circuit dir=\"{}\"",
         out.to_string_lossy().replace('\\', "/")
@@ -1058,6 +1710,10 @@ fn save_forms_structural_file_set() {
         dss.errors()
     );
     let (post, post_iter) = snapshot(&dss);
+    // Every object of the zone tree and the top-level files comes back with
+    // its full property list.
+    let post_props = property_snapshot_at(&mut dss, "saveforms", &pre);
+    assert_properties_round_trip("saveforms", &pre_props, &post_props);
     assert_eq!(
         pre_iter, post_iter,
         "warm snap-solve iteration count changed"
