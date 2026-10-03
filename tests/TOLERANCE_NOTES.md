@@ -2827,12 +2827,16 @@ every deck it touches. Twelve corpus cases carry a deck-wide element scope
 WindGen qmode0 decks, the four asym combo/indmach envelope rows); re-pinning
 their echo would have cost ~14 rows and tripped the §1.1(f) "> ~10 entries"
 kill criterion for a divergence the ledger already owns. `Circuit.TotalPower`
-sums `Power[1]`, a per-terminal quantity the capture does not split out, so it
-cannot be rebuilt from an accepted cap: since the G1.9 audit settlement its
-envelope instead absorbs the accepted `powers` divergence summed over **all**
-of a scoped source's conductors (a conservative superset of the terminal-1
-part), so the arm keeps running and an entry that scopes only `currents` no
-longer switches it off. **P1 and P1b never soften** — they run on the raw
+is split by terminal with the port's snapshot layout: its P1 arm rebuilds the
+oracle's aggregate from the oracle's terminal-1 source powers inside the same
+`AGG_SUM_REL`/`AGG_SUM_ABS` identity band, and on the three cases
+`harness::lane::total_power_counts_every_source_terminal` lists the value
+arm's reference adds the sources' accepted terminal-2 powers, because the
+engine counts every source terminal and both oracles count terminal 1 alone.
+No band changed for it. Its envelope absorbs the accepted `powers` divergence
+summed over **all** of a scoped source's conductors, so the arm keeps running
+and an entry that scopes only `currents` does not switch it off. **P1 and P1b
+never soften** — they run on the raw
 oracle capture on every case, so no deck loses the arms with the teeth.
 
 Where a deck-wide scope selects `losses`, the loss-aggregate value arms are a

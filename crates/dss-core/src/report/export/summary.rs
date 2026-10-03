@@ -91,7 +91,8 @@ pub struct SummaryFields {
     pub hour: i32,
     pub max_pu_voltage: f64,
     pub min_pu_voltage: f64,
-    /// `GetTotalPowerFromSources * 1e-6` (MVA), re/im.
+    /// The power the sources supply, summed over all their terminals (MVA),
+    /// re/im: the negated `Dss::total_power` × 0.001.
     pub total_mw: f64,
     pub total_mvar: f64,
     /// `Circuit.Losses * 1e-6` (MVA), re/im.

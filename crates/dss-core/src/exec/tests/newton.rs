@@ -930,8 +930,9 @@ fn angle_cell(what: &str, printed: &str, degrees: f64) {
 /// just ran on, against the rebuilt flows: `Power[j]` (r4133
 /// `Common/ExportResults.pas:1111`/`:1146`, and the meters, monitors and
 /// `P_ByPhase` on the same getter), `Losses` (`GetLosses`, `:1192`) and the
-/// circuit totals of `Export Summary` (`GetTotalPowerFromSources` / `Losses`,
-/// `:3309`/`:3312`). Returns the worst gap in kVA.
+/// circuit totals of `Export Summary`: the power the sources supply over every
+/// terminal (`Dss::total_power`) and the losses (`Dss::losses`). Returns the
+/// worst gap in kVA.
 fn reader_gap_kva(dss: &mut Dss, flows: &[Flow]) -> f64 {
     let mut worst = 0.0_f64; // VA
     {
@@ -959,7 +960,7 @@ fn reader_gap_kva(dss: &mut Dss, flows: &[Flow]) -> f64 {
         }
         assert!(next.next().is_none(), "one flow per energized element");
     }
-    let supply: Complex64 = flows.iter().filter(|f| f.source).map(|f| f.power(0)).sum();
+    let supply: Complex64 = flows.iter().filter(|f| f.source).map(Flow::total).sum();
     let (p_kw, q_kvar) = dss.total_power();
     worst = worst.max((Complex64::new(p_kw, q_kvar) * 1e3 - supply).norm());
     let losses: Complex64 = flows.iter().filter(|f| f.pd).map(Flow::total).sum();
@@ -1058,7 +1059,7 @@ fn newton_export_losses_match_the_normal_algorithm() {
 // EXPECTED-VALUE-PIN(POWERS_REUSE_STALE_NEWTON_ITERMINAL): the torn-down row on
 // the `Export Summary` surface, asserted in both lanes.
 /// `Export Summary` after `Set algorithm=Newton`: its supply the sources'
-/// terminal-1 `V·conj(I)`, its losses the PD elements', and the normal
+/// `V·conj(I)` over every terminal, its losses the PD elements', and the normal
 /// algorithm's row bar the wall-clock `DateTime`. r4133 reads both through the
 /// cache-aware getters (`GetTotalPowerFromSources` / `Losses`,
 /// `Common/ExportResults.pas:3309`, `:3312`): r4133 prints `TotalMW 1.33894,
@@ -1093,7 +1094,7 @@ fn newton_export_summary_matches_the_normal_algorithm() {
             .unwrap_or_else(|| panic!("no {name} column in {header:?}"));
         row[k]
     };
-    let supply: Complex64 = flows.iter().filter(|f| f.source).map(|f| f.power(0)).sum();
+    let supply: Complex64 = flows.iter().filter(|f| f.source).map(Flow::total).sum();
     let losses: Complex64 = flows.iter().filter(|f| f.pd).map(Flow::total).sum();
     cell("TotalMW", col("TotalMW"), -supply.re * 1e-6);
     cell("TotalMvar", col("TotalMvar"), -supply.im * 1e-6);

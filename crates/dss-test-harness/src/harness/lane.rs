@@ -259,6 +259,36 @@ pub fn elem_channels_for(label: &str) -> ElemChannels {
     }
 }
 
+/// The corpus cases whose `Circuit.TotalPower` the gate compares, in both lanes,
+/// against the oracle's own reading plus the terminal-2 powers of its sources.
+///
+/// Both oracle engines add each source's power over terminal 1 alone. The engine
+/// adds every terminal: a source whose terminal 2 sits on a live bus exchanges
+/// power there too, so only the sum over its terminals conserves complex power
+/// and stays the same when the source is written end for end. Where every
+/// source's terminal 2 is earthed the two readings are the same number, so only
+/// the cases below differ. `aggregates::compare_aggregates` fails a listed case
+/// whose sources carry no material power past terminal 1 (a stale row) and an
+/// unlisted case whose sources do.
+///
+/// Each row's expected value is pinned in-engine, without an oracle, by the
+/// complete power ledger of the deck (`dss_core::exec::tests::aggregates`):
+/// `gic_midi_total_power_closes_the_complete_ledger`,
+/// `gicsource_gic_total_power_closes_the_complete_ledger` and
+/// `isource_snap_total_power_closes_the_complete_ledger`.
+const LANE_TOTAL_POWER_ALL_TERMINALS: &[&str] = &[
+    "asymmetric:gic/gic_midi.dss",
+    "asymmetric:gic/gicsource_gic.dss",
+    "asymmetric:isource/isource_snap.dss",
+];
+
+/// Whether the corpus case `label` compares `Circuit.TotalPower` against the
+/// oracle's reading plus its sources' terminal-2 powers
+/// ([`LANE_TOTAL_POWER_ALL_TERMINALS`]).
+pub fn total_power_counts_every_source_terminal(label: &str) -> bool {
+    LANE_TOTAL_POWER_ALL_TERMINALS.contains(&label)
+}
+
 /// The oracle event-log capture as the **current lane** expects to see it: the
 /// two Relay label rewrites in *both* lanes, plus — in the default lane only —
 /// the enumerated `%g` re-spellings.
@@ -987,11 +1017,12 @@ pub fn profile_ll_policy(base: ExportPolicy) -> ExportPolicy {
 #[cfg(test)]
 mod tests {
     use super::{
-        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, MONITOR_PAD_HITS, MONITOR_PAD_MISSES,
-        Ordering, PARITY, assert_bytes_eq, assert_monitor_pad_is_live,
-        assert_reround_cells_are_live, compare_iterations, compare_iterations_le, compare_report,
-        elem_channels_for, exact_value_policy, expected_eventlog, expected_monitor_channel,
-        strip_monitor_pad,
+        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, LANE_TOTAL_POWER_ALL_TERMINALS,
+        MONITOR_PAD_HITS, MONITOR_PAD_MISSES, Ordering, PARITY, assert_bytes_eq,
+        assert_monitor_pad_is_live, assert_reround_cells_are_live, compare_iterations,
+        compare_iterations_le, compare_report, elem_channels_for, exact_value_policy,
+        expected_eventlog, expected_monitor_channel, strip_monitor_pad,
+        total_power_counts_every_source_terminal,
     };
 
     thread_local! {
@@ -1191,6 +1222,40 @@ mod tests {
                 "{label} must stay fully gated in both lanes"
             );
         }
+    }
+
+    /// The `TotalPower` all-terminals cases, spelled out, each one a case of
+    /// its family's corpus manifest: a misspelt or removed row would otherwise
+    /// only show as a corpus-gate failure, or not at all.
+    #[test]
+    fn total_power_all_terminal_cases_are_the_three_two_ended_source_decks() {
+        assert_eq!(
+            LANE_TOTAL_POWER_ALL_TERMINALS,
+            &[
+                "asymmetric:gic/gic_midi.dss",
+                "asymmetric:gic/gicsource_gic.dss",
+                "asymmetric:isource/isource_snap.dss",
+            ],
+            "a new row needs its own expected-value pin and a record"
+        );
+        let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus");
+        for label in LANE_TOTAL_POWER_ALL_TERMINALS {
+            assert!(total_power_counts_every_source_terminal(label));
+            let (family, path) = label.split_once(':').expect("`family:path`");
+            let manifest = corpus.join(family).join("manifest.json");
+            let text = std::fs::read_to_string(&manifest)
+                .unwrap_or_else(|e| panic!("{}: {e}", manifest.display()));
+            let doc: serde_json::Value = serde_json::from_str(&text).expect("the manifest parses");
+            let cases = doc["cases"].as_array().expect("`cases` is an array");
+            assert!(
+                cases.iter().any(|c| c["path"].as_str() == Some(path)),
+                "{label} is not a case of {}",
+                manifest.display()
+            );
+        }
+        assert!(!total_power_counts_every_source_terminal(
+            "modes:newton/newton.dss"
+        ));
     }
 
     /// The event-log transform touches exactly the two Relay rows and nothing

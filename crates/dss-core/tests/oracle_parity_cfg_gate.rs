@@ -5323,7 +5323,7 @@ const G1_9_PINS: [&str; 16] = [
     "substation_losses_exclude_autotrans",
     "losses_skip_shunt_elements",
     "line_losses_sum_the_lines_list",
-    "total_power_is_terminal_one_of_every_source",
+    "total_power_sums_every_terminal_of_every_source",
     "total_iterations_is_an_alias_of_iterations",
     "all_element_losses_follow_creation_order",
     "the_two_boolean_solution_flags_take_both_values",

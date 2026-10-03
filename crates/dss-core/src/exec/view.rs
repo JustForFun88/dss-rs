@@ -2804,41 +2804,17 @@ impl Dss {
             .map(|e| e.cd().all_conductors_closed())
     }
 
-    /// CAPI `Circuit_Get_TotalPower`: the sum of every source's terminal-1
-    /// power, in kW/kvar (negative of the power delivered to the circuit).
+    /// `Circuit.TotalPower` in kW/kvar: [`Circuit::source_power`], the power into
+    /// every terminal of every source, which is the negative of the power the
+    /// sources supply. `Summary` and `Export Summary` report its negation.
     pub fn total_power(&mut self) -> (f64, f64) {
-        use num_complex::Complex64;
         let Dss {
             classes, circuit, ..
         } = self;
         let ckt = circuit.as_ref().expect("total_power needs a circuit");
         let sys = crate::solution::solution::sys_ctx(ckt);
-        let node_v = ckt.solution.node_v.clone();
-        let positive_seq = ckt.positive_sequence;
-        let mut total = Complex64::ZERO;
-        for &r in &ckt.sources {
-            let elem = classes[r.class_ord()]
-                .arena
-                .try_ckt_elem_mut(r.index())
-                .expect("sources are circuit elements");
-            if !elem.cd().enabled || elem.cd().node_ref.is_empty() {
-                continue;
-            }
-            elem.compute_iterminal(&sys, &node_v);
-            let cd = elem.cd();
-            // Pascal Get_Power(1): sum over terminal-1 conductors.
-            let mut s = Complex64::ZERO;
-            for i in 0..cd.nconds {
-                let n = cd.node_ref[i];
-                if n > 0 {
-                    s += node_v[n] * cd.iterminal[i].conj();
-                }
-            }
-            if positive_seq {
-                s *= 3.0;
-            }
-            total += s;
-        }
+        let mut store = ClassStore { classes };
+        let total = ckt.source_power(&mut store, &sys);
         (total.re * 0.001, total.im * 0.001)
     }
 

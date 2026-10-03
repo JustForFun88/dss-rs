@@ -64,12 +64,16 @@
 //! deck-wide `element` scopes it applies to are pinned by
 //! `corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
 //! so a new one reds until its author records it (the D11 visibility rule).
-//! `TotalPower` cannot be reconstructed from the cap at all (terminal 1, and
-//! the capture has no `nconds`), so instead of being dropped whenever a source
-//! appears in the rewrite map — whatever sub-channel the entry scoped — its
-//! envelope absorbs the accepted `powers` divergence summed over **all** of
-//! that source's conductors, a documented conservative superset. An entry that
-//! scopes only `currents` no longer switches the arm off.
+//! `TotalPower` is split by terminal with the port's own layout. Its P1 arm
+//! rebuilds the oracle's aggregate from the oracle's terminal-1 powers, which
+//! is how both oracles compute it. The engine adds every terminal of every
+//! source, so on the cases [`lane::total_power_counts_every_source_terminal`]
+//! lists (the only ones whose sources carry material power past terminal 1,
+//! asserted both ways) the value arm's reference is the oracle's aggregate plus
+//! the accepted terminal-2 powers of its sources, and everywhere else the
+//! oracle's aggregate itself. Its envelope absorbs the accepted `powers`
+//! divergence summed over **all** of a source's conductors, so an entry that
+//! scopes only `currents` does not switch the arm off.
 //! The **membership and identity arms do not soften**: P1 and P1b run on
 //! the raw oracle capture on every case, so no deck loses the arms that carry
 //! the teeth. The two `newton*` decks are the lane-policy analogue: their
@@ -246,7 +250,9 @@ fn term_loss_w(
 /// a ledger-scoped element contributes the value the element comparator itself
 /// accepted. Only the **value** arms consult either of the two: the membership,
 /// identity, length and order arms are structure over the raw oracle capture
-/// and run everywhere.
+/// and run everywhere. `ctx` is the runner's `<label> step <i>`, and its label
+/// decides the `TotalPower` reference
+/// ([`lane::total_power_counts_every_source_terminal`]).
 #[allow(clippy::too_many_arguments)]
 pub fn compare_aggregates(
     dss: &mut Dss,
@@ -503,53 +509,116 @@ pub fn compare_aggregates(
         }
     }
 
-    // `TotalPower` sums `Power[1]` — a per-TERMINAL quantity the capture does
-    // not split out (it carries no `nconds`), so unlike the loss aggregates it
-    // cannot be rebuilt from an accepted per-element cap. What the ledger
-    // accepted for a scoped source is still *bounded*, though: the sum over
-    // ALL of its conductors of |accepted - raw| dominates the terminal-1 part,
-    // the same conservative superset the allowance itself uses. Adding that to
-    // the envelope keeps the arm running field-by-field on a scoped deck,
-    // where the earlier `tp_scoped` test dropped the whole comparison on
-    // element PRESENCE — whatever sub-channel the entry actually scoped
-    // (G1.9 audit CODE-2). Membership and the terminal-1/x3 semantics stay
-    // pinned in-engine by
-    // `exec::tests::aggregates::total_power_is_terminal_one_of_every_source`.
-    let tp_slack: f64 = terms
-        .total_power
-        .iter()
-        .map(|t| {
-            let i = idx_of(t, "Circuit.TotalPower");
-            let raw = &elements[i];
-            let acc = cap_for(i);
-            let n = raw
-                .p_kw
-                .len()
-                .min(raw.p_kvar.len())
-                .min(acc.p_kw.len())
-                .min(acc.p_kvar.len());
-            (0..n)
-                .map(|k| cdiff((acc.p_kw[k], acc.p_kvar[k]), (raw.p_kw[k], raw.p_kvar[k])))
-                .sum::<f64>()
-        })
-        .sum();
+    // --- `TotalPower` ------------------------------------------------------
+    // Both oracles add each source's powers over terminal 1 alone, the engine
+    // adds every terminal. Each source's capture is split by the port's own
+    // layout (terminal-major, `n_conds` conductors per terminal), whose length
+    // `compare_element_channels` has already held the oracle's to.
+    let label = ctx.rsplit_once(" step ").map_or(ctx, |(label, _)| label);
+    let mut raw_t1 = (0.0f64, 0.0f64);
+    let mut raw_t1_abs = 0.0f64;
+    let mut raw_rest = (0.0f64, 0.0f64);
+    let mut acc_rest = (0.0f64, 0.0f64);
+    // What the ledger accepted for a scoped source is bounded by the sum over
+    // ALL of its conductors of |accepted - raw|, a superset of the terminal-1
+    // part the oracle's aggregate reads. Adding that to the envelope keeps the
+    // arm running field by field on a scoped deck instead of dropping it on
+    // element presence, whatever sub-channel the entry scoped.
+    let mut tp_slack = 0.0f64;
+    for t in &terms.total_power {
+        let i = idx_of(t, "Circuit.TotalPower");
+        let snap = &snaps[i];
+        let (raw, acc) = (&elements[i], cap_for(i));
+        for (which, c) in [("oracle", raw), ("accepted", acc)] {
+            assert!(
+                c.p_kw.len() == snap.powers.len() && c.p_kvar.len() == snap.powers.len(),
+                "{ctx}: Circuit.TotalPower summand `{t}`: the {which} capture holds \
+                 {}/{} powers, the port {} ({} terminals of {} conductors)",
+                c.p_kw.len(),
+                c.p_kvar.len(),
+                snap.powers.len(),
+                snap.n_terms,
+                snap.n_conds
+            );
+        }
+        for k in 0..snap.powers.len() {
+            let (r, a) = ((raw.p_kw[k], raw.p_kvar[k]), (acc.p_kw[k], acc.p_kvar[k]));
+            tp_slack += cdiff(a, r);
+            if k < snap.n_conds {
+                raw_t1.0 += r.0;
+                raw_t1.1 += r.1;
+                raw_t1_abs += r.0.hypot(r.1);
+            } else {
+                raw_rest.0 += r.0;
+                raw_rest.1 += r.1;
+                acc_rest.0 += a.0;
+                acc_rest.1 += a.1;
+            }
+        }
+    }
+    let oracle_tp = (cap.total_power_kw[0], cap.total_power_kw[1]);
+
+    // P1, membership: the oracle's `TotalPower` is its own terminal-1 walk over
+    // the port's summand list, to f64 reordering.
+    let d = cdiff(raw_t1, oracle_tp);
+    let bound = AGG_SUM_REL * raw_t1_abs + AGG_SUM_ABS;
+    assert!(
+        d <= bound,
+        "{ctx}: Circuit.TotalPower membership: the ORACLE's terminal-1 powers over \
+         the port's {} source(s) sum to ({}, {}) kW but the oracle reports ({}, {}) \
+         kW; |diff| = {d:e} > {bound:e}. The summand set or the terminal-1 walk \
+         differs, not a numeric drift.",
+        terms.total_power.len(),
+        raw_t1.0,
+        raw_t1.1,
+        oracle_tp.0,
+        oracle_tp.1
+    );
+
+    // The terminal-2 rule: a case whose sources exchange material power past
+    // terminal 1 must be one `lane::total_power_counts_every_source_terminal`
+    // lists, and a listed case must still be such a case.
+    let allowed = allowance_kw(&terms.total_power, "Circuit.TotalPower") + tp_slack;
+    let past_t1 = raw_rest.0.hypot(raw_rest.1);
+    let listed = lane::total_power_counts_every_source_terminal(label);
+    assert!(
+        listed == (past_t1 > allowed),
+        "{ctx}: the oracle's sources carry {past_t1:e} kVA past terminal 1 against \
+         the Circuit.TotalPower allowance {allowed:e}, but `{label}` is {} by \
+         `lane::total_power_counts_every_source_terminal`. The engine counts every \
+         source terminal and the oracle reads terminal 1 alone, so a case where \
+         the two differ must be listed there with an expected-value pin, and a \
+         listed case where they no longer differ is a stale row.",
+        if listed { "listed" } else { "not listed" }
+    );
+
     if channels.powers {
         let rust_tp = dss.total_power();
-        let oracle_tp = (cap.total_power_kw[0], cap.total_power_kw[1]);
-        // The allowance uses each source's WHOLE conductor set — terminal 1 is
-        // a subset, so this is a documented conservative superset.
-        let allowed = allowance_kw(&terms.total_power, "Circuit.TotalPower") + tp_slack;
-        let d = cdiff(rust_tp, oracle_tp);
+        // On a listed case the reference adds the terminal-2 powers the oracle's
+        // own aggregate leaves out, taken from its accepted per-element capture.
+        let reference = if listed {
+            (oracle_tp.0 + acc_rest.0, oracle_tp.1 + acc_rest.1)
+        } else {
+            oracle_tp
+        };
+        // The allowance uses each source's WHOLE conductor set, which bounds
+        // the terminal-1 part and the all-terminals sum alike.
+        let d = cdiff(rust_tp, reference);
         assert!(
             d <= allowed,
             "{ctx}: Circuit.TotalPower differs: Rust ({}, {}) kW vs oracle \
-             ({}, {}) kW; |diff| = {d:e} > allowed {allowed:e} (the propagated \
+             ({}, {}) kW{}; |diff| = {d:e} > allowed {allowed:e} (the propagated \
              per-source envelope plus {tp_slack:e} the ledger accepted on \
              their `powers`) ({} sources)",
             rust_tp.0,
             rust_tp.1,
-            oracle_tp.0,
-            oracle_tp.1,
+            reference.0,
+            reference.1,
+            if listed {
+                " (its TotalPower plus its sources' terminal-2 powers)"
+            } else {
+                ""
+            },
             terms.total_power.len()
         );
     }
@@ -739,16 +808,20 @@ mod tests {
     /// oracle capture built from the port's own numbers, so only the arm under
     /// test can red.
     fn solved_case() -> (Dss, Vec<ElementSnapshot>, Vec<ElementCap>, AggregatesCap) {
+        solved_deck(&[])
+    }
+
+    /// [`solved_case`]'s feeder plus `extra` commands before the solve.
+    fn solved_deck(extra: &[&str]) -> (Dss, Vec<ElementSnapshot>, Vec<ElementCap>, AggregatesCap) {
         let mut dss = Dss::new();
-        for line in [
+        let head = [
             "Clear",
             "New Circuit.aggtest basekv=12.47 phases=3 bus1=sourcebus mvasc3=200 mvasc1=210",
             "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.3 x1=0.9 r0=0.9 x0=2.7 length=2 units=km",
             "New Load.ld1 bus1=b1 phases=3 kv=12.47 kw=900 pf=0.92 model=1",
-            "Set voltagebases=[12.47]",
-            "Calcvoltagebases",
-            "Solve",
-        ] {
+        ];
+        let tail = ["Set voltagebases=[12.47]", "Calcvoltagebases", "Solve"];
+        for line in head.iter().chain(extra).chain(&tail) {
             dss.command(line);
             assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
         }
@@ -807,7 +880,18 @@ mod tests {
         let losses = dss.losses();
         let line_losses = dss.line_losses();
         let sub = dss.substation_losses();
-        let tp = dss.total_power();
+        // What an oracle reports: its sources' powers over terminal 1 alone.
+        let mut tp = (0.0, 0.0);
+        for t in &dss.aggregate_terms().total_power {
+            let s = snaps
+                .iter()
+                .find(|s| s.name.eq_ignore_ascii_case(t))
+                .expect("a source snapshot");
+            for p in &s.powers[..s.n_conds] {
+                tp.0 += p.re;
+                tp.1 += p.im;
+            }
+        }
         let mut ael = Vec::new();
         for (re, im) in dss.all_element_losses() {
             ael.push(re);
@@ -848,14 +932,17 @@ mod tests {
     #[test]
     #[should_panic(expected = "Circuit.TotalPower differs")]
     fn a_currents_only_scope_leaves_the_total_power_arm_running() {
-        let (mut dss, snaps, elements, mut cap) = solved_case();
-        // The oracle's TotalPower is far from the port's.
+        let (mut dss, snaps, mut elements, mut cap) = solved_case();
+        // The oracle's TotalPower is far from the port's, and consistent with its
+        // own terminal-1 powers, so the membership arm passes…
         cap.total_power_kw[0] += 1.0e6;
-        // …and the ledger rewrote the source's CURRENTS only.
         let src = elements
-            .iter()
+            .iter_mut()
             .find(|e| e.name.to_lowercase().starts_with("vsource."))
             .expect("the deck has a Vsource");
+        src.p_kw[0] += 1.0e6;
+        // …and the ledger rewrote the source's CURRENTS only.
+        let src = &*src;
         let mut rewritten = ElementCap {
             name: src.name.clone(),
             i_re: src.i_re.clone(),
@@ -917,6 +1004,93 @@ mod tests {
             &tol(),
             ElemChannels::ALL,
             "self-test",
+        );
+    }
+
+    /// An oracle `TotalPower` that is not its own terminal-1 walk over the port's
+    /// sources reds the membership arm, before any value comparison.
+    #[test]
+    #[should_panic(expected = "Circuit.TotalPower membership")]
+    fn an_oracle_total_power_off_its_terminal_one_walk_fails_membership() {
+        let (mut dss, snaps, elements, mut cap) = solved_case();
+        cap.total_power_kw[0] += 1.0;
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "self-test",
+        );
+    }
+
+    /// The feeder with a two-ended `Isource` tying `b1` to a live bus `b2` fed
+    /// by a second source: its terminal 2 carries about 170 kVA.
+    const LIVE_TERMINAL_TWO: [&str; 4] = [
+        "New Vsource.s2 bus1=sb2 basekv=12.47 pu=1.02 phases=3 mvasc3=150 mvasc1=140",
+        "New Line.l2 bus1=sb2 bus2=b2 phases=3 r1=0.3 x1=0.9 r0=0.9 x0=2.7 length=1 units=km",
+        "New Load.ld2 bus1=b2 phases=3 kv=12.47 kw=400 pf=0.95 model=1",
+        "New Isource.itie bus1=b1 bus2=b2 phases=3 amps=8 angle=15",
+    ];
+
+    /// A case `lane::total_power_counts_every_source_terminal` lists compares
+    /// the engine's all-terminals `TotalPower` against the oracle's terminal-1
+    /// reading plus its sources' terminal-2 powers, and passes.
+    #[test]
+    fn a_listed_case_compares_against_the_all_terminals_sum() {
+        let (mut dss, snaps, elements, cap) = solved_deck(&LIVE_TERMINAL_TWO);
+        let rust = dss.total_power();
+        assert!(
+            cdiff(rust, (cap.total_power_kw[0], cap.total_power_kw[1])) > 100.0,
+            "the drive needs a terminal 2 the oracle's walk leaves out"
+        );
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "asymmetric:isource/isource_snap.dss step 0",
+        );
+    }
+
+    /// The same capture on a case the lane policy does not list reds: a source
+    /// terminal 2 the oracle leaves out has to be recorded and pinned.
+    #[test]
+    #[should_panic(expected = "is not listed by")]
+    fn a_live_terminal_two_on_an_unlisted_case_fails() {
+        let (mut dss, snaps, elements, cap) = solved_deck(&LIVE_TERMINAL_TWO);
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "self-test step 0",
+        );
+    }
+
+    /// A listed case whose sources no longer carry power past terminal 1 is a
+    /// stale row and reds.
+    #[test]
+    #[should_panic(expected = "is listed by")]
+    fn a_listed_case_without_a_live_terminal_two_is_stale() {
+        let (mut dss, snaps, elements, cap) = solved_case();
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "asymmetric:isource/isource_snap.dss step 0",
         );
     }
 

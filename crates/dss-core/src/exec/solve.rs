@@ -656,9 +656,9 @@ impl Dss {
     pub(super) fn do_summary_cmd(&mut self) {
         use crate::report::format;
         // The &mut element walks first (total source power + losses).
-        let (tp_re_kw, tp_im_kvar) = self.total_power(); // Σ source power[1], kW
+        let (tp_re_kw, tp_im_kvar) = self.total_power(); // all source terminals, kW
         let (loss_re_w, loss_im_var) = self.losses(); // W/var
-        // `GetTotalPowerFromSources` = −Σ source power (VA); ×1e-6 → MVA.
+        // The delivered MW/Mvar: the negated source kW × 0.001.
         let c_power = (-tp_re_kw * 0.001, -tp_im_kvar * 0.001);
         let c_losses = (loss_re_w * 1e-6, loss_im_var * 1e-6);
 
