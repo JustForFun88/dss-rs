@@ -193,13 +193,29 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 
 **RETRO_FIXES (settle the live findings of the 2026-09 retro audits) — OPEN**, run in waves of up to three lanes per
 [`RETRO_FIXES_PLAN.md`](RETRO_FIXES_PLAN.md), one record block per step in
-[`retro-fixes.md`](docs/phase-records/retro-fixes.md). Landed: RF-I00-01 `257b8603`, RF-I00-03 `0278ed0a`, RF-I00-04 `e45d5abf`, RF-I00-05 `967a3fef`;
-wave 1: RF-D07-07 `c41148f6`, RF-D01-01 `24cd6f37`, RF-D00-05 `5d934d40`, RF-D08-06 `540cba7d`, RF-D00-01 `16455d01` (Newton stale `Iterminal` repaired
-at the solver for every reader, no ledger/golden/lock change), RF-D01-04 `f8327474` (`Save` sizing-property hoist derived from the property tables for
-every class, 0 golden bytes, 0 ledger rows; its leftovers are listed in its record); wave 2 turned its items into rulings R14-R17 and
-five R12 follow-up steps (`86e5191a`) and linked MSVC builds with rust-lld (`05e2539e`); wave 3: RF-D02-01 `9f76d027` (AutoTrans `XfmrCode` fetch:
-phases guard, `BusNameRedefined`, honesty guards), RF-D00-16 `7a026fe6` (`props_r4133` evidence-lock holes closed); wave 35: RF-D07-01
-`c8822163` (the `LINE_CITED_DOCS` walk became the R18 symbol rail, `TESTING.md` and `TOLERANCE_NOTES.md` cite code by item); wave 36: RF-I00-02 `3df57bcf` (the capi one-shot names its exit status, the `espvlcontrol` deck keeps the type-confused capi redispatch silent); wave 104: RF-I00-06 `38823ea7` (the comments and texts the harness move made false re-worded, ruling R19); wave 105: RF-I00-09 `fdc23919` (the build/test queue tracked as `tools/gate/gatelock.py`); RF-D03-01 (the `Export SeqCurrents` zero-footprint claim corrected by a census of negative ratings, the derived negative AutoTrans rating pinned); RF-D01-13 (`capture_order.rs` scans the run tail to the end of `run_case`, counts a read on any handed receiver and an `Engine` command through any path); RF-D08-01 (the corpus gate pins its deck-wide bus-array suppressions, the ledger's sequence and complex envelope bands are driven by asymmetric cases).
+[`retro-fixes.md`](docs/phase-records/retro-fixes.md). Landed:
+
+- RF-I00-01 `257b8603`.
+- RF-I00-03 `0278ed0a`.
+- RF-I00-04 `e45d5abf`.
+- RF-I00-05 `967a3fef`.
+- RF-D07-07 `c41148f6`.
+- RF-D01-01 `24cd6f37`.
+- RF-D00-05 `5d934d40`.
+- RF-D08-06 `540cba7d`.
+- RF-D00-01 `16455d01` (Newton stale `Iterminal` repaired at the solver for every reader, no ledger/golden/lock change).
+- RF-D01-04 `f8327474` (`Save` sizing-property hoist derived from the property tables for every class, 0 golden bytes, 0 ledger rows, its leftovers are listed in its record).
+- wave 2 turned its items into rulings R14-R17 and five R12 follow-up steps (`86e5191a`) and linked MSVC builds with rust-lld (`05e2539e`).
+- RF-D02-01 `9f76d027` (AutoTrans `XfmrCode` fetch: phases guard, `BusNameRedefined`, honesty guards).
+- RF-D00-16 `7a026fe6` (`props_r4133` evidence-lock holes closed).
+- RF-D07-01 `c8822163` (the `LINE_CITED_DOCS` walk became the R18 symbol rail, `TESTING.md` and `TOLERANCE_NOTES.md` cite code by item).
+- RF-I00-02 `3df57bcf` (the capi one-shot names its exit status, the `espvlcontrol` deck keeps the type-confused capi redispatch silent).
+- RF-I00-06 `38823ea7` (the comments and texts the harness move made false re-worded, ruling R19).
+- RF-I00-09 `fdc23919` (the build/test queue tracked as `tools/gate/gatelock.py`).
+- RF-D03-01 (the `Export SeqCurrents` zero-footprint claim corrected by a census of negative ratings, the derived negative AutoTrans rating pinned).
+- RF-D01-13 (`capture_order.rs` scans the run tail to the end of `run_case`, counts a read on any handed receiver and an `Engine` command through any path).
+- RF-D08-01 (the corpus gate pins its deck-wide bus-array suppressions, the ledger's sequence and complex envelope bands are driven by asymmetric cases).
+- `capture_order.rs` and `tools/oracle/oracle_server.py` state the oracle behaviour in plain words, with no Pascal source citation (user decision 2026-10-03, follow-up of RF-D01-13).
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
