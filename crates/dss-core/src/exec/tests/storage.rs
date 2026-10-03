@@ -377,9 +377,11 @@ fn storage_gfm_micro_op_point_isc1_invariant() {
     );
 }
 
-/// The literal Pascal `DebugTrace` header of a 3-phase Storage with the 34
-/// classic state variables — r4133 `PCElements/Storage.pas:1077-1084`, and byte
-/// for byte the first line of the pinned oracle's own `STOR_storage1.csv`
+/// The literal Pascal `DebugTrace` header of a 3-phase Storage with its 25 classic
+/// plus 9 inverter-dynamics (`Get_InvDynName`) state variables, 34 names (r4133
+/// `TStorageObj.VariableName`, `PCElements/Storage.pas:3883`) — r4133
+/// `PCElements/Storage.pas:1077-1084`, and byte for byte the first line of the
+/// pinned oracle's own `STOR_storage1.csv`
 /// (dss-python 0.15.7 / dss_capi 0.14.5 on a scratch copy of
 /// `…/StorageTechNote/Example_9_3_Price/Storage_price.dss`; the oracle's Pascal
 /// text mode ends the line with CRLF, the port with `\n` like every other port
@@ -539,10 +541,162 @@ fn storage_debugtrace_record_matches_the_oracle_line() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// `(records, TotalCurrent, Injection)` of one Storage trace file: its data
+/// lines, and those carrying each of the two tags.
+fn trace_census(trace: &std::path::Path) -> (usize, usize, usize) {
+    let text = std::fs::read_to_string(trace).expect("trace file written");
+    let records: Vec<&str> = text.lines().skip(1).collect();
+    let tagged = |tag: &str| {
+        let field = format!(", {tag}, ");
+        records.iter().filter(|l| l.contains(&field)).count()
+    };
+    (records.len(), tagged("TotalCurrent"), tagged("Injection"))
+}
+
+/// One `GetCurrents` of the named circuit element at the present solution: the
+/// scratch-buffer read with which
+/// [`refresh_iterminal`](crate::elements::traits::CktElement::refresh_iterminal)
+/// models an oracle's `CktElement.Currents`.
+fn read_currents(dss: &mut Dss, full_name: &str) {
+    let Dss {
+        classes, circuit, ..
+    } = dss;
+    let ckt = circuit.as_ref().expect("a circuit");
+    let sys = crate::solution::solution::sys_ctx(ckt);
+    let node_v = ckt.solution.node_v.clone();
+    let r = *ckt
+        .ckt_elements
+        .iter()
+        .find(|r| {
+            let class = &classes[r.class_ord()];
+            let name = format!(
+                "{}.{}",
+                class.props.class_name(),
+                class.arena[r.index()].data().name()
+            );
+            name.eq_ignore_ascii_case(full_name)
+        })
+        .expect("the element is in the circuit");
+    classes[r.class_ord()]
+        .arena
+        .try_ckt_elem_mut(r.index())
+        .expect("a circuit element")
+        .refresh_iterminal(&sys, &node_v);
+}
+
+/// The `TotalCurrent` record is written by a terminal-current read on the full
+/// model path only, never on the two paths that return early: (a) the
+/// direct-solve shortcut (`YPrim·V` while the last solve was direct) and (b) the
+/// GFM branch (`YPrim·V − InjCurrent`).
+///
+/// r4133 writes the record at the end of `TStorageObj.GetTerminalCurrents`
+/// (`PCElements/Storage.pas:2874`), whose one caller is the non-shortcut arm of
+/// `TPCElement.GetCurrents` (`PCElements/PCElement.pas:294`, the shortcut being
+/// `CalcYPrimContribution` at `:284-289`). `TStorageObj.GetCurrents` reaches that
+/// arm only when it is not grid-forming (`Storage.pas:2929-2930`, `else inherited
+/// GetCurrents`). Its GFM body (`:2902-2927`) never calls `inherited`.
+///
+/// **Both numbers**, as `(records, TotalCurrent, Injection)` per checkpoint,
+/// measured 2026-10-03 with this test's commands on the r4133 DLL through
+/// `epri-worker` and on the pinned dss-python 0.15.7 (dss_capi 0.14.5), with one
+/// `CktElement.Currents` read per Storage where the port does one
+/// [`read_currents`]. Both oracles and the port agree at every checkpoint. The
+/// read after the direct solve leaves the file at `(0, 0, 0)`, while the same read
+/// after a snapshot solve takes it from `(2, 0, 2)` to `(3, 1, 2)`. In one
+/// circuit, the reads leave the GFM unit at `(4, 0, 4)` and take its
+/// grid-following twin from `(2, 0, 2)` to `(3, 1, 2)`.
+#[test]
+fn the_total_current_record_skips_the_direct_shortcut_and_the_gfm_branch() {
+    // (a) The direct-solve shortcut, then the same read after a power-flow solve.
+    let scratch = trace_scratch("totalcurrent_direct");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("New circuit.t basekv=0.48 phases=3 bus1=a pu=1");
+    dss.command(
+        "New Storage.storage1 phases=3 bus1=a kv=0.48 pf=1 kWrated=50 %reserve=20 \
+         kWhrated=500 %stored=50 state=idling debugtrace=yes model=1",
+    );
+    dss.command("set mode=direct");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let trace = scratch.join("STOR_storage1.CSV");
+    assert_eq!(
+        trace_census(&trace),
+        (0, 0, 0),
+        "the direct solve traces nothing"
+    );
+    read_currents(&mut dss, "Storage.storage1");
+    assert_eq!(
+        trace_census(&trace),
+        (0, 0, 0),
+        "a read after a direct solve takes the shortcut: no `TotalCurrent` record"
+    );
+    dss.command("set mode=snapshot");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        trace_census(&trace),
+        (2, 0, 2),
+        "the snapshot solve's two injection passes"
+    );
+    read_currents(&mut dss, "Storage.storage1");
+    assert_eq!(
+        trace_census(&trace),
+        (3, 1, 2),
+        "the same read after a power-flow solve writes one `TotalCurrent` record"
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    // (b) A GFM unit and its grid-following twin in one circuit.
+    let scratch = trace_scratch("totalcurrent_gfm");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command("New circuit.t basekv=12.47 phases=3 bus1=src basefreq=60");
+    dss.command("New Line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 c1=0 length=1 units=km");
+    dss.command(
+        "New Storage.gfm bus1=b phases=3 kV=12.47 kWrated=500 kWhrated=1000 \
+         state=discharging ControlMode=GFM debugtrace=yes",
+    );
+    dss.command(
+        "New Storage.gfl bus1=b phases=3 kV=12.47 kWrated=500 kWhrated=1000 \
+         state=idling debugtrace=yes",
+    );
+    dss.command("set voltagebases=[12.47]");
+    dss.command("calcvoltagebases");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let gfm = scratch.join("STOR_gfm.CSV");
+    let gfl = scratch.join("STOR_gfl.CSV");
+    assert_eq!(
+        (trace_census(&gfm), trace_census(&gfl)),
+        ((4, 0, 4), (2, 0, 2)),
+        "the solve's injection passes: the GFM unit injects with the sources"
+    );
+    read_currents(&mut dss, "Storage.gfm");
+    read_currents(&mut dss, "Storage.gfl");
+    assert_eq!(
+        (trace_census(&gfm), trace_census(&gfl)),
+        ((4, 0, 4), (3, 1, 2)),
+        "one read each: no `TotalCurrent` record on the GFM branch, one on the \
+         grid-following twin"
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// GOLDEN_REBASE G1.10a F4a — the third trace site: the dynamics record at the
 /// tail of `IntegrateStates` (r4133 `Storage.pas:3676-3683`,
 /// `Format('t=%-.5g ')` + `Format(' Flag=%d ')`), written once per integration
 /// call on the built-in (non-`DynaModel`) path.
+///
+/// The cadence is r4133's: `TStorageObj.IntegrateStates` (`Storage.pas:3554`)
+/// ends in that `IF DebugTrace` block on every call, and `SolveDynamic`
+/// (`Common/SolutionAlgs.pas:338-363`) calls `IntegratePCStates` twice per time
+/// step, the predictor under `IterationFlag := 0` (`:357-358`) and the corrector
+/// under `IterationFlag := 1` (`:361-362`). For `number=2` that is the four
+/// records asserted below, in that order: the sequence measured 2026-10-03 with
+/// this test's commands on the pinned dss-python 0.15.7 (dss_capi 0.14.5) and on
+/// the r4133 DLL through `epri-worker`. Both write it identically, in a file of
+/// 15 records (these 4 and 11 `Injection`), and so does the port.
 #[test]
 fn storage_debugtrace_writes_the_dynamics_record() {
     let scratch = trace_scratch("dyn");
@@ -567,13 +721,21 @@ fn storage_debugtrace_writes_the_dynamics_record() {
     let trace = scratch.join("STOR_batt.CSV");
     let text = std::fs::read_to_string(&trace).expect("trace file written");
     let dyn_lines: Vec<&str> = text.lines().filter(|l| l.starts_with("t=")).collect();
-    assert!(
-        !dyn_lines.is_empty(),
-        "the dynamics record must be written once per IntegrateStates call"
+    assert_eq!(
+        dyn_lines,
+        [
+            "t=0.001  Flag=0 ",
+            "t=0.001  Flag=1 ",
+            "t=0.002  Flag=0 ",
+            "t=0.002  Flag=1 ",
+        ],
+        "one record per IntegrateStates call, `t=%-.5g ` + ` Flag=%d `: the \
+         predictor (IterationFlag 0) and the corrector (1) of each of the two steps"
     );
     assert_eq!(
-        dyn_lines[0], "t=0.001  Flag=0 ",
-        "Pascal `t=%-.5g ` + ` Flag=%d ` (IterationFlag 0 = new time step)"
+        trace_census(&trace),
+        (15, 0, 11),
+        "the four dynamics records beside the solves' 11 `Injection` records"
     );
     std::fs::remove_file(&trace).expect("the trace file must not be held open");
     let _ = std::fs::remove_dir_all(&scratch);

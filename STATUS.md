@@ -225,6 +225,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - RF-D01-05 (Save restores a LineGeometry's, Transformer's and AutoTrans's cursor, the save round-trip test compares every property of every object and scopes its exclusions per deck).
 - RF-D02-11 (the aggregate pins witness the TotalPower terminal-1 walk, the Iteration sum over control passes and the losses filter, their rationales name the Rust items).
 - Transformer and AutoTrans loadings are measured against the magnitude of a negative rating at every loading site (percent loading, overload tests, excess kVA, meter registers, Unserved, AutoAdd). The rating is stored and printed as it is, and a negative winding kV stays an input error (user decisions 2026-10-03).
+RF-D02-16: the Storage debug trace pins cover the two paths where TotalCurrent writes no record (the direct-solution shortcut and the grid-forming branch) and the dynamics cadence.
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been
