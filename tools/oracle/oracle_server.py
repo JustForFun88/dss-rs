@@ -1380,8 +1380,8 @@ def capture_inc_matrix(d, ckt) -> dict:
     NEVER the ordered builder `CalcIncMatrix_O` (109) and never
     `Solution.BusLevels`: the first calls `GetTopology`, which builds the very
     tree G1.7's census is defined on, and the second walks one element past its
-    own array on r4133 (`DDLL/DSolution.pas:578-582`; it sits on the bridge's
-    `DO_NOT_CALL` register). Both omissions are asserted by
+    own array on r4133 (`DDLL/DSolution.pas:580-582`; it sits on the
+    bridge's `DO_NOT_CALL` register). Both omissions are asserted by
     `crates/dss-core/tests/capture_order.rs`, not only by this comment.
 
     **Read strictly last in the step — after `all_properties` AND after
@@ -1986,9 +1986,12 @@ def run_case(d, req: dict) -> dict:
         # set — the artifact G1.10a F4 measured (`tmp/g110a/probe_f4e.py`). One
         # `clear` runs every element's destructor, which closes those handles.
         # It is a TEARDOWN, not a read: it comes after `created()`, so the
-        # reported surface is still exactly the run
-        # `clear -> compile -> post -> n x solve` on both transports, and the
-        # r4133 bridge (whose engines close their trace files immediately, r4133
+        # reported surface is still the run
+        # `clear -> Set DefaultBaseFrequency=60 -> compile -> post -> n x solve`
+        # (plus the last step's `RelCalc` on a reliability case) on both
+        # transports, where the r4133 bridge's `clear` also re-asserts the D39
+        # report switches, which no compared value reads; and the r4133 bridge
+        # (whose engines close their trace files immediately, r4133
         # `Version8/Source/PCElements/Storage.pas:1085`) needs no counterpart.
         #
         # D33(1): the teardown is GUARDED. The pinned dss_capi 0.14.5 raises on

@@ -35,7 +35,24 @@
 //!    (so a read that appears, disappears or moves is visible here);
 //! 3. every group-A marker precedes every group-B marker;
 //! 4. no read line inside a capture body is unmarked — a later sub-step cannot
-//!    add an invisible read;
+//!    add an invisible read. A read is any of ([`reads_by_line`]): a
+//!    capitalized Python member on any receiver (the dss-python API
+//!    convention) or a `gc.capture_*` delegation; a member of a Rust receiver
+//!    the body declares, or of a name a `let` binds to one; a call of a
+//!    bridge `Engine` method on ANY Rust receiver — a binding, a call chain,
+//!    an index, a `?` — or an `Engine::`/`Self::` path to one, called or not
+//!    ([`engine_methods`]), so a read through an undeclared binding needs a
+//!    marker too; and, in both languages, a receiver handed on
+//!    ([`handed_calls`]): to a call (`_read_seq(el)`, `read_seq(engine)`, also
+//!    with a space, a turbofish or a macro `!` before the parenthesis, or a
+//!    callee that is an expression, `(lambda e: f(e))(el)`), which lets that
+//!    function read the model, or anywhere else a receiver may not stand bare
+//!    (a tuple, a `for` or comprehension iterable, a walrus, a default value,
+//!    a literal). A receiver stands bare only on an alias line or as a
+//!    parameter name of a definition, so every name that can reach the model
+//!    is a receiver; an engine a body obtains other than from a declared
+//!    receiver counts through its member (Python) or `Engine` method (Rust)
+//!    reads only;
 //! 5. a call into another capture helper declares that helper's reads, in that
 //!    helper's own order, and the declaration is cross-checked against the
 //!    helper body itself. This is what covers
@@ -43,7 +60,13 @@
 //!    markers because GOLDEN_REBASE WP-G1 may not edit the golden generators
 //!    at all (`GOLDEN_REBASE_PLAN.md` §1.2): its reads are recovered
 //!    structurally instead and must match the composite marker at its call
-//!    site.
+//!    site;
+//! 6. every other marker names the read it sits on ([`marker_names_read`]):
+//!    on the Python transport the member IS the API name, on the Rust one the
+//!    accessor is `<family>_<quantity>` in snake case or a declared
+//!    [`RUST_READ_ALIASES`] entry. Rule 1 takes the group from the marker's
+//!    NAME, so a read labelled with another quantity would borrow that
+//!    quantity's group.
 //!
 //! G1.7's topology surface is group C — the six order-free `Topology` rows
 //! (`NumLoops`, `NumIsolatedBranches`, `NumIsolatedLoads`, `AllLoopedPairs`,
@@ -68,16 +91,16 @@
 //! `IncMatrixRows` / `IncMatrixCols`) is the one capture that comes after the
 //! topology read, i.e. **strictly last in the step**, and it is not a pure read
 //! at all: it issues the executive pair `CalcIncMatrix` + `CalcLaplacian` first.
-//! Three separate rules, all asserted below:
+//! Four separate rules, all asserted below:
 //!
 //! * **last** — `Calc_Inc_Matrix` recreates or resets `IncMat`, refills
 //!   `Inc_Mat_Rows` and clears `IncMat_Ordered` (r4133
 //!   `Common/Solution.pas:3051-3066`), and `AddSeriesReac2IncMatrix` re-points
 //!   `LastClassReferenced` / `ActiveDSSClass` and calls `ActiveDSSClass.First`
 //!   (`:3007-3010`), which reassigns `ActiveCircuit.ActiveCktElement`. It must
-//!   therefore follow every per-element and property read — and it must follow
-//!   the topology read too, because G1.7's two decline censuses are defined on a
-//!   `Branch_List` nothing else has touched;
+//!   therefore follow every per-element, reliability and property read — and it
+//!   must follow the topology read too, because G1.7's two decline censuses are
+//!   defined on a `Branch_List` nothing else has touched;
 //! * **the pair, in that order** — r4133's `CalcLaplacian`
 //!   (`Executive/ExecCommands.pas:911-917`) is a bare
 //!   `Laplacian := IncMat.Transpose()` / `.multiply(IncMat)` with no
@@ -88,9 +111,15 @@
 //! * **`CalcIncMatrix_O` and `Solution.BusLevels` are never touched** — the
 //!   ordered builder calls `GetTopology` (`Common/Solution.pas:3173`), which
 //!   would memoize that same `Branch_List`, and `SolutionV(2)` writes one element
-//!   past its own array on r4133 (`DDLL/DSolution.pas:578-582`, on the bridge's
+//!   past its own array on r4133 (`DDLL/DSolution.pas:580-582`, on the bridge's
 //!   `modes::DO_NOT_CALL` register). Both keep their `tests/golden/inc_matrix/`
-//!   `org_*` byte goldens instead (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c).
+//!   `org_*` byte goldens instead (`GOLDEN_REBASE_PLAN.md` §G1.8 / §G3.2c);
+//! * **no other command mid-step** — the r4133 transport calls a
+//!   command-issuing `Engine` method only at the sites of
+//!   [`R4133_COMMAND_SITES`], fn by fn: the run itself, ahead of the step's
+//!   first capture, the once-per-case `RelCalc` between the last solve and the
+//!   aggregates, the `?` property queries, and this pair, every `exec_wait`
+//!   with a literal command.
 //!
 //! The bodies gated here are the element captures of the two live channels:
 //! the pinned dss-python oracle (`tools/oracle/oracle_server.py`, backend
@@ -109,15 +138,21 @@
 //!
 //! # Non-vacuity
 //!
-//! The checker is a pure function over body text, so the demo runs on every
-//! `cargo test`: each of the eleven mutation tests below feeds a *deliberately
+//! The checker is a pure function over body text (plus the `Engine` method
+//! names it reads once from the bridge source), so the demo runs on every
+//! `cargo test`: each of the twelve mutation tests below feeds a *deliberately
 //! corrupted copy* of a real body through the same checker and asserts that the
 //! intended rule — not merely *something* — fires. Between them they cover
 //! moving `Losses` back after `Currents`, stripping a marker off a read,
 //! smuggling in a brand-new undeclared read (on both the Python and the Rust
-//! transport), a malformed marker, a marker no read consumes, a group that
-//! contradicts the mode table, a name the table does not know, a read that
-//! disappears, a helper call that misdeclares the helper's order, and the
+//! transport, as a member, a free-function call handed the receiver, a call
+//! through an undeclared Rust binding, a receiver expression or a path, one
+//! through a `let` alias, and a receiver handed to an expression callee or
+//! into a binding the gate cannot follow), a
+//! malformed marker, a marker no read consumes, a group that contradicts the
+//! mode table, a name the table does not know, a read that disappears, a
+//! helper call that misdeclares the helper's order, a marker that names
+//! another quantity than its read (with `declared` edited to match), and the
 //! group-**A** `TotalPowers` moved past the group-B `Currents` on both
 //! transports. Two further mutations state the rule's *positive* half — a
 //! group-**C** read moved between a group-A and a group-B read raises the
@@ -161,14 +196,21 @@
 //!   express it, `finish()` consuming the guard);
 //! * **the demand-interval read sits in front of it** (G1.10c) — see the fourth
 //!   rule below;
-//! * **nothing but the teardown after it** (D33(3)) — the one statement the capi
-//!   transport may still run is the D32(2)(a) teardown `clear`, which releases
-//!   dss_capi's never-closed Storage trace stream (`src/PCElements/Storage.pas:872`
-//!   opens it; `:871`/`:1199` are the only closes). r4133 closes its own
+//! * **nothing but the teardown after it, to the end of `run_case`** (D33(3)) —
+//!   no command and no `capture_*` read anywhere after it; inside the guard
+//!   scope only the G1.10b contents copy and the teardown, past the scope only
+//!   the declared sweep report and a reply built from names already bound. The
+//!   one statement the capi transport may still run is the D32(2)(a) teardown
+//!   `clear`, which releases dss_capi's never-closed Storage trace stream
+//!   (`src/PCElements/Storage.pas:872` opens it; `:871`/`:1199` are the only
+//!   closes). r4133 closes its own
 //!   immediately (`Version8/Source/PCElements/Storage.pas:1085`) and needs no
 //!   counterpart, so its tail is empty. A teardown is not a read: it comes after
-//!   the classification, so the compared surface stays exactly the run
-//!   `clear → compile → post → n × solve` on both channels.
+//!   the classification, so the compared surface stays the run
+//!   `clear → Set DefaultBaseFrequency=60 → compile → post → n × solve` (plus
+//!   the last step's `RelCalc` on a reliability case) on both channels, where
+//!   the r4133 bridge's `clear` also re-asserts the D39 report switches, which
+//!   no compared value reads.
 //!
 //! # The fourth ordering rule: the demand-interval read (G1.10c, D42(6))
 //!
@@ -209,6 +251,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use dss_epri::modes::capture_group_of;
 
@@ -257,9 +300,12 @@ struct CaptureBody {
     /// is forbidden to edit): its reads are recovered structurally and only
     /// [`CaptureBody::declared`] and the A-before-B rule are enforced.
     marked: bool,
-    /// Rust only: the receivers whose member accesses count as reads.
+    /// The engine handles the body is given. In both languages one of them —
+    /// or a name bound to one, [`receivers_of`] — handed on ([`handed_calls`])
+    /// is a read; in Rust every member of one is a read too, unless
+    /// [`Self::exempt`].
     receivers: &'static [&'static str],
-    /// Rust only: members of those receivers that are not reads.
+    /// Members (Rust) and callees (both languages) that are not reads.
     exempt: &'static [&'static str],
     /// The exact sequence of quantities this body reads, in order. For a
     /// marked body this is the marker sequence (helper calls expanded); for an
@@ -268,8 +314,8 @@ struct CaptureBody {
     declared: &'static [&'static str],
 }
 
-/// The capi channel's element capture, its helper, and the r4133 channel's
-/// five bodies.
+/// The capi channel's element capture and its helper, and the r4133 channel's
+/// element capture and its seven `dss.rs` helpers.
 ///
 /// `oracle_server.capture_all_elements` reads `PhaseLosses` and then `Losses`
 /// **before** delegating to `gen_checkpoints.capture_element` (which reads
@@ -294,7 +340,8 @@ const BODIES: &[CaptureBody] = &[
         lang: Lang::Python,
         family: "CktElement",
         marked: true,
-        receivers: &[],
+        // `el` is found as the facade `ckt.ActiveCktElement` hands out.
+        receivers: &["ckt"],
         exempt: PY_NOT_A_READ,
         declared: &[
             "ActiveCktElement",
@@ -337,7 +384,7 @@ const BODIES: &[CaptureBody] = &[
         // is checked structurally instead — and its call site's composite
         // marker is checked against it (rule 5).
         marked: false,
-        receivers: &[],
+        receivers: &["ckt"],
         exempt: PY_NOT_A_READ,
         declared: &["SetActiveElement", "ActiveCktElement", "Powers", "Currents"],
     },
@@ -500,6 +547,31 @@ fn helper_key(member: &str) -> Option<&'static str> {
     }
 }
 
+/// The bridge accessors whose name is not `<family>_<quantity>` in snake case:
+/// the two circuit-level selectors and the three reads of `element_pcl`. Each
+/// entry is `(accessor, quantity)`; [`every_rust_read_alias_is_a_bridge_read_of_a_known_quantity`]
+/// keeps the table honest.
+const RUST_READ_ALIASES: &[(&str, &str)] = &[
+    ("all_element_names", "AllElementNames"),
+    ("set_active_element", "SetActiveElement"),
+    ("element_losses", "Losses"),
+    ("element_powers", "Powers"),
+    ("element_currents", "Currents"),
+];
+
+/// Whether a marker naming `name` names the read `member` it sits on (rule 6).
+fn marker_names_read(b: &CaptureBody, member: &str, name: &str) -> bool {
+    match b.lang {
+        Lang::Python => member == name,
+        Lang::Rust => {
+            RUST_READ_ALIASES
+                .iter()
+                .any(|&(m, n)| m == member && n == name)
+                || member == format!("{}_{}", snake(b.family), snake(name))
+        }
+    }
+}
+
 /// What a helper call's composite marker must spell: the helper's own declared
 /// sequence with the selectors dropped (a selector is the caller's business —
 /// `capture_element` re-selects the element it was handed by name).
@@ -626,12 +698,25 @@ fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-/// Every `receiver.member` pair on a line, in order.
-fn dotted(line: &str) -> Vec<(String, String)> {
+/// One `receiver.member` access on a line.
+struct Dotted {
+    /// Column (char index) where the member starts.
+    col: usize,
+    /// The receiver's name; empty when the receiver is an expression (a call,
+    /// an index, a `?`, a parenthesis or a chain continued from the line above).
+    recv: String,
+    member: String,
+    /// The member is called: `(` (or a turbofish `::`) follows it.
+    called: bool,
+}
+
+/// Every `receiver.member` access on a line, in order. A range or an ellipsis
+/// (`..`, `...`) is no access.
+fn dotted(line: &str) -> Vec<Dotted> {
     let ch: Vec<char> = line.chars().collect();
     let mut out = Vec::new();
     for (i, &c) in ch.iter().enumerate() {
-        if c != '.' || i == 0 {
+        if c != '.' || (i > 0 && ch[i - 1] == '.') {
             continue;
         }
         let mut a = i;
@@ -642,13 +727,554 @@ fn dotted(line: &str) -> Vec<(String, String)> {
         while z < ch.len() && is_ident(ch[z]) {
             z += 1;
         }
-        if a == i || z == i + 1 {
+        if z == i + 1 {
             continue;
         }
-        out.push((
-            ch[a..i].iter().collect::<String>(),
-            ch[i + 1..z].iter().collect::<String>(),
+        let next = ch[z..].iter().copied().find(|c| !c.is_whitespace());
+        out.push(Dotted {
+            col: i + 1,
+            recv: ch[a..i].iter().collect(),
+            member: ch[i + 1..z].iter().collect(),
+            called: matches!(next, Some('(' | ':')),
+        });
+    }
+    out
+}
+
+/// The methods of the r4133 bridge's `Engine` ([`engine_fns`]), read once from
+/// the source. Every read the bridge performs is one of them, so a call of one
+/// on any Rust receiver is a read (rule 4).
+fn engine_methods() -> &'static [String] {
+    static METHODS: OnceLock<Vec<String>> = OnceLock::new();
+    METHODS.get_or_init(|| {
+        let out: Vec<String> = engine_fns()
+            .iter()
+            .filter(|f| f.takes_self)
+            .map(|f| f.name.clone())
+            .collect();
+        for want in ["element_pcl", "ckt_element_node_order", "poll_error"] {
+            assert!(
+                out.iter().any(|m| m == want),
+                "crates/dss-epri/src: the `impl Engine` scan found no `{want}` method — the \
+                 scan is broken, and with it rule 4's undeclared-binding clause"
+            );
+        }
+        out
+    })
+}
+
+/// One `fn` of an `impl Engine` block of the bridge.
+struct EngineFn {
+    name: String,
+    /// The first parameter is a `self`: the fn is callable on an engine.
+    takes_self: bool,
+    /// The [`code_only`] text from this header to the next header of the block.
+    body: String,
+}
+
+/// The bridge library's sources: `crates/dss-epri/src/lib.rs` and, to a
+/// fixpoint, every module file a `mod <name>;` of a read source names
+/// ([`mod_files`]). An `impl` block of `Engine` can live in no other file.
+fn bridge_sources() -> Vec<String> {
+    let mut out = vec!["crates/dss-epri/src/lib.rs".to_string()];
+    let mut k = 0;
+    while k < out.len() {
+        let rel = out[k].clone();
+        let exists = |p: &str| repo_root().join(p).is_file();
+        for f in mod_files(&read_source(&rel), &rel, &exists).unwrap_or_else(|e| panic!("{e}")) {
+            if !out.contains(&f) {
+                out.push(f);
+            }
+        }
+        k += 1;
+    }
+    out
+}
+
+/// The module files the `mod <name>;` declarations of one Rust source name:
+/// `<dir>/<name>.rs` or `<dir>/<name>/mod.rs`, where `<dir>` is the source's
+/// directory for a `lib.rs`, `main.rs` or `mod.rs` and `<dir>/<stem>` for any
+/// other file. A declaration whose file `exists` finds under neither name, or
+/// a module a `#[path]` attribute moves, is an error, never a skipped module.
+fn mod_files(src: &str, rel: &str, exists: &dyn Fn(&str) -> bool) -> Result<Vec<String>, String> {
+    let code = code_only(src, Lang::Rust);
+    if code.contains("#[path") {
+        return Err(format!(
+            "{rel}: a `#[path]` attribute moves a module — the module scan cannot follow it"
         ));
+    }
+    let (dir, file) = rel.rsplit_once('/').unwrap_or(("", rel));
+    let stem = file.trim_end_matches(".rs");
+    let base = if matches!(stem, "lib" | "main" | "mod") {
+        dir.to_string()
+    } else {
+        format!("{dir}/{stem}")
+    };
+    let mut out = Vec::new();
+    for line in code.lines() {
+        let mut item = line.trim_start();
+        if let Some(rest) = item.strip_prefix("pub") {
+            let rest = rest.trim_start();
+            item = match rest.strip_prefix('(') {
+                Some(scope) => scope
+                    .split_once(')')
+                    .map_or(rest, |(_, after)| after.trim_start()),
+                None => rest,
+            };
+        }
+        let Some(rest) = item.strip_prefix("mod ") else {
+            continue;
+        };
+        let name = ident_at(rest.trim_start(), 0);
+        if name.is_empty()
+            || !rest.trim_start()[name.len()..]
+                .trim_start()
+                .starts_with(';')
+        {
+            continue;
+        }
+        let flat = format!("{base}/{name}.rs");
+        let nested = format!("{base}/{name}/mod.rs");
+        out.push(if exists(&flat) {
+            flat
+        } else if exists(&nested) {
+            nested
+        } else {
+            return Err(format!(
+                "{rel}: `mod {name};` names neither `{flat}` nor `{nested}`"
+            ));
+        });
+    }
+    Ok(out)
+}
+
+/// Every `fn` of every `impl` block of `Engine` in the bridge library
+/// ([`bridge_sources`]), in source order, read once from the source
+/// ([`engine_fns_in`]).
+fn engine_fns() -> &'static [EngineFn] {
+    static FNS: OnceLock<Vec<EngineFn>> = OnceLock::new();
+    FNS.get_or_init(|| {
+        let sources = bridge_sources();
+        for want in [
+            "crates/dss-epri/src/dss.rs",
+            "crates/dss-epri/src/capture.rs",
+        ] {
+            assert!(
+                sources.iter().any(|s| s == want),
+                "the module scan of crates/dss-epri/src/lib.rs never reached `{want}` — the \
+                 scan is broken, and with it the `impl Engine` scan"
+            );
+        }
+        let mut out = Vec::new();
+        for rel in &sources {
+            out.extend(engine_fns_in(&read_source(rel), rel).unwrap_or_else(|e| panic!("{e}")));
+        }
+        out
+    })
+}
+
+/// Whether an `impl` header (the text between `impl` and the block's `{`)
+/// names `Engine` as its self type, through any path or reference:
+/// `impl Engine`, `impl crate::dss::Engine`, `impl<'a> Default for &'a Engine`.
+fn impl_self_is_engine(header: &str) -> bool {
+    // The first `word` token outside every `<…>` of `s`.
+    let top = |s: &str, word: &str| -> Option<usize> {
+        let (mut depth, mut prev) = (0usize, ' ');
+        for (i, c) in s.char_indices() {
+            match c {
+                '<' => depth += 1,
+                '>' if prev != '-' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            if depth == 0
+                && s[i..].starts_with(word)
+                && starts_token(s, i)
+                && !s[i + word.len()..].starts_with(is_ident)
+            {
+                return Some(i);
+            }
+            prev = c;
+        }
+        None
+    };
+    let mut h = header.trim_start();
+    if h.starts_with('<') {
+        let (mut depth, mut prev, mut close) = (0usize, ' ', None);
+        for (i, c) in h.char_indices() {
+            match c {
+                '<' => depth += 1,
+                '>' if prev != '-' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            prev = c;
+        }
+        let Some(close) = close else {
+            return false;
+        };
+        h = &h[close + 1..];
+    }
+    let h = top(h, "where").map_or(h, |i| &h[..i]);
+    let ty = top(h, "for").map_or(h, |i| &h[i + 3..]);
+    let mut ty = ty.trim().trim_start_matches('&').trim_start();
+    if let Some(life) = ty.strip_prefix('\'') {
+        ty = life.trim_start_matches(is_ident).trim_start();
+    }
+    let ty = ty.strip_prefix("mut ").unwrap_or(ty).trim();
+    ty == "Engine" || ty.ends_with("::Engine")
+}
+
+/// Every `fn` of every `impl` block of `Engine` ([`impl_self_is_engine`]) in
+/// one Rust source, in source order: an inherent or a trait impl, its self type
+/// spelled through any path. A header the scan cannot read is an error, never a
+/// skipped method.
+fn engine_fns_in(src: &str, rel: &str) -> Result<Vec<EngineFn>, String> {
+    let code = code_only(src, Lang::Rust);
+    let mut out = Vec::new();
+    for (open, _) in code.match_indices("impl") {
+        let lead = code[..open].rsplit('\n').next().unwrap_or("").trim();
+        if !starts_token(&code, open)
+            || code[open + 4..].starts_with(is_ident)
+            || !matches!(lead, "" | "unsafe")
+        {
+            continue;
+        }
+        let brace = code[open..]
+            .find('{')
+            .ok_or_else(|| format!("{rel}: the `impl` scan cannot read an `impl` header"))?;
+        if !impl_self_is_engine(&code[open + 4..open + brace]) {
+            continue;
+        }
+        let mut depth = 0usize;
+        let mut end = None;
+        for (i, c) in code[open..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(open + i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let end = end.ok_or_else(|| format!("{rel}: an `impl Engine` block is never closed"))?;
+        let block = &code[open..end];
+        let mut heads: Vec<(usize, String, bool)> = Vec::new();
+        for (at, _) in block.match_indices("fn ") {
+            if !starts_token(block, at) {
+                continue;
+            }
+            let name = ident_at(block, at + 3);
+            let unread =
+                || format!("{rel}: the `impl Engine` scan cannot read the header of `fn {name}`");
+            let mut rest = block[at + 3 + name.len()..].trim_start();
+            if rest.starts_with('<') {
+                // The generic list, nested lists and `->` inside it included.
+                let (mut depth, mut prev, mut close) = (0usize, ' ', None);
+                for (i, c) in rest.char_indices() {
+                    match c {
+                        '<' => depth += 1,
+                        '>' if prev != '-' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                close = Some(i);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    prev = c;
+                }
+                rest = rest[close.ok_or_else(unread)? + 1..].trim_start();
+            }
+            let params = rest.strip_prefix('(').ok_or_else(unread)?;
+            let first = params.split([',', ')']).next().unwrap_or("");
+            heads.push((at, name, first.contains("self")));
+        }
+        out.extend(
+            heads
+                .iter()
+                .enumerate()
+                .map(|(k, (at, name, takes_self))| EngineFn {
+                    name: name.clone(),
+                    takes_self: *takes_self,
+                    body: block[*at..heads.get(k + 1).map_or(block.len(), |h| h.0)].to_string(),
+                }),
+        );
+    }
+    Ok(out)
+}
+
+/// The `Engine` methods that issue an executive command ([`command_methods_in`]
+/// over [`engine_fns`]). Read from the bridge source, so a new command wrapper
+/// joins [`check_r4133_command_sites`] without an edit here.
+fn engine_command_methods() -> &'static [String] {
+    static METHODS: OnceLock<Vec<String>> = OnceLock::new();
+    METHODS.get_or_init(|| {
+        let out = command_methods_in(engine_fns());
+        for want in ["raw_command", "exec_wait", "relcalc", "solve", "clear"] {
+            assert!(
+                out.iter().any(|m| m == want),
+                "crates/dss-epri/src: the command-method scan found no `{want}` — the scan \
+                 is broken, and with it the r4133 command-site rail"
+            );
+        }
+        out
+    })
+}
+
+/// The methods of `fns` that issue an executive command: the ones that hand a
+/// command line to the DLL (`dss_put_command`) and, to a fixpoint, every one
+/// that calls one of them on itself (`self.m(`, `Self::m(`, `Engine::m(`).
+fn command_methods_in(fns: &[EngineFn]) -> Vec<String> {
+    let mut issuing: Vec<&str> = fns
+        .iter()
+        .filter(|f| f.body.contains("dss_put_command"))
+        .map(|f| f.name.as_str())
+        .collect();
+    loop {
+        let before = issuing.len();
+        for f in fns {
+            let calls = |m: &&str| {
+                ["self.", "Self::", "Engine::"]
+                    .iter()
+                    .any(|p| f.body.contains(&format!("{p}{m}(")))
+            };
+            if !issuing.contains(&f.name.as_str()) && issuing.iter().any(calls) {
+                issuing.push(f.name.as_str());
+            }
+        }
+        if issuing.len() == before {
+            break;
+        }
+    }
+    fns.iter()
+        .filter(|f| f.takes_self && issuing.contains(&f.name.as_str()))
+        .map(|f| f.name.clone())
+        .collect()
+}
+
+/// The body's receivers: the declared ones plus every name a line binds to one
+/// ([`alias_of`]), to a fixpoint, so an alias of an alias is one too.
+fn receivers_of(b: &CaptureBody, text: &str) -> Vec<String> {
+    let mut out: Vec<String> = b.receivers.iter().map(|r| r.to_string()).collect();
+    loop {
+        let before = out.len();
+        for line in text.lines() {
+            if let Some(alias) = alias_of(code_of(line, b.lang), b.lang, &out)
+                && !out.contains(&alias)
+            {
+                out.push(alias);
+            }
+        }
+        if out.len() == before {
+            return out;
+        }
+    }
+}
+
+/// The name a line of code binds to one of `receivers`: `x = <recv>` or the
+/// facade a selector hands out, `x = <recv>.<selector>` (Python);
+/// `let [mut] x[: T] = [&[mut]]<recv>[.clone()];` (Rust).
+fn alias_of(code: &str, lang: Lang, receivers: &[String]) -> Option<String> {
+    let code = code.trim();
+    let code = match lang {
+        Lang::Python => code,
+        Lang::Rust => code.strip_prefix("let ")?,
+    };
+    let (lhs, rhs) = code.split_once('=')?;
+    let lhs = lhs.trim();
+    let lhs = lhs.strip_prefix("mut ").unwrap_or(lhs);
+    let name = lhs.split(':').next()?.trim();
+    if name.is_empty() || !name.chars().all(is_ident) {
+        return None;
+    }
+    let rhs = rhs.trim().trim_end_matches(';').trim();
+    let rhs = rhs.trim_start_matches(['&', '*']).trim_start();
+    let rhs = rhs.strip_prefix("mut ").unwrap_or(rhs);
+    let rhs = rhs.strip_suffix(".clone()").unwrap_or(rhs);
+    let source = match rhs.split_once('.') {
+        Some((recv, member)) if SELECTORS.contains(&member) => recv,
+        Some(_) => return None,
+        None => rhs,
+    };
+    receivers
+        .iter()
+        .any(|r| r == source)
+        .then(|| name.to_string())
+}
+
+/// Python and Rust keywords a parenthesis may follow without being called: the
+/// parenthesis is a grouping.
+const NOT_A_CALLEE: &[&str] = &[
+    "and", "as", "assert", "await", "elif", "else", "for", "if", "in", "is", "lambda", "let",
+    "loop", "match", "mut", "not", "or", "raise", "ref", "return", "while", "with", "yield",
+];
+
+/// What holds a position of a body ([`enclosing_call`]).
+enum Enclosing {
+    /// The argument list of a call: the start of its callee, or the `(` of the
+    /// list when the callee is an expression (`(lambda e: f(e))(el)`,
+    /// `fs[0](engine)`).
+    Call(usize),
+    /// The parameter list of a `def` / `fn` header.
+    Definition,
+    /// No call and no header.
+    Nothing,
+}
+
+/// The innermost call or definition header whose parenthesis holds `at`.
+/// Brackets, braces and parens no callee precedes (a tuple, a grouping, a
+/// keyword's operand) are walked through.
+fn enclosing_call(ch: &[char], at: usize) -> Enclosing {
+    let mut depth = 0usize;
+    let mut k = at;
+    while k > 0 {
+        k -= 1;
+        match ch[k] {
+            ')' | ']' | '}' => depth += 1,
+            '(' | '[' | '{' if depth > 0 => depth -= 1,
+            '(' => {
+                let z = callee_end(ch, k);
+                let mut a = z;
+                while a > 0 && is_ident(ch[a - 1]) {
+                    a -= 1;
+                }
+                let callee: String = ch[a..z].iter().collect();
+                if a < z && !NOT_A_CALLEE.contains(&callee.as_str()) {
+                    let head: String = ch[..a].iter().collect();
+                    let keyword = head.trim_end().rsplit(|c: char| !is_ident(c)).next();
+                    return if matches!(keyword, Some("def" | "fn")) {
+                        Enclosing::Definition
+                    } else {
+                        Enclosing::Call(a)
+                    };
+                }
+                if a == z && z > 0 && matches!(ch[z - 1], ')' | ']') {
+                    return Enclosing::Call(k);
+                }
+            }
+            _ => {}
+        }
+    }
+    Enclosing::Nothing
+}
+
+/// The token at `i` stands where a parameter's name does: right after the `(`
+/// or a `,` of the list.
+fn param_name_position(ch: &[char], i: usize) -> bool {
+    ch[..i]
+        .iter()
+        .rev()
+        .find(|c| !c.is_whitespace())
+        .is_some_and(|c| matches!(c, '(' | ','))
+}
+
+/// Where the callee of the parenthesis at `open` ends: before the whitespace,
+/// the turbofish (`read_seq::<f64>(…)`) and the macro `!` that may stand
+/// between the two.
+fn callee_end(ch: &[char], open: usize) -> usize {
+    let mut z = open;
+    while z > 0 && ch[z - 1].is_whitespace() {
+        z -= 1;
+    }
+    if z > 0 && ch[z - 1] == '>' {
+        let mut depth = 0usize;
+        let mut q = z;
+        while q > 0 {
+            q -= 1;
+            match ch[q] {
+                '>' => depth += 1,
+                '<' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if depth == 0 && q >= 2 && ch[q - 2..q] == [':', ':'] {
+            z = q - 2;
+        }
+    }
+    if z > 0 && ch[z - 1] == '!' {
+        z -= 1;
+    }
+    z
+}
+
+/// Every place a body hands one of `receivers` on, as `(line, column, read)`:
+/// to a call — `f(el)`, `read_seq(&engine)`, `x.helper(self)` — the read named
+/// after its callee, or `<call>` when the callee is an expression; anywhere
+/// else — a tuple, a `for` or comprehension iterable, a walrus, a default
+/// value, a literal, a binding the gate cannot follow — the read named after
+/// the receiver. A receiver used as one (`el.X`, `engine.m()`), a side of an
+/// alias line ([`alias_of`]) and a parameter name of a definition hand nothing
+/// on. A receiver handed on lets the code it reaches read the model, so the
+/// hand-over is a read of its own. `code` is the body's lines with their
+/// comments cut off; the scan runs over all of them, so a call wrapped over
+/// several lines is found on its callee's line. String literals are not
+/// blanked: a receiver named inside one reads as handed on, which errs on the
+/// loud side.
+fn handed_calls(code: &[&str], lang: Lang, receivers: &[String]) -> Vec<(usize, usize, String)> {
+    let mut ch: Vec<char> = Vec::new();
+    let mut starts: Vec<usize> = Vec::new();
+    for line in code {
+        starts.push(ch.len());
+        ch.extend(line.chars());
+        ch.push('\n');
+    }
+    let aliases: Vec<bool> = code
+        .iter()
+        .map(|l| alias_of(l, lang, receivers).is_some())
+        .collect();
+    let line_of = |at: usize| starts.partition_point(|&s| s <= at) - 1;
+    let mut out: Vec<(usize, usize, String)> = Vec::new();
+    let mut i = 0;
+    while i < ch.len() {
+        if !is_ident(ch[i]) || (i > 0 && (is_ident(ch[i - 1]) || ch[i - 1] == '.')) {
+            i += 1;
+            continue;
+        }
+        let mut z = i;
+        while z < ch.len() && is_ident(ch[z]) {
+            z += 1;
+        }
+        let token: String = ch[i..z].iter().collect();
+        let next = ch[z..].iter().copied().find(|c| !c.is_whitespace());
+        if receivers.contains(&token) && !matches!(next, Some('.' | '(')) {
+            let read = match enclosing_call(&ch, i) {
+                Enclosing::Call(at) => {
+                    let callee: String = ch[at..].iter().take_while(|c| is_ident(**c)).collect();
+                    let callee = if callee.is_empty() {
+                        "<call>".to_string()
+                    } else {
+                        callee
+                    };
+                    Some((at, callee))
+                }
+                Enclosing::Definition if param_name_position(&ch, i) => None,
+                _ if aliases[line_of(i)] => None,
+                _ => Some((i, token.clone())),
+            };
+            if let Some((at, read)) = read {
+                let line = line_of(at);
+                let col = at - starts[line];
+                if !out.iter().any(|(l, c, _)| *l == line && *c == col) {
+                    out.push((line, col, read));
+                }
+            }
+        }
+        i = z;
     }
     out
 }
@@ -662,34 +1288,89 @@ fn code_of(line: &str, lang: Lang) -> &str {
     }
 }
 
-/// The reads a line performs.
+/// The dotted reads of one line of code, as `(column, member)`.
 ///
 /// Python: every attribute whose name is capitalized — the dss-python API
 /// convention for a property/method on `ActiveCircuit`/`ActiveCktElement` —
 /// plus a `gc.capture_*` delegation. Deliberately receiver-agnostic so a read
 /// introduced through a *new* receiver cannot slip past.
 ///
-/// Rust: every member of one of the body's declared receivers that is not on
-/// its exempt list, i.e. the strictest possible rule for that receiver.
-fn reads_in(line: &str, b: &CaptureBody) -> Vec<String> {
-    let code = code_of(line, b.lang);
+/// Rust: every member of a receiver ([`receivers_of`]), every call of an
+/// [`engine_methods`] method on ANY receiver — an undeclared binding, a
+/// closure parameter, a call chain, an index, a `?` — and every
+/// `Engine::<method>` / `Self::<method>` path, called or handed on as a value
+/// ([`engine_paths`]), so a bridge read cannot slip past through any of them.
+/// Exempt members never count.
+fn dotted_reads(code: &str, b: &CaptureBody, receivers: &[String]) -> Vec<(usize, String)> {
+    let mut out: Vec<(usize, String)> = dotted(code)
+        .into_iter()
+        .filter(|d| {
+            let exempt = b.exempt.contains(&d.member.as_str());
+            match b.lang {
+                Lang::Python => {
+                    (d.member.starts_with(|c: char| c.is_ascii_uppercase()) && !exempt)
+                        || (d.recv == "gc" && d.member.starts_with("capture_"))
+                }
+                Lang::Rust => {
+                    !exempt
+                        && (receivers.contains(&d.recv)
+                            || (d.called && engine_methods().contains(&d.member)))
+                }
+            }
+        })
+        .map(|d| (d.col, d.member))
+        .collect();
+    if b.lang == Lang::Rust {
+        out.extend(
+            engine_paths(code)
+                .into_iter()
+                .filter(|(_, m)| !b.exempt.contains(&m.as_str())),
+        );
+    }
+    out
+}
+
+/// Every `Engine::<m>` / `Self::<m>` path on a line of Rust whose `<m>` is an
+/// [`engine_methods`] method, as `(column, m)`.
+fn engine_paths(line: &str) -> Vec<(usize, String)> {
     let mut out = Vec::new();
-    for (recv, member) in dotted(code) {
-        let hit = match b.lang {
-            Lang::Python => {
-                (member.starts_with(|c: char| c.is_ascii_uppercase())
-                    && !b.exempt.contains(&member.as_str()))
-                    || (recv == "gc" && member.starts_with("capture_"))
+    for prefix in ["Engine::", "Self::"] {
+        for (at, _) in line.match_indices(prefix) {
+            if !starts_token(line, at) {
+                continue;
             }
-            Lang::Rust => {
-                b.receivers.contains(&recv.as_str()) && !b.exempt.contains(&member.as_str())
+            let member = ident_at(line, at + prefix.len());
+            if engine_methods().contains(&member) {
+                out.push((line[..at + prefix.len()].chars().count(), member));
             }
-        };
-        if hit {
-            out.push(member);
         }
     }
     out
+}
+
+/// The reads of a body, line by line, in column order within a line (rule 4):
+/// each line's [`dotted_reads`] plus the [`handed_calls`] hand-overs that are
+/// not one of them already and whose callee is not exempt.
+fn reads_by_line(b: &CaptureBody, text: &str) -> Vec<Vec<String>> {
+    let receivers = receivers_of(b, text);
+    let code: Vec<&str> = text.lines().map(|l| code_of(l, b.lang)).collect();
+    let mut lines: Vec<Vec<(usize, String)>> = code
+        .iter()
+        .map(|c| dotted_reads(c, b, &receivers))
+        .collect();
+    for (line, col, callee) in handed_calls(&code, b.lang, &receivers) {
+        if b.exempt.contains(&callee.as_str()) || lines[line].iter().any(|(c, _)| *c == col) {
+            continue;
+        }
+        lines[line].push((col, callee));
+    }
+    lines
+        .into_iter()
+        .map(|mut v| {
+            v.sort_by_key(|(c, _)| *c);
+            v.into_iter().map(|(_, m)| m).collect()
+        })
+        .collect()
 }
 
 /// The `capture-order: <Name> (<A|B|C>), …` markers a line declares.
@@ -737,20 +1418,22 @@ fn markers_in(line: &str) -> Result<Vec<(String, char)>, String> {
 struct Consumed {
     member: String,
     markers: Vec<(String, char)>,
+    /// 1-based line of the read within the body text.
+    line: usize,
 }
 
 /// Every capture-order violation in `text`, read as the body of `b`.
 ///
 /// Violation strings are prefixed by kind (`order:`, `unmarked:`, `group:`,
-/// `unknown:`, `sequence:`, `helper:`, `marker:`, `count:`) so the non-vacuity
-/// tests can assert that the *intended* rule fired, not merely that something
-/// failed.
+/// `unknown:`, `sequence:`, `helper:`, `marker:`, `count:`, `name:`) so the
+/// non-vacuity tests can assert that the *intended* rule fired, not merely that
+/// something failed.
 fn check(b: &CaptureBody, text: &str) -> Vec<String> {
     let mut bad = Vec::new();
     let mut pending: Vec<(String, char)> = Vec::new();
     let mut reads: Vec<Consumed> = Vec::new();
 
-    for (no, line) in text.lines().enumerate() {
+    for ((no, line), found) in text.lines().enumerate().zip(reads_by_line(b, text)) {
         let mine = match markers_in(line) {
             Ok(m) => m,
             Err(e) => {
@@ -758,7 +1441,6 @@ fn check(b: &CaptureBody, text: &str) -> Vec<String> {
                 Vec::new()
             }
         };
-        let found = reads_in(line, b);
         if found.is_empty() {
             pending.extend(mine);
             continue;
@@ -792,7 +1474,11 @@ fn check(b: &CaptureBody, text: &str) -> Vec<String> {
                     no + 1
                 ));
             }
-            reads.push(Consumed { member, markers });
+            reads.push(Consumed {
+                member,
+                markers,
+                line: no + 1,
+            });
         }
     }
     if !pending.is_empty() {
@@ -889,6 +1575,27 @@ fn check(b: &CaptureBody, text: &str) -> Vec<String> {
                 r.markers.len()
             )),
             None => {}
+        }
+    }
+
+    // 5. every other marker names the read it sits on: rule 1 takes the group
+    //    from the NAME, so a mislabelled read would borrow another's group.
+    for r in reads
+        .iter()
+        .filter(|r| b.marked && helper_key(&r.member).is_none())
+    {
+        for (name, _) in &r.markers {
+            if !marker_names_read(b, &r.member, name) {
+                bad.push(format!(
+                    "name: {}:{} marks the read `{}` as `{name}` — a marker must name the \
+                     quantity its own line reads (Python: the API member; Rust: \
+                     `{}_<quantity>` in snake case or a RUST_READ_ALIASES entry)",
+                    b.file,
+                    r.line,
+                    r.member,
+                    snake(b.family)
+                ));
+            }
         }
     }
     bad
@@ -1098,7 +1805,14 @@ fn a_group_c_read_may_sit_between_a_group_a_and_a_group_b_read() {
 
 /// Both directions of rule 4: stripping a marker off an existing read, and —
 /// the one that matters for a later sub-step — smuggling a brand-new read into
-/// a capture body without declaring it.
+/// a capture body without declaring it, in every shape the rule names: a
+/// member, a free function handed the receiver (both transports; also with a
+/// space, a turbofish or a macro `!` before its parenthesis), a bridge read
+/// through a Rust binding the body never declared, through a receiver
+/// expression, behind a turbofish or as an `Engine::`/`Self::` path, a function
+/// handed a `let` alias of the receiver, and the receiver handed to an
+/// expression callee or to a tuple, an iterable, a walrus, a default value or a
+/// literal.
 #[test]
 fn the_gate_fires_on_an_unmarked_read() {
     let (b, text) = capi();
@@ -1128,6 +1842,158 @@ fn the_gate_fires_on_an_unmarked_read() {
         ),
     );
     assert_fires(&bad, "unmarked");
+
+    // A free function handed the receiver: no `receiver.member` on the line at
+    // all, on either transport. The Python receiver is the facade `el` the
+    // body binds from `ckt.ActiveCktElement`.
+    let bad = check(
+        b,
+        &insert_after(&text, "el.Enabled", "        probe = _read_seq(el)"),
+    );
+    assert_unmarked(&bad, "_read_seq");
+    let bad = check(
+        r,
+        &insert_after(
+            &rt,
+            "capture-order: Losses (A)",
+            "            let probe = read_seq(self);",
+        ),
+    );
+    assert_unmarked(&bad, "read_seq");
+
+    // A bridge read through a binding the body never declared as a receiver,
+    // and a function handed a `let` alias of the declared one.
+    let c = body("capture.capture_all_elements");
+    let ct = body_text(c);
+    assert!(check(c, &ct).is_empty(), "the real body must be clean");
+    let bad = check(
+        c,
+        &insert_after(
+            &ct,
+            "capture-order: SetActiveElement (C)",
+            "        let probe = bridge.element_yprim();",
+        ),
+    );
+    assert_unmarked(&bad, "element_yprim");
+
+    // The same read on a receiver EXPRESSION, and as a path — called, or the
+    // method handed on as a value.
+    for smuggled in [
+        "        let probe = holder.borrow().element_yprim();",
+        "        let probe = holder.lock().unwrap().element_yprim();",
+        "        let probe = maybe?.element_yprim();",
+        "        let probe = engines[0].element_yprim();",
+        "        let probe = (engine).element_yprim();",
+        "        let probe = Engine::element_yprim(bridge);",
+        "        let read = Engine::element_yprim;",
+    ] {
+        let bad = check(
+            c,
+            &insert_after(&ct, "capture-order: SetActiveElement (C)", smuggled),
+        );
+        assert_unmarked(&bad, "element_yprim");
+    }
+    let chained = insert_after(
+        &ct,
+        "capture-order: SetActiveElement (C)",
+        "        let probe = holder\n            .borrow()\n            .element_yprim();",
+    );
+    assert_unmarked(&check(c, &chained), "element_yprim");
+
+    // A free function handed the receiver, its callee apart from the
+    // parenthesis: a space (no formatter runs over the Python transport) or a
+    // turbofish.
+    let bad = check(
+        b,
+        &insert_after(&text, "el.Enabled", "        probe = _read_seq (el)"),
+    );
+    assert_unmarked(&bad, "_read_seq");
+    let bad = check(
+        c,
+        &insert_after(
+            &ct,
+            "capture-order: SetActiveElement (C)",
+            "        let probe = read_seq::<f64>(engine);",
+        ),
+    );
+    assert_unmarked(&bad, "read_seq");
+
+    let aliased = insert_after(
+        &insert_after(
+            &ct,
+            "capture-order: SetActiveElement (C)",
+            "        let probe = read_seq(e);",
+        ),
+        "capture-order: SetActiveElement (C)",
+        "        let e = engine;",
+    );
+    assert_unmarked(&check(c, &aliased), "read_seq");
+
+    // A receiver handed to a callee that is an expression, or to a place it may
+    // not stand bare: the hand-over is the read, named `<call>` or after the
+    // receiver.
+    for (smuggled, read) in [
+        ("        probe = (lambda e: _read_seq(e))(el)", "<call>"),
+        (
+            "        a, z = el, None\n        probe = _read_seq(a)",
+            "el",
+        ),
+        ("        probe = [_read_seq(e) for e in (el,)]", "el"),
+        (
+            "        for e in (el,):\n            probe = _read_seq(e)",
+            "el",
+        ),
+        ("        probe = _read_seq(e) if (e := el) else None", "el"),
+        ("        probe = (lambda e=el: _read_seq(e))()", "el"),
+        (
+            "        def inner(e=el):\n            return _read_seq(e)",
+            "el",
+        ),
+    ] {
+        let bad = check(b, &insert_after(&text, "el.Enabled", smuggled));
+        assert_unmarked(&bad, read);
+    }
+    for (smuggled, read) in [
+        ("        let probe = (|e| read_seq(e))(engine);", "<call>"),
+        (
+            "        let (a, z) = (engine, 0);\n        let probe = read_seq(a);",
+            "engine",
+        ),
+        ("        let probe = [engine].map(read_seq);", "engine"),
+        // A macro handed the receiver, and a bridge read behind a turbofish.
+        ("        let probe = dbg!(engine);", "dbg"),
+        (
+            "        let probe = bridge.element_yprim::<f64>();",
+            "element_yprim",
+        ),
+    ] {
+        let bad = check(
+            c,
+            &insert_after(&ct, "capture-order: SetActiveElement (C)", smuggled),
+        );
+        assert_unmarked(&bad, read);
+    }
+
+    // A bridge read handed on as a `Self::` value inside a `dss.rs` helper.
+    let bad = check(
+        r,
+        &insert_after(
+            &rt,
+            "capture-order: Losses (A)",
+            "            let read = Self::ckt_element_seq_currents;",
+        ),
+    );
+    assert_unmarked(&bad, "ckt_element_seq_currents");
+}
+
+/// `bad` holds the `unmarked:` violation of the read `member`.
+fn assert_unmarked(bad: &[String], member: &str) {
+    let want = format!("read `{member}` carries no");
+    assert!(
+        bad.iter()
+            .any(|v| v.starts_with("unmarked:") && v.contains(&want)),
+        "expected the read `{member}` to be flagged as unmarked, got {bad:?}"
+    );
 }
 
 #[test]
@@ -1312,6 +2178,272 @@ fn the_gate_fires_when_a_helper_call_misdeclares_the_helpers_order() {
     assert_fires(&bad, "helper");
 }
 
+/// `b` with its `declared` sequence replaced — the edit a mislabelled read
+/// needs to get past rule 2.
+fn with_declared(b: &CaptureBody, declared: Vec<&'static str>) -> CaptureBody {
+    CaptureBody {
+        declared: declared.leak(),
+        ..*b
+    }
+}
+
+/// Rule 6: a group-B read labelled with a group-A name and admitted ahead of
+/// `Losses`, with `declared` edited to match. Every other rule is satisfied by
+/// the edit — the label's group is the table's, the sequence is the declared
+/// one, A still precedes B — so the marker-name check is the one that must
+/// fire, on both transports.
+#[test]
+fn the_gate_fires_when_a_marker_names_another_quantity_than_its_read() {
+    let (b, text) = capi();
+    let mislabelled = insert_after(
+        &text,
+        "el.TotalPowers",
+        "        probe = _read(lambda: el.SeqCurrents)  # capture-order: TotalPowers (A)",
+    );
+    let mut declared = b.declared.to_vec();
+    let at = declared.iter().position(|n| *n == "Losses").unwrap();
+    declared.insert(at, "TotalPowers");
+    let bad = check(&with_declared(b, declared), &mislabelled);
+    assert_eq!(kinds(&bad), ["name"], "{bad:?}");
+    assert!(bad[0].contains("`SeqCurrents` as `TotalPowers`"), "{bad:?}");
+
+    let r = body("element_pcl");
+    let rt = body_text(r);
+    let mislabelled = insert_after(
+        &rt,
+        "capture-order: Losses (A)",
+        "            let probe = self.ckt_element_seq_currents()?; // capture-order: Losses (A)",
+    );
+    let bad = check(
+        &with_declared(r, vec!["Losses", "Losses", "Powers", "Currents"]),
+        &mislabelled,
+    );
+    assert_eq!(kinds(&bad), ["name"], "{bad:?}");
+    assert!(
+        bad[0].contains("`ckt_element_seq_currents` as `Losses`"),
+        "{bad:?}"
+    );
+}
+
+/// Why the bridge accessor `accessor` does not read `quantity`, if it does not:
+/// an element quantity's accessor reads its own `modes::CKT_ELEMENT_<QUANTITY>`
+/// row, and a selector's accessor is the selector's own name on a circuit
+/// interface.
+fn alias_pairing_error(accessor: &str, quantity: &str) -> Option<String> {
+    let Some(f) = engine_fns().iter().find(|f| f.name == accessor) else {
+        return Some(format!(
+            "`{accessor}` is not a method of the bridge's `Engine`"
+        ));
+    };
+    let reads_row = |row: &str| {
+        f.body
+            .match_indices(row)
+            .any(|(at, _)| !f.body[at + row.len()..].starts_with(is_ident))
+    };
+    let pairs = if SELECTORS.contains(&quantity) {
+        accessor == snake(quantity) && f.body.contains("self.dll.circuit_")
+    } else {
+        reads_row(&format!(
+            "modes::CKT_ELEMENT_{}",
+            snake(quantity).to_uppercase()
+        ))
+    };
+    (!pairs).then(|| {
+        format!(
+            "`{accessor}` does not read `{quantity}`: its body names neither that quantity's \
+             `modes::CKT_ELEMENT_*` row nor, for a selector, its own name on a circuit interface"
+        )
+    })
+}
+
+/// Each [`RUST_READ_ALIASES`] entry pairs a real bridge method with a quantity
+/// the gate knows (a mode-table row or a declared selector) that the method
+/// really reads ([`alias_pairing_error`]), and each is in use, so the table can
+/// neither excuse a read that does not exist, nor lend a read another
+/// quantity's group, nor go stale. A bogus pairing is refused.
+#[test]
+fn every_rust_read_alias_is_a_bridge_read_of_a_known_quantity() {
+    let used: Vec<String> = BODIES
+        .iter()
+        .filter(|b| b.lang == Lang::Rust)
+        .flat_map(|b| reads_by_line(b, &body_text(b)).into_iter().flatten())
+        .collect();
+    for (accessor, quantity) in RUST_READ_ALIASES {
+        assert!(
+            engine_methods().iter().any(|m| m == accessor),
+            "`{accessor}` is not a method of the bridge's `Engine`"
+        );
+        assert!(
+            capture_group_of("CktElement", quantity).is_some() || SELECTORS.contains(quantity),
+            "`{quantity}` has no mode-table row and is not a declared selector"
+        );
+        if let Some(e) = alias_pairing_error(accessor, quantity) {
+            panic!("{e}");
+        }
+        assert!(
+            used.iter().any(|m| m == accessor),
+            "`{accessor}` is read by no Rust capture body — drop it from RUST_READ_ALIASES"
+        );
+    }
+    for (accessor, quantity) in [
+        ("element_currents", "Losses"),
+        ("element_losses", "Powers"),
+        ("all_element_names", "SetActiveElement"),
+    ] {
+        assert!(
+            alias_pairing_error(accessor, quantity).is_some(),
+            "the bogus pairing (`{accessor}`, `{quantity}`) was accepted"
+        );
+    }
+}
+
+/// The `impl Engine` scan behind rule 4 and the command rail reads every block
+/// of `Engine` — a second inherent block, one spelled through a path, a trait
+/// impl, one with a `where` clause, an `unsafe impl` — a nested generic list
+/// and a `Self::` or `Engine::` wrapper, skips the blocks of other types, and
+/// refuses a header it cannot read instead of dropping the method.
+#[test]
+fn the_engine_scan_reads_every_impl_block_and_refuses_an_unread_header() {
+    let src = "\
+pub struct Engine;
+impl Engine {
+    fn raw_command(&self, c: &str) -> String {
+        dss_put_command(c)
+    }
+    fn post_all<I: IntoIterator<Item = String>, F: Fn(u8) -> u8>(&self, cmds: I) {
+        for c in cmds {
+            self.raw_command(&c);
+        }
+    }
+    fn element_yprim(&self) -> Vec<f64> {
+        Vec::new()
+    }
+}
+impl Engine {
+    fn rebuild(&self) -> String {
+        Self::raw_command(self, \"CalcVoltageBases\")
+    }
+    fn new() -> Self {
+        Engine
+    }
+}
+impl crate::dss::Engine {
+    fn via_path(&self) -> String {
+        Engine::raw_command(self, \"RelCalc\")
+    }
+}
+impl<'a> Refresh for &'a Engine {
+    fn refresh(&self) -> String {
+        self.rebuild()
+    }
+}
+impl<T> Bounded<T> for Engine
+where
+    T: Copy,
+{
+    fn bounded(&self) -> String {
+        self.rebuild()
+    }
+}
+unsafe impl Zeroed for Engine {
+    fn zeroed(&self) -> String {
+        self.rebuild()
+    }
+}
+impl Engine2 {
+    fn not_the_bridge(&self) {}
+}
+impl From<Engine> for Wrapper {
+    fn from(e: Engine) -> Self {
+        Wrapper(e)
+    }
+}
+";
+    let fns = engine_fns_in(src, "synthetic").unwrap_or_else(|e| panic!("{e}"));
+    let names: Vec<&str> = fns.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "raw_command",
+            "post_all",
+            "element_yprim",
+            "rebuild",
+            "new",
+            "via_path",
+            "refresh",
+            "bounded",
+            "zeroed"
+        ]
+    );
+    assert_eq!(
+        command_methods_in(&fns),
+        [
+            "raw_command",
+            "post_all",
+            "rebuild",
+            "via_path",
+            "refresh",
+            "bounded",
+            "zeroed"
+        ]
+    );
+
+    let unread = src.replace("fn new() -> Self", "fn new -> Self");
+    let err = engine_fns_in(&unread, "synthetic")
+        .err()
+        .expect("an unread header");
+    assert!(err.contains("cannot read the header of `fn new`"), "{err}");
+}
+
+/// The module scan behind [`bridge_sources`] follows every `mod <name>;` of a
+/// source to its file, flat or nested, from a crate root and from a module
+/// file, and refuses a module it cannot find or a `#[path]` it cannot follow;
+/// a commented-out and an inline module name no file.
+#[test]
+fn the_module_scan_follows_every_mod_declaration() {
+    let lib = "\
+//! mod commented;
+pub mod flat;
+#[cfg(windows)]
+pub(crate) mod nested;
+mod inline {
+    fn f() {}
+}
+";
+    let on_disk = ["crates/x/src/flat.rs", "crates/x/src/nested/mod.rs"];
+    let exists = |p: &str| on_disk.contains(&p);
+    let files = mod_files(lib, "crates/x/src/lib.rs", &exists).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(files, on_disk);
+    let child = |p: &str| p == "crates/x/src/flat/child.rs";
+    let files =
+        mod_files("mod child;\n", "crates/x/src/flat.rs", &child).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(files, ["crates/x/src/flat/child.rs"]);
+
+    let err = mod_files("mod gone;\n", "crates/x/src/lib.rs", &|_| false)
+        .expect_err("a module without a file");
+    assert!(err.contains("`mod gone;` names neither"), "{err}");
+    let err = mod_files(
+        "#[path = \"elsewhere.rs\"]\nmod moved;\n",
+        "crates/x/src/lib.rs",
+        &|_| true,
+    )
+    .expect_err("a moved module");
+    assert!(err.contains("`#[path]`"), "{err}");
+
+    let real = bridge_sources();
+    for want in [
+        "crates/dss-epri/src/lib.rs",
+        "crates/dss-epri/src/dss.rs",
+        "crates/dss-epri/src/capture.rs",
+        "crates/dss-epri/src/guard.rs",
+    ] {
+        assert!(
+            real.iter().any(|s| s == want),
+            "{want} is not among {real:?}"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The per-step call order (GOLDEN_REBASE G1.9, folded in at the D7 lane merge)
 // ---------------------------------------------------------------------------
@@ -1337,8 +2469,12 @@ struct Anchors {
     /// G1.7's topology capture — read after `properties`, i.e. last of the
     /// order-free *reads*.
     topology: &'static str,
-    /// G1.8's flat incidence capture — after `topology`, i.e. strictly last in
-    /// the step. It is the only capture that WRITES solution state.
+    /// G1.8's flat incidence capture — after `topology` and every other
+    /// capture, the reliability one included, i.e. strictly last in the step.
+    /// It is the only capture that writes solution state. The once-per-case
+    /// `RelCalc`, which writes state too, is no capture: `run_case` issues it
+    /// after the last solve and ahead of every capture of that step
+    /// ([`R4133_COMMAND_SITES`] pins that slot on r4133).
     inc_matrix: &'static str,
 }
 
@@ -1683,14 +2819,18 @@ fn idents_with_prefix(code: &str, prefix: &str) -> Vec<String> {
     found
 }
 
-/// `NumIsolatedBranches` -> `num_isolated_branches`: the fastdss member name as
-/// the `dss-epri` bridge spells its typed accessor
-/// (`crates/dss-epri/src/dss.rs:1369-1398`, one `topology_*` fn per
-/// `TopologyI`/`TopologyV` mode).
+/// `NumIsolatedBranches` -> `num_isolated_branches`, `OCPDevIndex` ->
+/// `ocp_dev_index`: the fastdss member name as the `dss-epri` bridge spells its
+/// typed accessor (the `Engine::topology_*` and `Engine::ckt_element_*` fns of
+/// `crates/dss-epri/src/dss.rs`, one per DDLL mode). An acronym stays one word.
 fn snake(camel: &str) -> String {
+    let ch: Vec<char> = camel.chars().collect();
     let mut out = String::new();
-    for (i, c) in camel.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
+    for (i, &c) in ch.iter().enumerate() {
+        let word_start = c.is_uppercase()
+            && i > 0
+            && (!ch[i - 1].is_uppercase() || ch.get(i + 1).is_some_and(|n| n.is_lowercase()));
+        if word_start {
             out.push('_');
         }
         out.extend(c.to_lowercase());
@@ -2002,28 +3142,58 @@ const INCIDENCE_READS: [&str; 4] = ["IncMatrix", "Laplacian", "IncMatrixRows", "
 /// (`tests/golden/inc_matrix/` `org_*`), per the §G3.2c re-scope.
 const FORBIDDEN_COMMANDS: [&str; 1] = ["CalcIncMatrix_O"];
 
-/// `Solution.BusLevels` — `SolutionV(2)`, `DDLL/DSolution.pas:569-588`: `:578`
-/// sizes the buffer `length(Inc_Mat_Levels) - 1` and `:581` writes `0..ArrSize`
-/// inclusive, one element past the end. The r4133 bridge refuses the mode before
+/// `Solution.BusLevels` — `SolutionV(2)`, `DDLL/DSolution.pas:569-588`: `:577`
+/// sets `ArrSize := length(Inc_Mat_Levels) - 1` and `:580-582` size the buffer
+/// to `ArrSize` and write `0..ArrSize` inclusive, one element past the end. The
+/// r4133 bridge refuses the mode before
 /// the FFI (`crates/dss-epri/src/modes.rs::DO_NOT_CALL`), so a surface only one
 /// channel can answer is not a gate: neither transport may read it.
 const FORBIDDEN_READS: [&str; 2] = ["BusLevels", "bus_levels"];
 
+/// Every call of a command-issuing `Engine` method ([`engine_command_methods`])
+/// in `crates/dss-epri/src/capture.rs`, as `(fn, method)`, one entry per call.
+///
+/// `run_case` drives the run (`clear`, `compile`, `post`, `solve`) and the one
+/// sanctioned extra command, the reliability surface's once-per-case `RelCalc`:
+/// on the last step of a reliability case, after the solve and before the G1.9
+/// aggregates, so every capture of that checkpoint reads the post-`RelCalc`
+/// state. The probe and property captures issue `?` property queries through
+/// `raw_command` (each checked to be one), and the G1.8 capture issues its
+/// [`INCIDENCE_PAIR`] through `exec_wait`. A command anywhere else would drive
+/// the engine mid-step ([`check_r4133_command_sites`]).
+const R4133_COMMAND_SITES: [(&str, &str); 10] = [
+    ("run_case", "clear"),
+    ("run_case", "compile"),
+    ("run_case", "post"),
+    ("run_case", "solve"),
+    ("run_case", "relcalc"),
+    ("capture_probes", "raw_command"),
+    ("capture_all_properties", "raw_command"),
+    ("capture_all_properties", "raw_command"),
+    ("capture_inc_matrix", "exec_wait"),
+    ("capture_inc_matrix", "exec_wait"),
+];
+
 /// The incidence capture must come after EVERY other capture of the step, the
-/// topology one included — it is the only capture that WRITES solution state.
+/// topology and the reliability ones included — of the captures it is the only
+/// one that writes solution state.
 ///
 /// `Calc_Inc_Matrix` recreates or resets `IncMat`, refills `Inc_Mat_Rows` and
 /// clears `IncMat_Ordered` (r4133 `Common/Solution.pas:3051-3066`), and
 /// `AddSeriesReac2IncMatrix` re-points `LastClassReferenced` / `ActiveDSSClass`
 /// and calls `ActiveDSSClass.First` (`:3007-3010`), reassigning
 /// `ActiveCircuit.ActiveCktElement`; and it must follow the topology read,
-/// because that read is the one that memoizes `Branch_List`.
+/// because that read is the one that memoizes `Branch_List`. The reliability
+/// capture is no exception: it reads the meter and bus state the once-per-case
+/// `RelCalc` left (issued by `run_case` ahead of every capture of the step, on
+/// r4133 pinned by [`R4133_COMMAND_SITES`]), so the pair must not precede it.
 fn check_inc_matrix_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String> {
     let run = offset_after(src, a.run, 0, rel)?;
     let inc = offset_after(src, a.inc_matrix, run, rel)?;
     for (what, needle) in [
         ("the G1.7 topology capture", a.topology),
         ("the WP8.5b property sweep", a.properties),
+        ("the G1.6(i) reliability capture", a.reliability),
         ("the per-element capture", a.elements),
         ("the discrete-state capture", a.discrete),
         ("the G1.9 aggregates", a.aggregates),
@@ -2046,6 +3216,12 @@ fn check_inc_matrix_last(src: &str, a: &Anchors, rel: &str) -> Result<(), String
 /// The body of a top-level Python `def`: from the end of its header line to the
 /// next line that begins in column 0 with a non-blank character.
 fn py_def_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, String> {
+    let (start, end) = py_def_span(text, header, rel)?;
+    Ok(&text[start..end])
+}
+
+/// The byte span of [`py_def_body`].
+fn py_def_span(text: &str, header: &str, rel: &str) -> Result<(usize, usize), String> {
     let at = text
         .find(header)
         .ok_or_else(|| format!("{rel}: `{header}` is gone — update this gate"))?;
@@ -2055,7 +3231,7 @@ fn py_def_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, St
         .map(|(i, _)| start + i + 1)
         .find(|&s| text[s..].chars().next().is_some_and(|c| !c.is_whitespace()))
         .unwrap_or(text.len());
-    Ok(&text[start..end])
+    Ok((start, end))
 }
 
 /// The body of a top-level Rust `fn`: from its header to the first line that is
@@ -2065,6 +3241,12 @@ fn py_def_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, St
 /// `core.autocrlf`, so a CRLF working copy must not make the gate claim the
 /// closing brace is missing (it did, at the G1.8 lane merge).
 fn rust_fn_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, String> {
+    let (start, end) = rust_fn_span(text, header, rel)?;
+    Ok(&text[start..end])
+}
+
+/// The byte span of [`rust_fn_body`].
+fn rust_fn_span(text: &str, header: &str, rel: &str) -> Result<(usize, usize), String> {
     let at = text
         .find(header)
         .ok_or_else(|| format!("{rel}: `{header}` is gone — update this gate"))?;
@@ -2078,7 +3260,7 @@ fn rust_fn_body<'a>(text: &'a str, header: &str, rel: &str) -> Result<&'a str, S
         })
         .map(|(i, _)| at + i + 1)
         .ok_or_else(|| format!("{rel}: `{header}` has no column-0 closing brace"))?;
-    Ok(&text[at..end])
+    Ok((at, end))
 }
 
 /// Every `….Text.Command = "<literal>"` assignment in `text`, in source order.
@@ -2113,6 +3295,300 @@ fn rust_commands(text: &str) -> Vec<String> {
             rest.find('"').map(|end| rest[..end].to_string())
         })
         .collect()
+}
+
+/// One call of an [`engine_command_methods`] method in a Rust source.
+struct CommandSite {
+    /// The `fn` whose body holds the call.
+    func: String,
+    method: String,
+    /// The argument list as written.
+    args: String,
+    /// The command, when the argument list is one string literal.
+    literal: Option<String>,
+    /// Char index of the method name in the source.
+    at: usize,
+}
+
+/// The name a `name: [&]['a ][mut ][path::]Engine` binding declares, when the
+/// `Engine` token that ends at `code[..at]` is the type of one.
+fn engine_binding_before(code: &str) -> Option<String> {
+    let mut head = code.trim_end();
+    while let Some(h) = head.strip_suffix("::") {
+        head = h.trim_end_matches(is_ident).trim_end();
+    }
+    if let Some(h) = head.strip_suffix("mut")
+        && !h.ends_with(is_ident)
+    {
+        head = h.trim_end();
+    }
+    if let Some(i) = head.rfind('\'')
+        && i + 1 < head.len()
+        && head[i + 1..].chars().all(is_ident)
+    {
+        head = head[..i].trim_end();
+    }
+    head = head.strip_suffix('&').map_or(head, str::trim_end);
+    let head = head.strip_suffix(':')?;
+    if head.ends_with(':') {
+        return None;
+    }
+    let head = head.trim_end();
+    let name = &head[head.trim_end_matches(is_ident).len()..];
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// The command methods a std type shares: `node_order.clear()` empties a `Vec`.
+const STD_SHARED_COMMANDS: &[&str] = &["clear"];
+
+/// Every call of a command-issuing `Engine` method in `src`, in source order:
+/// `<receiver>.<method>(…)`, and `<path>::<method>(…)` or `<path>::<method>`
+/// handed on as a value (which has no argument list).
+///
+/// The gate reads no type, so any receiver and any path count: a parameter, a
+/// field, a closure argument, a call chain; `Engine`, a rename, alias or
+/// re-export of it declared in any module, a trait, a qualified `<…>` path, a
+/// generic parameter. A same-named method of another type counts as well,
+/// through a path always (`Vec::clear(&mut v)`), through a receiver unless the
+/// one exception applies: a [`STD_SHARED_COMMANDS`] method called on a name a
+/// plain `let` of the same `fn` binds before it, to something that is neither
+/// an `Engine` nor a `let` alias of one ([`alias_of`]), is no command. A
+/// binding typed `Engine` always counts. Comments and string literals are no
+/// code ([`code_only`]); the argument list is reported as written.
+fn rust_command_sites(src: &str) -> Vec<CommandSite> {
+    let code = code_only(src, Lang::Rust);
+    let cc: Vec<char> = code.chars().collect();
+    let rc: Vec<char> = src.chars().collect();
+    assert_eq!(cc.len(), rc.len(), "code_only must keep one char per char");
+
+    let mut engines: Vec<String> = code
+        .match_indices("Engine")
+        .filter(|(at, _)| starts_token(&code, *at) && !code[at + 6..].starts_with(is_ident))
+        .filter_map(|(at, _)| engine_binding_before(&code[..at]))
+        .collect();
+    loop {
+        let before = engines.len();
+        for line in code.lines() {
+            if let Some(alias) = alias_of(line, Lang::Rust, &engines)
+                && !engines.contains(&alias)
+            {
+                engines.push(alias);
+            }
+        }
+        if engines.len() == before {
+            break;
+        }
+    }
+    // Every plain `let` of a non-engine name, as (char index of its line, name).
+    let mut not_engines: Vec<(usize, String)> = Vec::new();
+    let mut line_at = 0usize;
+    for line in code.split('\n') {
+        let bound = line.trim_start().strip_prefix("let ").and_then(|rest| {
+            let rest = rest.strip_prefix("mut ").unwrap_or(rest);
+            let name = ident_at(rest, 0);
+            let after = rest[name.len()..].trim_start();
+            (!name.is_empty() && (after.starts_with(':') || after.starts_with('='))).then_some(name)
+        });
+        if let Some(name) = bound
+            && !engines.contains(&name)
+        {
+            not_engines.push((line_at, name));
+        }
+        line_at += line.chars().count() + 1;
+    }
+
+    // `fn` headers, as (char index, name).
+    let mut heads: Vec<(usize, String)> = Vec::new();
+    for i in 0..cc.len().saturating_sub(3) {
+        if cc[i..i + 3] == ['f', 'n', ' '] && (i == 0 || !is_ident(cc[i - 1])) {
+            let name: String = cc[i + 3..].iter().take_while(|c| is_ident(**c)).collect();
+            if !name.is_empty() {
+                heads.push((i, name));
+            }
+        }
+    }
+
+    let mut out: Vec<CommandSite> = Vec::new();
+    for method in engine_command_methods() {
+        let m: Vec<char> = method.chars().collect();
+        for at in 0..cc.len().saturating_sub(m.len()) {
+            if cc[at..at + m.len()] != m[..]
+                || (at > 0 && is_ident(cc[at - 1]))
+                || cc.get(at + m.len()).is_some_and(|c| is_ident(*c))
+            {
+                continue;
+            }
+            let open = (at + m.len()..cc.len())
+                .find(|&k| !cc[k].is_whitespace())
+                .filter(|&k| cc[k] == '(');
+            let mut k = at;
+            while k > 0 && cc[k - 1].is_whitespace() {
+                k -= 1;
+            }
+            let path = |end: usize| -> String {
+                let mut a = end;
+                while a > 0 && cc[a - 1].is_whitespace() {
+                    a -= 1;
+                }
+                let z = a;
+                while a > 0 && is_ident(cc[a - 1]) {
+                    a -= 1;
+                }
+                cc[a..z].iter().collect()
+            };
+            let head = heads.iter().rev().find(|(h, _)| *h < at);
+            let fn_start = head.map_or(0, |(h, _)| *h);
+            if k > 0 && cc[k - 1] == '.' {
+                let recv = path(k - 1);
+                let local = STD_SHARED_COMMANDS.contains(&method.as_str())
+                    && not_engines
+                        .iter()
+                        .any(|(p, n)| *n == recv && *p > fn_start && *p < at);
+                if open.is_none() || local {
+                    continue;
+                }
+            } else if !(k > 1 && cc[k - 2..k] == [':', ':']) {
+                continue;
+            }
+            let (args, literal) = match open {
+                Some(open) => {
+                    let mut depth = 0usize;
+                    let mut close = cc.len();
+                    for (j, c) in cc.iter().enumerate().skip(open) {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    close = j;
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    let args: String = rc[open + 1..close].iter().collect();
+                    let code_args: String = cc[open + 1..close].iter().collect();
+                    let quoted = args.trim();
+                    let literal = (code_args.trim().is_empty()
+                        && quoted.len() >= 2
+                        && quoted.starts_with('"')
+                        && quoted.ends_with('"'))
+                    .then(|| quoted[1..quoted.len() - 1].to_string());
+                    (args, literal)
+                }
+                None => (String::new(), None),
+            };
+            let func = head.map_or_else(String::new, |(_, n)| n.clone());
+            out.push(CommandSite {
+                func,
+                method: method.clone(),
+                args,
+                literal,
+                at,
+            });
+        }
+    }
+    out.sort_by_key(|s| s.at);
+    out
+}
+
+/// True when a `raw_command` argument list is a `?` property query.
+fn is_property_query(args: &str) -> bool {
+    let a = args.trim();
+    ["&format!(\"? ", "format!(\"? ", "\"? "]
+        .iter()
+        .any(|p| a.starts_with(p))
+}
+
+/// The r4133 transport calls a command-issuing `Engine` method only at the
+/// sites of `register` ([`R4133_COMMAND_SITES`] for the real source): the same
+/// `(fn, method)` multiset, every `raw_command` a `?` property query, every run
+/// command of `run_case` ahead of the G1.9 aggregates (the step's first
+/// capture), and the `RelCalc` between the step's solve and those aggregates.
+fn check_r4133_command_sites(
+    src: &str,
+    register: &[(&str, &str)],
+    a: &Anchors,
+    rel: &str,
+) -> Result<(), String> {
+    let sites = rust_command_sites(src);
+    if let Some(s) = sites
+        .iter()
+        .find(|s| s.method == "raw_command" && !is_property_query(&s.args))
+    {
+        return Err(format!(
+            "{rel}: `{}` calls `raw_command({})`, which is not a `?` property query. \
+             The transport's only raw command lines are the probe and property \
+             queries; any other command drives the engine mid-step.",
+            s.func,
+            s.args.trim()
+        ));
+    }
+
+    let mut found: Vec<(String, String)> = sites
+        .iter()
+        .map(|s| (s.func.clone(), s.method.clone()))
+        .collect();
+    let mut want: Vec<(String, String)> = register
+        .iter()
+        .map(|(f, m)| ((*f).to_string(), (*m).to_string()))
+        .collect();
+    found.sort();
+    want.sort();
+    if found != want {
+        let mut missing = want.clone();
+        let mut extra: Vec<(String, String)> = Vec::new();
+        for f in found {
+            match missing.iter().position(|w| *w == f) {
+                Some(i) => {
+                    missing.remove(i);
+                }
+                None => extra.push(f),
+            }
+        }
+        return Err(format!(
+            "{rel}: the command-issuing `Engine` calls are not the registered ones: \
+             unregistered {extra:?}, missing {missing:?}. A capture may not drive the \
+             engine mid-step; the run, the once-per-case `RelCalc`, the `?` queries and \
+             the G1.8 pair are the only commands (`R4133_COMMAND_SITES`). If the run \
+             really changed, change the register with it."
+        ));
+    }
+
+    let run = offset_after(src, a.run, 0, rel)?;
+    let aggregates = src[..offset_after(src, a.aggregates, run, rel)?]
+        .chars()
+        .count();
+    if let Some(s) = sites
+        .iter()
+        .find(|s| s.func == "run_case" && s.method != "relcalc" && s.at > aggregates)
+    {
+        return Err(format!(
+            "{rel}: `run_case` calls `{}` (char {}) after the G1.9 aggregates (char \
+             {aggregates}), i.e. among the captures of a step. The run's commands all come \
+             ahead of the step's first capture, or a capture reads an engine the command \
+             changed mid-step.",
+            s.method, s.at
+        ));
+    }
+    let solve = sites
+        .iter()
+        .filter(|s| s.method == "solve")
+        .map(|s| s.at)
+        .max();
+    for r in sites.iter().filter(|s| s.method == "relcalc") {
+        if solve.is_some_and(|s| r.at < s) || r.at > aggregates {
+            return Err(format!(
+                "{rel}: `RelCalc` (char {}) is not issued between the step's solve and \
+                 the G1.9 aggregates (char {aggregates}). It writes the meter and bus \
+                 reliability state, so it must run after the solve and ahead of every \
+                 capture of the checkpoint.",
+                r.at
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Every identifier in `code` that begins with `prefix`, in **source order** —
@@ -2233,9 +3709,11 @@ fn check_capi_incidence(src: &str, rel: &str) -> Result<(), String> {
 /// The r4133 incidence capture: the same pair, in the same order, then the four
 /// typed mode accessors in the same order.
 ///
-/// The pair is also checked **file-wide**: `crates/dss-epri/src/capture.rs`
-/// issues executive commands at exactly these two sites and nowhere else, so a
-/// capture cannot quietly drive the engine mid-step.
+/// The pair is also checked **file-wide**: every `exec_wait` call of
+/// `crates/dss-epri/src/capture.rs` passes a plain string literal (the gate
+/// cannot read a computed command, as on the capi twin), and those literals are
+/// exactly the pair. The transport's other commands — the run, the
+/// once-per-case `RelCalc`, the `?` queries — are [`check_r4133_command_sites`]'s.
 fn check_r4133_incidence(src: &str, rel: &str) -> Result<(), String> {
     let raw = rust_fn_body(src, "fn capture_inc_matrix(", rel)?;
     let cmds = rust_commands(raw);
@@ -2247,11 +3725,27 @@ fn check_r4133_incidence(src: &str, rel: &str) -> Result<(), String> {
             &owned(&INCIDENCE_PAIR),
         ));
     }
-    let file = rust_commands(src);
+    let exec: Vec<CommandSite> = rust_command_sites(src)
+        .into_iter()
+        .filter(|s| s.method == "exec_wait")
+        .collect();
+    let file: Vec<String> = exec.iter().filter_map(|s| s.literal.clone()).collect();
+    if let Some(s) = exec.iter().find(|s| s.literal.is_none()) {
+        return Err(format!(
+            "{rel}: `{}` calls `exec_wait({})`, a computed command: only {} of the \
+             transport's {} `exec_wait` site(s) pass a plain string literal. This gate \
+             cannot read a computed command — write it as a literal, or the rule that \
+             the pair is the transport's only `exec_wait` is unverifiable.",
+            s.func,
+            s.args.trim(),
+            file.len(),
+            exec.len()
+        ));
+    }
     if file != owned(&INCIDENCE_PAIR) {
         return Err(incidence_error(
             rel,
-            "the executive commands the whole transport issues",
+            "the executive commands the whole transport issues through `exec_wait`",
             &file,
             &owned(&INCIDENCE_PAIR),
         ));
@@ -2304,7 +3798,7 @@ fn check_no_forbidden_incidence_use(
             return Err(format!(
                 "{rel}: the transport reads `{bad}` in code ({hits:?}). `SolutionV(2)` \
                  `Solution.BusLevels` writes one element past its own array on r4133 \
-                 (`DDLL/DSolution.pas:578-582`) and sits on the bridge's \
+                 (`DDLL/DSolution.pas:580-582`) and sits on the bridge's \
                  `modes::DO_NOT_CALL` register, so no channel may read it."
             ));
         }
@@ -2335,8 +3829,8 @@ fn check_do_not_call_still_refuses_bus_levels(src: &str, rel: &str) -> Result<()
             return Err(format!(
                 "{rel}: the `DO_NOT_CALL` register no longer carries `{needle}`. \
                  `SolutionV(2)` `Solution.BusLevels` is a one-element heap overflow \
-                 inside the DLL (`DDLL/DSolution.pas:578-582`); removing the row would \
-                 let a future accessor call it."
+                 inside the DLL (`DDLL/DSolution.pas:580-582`); removing the \
+                 row would let a future accessor call it."
             ));
         }
     }
@@ -2473,6 +3967,226 @@ fn the_incidence_capture_issues_calcincmatrix_then_calclaplacian() {
     check_r4133_incidence(&read_source(r4133), r4133).unwrap_or_else(|e| panic!("{e}"));
 }
 
+/// The r4133 transport issues commands only at [`R4133_COMMAND_SITES`], and the
+/// rail has teeth on the real source: a stray `RelCalc` in a capture, the same
+/// command through a `let` alias, a closure argument of any name, an untyped
+/// binding, a path call, a fn pointer or a method handed to `map`, a `clear` on
+/// a typed or an aliased engine binding, a command through any path (a renamed
+/// import, a type alias, a qualified path, a trait, a re-export or an alias
+/// another module declares, a generic parameter, a same-named method of
+/// another type), a stray `exec_wait`, the `RelCalc` moved ahead of the solve
+/// or past the aggregates, the run's `clear` moved past the aggregates, and a
+/// `raw_command` that is no `?` query are each rejected.
+#[test]
+fn the_r4133_transport_issues_commands_only_at_its_registered_sites() {
+    let rel = "crates/dss-epri/src/capture.rs";
+    let src = read_source(rel);
+    check_r4133_command_sites(&src, &R4133_COMMAND_SITES, &R4133_CALLS, rel)
+        .unwrap_or_else(|e| panic!("{e}"));
+    // The real `run_case` empties a `Vec` with `clear()` as well; the gate
+    // tells it from the engine's `clear` by its `let` binding.
+    assert!(
+        src.contains("node_order.clear()"),
+        "{rel}: the Vec `clear` is gone"
+    );
+
+    let red = |mutated: String, what: &str, needle: &str| {
+        let err = check_r4133_command_sites(&mutated, &R4133_COMMAND_SITES, &R4133_CALLS, rel)
+            .expect_err(what);
+        assert!(err.contains(needle), "{what}: {err}");
+    };
+    let in_reliability = "let saifikw = engine.meters_saifi_kw()?;";
+    red(
+        insert_after(&src, in_reliability, "        engine.relcalc()?;"),
+        "a stray RelCalc in the reliability capture",
+        "(\"capture_reliability\", \"relcalc\")",
+    );
+    red(
+        insert_after(
+            &src,
+            in_reliability,
+            "        let again = engine;\n        again.relcalc()?;",
+        ),
+        "a RelCalc through a let alias",
+        "(\"capture_reliability\", \"relcalc\")",
+    );
+    let in_topology = "let num_loops = engine.topology_num_loops()?;";
+    red(
+        insert_after(&src, in_topology, "    (|e| e.relcalc())(engine)?;"),
+        "a RelCalc through a closure argument",
+        "(\"capture_topology\", \"relcalc\")",
+    );
+    red(
+        insert_after(&src, in_topology, "    Engine::relcalc(engine)?;"),
+        "a RelCalc as a path call",
+        "(\"capture_topology\", \"relcalc\")",
+    );
+    // A receiver of any name — one a `let` elsewhere binds to a non-engine, a
+    // binding the gate cannot type — and the method handed on as a value.
+    for (stray, what) in [
+        ("    (|s| s.relcalc())(engine)?;", "a RelCalc through `|s|`"),
+        (
+            "    let q = make_engine();\n    q.relcalc()?;",
+            "a RelCalc through an untyped binding",
+        ),
+        (
+            "    let eng = Some(engine).unwrap();\n    eng.relcalc()?;",
+            "a RelCalc through an unwrapped binding",
+        ),
+        (
+            "    let f = Engine::relcalc;\n    f(engine)?;",
+            "a RelCalc through a fn pointer",
+        ),
+        (
+            "    Some(engine).map(Engine::relcalc).transpose()?;",
+            "a RelCalc handed to `map`",
+        ),
+    ] {
+        red(
+            insert_after(&src, in_topology, stray),
+            what,
+            "(\"capture_topology\", \"relcalc\")",
+        );
+    }
+    // A `clear` on a binding typed `Engine` or on a `let` alias of the engine is
+    // the engine's, never a `Vec`'s.
+    for (stray, what) in [
+        (
+            "    let e2: &Engine = engine;\n    e2.clear()?;",
+            "a clear through a typed let",
+        ),
+        (
+            "    let e3 = engine;\n    e3.clear()?;",
+            "a clear through a let alias",
+        ),
+    ] {
+        red(
+            insert_after(&src, in_topology, stray),
+            what,
+            "(\"capture_topology\", \"clear\")",
+        );
+    }
+    // A command method through any path: the gate reads no type, so a path
+    // through a name another module declares counts as well as one this file
+    // declares, and so does a same-named method of another type.
+    let relcalc = "(\"capture_topology\", \"relcalc\")";
+    let clear = "(\"capture_topology\", \"clear\")";
+    for (stray, what, site) in [
+        (
+            "    use crate::dss::Engine as E;\n    E::exec_wait(engine, \"RelCalc\")?;",
+            "an exec_wait through a renamed import",
+            "(\"capture_topology\", \"exec_wait\")",
+        ),
+        (
+            "    type Bridge = crate::dss::Engine;\n    Bridge::relcalc(engine)?;",
+            "a RelCalc through a type alias",
+            relcalc,
+        ),
+        (
+            "    <Engine>::relcalc(engine)?;",
+            "a RelCalc through a qualified path",
+            relcalc,
+        ),
+        (
+            "    <crate::dss::Engine>::relcalc(engine)?;",
+            "a RelCalc through a qualified module path",
+            relcalc,
+        ),
+        (
+            "    <Engine as Refresh>::relcalc(engine)?;",
+            "a RelCalc through a qualified trait path",
+            relcalc,
+        ),
+        (
+            "    Refresh::relcalc(engine)?;",
+            "a RelCalc through a trait",
+            relcalc,
+        ),
+        (
+            "    crate::dss::Refresh::relcalc(engine)?;",
+            "a RelCalc through a trait's module path",
+            relcalc,
+        ),
+        (
+            "    crate::dss::Handle::relcalc(engine)?;",
+            "a RelCalc through a type alias another module declares",
+            relcalc,
+        ),
+        (
+            "    crate::Bridge::relcalc(engine)?;",
+            "a RelCalc through a renamed re-export",
+            relcalc,
+        ),
+        (
+            "    T::relcalc(engine)?;",
+            "a RelCalc through a generic parameter",
+            relcalc,
+        ),
+        (
+            "    crate::Bridge::clear(engine)?;",
+            "a clear through a renamed re-export",
+            clear,
+        ),
+        (
+            "    Vec::clear(&mut node_order);",
+            "a same-named method of another type through a path",
+            clear,
+        ),
+    ] {
+        red(insert_after(&src, in_topology, stray), what, site);
+    }
+    // A stray `exec_wait` through `|s|` is refused by both rails.
+    let exec = insert_after(
+        &src,
+        in_topology,
+        "    (|s| s.exec_wait(\"solve\"))(engine)?;",
+    );
+    red(
+        exec.clone(),
+        "an exec_wait through `|s|`",
+        "(\"capture_topology\", \"exec_wait\")",
+    );
+    let err = check_r4133_incidence(&exec, rel).expect_err("an exec_wait through `|s|`");
+    assert!(err.contains("the whole transport issues"), "{err}");
+    // A run command moved among the captures of a step.
+    red(
+        move_line_after(
+            &src,
+            "engine.clear()?;",
+            "let aggregates = capture_aggregates(engine, warn)?;",
+        ),
+        "the run's clear moved past the aggregates",
+        "`run_case` calls `clear`",
+    );
+    red(
+        move_line_after(
+            &src,
+            "Some(engine.relcalc()?)",
+            "let aggregates = capture_aggregates(engine, warn)?;",
+        ),
+        "the RelCalc moved past the aggregates",
+        "between the step's solve and the G1.9 aggregates",
+    );
+    red(
+        move_line_after(
+            &src,
+            "Some(engine.relcalc()?)",
+            "for step in 0..req.n_steps {",
+        ),
+        "the RelCalc moved ahead of the solve",
+        "between the step's solve and the G1.9 aggregates",
+    );
+    red(
+        src.replacen(
+            "engine.raw_command(&format!(\"? {name}.Like\"));",
+            "engine.raw_command(\"RelCalc\");",
+            1,
+        ),
+        "a raw command that is no property query",
+        "not a `?` property query",
+    );
+}
+
 #[test]
 fn neither_capture_calls_calcincmatrix_o_or_reads_buslevels() {
     let capi = "tools/oracle/oracle_server.py";
@@ -2582,7 +4296,7 @@ def later(d):
     // -- r4133 --------------------------------------------------------------
     let rs_ok = "\
 /// Never issues `CalcIncMatrix_O` and never reads `Solution.BusLevels` /
-/// `solution_bus_levels` — `DSolution.pas:578-582`.
+/// `solution_bus_levels` — `DSolution.pas:580-582`.
 fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
     engine.exec_wait(\"CalcIncMatrix\")?;
     engine.exec_wait(\"CalcLaplacian\")?;
@@ -2625,6 +4339,17 @@ fn capture_inc_matrix(engine: &Engine) -> Result<IncMatrixCap, EngineError> {
     let err = check_r4133_incidence(&stray, "synthetic").expect_err("a stray command was issued");
     assert!(err.contains("the whole transport issues"), "{err}");
 
+    // A computed command is refused, not read as no command: the literal scan
+    // alone still sees exactly the pair here.
+    let computed = format!(
+        "{rs_ok}\nfn other(e: &Engine, cmd: &str) {{\n    e.exec_wait(cmd).unwrap();\n}}\n"
+    );
+    assert_eq!(rust_commands(&computed), owned(&INCIDENCE_PAIR));
+    let err =
+        check_r4133_incidence(&computed, "synthetic").expect_err("a computed command was issued");
+    assert!(err.contains("computed command"), "{err}");
+    assert!(err.contains("exec_wait(cmd)"), "{err}");
+
     // -- the DO_NOT_CALL register -------------------------------------------
     let modes_ok = "\
 pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
@@ -2660,7 +4385,8 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
     assert!(check_topology_last(ok, &a, "synthetic").is_ok());
 
     let before_topology = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_all_elements(x); \
-         capture_all_properties(x); capture_inc_matrix(x); capture_topology(x);";
+         capture_reliability(x); capture_all_properties(x); capture_inc_matrix(x); \
+         capture_topology(x);";
     let err = check_inc_matrix_last(before_topology, &a, "synthetic")
         .expect_err("the incidence pair ran before the topology read");
     assert!(err.contains("topology capture"), "{err}");
@@ -2668,14 +4394,24 @@ pub const DO_NOT_CALL: &[(&str, ModeKind, i32, &str)] = &[
 
     // Topology first this time, so its arm is satisfied and the failure has to
     // come from one of the reads the pair still overtakes.
-    let early = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_topology(x); \
-                 capture_inc_matrix(x); capture_all_elements(x); capture_all_properties(x);";
+    let early = "fn run_case( capture_aggregates(x); capture_discrete(x); capture_reliability(x); \
+                 capture_topology(x); capture_inc_matrix(x); capture_all_elements(x); \
+                 capture_all_properties(x);";
     let err = check_inc_matrix_last(early, &a, "synthetic").expect_err("the pair ran early");
     assert!(err.contains("property sweep"), "{err}");
 
+    // Every other capture in place, only the reliability capture moved past the
+    // pair: the pair would run before the reads of the post-`RelCalc` state.
+    let before_reliability = "fn run_case( capture_aggregates(x); capture_discrete(x); \
+         capture_all_elements(x); capture_all_properties(x); capture_topology(x); \
+         capture_inc_matrix(x); capture_reliability(x);";
+    let err = check_inc_matrix_last(before_reliability, &a, "synthetic")
+        .expect_err("the incidence pair ran before the reliability capture");
+    assert!(err.contains("reliability capture"), "{err}");
+
     let renamed = "fn run_case( capture_aggregates(x); capture_discrete(x); \
-                   capture_all_elements(x); capture_all_properties(x); capture_topology(x); \
-                   build_the_matrix(x);";
+                   capture_all_elements(x); capture_reliability(x); capture_all_properties(x); \
+                   capture_topology(x); build_the_matrix(x);";
     let err = check_inc_matrix_last(renamed, &a, "synthetic").expect_err("the anchor is gone");
     assert!(err.contains("could not find"), "{err}");
 }
@@ -2758,8 +4494,18 @@ struct RunFileRule {
     /// before it is that `try:` and the one after it is the `except`.
     teardown: &'static [&'static str],
     /// The engine commands that teardown issues, in order — the semantic half
-    /// of the same rule: no other command, and no read, may follow.
+    /// of the same rule: no other command, and no read, may follow, to the end
+    /// of `run_case`.
     teardown_commands: &'static [&'static str],
+    /// The statements `run_case` runs after the guard scope and before its
+    /// reply, as whole lines in order: the sweep report (and, on r4133, the
+    /// contents copy's deferred error). They read the guard, never the model.
+    epilogue: &'static [&'static str],
+    /// The opening and closing tokens of the reply literal that ends
+    /// `run_case`. Every entry between them must be a name bound earlier or a
+    /// field of the request ([`is_reply_entry`]), so no read and no command can
+    /// hide in the reply.
+    reply: (&'static str, &'static str),
 }
 
 /// The capi channel. Its teardown is D32(2)(a): dss_capi opens a Storage
@@ -2794,6 +4540,8 @@ const CAPI_RUN_FILES: RunFileRule = RunFileRule {
         "log(f\"teardown clear raised",
     ],
     teardown_commands: &["clear"],
+    epilogue: &["sweep_failed = guard.sweep_failed"],
+    reply: ("return {", "}"),
 };
 
 /// The r4133 channel. r4133 closes its own Storage trace file as it writes the
@@ -2819,6 +4567,11 @@ const R4133_RUN_FILES: RunFileRule = RunFileRule {
     guard_close: Some("guard.finish()"),
     teardown: &[],
     teardown_commands: &[],
+    epilogue: &[
+        "let sweep_failed = guard.finish();",
+        "let run_file_contents = run_file_contents.map_err(EngineError::Other)?;",
+    ],
+    reply: ("Ok(CaseResult {", "})"),
 };
 
 /// Byte offset of the start of the line containing `at`.
@@ -3023,34 +4776,41 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
         ));
     }
 
-    // 6. D33(3): the classification is the last READ, and the only statement
-    //    after it inside the guard scope is the D32(2)(a) teardown.
+    // 6. D33(3): the classification is the last READ of the run. To the end of
+    //    `run_case` no command but the D32(2)(a) teardown and no capture may
+    //    follow it; inside the guard scope only the contents copy and that
+    //    teardown, past the scope only the declared epilogue and the reply.
     let tail_start = src[created..]
         .find('\n')
         .map_or(src.len(), |i| created + i + 1);
+    let run_end = match r.lang {
+        Lang::Python => py_def_span(src, a.run, rel)?.1,
+        Lang::Rust => rust_fn_span(src, a.run, rel)?.1,
+    };
     let tail = src.get(tail_start..scope_end).unwrap_or("");
+    let rest = src.get(tail_start..run_end).unwrap_or("");
 
     let cmds = match r.lang {
-        Lang::Python => py_commands(tail),
-        Lang::Rust => rust_commands(tail),
+        Lang::Python => py_commands(rest),
+        Lang::Rust => rust_commands(rest),
     };
     if cmds != owned(r.teardown_commands) {
         return Err(format!(
-            "{rel}: the commands issued after the run-file classification are {cmds:?}, \
-             but the only thing allowed to follow it inside the guard scope is the \
+            "{rel}: the commands issued after the run-file classification, to the end of \
+             `run_case`, are {cmds:?}, but the only thing allowed to follow it is the \
              D32(2)(a) teardown {:?} (D33(3)). Any other command changes the run whose \
              filesystem effect was just classified.",
             r.teardown_commands
         ));
     }
 
-    let code = code_only(tail, r.lang);
+    let code = code_only(rest, r.lang);
     if let Some(read) = idents_with_prefix(&code, "capture_").first() {
         return Err(format!(
-            "{rel}: `{read}` is called AFTER the run-file classification, inside the \
-             guard scope. The classification is the LAST read of the run (D33(3)); a \
-             capture that follows it reads a model the reported file set no longer \
-             describes."
+            "{rel}: `{read}` is called AFTER the run-file classification (inside the guard \
+             scope or past it, before `run_case` returns). The classification is the LAST \
+             read of the run (D33(3)); a capture that follows it reads a model the \
+             reported file set no longer describes."
         ));
     }
 
@@ -3102,7 +4862,77 @@ fn check_run_tail_order(src: &str, a: &Anchors, r: &RunFileRule, rel: &str) -> R
             allowed.len(),
         ));
     }
+    check_run_epilogue(src.get(scope_end..run_end).unwrap_or(""), r, rel)
+}
+
+/// The statements of `run_case` past the guard scope (clause 6 of
+/// [`check_run_tail_order`]): exactly [`RunFileRule::epilogue`], each line
+/// equal to its entry (so nothing can be folded onto it), then the reply
+/// literal [`RunFileRule::reply`], every entry of which [`is_reply_entry`]
+/// admits. All of it runs after the run-file classification, the LAST read of
+/// the run (D33(3)).
+fn check_run_epilogue(after: &str, r: &RunFileRule, rel: &str) -> Result<(), String> {
+    let stmts: Vec<&str> = after
+        .lines()
+        .map(|l| code_of(l, r.lang).trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    for (i, want) in r.epilogue.iter().enumerate() {
+        match stmts.get(i) {
+            Some(stmt) if stmt == want => {}
+            found => {
+                return Err(format!(
+                    "{rel}: statement {i} after the guard scope is {found:?}, but `run_case` \
+                     runs exactly its epilogue {:?} there and then replies. The run-file \
+                     classification is the LAST read of the run (D33(3)); anything past the \
+                     scope runs after it.",
+                    r.epilogue
+                ));
+            }
+        }
+    }
+    let reply = stmts[r.epilogue.len()..].join(" ");
+    let (open, close) = r.reply;
+    let inner = reply
+        .strip_prefix(open)
+        .and_then(|s| s.strip_suffix(close))
+        .ok_or_else(|| {
+            format!(
+                "{rel}: after its epilogue `run_case` must end in the reply `{open} … {close}`, \
+                 found `{reply}` — a statement after the guard scope runs after the run-file \
+                 classification, the LAST read of the run (D33(3))."
+            )
+        })?;
+    for entry in inner.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        if !is_reply_entry(entry) {
+            return Err(format!(
+                "{rel}: the reply entry `{entry}` is not a bound name. The reply is built \
+                 after the run-file classification, the LAST read of the run (D33(3)), so \
+                 it hands back values read before it — it reads nothing itself."
+            ));
+        }
+    }
     Ok(())
+}
+
+/// A reply entry clause 6 admits: a bound name (Rust's field shorthand), or a
+/// key — `"key"` (Python) or `key` (Rust) — mapped to a bound name or to a field
+/// of the request (`req.<field>`).
+fn is_reply_entry(entry: &str) -> bool {
+    let name =
+        |s: &str| s.chars().next().is_some_and(|c| !c.is_ascii_digit()) && s.chars().all(is_ident);
+    let value = |v: &str| name(v) || v.strip_prefix("req.").is_some_and(name);
+    match entry.split_once(':') {
+        None => name(entry),
+        Some((key, v)) => {
+            let key = key.trim();
+            let key = key
+                .strip_prefix('"')
+                .and_then(|k| k.strip_suffix('"'))
+                .unwrap_or(key);
+            name(key) && value(v.trim())
+        }
+    }
 }
 
 #[test]
@@ -3397,7 +5227,8 @@ pub fn run_case(engine: &Engine, req: &RunRequest) -> Result<CaseResult, EngineE
         req.run_file_contents_dir.as_deref(),
     );
     let sweep_failed = guard.finish();
-    Ok(CaseResult { run_files, sweep_failed })
+    let run_file_contents = run_file_contents.map_err(EngineError::Other)?;
+    Ok(CaseResult { run_files, sweep_failed, run_file_contents })
 }
 ";
 
@@ -3466,6 +5297,47 @@ fn the_run_file_gate_rejects_an_early_escaped_or_nested_classification() {
         .expect_err("the teardown clear left its try block");
     assert!(err.contains("SOLE statement of its `try` block"), "{err}");
 
+    // (6e) past the `with` block, still inside `run_case`: the classification is
+    // the last read of the RUN, not of the guard scope. A capture, a command, a
+    // model read under any other name, and a read hidden in the reply.
+    let after_scope = "sweep_failed = guard.sweep_failed";
+    let read = insert_after(ok, after_scope, "    probe = capture_topology(ckt)");
+    let err = check_run_tail_order(&read, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a capture followed the guard scope");
+    assert!(err.contains("`capture_topology` is called AFTER"), "{err}");
+    let cmd = insert_after(ok, after_scope, "    d.Text.Command = \"export eventlog\"");
+    let err = check_run_tail_order(&cmd, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a command followed the guard scope");
+    assert!(
+        err.contains("to the end of `run_case`, are") && err.contains("export eventlog"),
+        "{err}"
+    );
+    let stmt = insert_after(ok, after_scope, "    events = ckt.Solution.EventLog");
+    let err = check_run_tail_order(&stmt, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a model read followed the guard scope");
+    assert!(err.contains("events = ckt.Solution.EventLog"), "{err}");
+    // A read or a computed command folded onto the epilogue's own line.
+    for folded in [
+        "    sweep_failed = guard.sweep_failed or bool(ckt.Solution.EventLog)",
+        "    sweep_failed = guard.sweep_failed; d.Text.Command = f\"export {'eventlog'}\"",
+    ] {
+        let err = check_run_tail_order(
+            &ok.replace("    sweep_failed = guard.sweep_failed", folded),
+            &CAPI_CALLS,
+            &CAPI_RUN_FILES,
+            rel,
+        )
+        .expect_err("a statement was folded onto the epilogue");
+        assert!(err.contains("statement 0 after the guard scope"), "{err}");
+    }
+    let in_reply = ok.replace("return {}", "return {\"events\": ckt.Solution.EventLog}");
+    let err = check_run_tail_order(&in_reply, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a model read hid in the reply");
+    assert!(
+        err.contains("`\"events\": ckt.Solution.EventLog` is not a bound name"),
+        "{err}"
+    );
+
     // (1) a second classification.
     let twice = insert_after(ok, "guard.created()", "        again = guard.created()");
     let err = check_run_tail_order(&twice, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
@@ -3482,8 +5354,8 @@ fn the_run_file_gate_rejects_an_early_escaped_or_nested_classification() {
 /// Non-vacuity on the REAL sources, not only on the synthetic shapes: the two
 /// gates above pass on the transports as they stand, so this one corrupts each
 /// transport's own text in memory — hoisting the classification to the top of
-/// the guard scope, and pushing it past the sweep — and asserts the gate rejects
-/// both. Nothing on disk is touched.
+/// the guard scope, pushing it past the sweep, and appending a read after the
+/// guard scope — and asserts the gate rejects each. Nothing on disk is touched.
 #[test]
 fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
     let rel = "tools/oracle/oracle_server.py";
@@ -3525,6 +5397,16 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
         .expect_err("the DI read left the guard scope");
     assert!(err.contains("OUTSIDE the guard scope"), "{err}");
 
+    // A read appended after the `with` block, before `run_case` returns.
+    let read_after = insert_after(
+        &src,
+        "sweep_failed = guard.sweep_failed",
+        "    events = capture_eventlog(d, ckt)",
+    );
+    let err = check_run_tail_order(&read_after, &CAPI_CALLS, &CAPI_RUN_FILES, rel)
+        .expect_err("a read followed the guard scope");
+    assert!(err.contains("`capture_eventlog` is called AFTER"), "{err}");
+
     let rel = "crates/dss-epri/src/capture.rs";
     let src = read_source(rel);
     let hoisted = move_line_after(
@@ -3562,6 +5444,16 @@ fn the_run_file_gates_have_teeth_on_the_real_transport_sources() {
     let err = check_run_tail_order(&twice_di, &R4133_CALLS, &R4133_RUN_FILES, rel)
         .expect_err("the DI tree was copied out twice");
     assert!(err.contains("appears 2 times"), "{err}");
+
+    // A read appended after `guard.finish()`, before `run_case` returns.
+    let read_after = insert_after(
+        &src,
+        "let sweep_failed = guard.finish();",
+        "    let events = engine.eventlog();",
+    );
+    let err = check_run_tail_order(&read_after, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("a read followed the sweep");
+    assert!(err.contains("statement 1 after the guard scope"), "{err}");
 }
 
 /// Non-vacuity for the G1.10c half of the rule on the capi transport: the DI
@@ -3693,4 +5585,48 @@ fn the_run_file_gate_rejects_a_classification_after_the_sweep() {
     let err = check_run_tail_order(&teardown, &R4133_CALLS, &R4133_RUN_FILES, rel)
         .expect_err("this transport has no teardown");
     assert!(err.contains("clear"), "{err}");
+
+    // Past `guard.finish()`, still inside `run_case`: a capture, a command, a
+    // model read under any other name, and a read hidden in the reply.
+    let after_scope = "guard.finish()";
+    let read = insert_after(
+        ok,
+        after_scope,
+        "    let probe = capture_topology(engine)?;",
+    );
+    let err = check_run_tail_order(&read, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("a capture followed the sweep");
+    assert!(err.contains("`capture_topology` is called AFTER"), "{err}");
+    let cmd = insert_after(
+        ok,
+        after_scope,
+        "    engine.exec_wait(\"export eventlog\")?;",
+    );
+    let err = check_run_tail_order(&cmd, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("a command followed the sweep");
+    assert!(
+        err.contains("to the end of `run_case`, are") && err.contains("export eventlog"),
+        "{err}"
+    );
+    let stmt = insert_after(ok, after_scope, "    let events = engine.eventlog();");
+    let err = check_run_tail_order(&stmt, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("a model read followed the sweep");
+    assert!(err.contains("statement 1 after the guard scope"), "{err}");
+    let folded = ok.replace(
+        "let sweep_failed = guard.finish();",
+        "let sweep_failed = guard.finish(); let events = engine.eventlog();",
+    );
+    let err = check_run_tail_order(&folded, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("a model read was folded onto the sweep");
+    assert!(err.contains("statement 0 after the guard scope"), "{err}");
+    let in_reply = ok.replace(
+        "run_file_contents })",
+        "run_file_contents, events: engine.eventlog() })",
+    );
+    let err = check_run_tail_order(&in_reply, &R4133_CALLS, &R4133_RUN_FILES, rel)
+        .expect_err("a model read hid in the reply");
+    assert!(
+        err.contains("`events: engine.eventlog()` is not a bound name"),
+        "{err}"
+    );
 }
