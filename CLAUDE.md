@@ -353,6 +353,16 @@ branch deletion never touches `.inputs`.
   needed, 1–3 short bullets — not half a page. State *what changed and why* in a
   sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not
   the commit body. Don't restate the diff.
+- **A commit subject names the change in the code, never the process behind it.**
+  No plan name, step id, wave, lane or work-package number in a subject or body
+  (`RETRO_FIXES`, `RF-D03-01`, `wave 105`, `G2.3`, `lane-b`), and no path into
+  `docs/`, `tmp/`, `investigations/`, `.inputs/` or a plan file: the plans,
+  `STATUS.md`, `docs/` and those folders are on their way out, and the log must
+  read on its own after they are gone. Write what a reader of the code sees:
+  `SeqCurrents: exclude and pin the negative-rating divergence`, not
+  `RF-D03-01 settlement + record`. A lane lands as one such commit (squash), not
+  as `merge lane-x: <step>`. A `STATUS.md` or record edit rides in the commit of
+  the change it describes and never gets a commit of its own.
 - **STATUS/record entries: keep them short too.** A sub-step record is 5–10
   lines: what changed and why, the r4133 citation, the ledger exclusions and
   their pins by name, the commits, the gate result. Point at evidence that
