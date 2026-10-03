@@ -37,7 +37,7 @@ pub(crate) fn export_capacity(
     let seasonal_idx = ckt.seasonal_rating_idx;
     for_each_enabled_elem(classes, &ckt.pd_elements, |name, elem| {
         elem.compute_iterminal(sys, node_v);
-        let (norm_amps, emerg_amps) = elem.get_ratings(seasonal_idx);
+        let (norm_amps, emerg_amps) = elem.loading_ratings(seasonal_idx);
 
         // Max |I| over the terminal-1 phase conductors (Pascal `for i := 1 to
         // Nphases: Cabs(Cbuffer^[i])`, `Cbuffer` = the full Iterminal buffer).

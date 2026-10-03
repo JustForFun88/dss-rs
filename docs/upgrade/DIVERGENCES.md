@@ -2890,3 +2890,118 @@ by `engines::a_capi_worker_whose_teardown_clear_raises_replies_in_full_then_exit
 if a future dss_capi stops faulting, the test says the guard can be retired. Not
 reported upstream — the pinned 0.14.5 is four releases old and is a numeric oracle
 only.
+
+## A negative Transformer or AutoTrans rating is still a rating: every loading takes its magnitude — user decision 2026-10-03
+
+**Observable.** The Transformer and the AutoTrans derive `NormAmps`/`EmergAmps`
+from their normal and emergency kVA and the winding 1 voltage base, so a
+negative base or a negative kVA rating gives a negative pair. An AutoTrans whose
+winding 1 (series) kV sits below its winding 2 (common) kV has a negative series
+base: `AutoTrans.at` of the gated deck `modes/makeposseq/makeposseq_xfmr.dss`
+derives −152.848446716868/−208.429700068457. A Transformer gets a negative pair
+from a negative `normhkva`/`emerghkva`, and on r4133 also from a negative
+winding 1 `kV`. Wherever a loading is measured against such a rating, both
+oracles read it as a number with the wrong sign or as no rating at all.
+
+**Sources.** The lines are r4133's, and the pinned dss_capi 0.14.5 does the
+same at every site. The ratings derive at `Version8/Source/PDElements/Transformer.pas:1129-1130`
+and `PDElements/AutoTrans.pas:1164-1165`. The loading sites:
+
+- `Export SeqCurrents` seeds `iNormal := NormAmps` and divides only when it is
+  `> 0` (`Common/ExportResults.pas:355-358`), so it prints the rating itself.
+- `Export Capacity` guards only `= 0` (`ExportResults.pas:509-512`), so it
+  prints a negative percentage.
+- `Export Overloads` and `Show Overloads` report only an element with a positive
+  rating (`ExportResults.pas:2756`, `Common/ShowResults.pas:2286`), and
+  `DI_Overloads` likewise (`Meters/EnergyMeter.pas:3213`), so the overloaded
+  element is never reported.
+- `Show Currents` prints a loading only for a positive rating
+  (`ShowResults.pas:460-461`), so it prints `0.00`.
+- `Get_ExcesskVANorm`/`Get_ExcesskVAEmerg` divide the terminal-1 current by the
+  signed rating (`PDElements/PDElement.pas:257`, `:284`), so the overload factor
+  is negative and the excess kVA is zero. That empties the excess columns of
+  `Export Powers`, `Show Powers` and `Export SeqPowers`, the EnergyMeter
+  `Overload kWh Normal`/`Emerg` registers (`EnergyMeter.pas:1372-1385`) and,
+  through `Overload_EEN`/`Overload_UE`, the overload share of the zone loads'
+  `Load EEN`/`Load UE` (`:1414-1419`).
+- Those load factors also decide `Export Unserved` and `Show Unserved`
+  (`ExportResults.pas:2799`, `ShowResults.pas:2318`): a load is unserved when
+  its factor is positive (`PCElements/Load.pas:2010`, `:2069`), so the zone
+  load of the overloaded element is listed only for its voltage, or not at all.
+- AutoAdd scores each candidate bus by the EnergyMeter registers named in
+  `UEregs` (`Common/AutoAdd.pas:740-765`, weighted at `:248-250`), by default
+  `Overload kWh Emerg` (`Common/Circuit.pas:512`), so the overload never enters
+  its objective, its log or its choice of bus.
+
+r4133 stores a negative winding `kV` unchecked (`Transformer.pas:504`,
+`AutoTrans.pas:487`). dss_capi 0.14.5 flags it `NonNegative`
+(`.inputs/dss_capi/src/PDElements/Transformer.pas:457`) and refuses it with
+error #2020032, and so does the port. That refusal is a deliberate divergence
+from r4133 (user decision 2026-10-03): a winding voltage entered with a minus
+sign is an input error for a Transformer and an AutoTrans, unlike windings
+entered in reversed order. `negative_winding_kv_is_refused_and_the_rating_stays_positive`
+pins it.
+
+**Measured 2026-10-03** on the pinned dss-python and on the r4133 DLL through
+`epri-worker`: a 500 kVA Transformer feeding 900 kW with
+`normhkva=-550 emerghkva=-750` set after its windings, its positive twin, the
+same pair at 100 kW (under the rating magnitude), `(-550, 0)` and `(0, -750)`
+with their positive twins, the Transformer with a winding 1 `kV` of −12.47, an
+AutoTrans with winding 1 at 4.16 kV under winding 2 at 12.47 kV feeding
+2000 kW, the same AutoTrans with winding 1 at −4.16 kV, and a Line rated −1/−2.
+Both oracles accept the negative `normhkva`/`emerghkva`, read the ratings back
+as −25.4645267084438/−34.7243546024234, and show the readings above at every
+site, while on the positive twin both print the loadings the port now prints
+for the negative deck (`Export SeqCurrents` 181.1/132.8, `Export Capacity`
+181.08/132.79, an `Export Overloads` row, excess 405.6/185.4/223.7/102.3 kW/kvar,
+`Overload kWh Normal` 405.5516011426772, the zone load unserved at 0.811/0.328,
+AutoAdd `kW UE` 223.672400411608 at `src` and `lv` chosen at
+0.758933540057766). On the negative deck both list the load at the voltage-only
+0.022/0.000 (and not at all for `UEonly`) and score AutoAdd at 0.0133736745189343
+with `kW UE` 0, choosing the same bus. r4133 accepts the −12.47 kV winding and
+derives −25.465/−34.724, and the −4.16 kV AutoTrans winding with −76.378/−104.15.
+The Line reads as unrated on both oracles at every site but `Export Capacity`,
+which guards only a zero rating (`ExportResults.pas:509-512`) and divides by
+the signed one: both print −2438.39/−1219.20 for the Line.
+
+**Decision (user, 2026-10-03).** A negative current is still a current. The
+element solves as on both oracles, and its stored rating, the property
+read-back, `Dump`, `Show Ratings`, the CIM limits and the rating columns of
+`DI_Overloads` stay exactly as the oracles have them. Every loading of a
+Transformer or an AutoTrans measures against the magnitude of its rating
+(`CktElement::loading_rating`, the same in both lanes): the six report sites,
+the excess kVA, the overload registers, the zone loads' EEN/UE factors and with
+them `Export Unserved`, `Show Unserved` and the AutoAdd objective. A zero rating
+stays unrated. Every other class keeps the oracles' reading of a non-positive
+rating, which is "no rating" everywhere but `Export Capacity`. A Line built
+from a WireData without a rating takes −1/−1, whose magnitude means nothing.
+Whether `Export Capacity` should print 0/0 for such a rating instead of
+dividing by it is outside this decision and open, since it would be a new
+divergence from both oracles.
+
+**Pins** (`crates/dss-core/tests/golden_reports.rs`).
+`export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`
+derives the `AutoTrans.at` cells of the gated deck from its `I1` and the rating
+magnitudes (28.79/21.11, where both oracles print −152.8/−208.4). On the
+overloaded Transformer, `export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`,
+`show_currents_negative_transformer_rating_loads_against_its_magnitude`,
+`export_capacity_negative_transformer_rating_loads_against_its_magnitude`,
+`export_overloads_negative_transformer_rating_reports_the_overload`,
+`show_overloads_negative_transformer_rating_reports_the_overload`,
+`export_powers_negative_transformer_rating_carries_the_excess_kva`,
+`energymeter_negative_transformer_rating_registers_the_overload`,
+`di_overloads_negative_transformer_rating_reports_the_overload`,
+`unserved_negative_transformer_rating_flags_the_overloaded_load` and
+`autoadd_negative_transformer_rating_scores_the_overload` assert the loading
+literally, quote both oracles' reading, and prove the negative deck reports as
+its positive twin (`DI_Overloads` apart from its rating columns, which print
+the stored rating). `di_overloads_one_negative_transformer_rating_opens_the_entry_gate`
+and `negative_transformer_rating_under_its_magnitude_reports_no_overload` pin
+the entry gate and the overload test against their twins, and
+`nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site` with
+`export_seqcurrents_prints_zero_for_an_undefined_rating` holds the Line at the
+oracles' reading, the signed `Export Capacity` division included. No
+`ledger.json` entry and no golden byte: the one gated deck with a negative
+transformer rating (`makeposseq_xfmr.dss`,
+`AutoTrans.at` loaded to 28.8 %) has no overload, no EnergyMeter, no AutoAdd
+and no compared report, so no gated channel moves.

@@ -1074,6 +1074,22 @@ pub trait CktElement: Send {
         }
     }
 
+    /// The rating a loading is measured against, given one of this element's
+    /// current ratings (`NormAmps`, `EmergAmps` or a seasonal entry): the rating
+    /// itself, sign included (pinned for a Line by
+    /// `nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site`).
+    /// The Transformer and the AutoTrans override it.
+    fn loading_rating(&self, rating: f64) -> f64 {
+        rating
+    }
+
+    /// [`Self::get_ratings`] as the pair a loading is measured against
+    /// ([`Self::loading_rating`] of each).
+    fn loading_ratings(&self, seasonal_idx: i32) -> (f64, f64) {
+        let (norm, emerg) = self.get_ratings(seasonal_idx);
+        (self.loading_rating(norm), self.loading_rating(emerg))
+    }
+
     /// Pascal `TDSSCktElement.MaxTerminalOneIMag` (CktElement.pas l.552): the
     /// max phase-current magnitude on terminal 1. Forces `Iterminal`.
     fn max_terminal_one_imag(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
@@ -1091,7 +1107,8 @@ pub trait CktElement: Send {
     }
 
     /// Pascal `TPDElement.Get_ExcessKVANorm` (PDElement.pas l.230): excess kVA
-    /// over the normal rating into `idx_term` (1-based), in kVA. Side effect:
+    /// over the normal rating ([`Self::loading_rating`] of `NormAmps`) into
+    /// `idx_term` (1-based), in kVA. Side effect:
     /// sets `overload_een` to the per-unit overload factor.
     fn excess_kva_norm(
         &mut self,
@@ -1099,7 +1116,7 @@ pub trait CktElement: Send {
         node_v: &[Complex64],
         idx_term: usize,
     ) -> Complex64 {
-        let norm_amps = self.norm_amps();
+        let norm_amps = self.loading_rating(self.norm_amps());
         if norm_amps == 0.0 || !self.cd().enabled {
             self.cd_mut().overload_een = 0.0;
             return Complex64::ZERO;
@@ -1116,15 +1133,16 @@ pub trait CktElement: Send {
         }
     }
 
-    /// Pascal `TPDElement.Get_ExcessKVAEmerg` (PDElement.pas l.257). Side
-    /// effect: sets `overload_ue`.
+    /// Pascal `TPDElement.Get_ExcessKVAEmerg` (PDElement.pas l.257): excess kVA
+    /// over the emergency rating ([`Self::loading_rating`] of `EmergAmps`) into
+    /// `idx_term` (1-based), in kVA. Side effect: sets `overload_ue`.
     fn excess_kva_emerg(
         &mut self,
         sys: &SysCtx,
         node_v: &[Complex64],
         idx_term: usize,
     ) -> Complex64 {
-        let emerg_amps = self.emerg_amps();
+        let emerg_amps = self.loading_rating(self.emerg_amps());
         if emerg_amps == 0.0 || !self.cd().enabled {
             self.cd_mut().overload_ue = 0.0;
             return Complex64::ZERO;

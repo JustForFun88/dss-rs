@@ -48,6 +48,14 @@ impl CktElement for AutoTrans {
         self.emerg_amps
     }
 
+    /// The ratings derive from kVA and the series winding voltage base, which is
+    /// negative when winding 1 sits below winding 2, so a negative rating is
+    /// still a rating and a loading takes its magnitude. Pinned by
+    /// `export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`.
+    fn loading_rating(&self, rating: f64) -> f64 {
+        rating.abs()
+    }
+
     /// Pascal `TDSSCktElement.Get_Losses` **AUTOTRANS_ELEMENT special case**
     /// (`CktElement.pas:618`): sum complex power into only the *first* `Nphases`
     /// conductors of each terminal and **skip the second-half** conductors

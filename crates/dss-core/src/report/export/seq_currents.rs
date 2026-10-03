@@ -33,8 +33,8 @@ pub(crate) fn export_seq_currents(
         let nterm = elem.cd().nterms;
         let ncond = elem.cd().nconds;
         let nphases = elem.cd().nphases;
-        let norm_amps = elem.norm_amps();
-        let emerg_amps = elem.emerg_amps();
+        let norm_amps = elem.loading_rating(elem.norm_amps());
+        let emerg_amps = elem.loading_rating(elem.emerg_amps());
         let cd = elem.cd();
 
         for j in 1..=nterm {
@@ -65,19 +65,9 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
-            // A rating that is not positive is *undefined*, so the loading it
-            // would express does not exist and the column prints 0 — the same
-            // value the `else` arm below already writes for every other
-            // terminal and every non-PD element (`ExportResults.pas:416-420`).
-            //
-            // Upstream prints the rating itself there: it seeds
-            // `iNormal := NormAmps` and only *overwrites* that seed with
-            // `I1/NormAmps*100` when the rating is `> 0`
-            // (`.inputs/dss_capi/src/Common/ExportResults.pas:409-414`; r4133
-            // `Version8/Source/Common/ExportResults.pas:355-358` is the same
-            // four lines), so `normamps=-1` renders as a loading of −1 %. Both
-            // gating oracles carry it and neither lane reproduces it
-            // (`GOLDEN_REBASE_PLAN.md` G2.1c; `issue-12`).
+            // A loading rating that is not positive means "no rating", so the
+            // column prints 0, the value the `else` arm writes for every other
+            // terminal. Pinned by `export_seqcurrents_prints_zero_for_an_undefined_rating`.
             let pct_of_rating = |rating: f64| {
                 if rating > 0.0 {
                     i1 / rating * 100.0
