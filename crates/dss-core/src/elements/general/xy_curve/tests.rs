@@ -367,10 +367,11 @@ fn make_like_copies_curve() {
 /// Deck-order-independent, which is the whole point: `xy1` types `npts` first,
 /// `xy2` re-sets it last and used to save as
 /// `New "XYcurve.xy2" XArray=[ 0 1] YArray=[ 0 2] NPts=2` — a line that reloads
-/// an empty curve. r4133 saves both as
+/// both arrays as zeros. r4133 saves both as
 /// `New "XYcurve.xyN" Npts=2 Xarray=[0, 1, ] Yarray=[0, 2, ]` (epri-worker
 /// probe, OpenDSSDirect.dll 11.0.0.1 r4133, RP3.11 I1); the port writes the same
-/// tokens under its own property-name spelling and array rendering.
+/// tokens under its own property-name spelling and array rendering. The saved
+/// tree is then re-compiled and both curves read back whole.
 #[test]
 fn xycurve_save_write_puts_npts_first() {
     use crate::exec::Dss;
@@ -412,6 +413,29 @@ fn xycurve_save_write_puts_npts_first() {
             1,
             "npts must be written exactly once: {line:?}"
         );
+    }
+
+    // The re-compiled tree keeps both curves whole.
+    let mut back = Dss::new();
+    back.command(&format!(
+        "compile \"{}\"",
+        dir.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-compile errors: {:?}",
+        back.errors()
+    );
+    for curve in ["xy1", "xy2"] {
+        for (prop, want) in [("npts", "2"), ("xarray", "[ 0 1]"), ("yarray", "[ 0 2]")] {
+            let query = format!("? xycurve.{curve}.{prop}");
+            back.command(&query);
+            assert_eq!(
+                back.result(),
+                want,
+                "{query} after the round trip: an npts-last line reloads both arrays as zeros"
+            );
+        }
     }
     std::fs::remove_dir_all(&dir).ok();
 }
