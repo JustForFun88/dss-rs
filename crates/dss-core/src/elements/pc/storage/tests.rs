@@ -1022,17 +1022,19 @@ fn a_dynamic_eq_storage_keeps_both_model_tails() {
     assert_eq!(all_variables(&mut st)[..4], dump);
 }
 
-/// A linked `DynamicExp` without variables keeps the classic layout: the same
-/// count and names as before the link, every classic value read as
-/// `-9999.99`, then the `UserModel` and `DynaModel` tails.
+/// A linked `DynamicExp` without variables (`NVariables=0`) keeps the classic
+/// layout: the same count and names as before the link, every classic value
+/// read as `-9999.99`, then the `UserModel` and `DynaModel` tails.
 #[test]
 fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
-    use crate::elements::general::dynamic_exp::DynamicExpObj;
+    use crate::elements::general::dynamic_exp::{DynamicExpObj, prop as dexp};
     let mut st = Storage::new("s1");
     bind_both_models(&mut st);
     let names: Vec<String> = (0..=43).map(|i| st.variable_name(i)).collect();
 
-    st.base.dyneq.dynamic_eq_obj = Some(DynamicExpObj::new("empty"));
+    let mut empty = DynamicExpObj::new("empty");
+    empty.set_i32(dexp::NVARIABLES, 0);
+    st.base.dyneq.dynamic_eq_obj = Some(empty);
     st.base.dyneq.on_dynamic_eq_set();
     assert_eq!(st.base.dyneq.num_variables(), 0);
     assert_eq!(st.num_variables(), 34 + 4 + 4);

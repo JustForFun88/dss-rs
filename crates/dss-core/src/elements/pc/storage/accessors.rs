@@ -774,11 +774,11 @@ impl DssObject for Storage {
                 self.base.duty_shape_ref = load_shape_ref();
                 self.base.duty_shape_obj = load_shape();
             }
-            DYNAMIC_EQ => {
-                self.base.dyneq.dynamic_eq = name;
-                self.base.dyneq.dynamic_eq_ref = resolved.and_then(|o| o.idx::<DynamicExpObj>());
-                self.base.dyneq.dynamic_eq_obj = resolved.and_then(|o| o.cloned::<DynamicExpObj>());
-            }
+            DYNAMIC_EQ => self.base.dyneq.link(
+                name,
+                resolved.and_then(|o| o.idx::<DynamicExpObj>()),
+                resolved.and_then(|o| o.cloned::<DynamicExpObj>()),
+            ),
             _ => unreachable!("Storage has no resolved object-ref property {idx}"),
         }
     }

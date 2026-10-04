@@ -662,12 +662,12 @@ impl DssObject for PVSystem {
                 self.power_temp_curve_obj = xy_curve();
             }
             DYNAMIC_EQ => {
-                self.base.dyneq.dynamic_eq = name;
-                self.base.dyneq.dynamic_eq_ref = resolved
-                    .and_then(|o| o.idx::<crate::elements::general::dynamic_exp::DynamicExpObj>());
-                self.base.dyneq.dynamic_eq_obj = resolved.and_then(|o| {
-                    o.cloned::<crate::elements::general::dynamic_exp::DynamicExpObj>()
-                });
+                use crate::elements::general::dynamic_exp::DynamicExpObj;
+                self.base.dyneq.link(
+                    name,
+                    resolved.and_then(|o| o.idx::<DynamicExpObj>()),
+                    resolved.and_then(|o| o.cloned::<DynamicExpObj>()),
+                );
             }
             _ => unreachable!("PVSystem has no resolved object-ref property {idx}"),
         }

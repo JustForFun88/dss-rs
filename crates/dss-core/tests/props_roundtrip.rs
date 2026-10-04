@@ -252,6 +252,17 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   — both assert this gate's own scenario shape — with the non-trivial live
 ///   values pinned by `pf_renders_the_live_power_factor` and
 ///   `fleet_aggregates_render_the_live_fleet`.
+/// * `dynamicexp_default` / `NVariables` and `dynamicexp_makelike` /
+///   `NVariables` — an equation that never writes `NVariables` holds 20 rows
+///   in both lanes, so an equation that names its `VarNames` and omits the
+///   count integrates (`like=` copies nothing, so its target keeps the
+///   default too). The pinned 0.14.5 oracle defaults the count to 0 and
+///   prints `0` in both cells, and regenerating the capture would print `0`
+///   again. r4133 reads back `20` for both decks, and `0` only for a written
+///   `nvariables=0` (epri-worker on the r4133 DLL, 2026-10-04). Every other
+///   property of the two scenarios still compares. Pinned by
+///   `exec::tests::dynamic_eq_memory::an_omitted_nvariables_reads_back_twenty`,
+///   which replays both scenarios.
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     ("isource_bus2_clobbered_by_bus1", "Bus2"),
     ("gictransformer_auto", "R2"),
@@ -278,6 +289,9 @@ const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     ("storagecontroller_makelike", "kWTotal"),
     ("storagecontroller_makelike", "kWhActual"),
     ("storagecontroller_makelike", "kWActual"),
+    // The `NVariables` default of 20, where the 0.14.5 capture prints 0.
+    ("dynamicexp_default", "NVariables"),
+    ("dynamicexp_makelike", "NVariables"),
 ];
 
 /// An **oracle-bug** exclusion, as `(class, property)` pairs, applied in **both
@@ -434,7 +448,8 @@ fn props_roundtrip_matches_oracle() {
             // the five properties r4133 computes live (IndMach012 `PF`, the four
             // StorageController fleet aggregates), which the pinned 0.14.5 oracle
             // short-circuits to `""`, so both drop the compare on those 21 cells.
-            // See the register above for every row.
+            // Both lanes also default `DynamicExp.NVariables` to 20 where the
+            // capture prints 0. See the register above for every row.
             if LANE_SKIP_SCENARIO_PROPS
                 .iter()
                 .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))

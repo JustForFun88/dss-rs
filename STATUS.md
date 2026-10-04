@@ -232,6 +232,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - RF-D01-03 (the props evidence lock joins every structural example to a census row and reads the README's numbers back, `props_roundtrip.rs` pins the share of self-anchored scenarios, the WindGen layout test parses the committed offset probe).
 - RF-D02-20 (the schema test holds every inventoried hidden and extra property to the class table's rank, the XYcurve and RegControl Save pins re-compile the saved tree, the force-inj WindGen pin ties its three literals, the unread `SaveFlags` machinery of `Save circuit` is deleted).
 - RF-D08-02 (`ledger.json` loads through readers that refuse an unknown key, the live gate refuses every scope shape the structural test refuses, the aggregate register counts every `element` scope selecting `losses` or `powers`).
+- `DynamicExp.NVariables` defaults to 20 memory rows, so an equation that names its `VarNames` and omits the count integrates. A `DynOut` list with a name that is not an output is refused whole, a host short of an output refuses the dynamics solve (error 482), and a re-link of `DynamicEq` resolves `DynOut` again by name.
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been

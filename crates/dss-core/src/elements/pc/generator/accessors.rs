@@ -742,12 +742,12 @@ impl DssObject for Generator {
                 self.duty_shape_obj = load_shape();
             }
             DYNAMICEQ => {
-                self.dyneq.dynamic_eq = name;
-                self.dyneq.dynamic_eq_ref = resolved
-                    .and_then(|o| o.idx::<crate::elements::general::dynamic_exp::DynamicExpObj>());
-                self.dyneq.dynamic_eq_obj = resolved.and_then(|o| {
-                    o.cloned::<crate::elements::general::dynamic_exp::DynamicExpObj>()
-                });
+                use crate::elements::general::dynamic_exp::DynamicExpObj;
+                self.dyneq.link(
+                    name,
+                    resolved.and_then(|o| o.idx::<DynamicExpObj>()),
+                    resolved.and_then(|o| o.cloned::<DynamicExpObj>()),
+                );
             }
             _ => unreachable!("Generator has no resolved object-ref property {idx}"),
         }
