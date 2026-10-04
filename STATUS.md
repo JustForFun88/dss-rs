@@ -231,6 +231,7 @@ close-out (G1.11a–c were absorbed sub-step by sub-step, **D2**/**D36**) and WP
 - A dynamics solve refuses (error 482) a Generator, WindGen, PVSystem or Storage whose `DynamicExp` memory cannot hold what the host integrates, where the engine panicked. A `DynOut` list longer than two outputs is refused, a WindGen keeps its native variables under an equation without variables. Pinned in `exec::tests::dynamic_eq_memory`.
 - RF-D01-03 (the props evidence lock joins every structural example to a census row and reads the README's numbers back, `props_roundtrip.rs` pins the share of self-anchored scenarios, the WindGen layout test parses the committed offset probe).
 - RF-D02-20 (the schema test holds every inventoried hidden and extra property to the class table's rank, the XYcurve and RegControl Save pins re-compile the saved tree, the force-inj WindGen pin ties its three literals, the unread `SaveFlags` machinery of `Save circuit` is deleted).
+- RF-D08-02 (`ledger.json` loads through readers that refuse an unknown key, the live gate refuses every scope shape the structural test refuses, the aggregate register counts every `element` scope selecting `losses` or `powers`).
 
 **Next.** (**D41**/**D27**, 2026-09-12) WP-G1’s last three landings are in `update`, first-finished-first-landed, one at a time, each
 pushed: **F0′** (`lane-m`), **G1.10b** (`lane-s`) and **G1.10c** (`lane-e`, the three merges above). No WP-G1 surface is in flight; `lane-b` has been

@@ -42,8 +42,15 @@ use crate::manifest::EngineChannel;
 // ---------------------------------------------------------------------------
 // On-disk schema (`tests/corpus/ledger.json`).
 // ---------------------------------------------------------------------------
+//
+// All three reader structs refuse unknown keys: every selector is optional and
+// an absent one means "all", so a mistyped key (`name_regex`, `step`) would
+// otherwise load cleanly and widen the entry to every value of the case
+// (pinned by `a_mistyped_scope_selector_is_refused_at_load`). `measured` stays a
+// free-form value: it is provenance, never read by the gate.
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawLedger {
     #[allow(dead_code)]
     version: u32,
@@ -57,6 +64,7 @@ struct RawLedger {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawEntry {
     id: String,
     case: String,
@@ -78,6 +86,7 @@ struct RawEntry {
 
 /// One field-granular divergence/exclusion scope inside an entry's `match`.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawScope {
     field: String,
     /// iterations: `"rust_le_oracle"`.
@@ -245,15 +254,23 @@ pub(crate) fn ledger_path() -> PathBuf {
 }
 
 impl LedgerRuntime {
-    /// Load + compile the ledger. Panics with a precise message on any malformed
-    /// entry (regex / channel / kind) — the structural test asserts the richer
-    /// cross-manifest rules oracle-free.
+    /// Load + compile the committed ledger: [`Self::from_text`] over
+    /// `tests/corpus/ledger.json`, so every consumer of the loaded ledger meets
+    /// the refusals of [`parse_ledger`].
     pub(crate) fn load() -> LedgerRuntime {
         let path = ledger_path();
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        let raw: RawLedger =
-            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+        Self::from_text(&text, &path.display().to_string())
+    }
+
+    /// Parse ([`parse_ledger`]) and compile ledger text. Panics with a precise
+    /// message naming `origin` on any malformed entry (unknown key, a scope
+    /// refused by [`check_scope`], regex / channel / kind) — the structural test
+    /// asserts the richer cross-manifest rules oracle-free. Pinned by
+    /// `the_loader_refuses_every_shape_parse_ledger_refuses`.
+    fn from_text(text: &str, origin: &str) -> LedgerRuntime {
+        let raw = parse_ledger(text).unwrap_or_else(|e| panic!("parse {origin}: {e}"));
         let mut entries = Vec::with_capacity(raw.entries.len());
         for e in raw.entries {
             let channel = parse_channel(&e.channel).unwrap_or_else(|| {
@@ -943,11 +960,12 @@ const BARE_CHANNELS_ALLOWED: &[&str] = &[];
 ///    value (the same dead-mask rot [`LEDGER_FIELDS`] exists to prevent);
 /// 3. a scope on any other field carries no `channels` at all — the runtime
 ///    never reads one there, so it would sit in the file as a promise the gate
-///    does not keep (the rule `assert_structural` already applies to
-///    `max_rel`/`rust`/`oracle`/… on an exclusion scope).
+///    does not keep (the rule [`check_exclusion_scope`] applies to the envelope
+///    and pin keys of an exclusion scope).
 ///
-/// Returns the failure text rather than panicking so the unit tests below can
-/// drive all three rules on synthetic scopes.
+/// Run on every scope by [`LedgerRuntime::load`] (through [`check_scope`]).
+/// Returns the failure text rather than panicking so the loader can name the
+/// file and the unit tests below can drive all three rules on synthetic scopes.
 fn check_scope_channels(id: &str, sc: &RawScope) -> Result<(), String> {
     let declared = SUBCHANNEL_FIELDS
         .iter()
@@ -995,6 +1013,125 @@ fn check_scope_channels(id: &str, sc: &RawScope) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// An `exclusion` scope may carry only the selectors the exclusion path reads:
+/// `field`, `steps`, `name_re` on any field but `voltages`
+/// ([`LedgerView::excluded`] and the element handler), `node_re` on a
+/// `voltages` scope ([`LedgerView::voltage_keep_mask`],
+/// [`LedgerView::bus_arrays_suppressed`]) and `channels` on a sub-channel field
+/// (the element handler, see [`check_scope_channels`]).
+///
+/// Everything else is refused: the envelope and pin keys (`max_rel`, `max_abs`,
+/// `num_rel`, `rust`, `oracle`, `policy`, `line_re`), `channel_idx`, which only
+/// the `divergence` arm of [`LedgerView::monitor_rewrite`] reads, `node_re` on
+/// any field but `voltages`, and `name_re` on `voltages`, whose handler selects
+/// nodes by `node_re` alone, so a named voltages exclusion masks every node of
+/// its case. Each would load cleanly, be ignored, and read in review as a
+/// narrower or asserted exclusion than the one the gate applies. A `divergence`
+/// or `skip` scope is not policed here. Pinned by
+/// `an_exclusion_scope_that_carries_an_envelope_is_refused`.
+fn check_exclusion_scope(id: &str, kind: &str, sc: &RawScope) -> Result<(), String> {
+    if kind != "exclusion" {
+        return Ok(());
+    }
+    let carried: Vec<&str> = [
+        ("max_rel", sc.max_rel.is_some()),
+        ("max_abs", sc.max_abs.is_some()),
+        ("num_rel", sc.num_rel.is_some()),
+        ("rust", sc.rust.is_some()),
+        ("oracle", sc.oracle.is_some()),
+        ("policy", sc.policy.is_some()),
+        ("line_re", sc.line_re.is_some()),
+        ("channel_idx", sc.channel_idx.is_some()),
+        ("node_re", sc.node_re.is_some() && sc.field != "voltages"),
+        ("name_re", sc.name_re.is_some() && sc.field == "voltages"),
+    ]
+    .into_iter()
+    .filter_map(|(k, present)| present.then_some(k))
+    .collect();
+    if carried.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "ledger entry {id:?}: `exclusion` scope on {:?} carries {carried:?}, which the \
+         exclusion path never reads — drop them, or make the entry a `divergence` that \
+         actually re-asserts them",
+        sc.field
+    ))
+}
+
+/// Entry ids allowed to give a [`PER_VALUE_EXCLUSION_FIELDS`] scope a `name_re`
+/// that [selects every name](selects_every_name), or none — the named, reviewed
+/// escape hatch for a scope that really does mean "every value of the case".
+///
+/// **Empty**, and meant to stay that way: such a scope masks every bus, file,
+/// column or variable of its (case, channel), and its per-scope `hit` is set by
+/// the first value it masks, so it can never be reported stale.
+const BARE_NAME_ALLOWED: &[&str] = &[];
+
+/// Names no compared value carries: no bus, element, file, column or state
+/// variable is called the empty string or a lone control character (U+0001). A
+/// `name_re` that matches one of them selects by wildcard (`.*`, `.+`, `^`,
+/// `(?i)`), not by name.
+const NAMES_NO_VALUE_CARRIES: [&str; 2] = ["", "\u{1}"];
+
+/// Whether `name_re` reaches every name instead of selecting some: absent, or
+/// matching one of [`NAMES_NO_VALUE_CARRIES`]. A pattern that does not compile
+/// answers `false` here and is refused by [`compile_scope`].
+fn selects_every_name(name_re: Option<&str>) -> bool {
+    name_re.is_none_or(|re| {
+        Regex::new(re).is_ok_and(|r| NAMES_NO_VALUE_CARRIES.iter().any(|n| r.is_match(n)))
+    })
+}
+
+/// A scope on a [`PER_VALUE_EXCLUSION_FIELDS`] field selects its values by name
+/// (unless its id is in [`BARE_NAME_ALLOWED`]): a `name_re` that is absent or
+/// [selects every name](selects_every_name) is refused, because
+/// [`LedgerView::excluded`] then matches every key the runner asks about. A
+/// pattern that reaches every key without matching a name of
+/// [`NAMES_NO_VALUE_CARRIES`] (`\w+`) is not told apart from a real selector by
+/// its text: review of the ledger diff is its guard. Pinned by
+/// `a_bare_distance_scope_is_refused`.
+fn check_scope_name(id: &str, sc: &RawScope) -> Result<(), String> {
+    if !PER_VALUE_EXCLUSION_FIELDS.contains(&sc.field.as_str())
+        || BARE_NAME_ALLOWED.contains(&id)
+        || !selects_every_name(sc.name_re.as_deref())
+    {
+        return Ok(());
+    }
+    Err(format!(
+        "ledger entry {id:?}: scope on {:?} must select its values by name, but its \
+         `name_re` ({}) is absent, empty or a wildcard — it masks every value of the \
+         case and can never go stale. Name the values it was measured on, or add its \
+         id to BARE_NAME_ALLOWED with a reason",
+        sc.field,
+        sc.name_re
+            .as_deref()
+            .map_or_else(|| "absent".to_string(), |re| format!("{re:?}"))
+    ))
+}
+
+/// The per-scope rules [`LedgerRuntime::load`] applies before compiling: the
+/// `channels` rules ([`check_scope_channels`]), the exclusion selector rule
+/// ([`check_exclusion_scope`]) and the per-value `name_re` rule
+/// ([`check_scope_name`]).
+fn check_scope(id: &str, kind: &str, sc: &RawScope) -> Result<(), String> {
+    check_scope_channels(id, sc)?;
+    check_exclusion_scope(id, kind, sc)?;
+    check_scope_name(id, sc)
+}
+
+/// Parse `ledger.json` text: the reader structs refuse an unknown key at every
+/// level, and every scope must pass [`check_scope`].
+fn parse_ledger(text: &str) -> Result<RawLedger, String> {
+    let raw: RawLedger = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    for e in &raw.entries {
+        for sc in &e.match_scopes {
+            check_scope(&e.id, &e.kind, sc)?;
+        }
+    }
+    Ok(raw)
 }
 
 fn compile_scope(id: &str, s: &RawScope) -> Scope {
@@ -2737,15 +2874,16 @@ fn parse_leading_f64(s: &str) -> Option<f64> {
 /// NO engine spawned (§1.3): unique ids; every `case` exists in a manifest and
 /// its `channel` is in that case's `engines`; a `divergence`/`exclusion` needs a
 /// non-empty `match`; every entry carries `cause` or a resolving `cause_ref`;
-/// regexes already compiled at load. Called by the `#[test]` below and reused by
-/// the seeding tooling.
+/// the field/kind split. Unknown keys, the per-scope shape rules
+/// ([`check_scope`]) and the regexes are already enforced at load. Called by the
+/// `#[test]` below and reused by the seeding tooling.
 pub(crate) fn assert_structural(
     rt: &LedgerRuntime,
     manifest_engines: &dyn Fn(&str) -> Option<Vec<EngineChannel>>,
 ) {
     let mut ids = BTreeSet::new();
     let raw_text = std::fs::read_to_string(ledger_path()).expect("read ledger.json");
-    let raw: RawLedger = serde_json::from_str(&raw_text).expect("parse ledger.json");
+    let raw = parse_ledger(&raw_text).unwrap_or_else(|e| panic!("parse ledger.json: {e}"));
     let cause_keys: BTreeSet<&String> = rt.cause_keys().into_iter().collect();
 
     for e in &raw.entries {
@@ -2799,11 +2937,6 @@ pub(crate) fn assert_structural(
         // would claim a measurement the runtime never makes
         // (`GOLDEN_REBASE_PLAN.md` G2.5).
         for sc in &e.match_scopes {
-            // The `channels` sub-channel rules (G1.0 rails) — see
-            // [`check_scope_channels`] for the three and why each one exists.
-            if let Err(msg) = check_scope_channels(&e.id, sc) {
-                panic!("{msg}");
-            }
             assert!(
                 !(EXCLUSION_ONLY_FIELDS.contains(&sc.field.as_str()) && e.kind != "exclusion"),
                 "ledger entry {:?}: field {:?} is exclusion-only — a {} entry naming it \
@@ -2824,36 +2957,6 @@ pub(crate) fn assert_structural(
                     .filter(|f| !EXCLUSION_FIELDS.contains(f))
                     .collect::<Vec<_>>()
             );
-            // …and an exclusion scope may carry only its SELECTORS. `excluded`
-            // (and the `Kind::Exclusion` arms of the voltages/element handlers)
-            // read `field`/`steps`/`node_re`/`name_re`/`channel_idx`/`channels`
-            // and nothing else, so an envelope or an exact pair written on one
-            // would load cleanly, be silently ignored, and read in review as a
-            // promise the gate never keeps — the same rot the field whitelist
-            // above exists to prevent (settle of the G2.5 audit).
-            if e.kind == "exclusion" {
-                let carried: Vec<&str> = [
-                    ("max_rel", sc.max_rel.is_some()),
-                    ("max_abs", sc.max_abs.is_some()),
-                    ("num_rel", sc.num_rel.is_some()),
-                    ("rust", sc.rust.is_some()),
-                    ("oracle", sc.oracle.is_some()),
-                    ("policy", sc.policy.is_some()),
-                    ("line_re", sc.line_re.is_some()),
-                ]
-                .into_iter()
-                .filter_map(|(k, present)| present.then_some(k))
-                .collect();
-                assert!(
-                    carried.is_empty(),
-                    "ledger entry {:?}: `exclusion` scope on {:?} carries \
-                     envelope/pin field(s) {carried:?}, which the exclusion path \
-                     ignores entirely — drop them, or make the entry a \
-                     `divergence` that actually re-asserts them",
-                    e.id,
-                    sc.field
-                );
-            }
         }
         // discrete-state guard: probe/property scopes must be exact pairs, never
         // envelopes (§1.3 — discrete state is ledgerable only as exact pairs).
@@ -2971,7 +3074,9 @@ const PER_VALUE_EXCLUSION_FIELDS: [&str; 5] =
 /// the three selector rules `excluded()` implements — `name_re` matching, the
 /// "a named scope never applies to an unnamed artifact" asymmetry, and the
 /// `steps` filter — and that a `divergence`/`skip` entry is never treated as an
-/// exclusion.
+/// exclusion. Each field is driven in the shape the loader accepts
+/// ([`check_scope`]): a [`PER_VALUE_EXCLUSION_FIELDS`] scope carries a
+/// `name_re`, every other one is bare.
 #[test]
 fn every_exclusion_field_is_honoured_by_the_runtime() {
     fn scope(field: &str, name_re: Option<&str>, steps: Option<&[usize]>) -> Scope {
@@ -3015,26 +3120,43 @@ fn every_exclusion_field_is_honoured_by_the_runtime() {
     let ch = EngineChannel::CapiV0145;
 
     // (a) Every `excluded()`-routed field applies, and records the hit that makes
-    //     a scope which stops matching fail the gate as NEVER APPLIED.
+    //     a scope which stops matching fail the gate as NEVER APPLIED. The scope
+    //     is parsed and compiled the way the loader does it.
     for field in EXCLUSION_FIELDS {
         if EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER.contains(&field) {
             continue;
         }
+        let per_value = PER_VALUE_EXCLUSION_FIELDS.contains(&field);
+        let json = if per_value {
+            format!(r#"{{"field": "{field}", "name_re": "^anything$"}}"#)
+        } else {
+            format!(r#"{{"field": "{field}"}}"#)
+        };
+        let raw: RawScope = serde_json::from_str(&json).expect("test scope");
+        check_scope("x", "exclusion", &raw)
+            .unwrap_or_else(|e| panic!("the drive must use a scope the loader accepts: {e}"));
         let rt = runtime(vec![entry(
             "x",
             Kind::Exclusion,
-            vec![scope(field, None, None)],
+            vec![compile_scope("x", &raw)],
         )]);
         assert!(
             rt.view(case, ch).excluded(field, Some("anything"), 0),
             "exclusion field {field:?} is whitelisted but `excluded()` ignores it — \
              a scope naming it would load cleanly and never apply"
         );
-        assert!(
-            rt.view(case, ch).excluded(field, None, 0),
-            "exclusion field {field:?}: an unnamed artifact must match a scope with \
-             no `name_re`"
-        );
+        if per_value {
+            assert!(
+                !rt.view(case, ch).excluded(field, Some("something-else"), 0),
+                "per-value exclusion field {field:?}: the `name_re` must select"
+            );
+        } else {
+            assert!(
+                rt.view(case, ch).excluded(field, None, 0),
+                "exclusion field {field:?}: an unnamed artifact must match a scope \
+                 with no `name_re`"
+            );
+        }
         assert!(
             rt.entries[0].applied.load(Ordering::Relaxed),
             "exclusion field {field:?}: applying it recorded no hit"
@@ -3507,9 +3629,32 @@ fn the_bus_array_suppression_pin_reds_in_both_directions() {
     );
 }
 
+/// A one-entry `ledger.json` text whose only scope is `scope_json`, for driving
+/// [`parse_ledger`] — the parser [`LedgerRuntime::load`] runs — on shapes the
+/// committed ledger does not carry. `extra_entry_keys` and `extra_top_keys` are
+/// spliced in verbatim (each ends with a comma when non-empty).
+#[cfg(test)]
+fn synthetic_ledger(
+    kind: &str,
+    scope_json: &str,
+    extra_entry_keys: &str,
+    extra_top_keys: &str,
+) -> String {
+    format!(
+        r#"{{"version": 1, {extra_top_keys} "comment": ["synthetic"],
+            "causes": {{"c": "a synthetic cause"}},
+            "entries": [{{"id": "synthetic", "case": "synthetic:case.dss",
+                "channel": "r4133", "kind": "{kind}", {extra_entry_keys}
+                "cause_ref": "c", "source": "synthetic",
+                "measured": {{"note": "free-form provenance"}},
+                "match": [{scope_json}]}}]}}"#
+    )
+}
+
 /// The three [`check_scope_channels`] rules, driven on synthetic scopes because
-/// `assert_structural` can only ever see the committed `ledger.json` — and the
-/// whole point of the rules is what happens to an entry nobody has written yet.
+/// [`LedgerRuntime::load`] can only ever see the committed `ledger.json` — and
+/// the whole point of the rules is what happens to an entry nobody has written
+/// yet.
 ///
 /// Scopes are deserialized from JSON rather than built field-by-field so the
 /// drive exercises the same `Option<Vec<String>>` shape the loader sees: an
@@ -3518,6 +3663,26 @@ fn the_bus_array_suppression_pin_reds_in_both_directions() {
 #[test]
 fn a_scope_that_misuses_channels_is_refused_at_load() {
     let scope = |json: &str| -> RawScope { serde_json::from_str(json).expect("test scope") };
+
+    // The loader itself applies the rules, not only the structural test.
+    let err = parse_ledger(&synthetic_ledger(
+        "exclusion",
+        r#"{"field": "element", "name_re": "^line\\.l1$"}"#,
+        "",
+        "",
+    ))
+    .expect_err("the loader must refuse a bare `element` scope");
+    assert!(
+        err.contains("must name its `channels`"),
+        "wrong load-path text: {err}"
+    );
+    parse_ledger(&synthetic_ledger(
+        "exclusion",
+        r#"{"field": "element", "name_re": "^line\\.l1$", "channels": ["currents"]}"#,
+        "",
+        "",
+    ))
+    .expect("the same scope naming its channels must load");
 
     // Rule 1 — a sub-channel field with no `channels`, in both spellings.
     for json in [
@@ -3585,20 +3750,287 @@ fn a_scope_that_misuses_channels_is_refused_at_load() {
     }
 }
 
+/// The reader structs refuse an unknown key at every level of `ledger.json`.
+/// Every selector is optional and an absent one means "all", so without that a
+/// misspelled `name_re` or `steps` would load as absent and widen a reviewed
+/// exclusion to every value and every step of its case. Driven through
+/// [`parse_ledger`], the parser [`LedgerRuntime::load`] runs.
+#[test]
+fn a_mistyped_scope_selector_is_refused_at_load() {
+    // Positive control: the right spellings load, selectors and all, and the
+    // free-form `measured` provenance carries any key.
+    let raw = parse_ledger(&synthetic_ledger(
+        "exclusion",
+        r#"{"field": "meter", "name_re": "^em1$", "steps": [2]}"#,
+        "",
+        "",
+    ))
+    .expect("a correctly spelled ledger must load");
+    let sc = &raw.entries[0].match_scopes[0];
+    assert_eq!(sc.name_re.as_deref(), Some("^em1$"));
+    assert_eq!(sc.steps.as_deref(), Some(&[2][..]));
+
+    // A misspelled scope selector, at each place one can sit.
+    for (scope, key) in [
+        (r#"{"field": "meter", "name_regex": "^em1$"}"#, "name_regex"),
+        (
+            r#"{"field": "meter", "name_re": "^em1$", "step": [2]}"#,
+            "step",
+        ),
+        (
+            r#"{"field": "voltages", "node_regex": "^b1$"}"#,
+            "node_regex",
+        ),
+        (
+            r#"{"field": "element", "name_re": "^line\\.l1$", "channel": ["currents"]}"#,
+            "channel",
+        ),
+    ] {
+        let err = parse_ledger(&synthetic_ledger("exclusion", scope, "", ""))
+            .expect_err("a misspelled scope selector must be refused");
+        assert!(
+            err.contains(&format!("unknown field `{key}`")),
+            "{key}: wrong failure text: {err}"
+        );
+    }
+    // …and at the entry and top levels.
+    for (entry_keys, top_keys, key) in [
+        (r#""cause_reff": "c","#, "", "cause_reff"),
+        (r#""mesured": {},"#, "", "mesured"),
+        ("", r#""entires": [],"#, "entires"),
+    ] {
+        let err = parse_ledger(&synthetic_ledger(
+            "exclusion",
+            r#"{"field": "meter", "name_re": "^em1$"}"#,
+            entry_keys,
+            top_keys,
+        ))
+        .expect_err("a misspelled entry or top-level key must be refused");
+        assert!(
+            err.contains(&format!("unknown field `{key}`")),
+            "{key}: wrong failure text: {err}"
+        );
+    }
+}
+
+/// A scope on a [`PER_VALUE_EXCLUSION_FIELDS`] field must select its values by
+/// name ([`check_scope_name`]). With no `name_re`, or a wildcard one,
+/// `excluded()` matches every bus (`distance`), file (`run_files`), column
+/// (`di`), meter key (`reliability`) or state variable (`variables`) of the case,
+/// and the per-scope liveness check reads the first value it masks as a hit, so
+/// the mask could never go stale. The coarse exclusion fields keep their bare
+/// form.
+#[test]
+fn a_bare_distance_scope_is_refused() {
+    let scope = |json: &str| -> RawScope { serde_json::from_str(json).expect("test scope") };
+    for field in PER_VALUE_EXCLUSION_FIELDS {
+        let mut refused = vec![
+            format!(r#"{{"field": "{field}"}}"#),
+            format!(r#"{{"field": "{field}", "steps": [0]}}"#),
+        ];
+        // Every spelling of "all names": empty, match-all, anchor-only, a lone
+        // flag group, and the wildcards that need one character.
+        for re in [
+            "", ".*", "(?i).*", "^.*$", "^", "(?i)", ".+", "(?i)^.+$", ".",
+        ] {
+            refused.push(format!(r#"{{"field": "{field}", "name_re": "{re}"}}"#));
+        }
+        for json in refused {
+            let err = check_scope("bare", "exclusion", &scope(&json))
+                .expect_err("a per-value scope that names no value must be refused");
+            assert!(
+                err.contains("must select its values by name")
+                    && err.contains("bare")
+                    && err.contains(field),
+                "{json}: wrong failure text: {err}"
+            );
+        }
+        for re in ["^l2e$", "(?i)^windgen\\\\.w1:(pgen|qgen)$", "l2e"] {
+            check_scope(
+                "named",
+                "exclusion",
+                &scope(&format!(r#"{{"field": "{field}", "name_re": "{re}"}}"#)),
+            )
+            .unwrap_or_else(|e| panic!("a named {field:?} scope ({re}) must pass: {e}"));
+        }
+    }
+    // The loader refuses it, not only the helper.
+    for scope_json in [
+        r#"{"field": "distance"}"#,
+        r#"{"field": "distance", "name_re": ".*"}"#,
+    ] {
+        let err = parse_ledger(&synthetic_ledger("exclusion", scope_json, "", ""))
+            .expect_err("the loader must refuse a `distance` scope that names no bus");
+        assert!(
+            err.contains("must select its values by name"),
+            "{scope_json}: wrong text: {err}"
+        );
+    }
+    // The rule is per-value, not a blanket: a whole-artifact exclusion field still
+    // loads bare (a sub-channel field needs its `channels`, nothing more).
+    for field in EXCLUSION_FIELDS {
+        if PER_VALUE_EXCLUSION_FIELDS.contains(&field) {
+            continue;
+        }
+        let json = if SUBCHANNEL_FIELDS.iter().any(|(f, _)| *f == field) {
+            format!(r#"{{"field": "{field}", "channels": ["currents"]}}"#)
+        } else {
+            format!(r#"{{"field": "{field}"}}"#)
+        };
+        check_scope("coarse", "exclusion", &scope(&json))
+            .unwrap_or_else(|e| panic!("a bare {field:?} exclusion must pass: {e}"));
+    }
+    // The named escape hatch is empty, so no entry gets an absent, empty or
+    // wildcard `name_re` past the rule. A pattern that reaches every key
+    // without matching a name of NAMES_NO_VALUE_CARRIES (`\w+`) is not visible
+    // to a text check (see `check_scope_name`).
+    assert!(
+        BARE_NAME_ALLOWED.is_empty(),
+        "BARE_NAME_ALLOWED gained {BARE_NAME_ALLOWED:?} — each id needs a written \
+         reason, and the population lock must show the entry's digest move"
+    );
+}
+
+/// An `exclusion` scope carries only the selectors the exclusion path reads
+/// ([`check_exclusion_scope`]): each envelope or pin key, `channel_idx`,
+/// `node_re` outside `voltages` and `name_re` on `voltages` is refused on its
+/// own, while the same key on a `divergence` scope and a selector-only exclusion
+/// scope pass.
+#[test]
+fn an_exclusion_scope_that_carries_an_envelope_is_refused() {
+    let scope = |json: &str| -> RawScope { serde_json::from_str(json).expect("test scope") };
+    for (key, value) in [
+        ("max_rel", "1e-6"),
+        ("max_abs", "1e-6"),
+        ("num_rel", "1e-6"),
+        ("rust", r#""1""#),
+        ("oracle", r#""2""#),
+        ("policy", r#""rust_le_oracle""#),
+        ("line_re", r#""^x$""#),
+        ("channel_idx", "0"),
+        ("node_re", r#""^b1$""#),
+    ] {
+        let json = format!(r#"{{"field": "monitor", "name_re": "^m1$", "{key}": {value}}}"#);
+        let err = check_exclusion_scope("carrier", "exclusion", &scope(&json))
+            .expect_err("an exclusion scope carrying a non-selector key must be refused");
+        assert!(
+            err.contains(&format!("[\"{key}\"]")) && err.contains("carrier"),
+            "{key}: wrong failure text: {err}"
+        );
+        // The rule polices exclusions only: a divergence's handlers read these.
+        check_exclusion_scope("carrier", "divergence", &scope(&json))
+            .unwrap_or_else(|e| panic!("{key} on a divergence scope must pass: {e}"));
+    }
+    // `node_re` is the voltages handler's own selector, and its only one: a
+    // `name_re` there is ignored and the scope masks every node of the case.
+    check_exclusion_scope(
+        "nodes",
+        "exclusion",
+        &scope(r#"{"field": "voltages", "node_re": "^b1$", "steps": [0]}"#),
+    )
+    .expect("`node_re` on a voltages exclusion must pass");
+    for json in [
+        r#"{"field": "voltages", "name_re": "^b1$"}"#,
+        r#"{"field": "voltages", "name_re": "^b1$", "node_re": "^b1\\.1$"}"#,
+    ] {
+        let err = check_exclusion_scope("named-nodes", "exclusion", &scope(json))
+            .expect_err("`name_re` on a voltages exclusion must be refused");
+        assert!(
+            err.contains("[\"name_re\"]") && err.contains("named-nodes"),
+            "{json}: wrong failure text: {err}"
+        );
+    }
+    // Selector-only scopes pass.
+    for json in [
+        r#"{"field": "monitor", "name_re": "^m1$", "steps": [1]}"#,
+        r#"{"field": "yprim"}"#,
+        r#"{"field": "element", "name_re": "^line\\.l1$", "channels": ["currents"]}"#,
+    ] {
+        check_exclusion_scope("clean", "exclusion", &scope(json))
+            .unwrap_or_else(|e| panic!("{json} must pass: {e}"));
+    }
+    // The loader refuses it, not only the helper.
+    let err = parse_ledger(&synthetic_ledger(
+        "exclusion",
+        r#"{"field": "monitor", "name_re": "^m1$", "channel_idx": 2}"#,
+        "",
+        "",
+    ))
+    .expect_err("the loader must refuse a `channel_idx` on an exclusion scope");
+    assert!(err.contains("[\"channel_idx\"]"), "wrong text: {err}");
+}
+
+/// [`LedgerRuntime::load`] hands the committed file to
+/// [`LedgerRuntime::from_text`], and that runs [`parse_ledger`]: each shape the
+/// parser refuses panics the loader with the parser's own text, so the load-time
+/// rules guard every consumer of the loaded ledger (the live gate, the props
+/// census), not only `ledger_is_structurally_valid`.
+#[test]
+fn the_loader_refuses_every_shape_parse_ledger_refuses() {
+    for scope in [
+        // A `channels` rule.
+        r#"{"field": "element", "name_re": "^line\\.l1$"}"#,
+        // The exclusion selector rule.
+        r#"{"field": "monitor", "name_re": "^m1$", "channel_idx": 2}"#,
+        // The per-value name rule.
+        r#"{"field": "distance", "name_re": ".*"}"#,
+        // An unknown key.
+        r#"{"field": "meter", "name_regex": "^em1$"}"#,
+    ] {
+        let text = synthetic_ledger("exclusion", scope, "", "");
+        let refusal = parse_ledger(&text).expect_err("the drive feeds a refused shape");
+        let payload =
+            std::panic::catch_unwind(|| LedgerRuntime::from_text(&text, "synthetic.json"))
+                .err()
+                .unwrap_or_else(|| {
+                    panic!("{scope}: the loader accepted a shape parse_ledger refuses")
+                });
+        let msg = crate::runner::panic_msg(payload);
+        assert!(
+            msg.contains("synthetic.json") && msg.contains(&refusal),
+            "{scope}: the loader must fail with the parser's refusal\n  loader: {msg}\n  parser: {refusal}"
+        );
+    }
+    // Positive control: the same entry with a clean scope compiles.
+    let rt = LedgerRuntime::from_text(
+        &synthetic_ledger(
+            "exclusion",
+            r#"{"field": "meter", "name_re": "^em1$"}"#,
+            "",
+            "",
+        ),
+        "synthetic.json",
+    );
+    assert_eq!(
+        rt.entries.len(),
+        1,
+        "the clean synthetic ledger must load one entry"
+    );
+    assert_eq!(rt.entries[0].kind, Kind::Exclusion);
+}
+
 /// The (case, channel) pairs on which GOLDEN_REBASE G1.9's aggregate **value**
-/// arms inherit the element ledger *whole*: a deck-wide `element` scope that
-/// selects the `losses` sub-channel rewrites EVERY summand to the port's own
-/// value, so the aggregate's value arm becomes a self-comparison there.
+/// arms inherit the element ledger: an `element` scope that selects the
+/// `losses` sub-channel rewrites its summands to the port's own value, so the
+/// loss aggregates' value arms compare those summands with themselves, and one
+/// that selects `powers` lets the `Circuit.TotalPower` slack absorb the
+/// port↔oracle gap of the sources it covers. A deck-wide scope does that to
+/// EVERY summand, so the arm becomes a self-comparison there. A named one does
+/// it to the summands it names, which is the whole arm when it names every
+/// summand (the one source of a deck, under `powers`). The ledger text cannot
+/// show which, so every such scope is counted ([`aggregate_inheriting_pairs`]).
+/// Only a scope selecting neither keeps the value arms comparing against the
+/// oracle.
 ///
 /// That is inherent, not a comparator slip — with every summand accepted, no
 /// bound on their sum can carry oracle content the entries do not already own
 /// (triangle inequality; see `harness::aggregates`' module doc). What must not
 /// happen silently is the inheritance SPREADING, so the set is recorded here
-/// and asserted exactly: a new deck-wide `element` scope reds this test until
-/// its author acknowledges that it also switches that deck's aggregate value
-/// arm off. Same visibility rule as coordinator decision D11(2) for the bus
-/// arrays. Membership (P1) and identity (P1b) are untouched on these decks —
-/// they run on the raw oracle capture everywhere.
+/// and asserted exactly: a new `element` scope selecting `losses` or `powers`
+/// reds this test until its author acknowledges what it does to that deck's
+/// aggregate value arms. Same visibility rule as coordinator decision D11(2)
+/// for the bus arrays. Membership (P1) and identity (P1b) are untouched on
+/// these decks — they run on the raw oracle capture everywhere.
 ///
 /// 14 → 12 at the lane-b G1.4a merge (2026-09-05): the two `capi_v0145` GIC rows
 /// went with their entries when coordinator decisions D12/D14 moved every
@@ -3620,38 +4052,47 @@ const AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER: [(&str, &str); 12] = [
     ("modes:windgen/windgen_snap_delta.dss", "r4133"),
 ];
 
-#[test]
-fn the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes() {
-    let text = std::fs::read_to_string(ledger_path()).expect("ledger.json is readable");
-    let doc: Value = serde_json::from_str(&text).expect("ledger.json parses");
-    let mut found: BTreeSet<(String, String)> = BTreeSet::new();
+/// The (case, channel) pairs of a ledger document whose entry carries an
+/// `element` scope selecting a sub-channel an aggregate value arm sums:
+/// `losses` (the loss arms read the per-element loss) or `powers` (the
+/// `Circuit.TotalPower` slack reads the per-element powers). An absent
+/// `channels` means every sub-channel. The scope's `name_re` does not matter
+/// (see [`AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER`]), and both kinds
+/// count: a `divergence` and an `exclusion` rewrite the selected sub-channels
+/// alike ([`LedgerView::element_rewrites`]).
+#[cfg(test)]
+fn aggregate_inheriting_pairs(doc: &Value) -> BTreeSet<(String, String)> {
+    let mut found = BTreeSet::new();
     for entry in doc["entries"].as_array().expect("`entries` is an array") {
         // A `skip` entry carries no `match` array.
         let Some(scopes) = entry.get("match").and_then(Value::as_array) else {
             continue;
         };
-        for scope in scopes {
-            if scope["field"].as_str() != Some("element") {
-                continue;
-            }
-            // An absent `name_re` and `.*` both mean "every element".
-            let deck_wide = match scope.get("name_re").and_then(Value::as_str) {
-                None => true,
-                Some(re) => re == ".*",
-            };
-            // An absent `channels` means all three (G1.0 spelled them out).
-            let selects_losses = match scope.get("channels").and_then(Value::as_array) {
-                None => true,
-                Some(list) => list.iter().any(|c| c.as_str() == Some("losses")),
-            };
-            if deck_wide && selects_losses {
-                found.insert((
-                    entry["case"].as_str().expect("case").to_string(),
-                    entry["channel"].as_str().expect("channel").to_string(),
-                ));
-            }
+        let inherits = scopes.iter().any(|scope| {
+            scope["field"].as_str() == Some("element")
+                && scope
+                    .get("channels")
+                    .and_then(Value::as_array)
+                    .is_none_or(|list| {
+                        list.iter()
+                            .any(|c| matches!(c.as_str(), Some("losses" | "powers")))
+                    })
+        });
+        if inherits {
+            found.insert((
+                entry["case"].as_str().expect("case").to_string(),
+                entry["channel"].as_str().expect("channel").to_string(),
+            ));
         }
     }
+    found
+}
+
+#[test]
+fn the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes() {
+    let text = std::fs::read_to_string(ledger_path()).expect("ledger.json is readable");
+    let doc: Value = serde_json::from_str(&text).expect("ledger.json parses");
+    let found = aggregate_inheriting_pairs(&doc);
     let recorded: BTreeSet<(String, String)> = AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER
         .iter()
         .map(|(c, ch)| ((*c).to_string(), (*ch).to_string()))
@@ -3659,12 +4100,93 @@ fn the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes() {
     assert_eq!(
         found,
         recorded,
-        "the set of (case, channel) pairs whose G1.9 aggregate VALUE arms          inherit the element ledger whole has changed.
-new: {:?}
-gone: {:?}
-         A deck-wide `element` scope selecting `losses` also switches that          deck's Circuit.Losses / LineLosses / SubstationLosses /          AllElementLosses value comparison into a self-comparison (membership          and identity still run). Record the pair here once that is the          intended reading — never leave it undeclared.",
+        "the set of (case, channel) pairs whose G1.9 aggregate VALUE arms inherit \
+         the element ledger has changed.\nnew: {:?}\ngone: {:?}\nAn `element` scope \
+         selecting `losses` turns that deck's Circuit.Losses / LineLosses / \
+         SubstationLosses / AllElementLosses value comparison into a self-comparison \
+         for the summands it covers, and one selecting `powers` does the same to \
+         Circuit.TotalPower (membership and identity still run). Record the pair here \
+         once that is the intended reading — never leave it undeclared.",
         found.difference(&recorded).collect::<Vec<_>>(),
         recorded.difference(&found).collect::<Vec<_>>()
+    );
+}
+
+/// [`aggregate_inheriting_pairs`] counts exactly the scopes an aggregate value
+/// arm inherits — an `element` scope selecting `losses` or `powers` (alone or
+/// with siblings, deck-wide or named, on either kind) or leaving `channels`
+/// out — and nothing else: an `element` scope on other sub-channels only (the
+/// arms read neither `phase_losses` nor `total_powers`), a scope on another
+/// field, a `skip` entry.
+#[test]
+fn the_aggregate_register_counts_exactly_the_losses_and_powers_scopes() {
+    let counted = [
+        (
+            "losses",
+            "divergence",
+            r#"{"field": "element", "channels": ["losses"]}"#,
+        ),
+        (
+            "powers",
+            "exclusion",
+            r#"{"field": "element", "channels": ["powers"]}"#,
+        ),
+        (
+            "named-powers",
+            "exclusion",
+            r#"{"field": "element", "name_re": "(?i)^vsource\\.source$", "channels": ["powers"]}"#,
+        ),
+        (
+            "dot-star-losses",
+            "divergence",
+            r#"{"field": "element", "name_re": ".*", "channels": ["currents", "losses"]}"#,
+        ),
+        ("all-channels", "exclusion", r#"{"field": "element"}"#),
+    ];
+    let ignored = [
+        (
+            "currents",
+            "exclusion",
+            r#"{"field": "element", "channels": ["currents"]}"#,
+        ),
+        (
+            "seq-powers",
+            "exclusion",
+            r#"{"field": "element", "channels": ["seq_powers"]}"#,
+        ),
+        (
+            "total-powers",
+            "divergence",
+            r#"{"field": "element", "channels": ["total_powers"]}"#,
+        ),
+        (
+            "phase-losses",
+            "exclusion",
+            r#"{"field": "element", "channels": ["phase_losses"]}"#,
+        ),
+        ("voltages", "exclusion", r#"{"field": "voltages"}"#),
+    ];
+    let mut entries: Vec<String> = counted
+        .iter()
+        .chain(&ignored)
+        .map(|(label, kind, scope)| {
+            format!(
+                r#"{{"case": "synthetic:{label}.dss", "channel": "r4133", "kind": "{kind}", "match": [{scope}]}}"#
+            )
+        })
+        .collect();
+    entries
+        .push(r#"{"case": "synthetic:skip.dss", "channel": "r4133", "kind": "skip"}"#.to_string());
+    let doc: Value = serde_json::from_str(&format!(r#"{{"entries": [{}]}}"#, entries.join(",")))
+        .expect("the synthetic ledger parses");
+    let want: BTreeSet<(String, String)> = counted
+        .iter()
+        .map(|(label, _, _)| (format!("synthetic:{label}.dss"), "r4133".to_string()))
+        .collect();
+    assert_eq!(
+        aggregate_inheriting_pairs(&doc),
+        want,
+        "the register must count exactly the element scopes selecting `losses` or `powers`"
     );
 }
 
@@ -5454,4 +5976,161 @@ fn a_zero_terminal_total_power_sentinel_is_not_envelope_checked() {
         "unit",
         crate::harness::ElemChannels::CURRENTS_ONLY,
     );
+}
+
+// --- every declared sub-channel reaches both element handlers ---------------
+
+/// A divergence entry on a three-phase element (1 terminal x 3 conductors) whose
+/// capture and snapshot carry an equal payload on EVERY `element` sub-channel,
+/// under an envelope (`max_abs 1e9`) no drive below leaves: the
+/// [`cplx_seq_envelope_fixture`] payload plus the rectangular, loss, voltage
+/// polar, residual, phase-loss and total-power arrays it leaves empty.
+#[cfg(test)]
+fn every_sub_channel_fixture() -> (Entry, ElementCap, dss_core::exec::ElementSnapshot) {
+    let (mut entry, mut cap, mut snap) =
+        cplx_seq_envelope_fixture(SeqArm::ThreePhase, EngineChannel::CapiV0145);
+    entry.id = "test-every-sub-channel".to_string();
+    (entry.scopes[0].max_abs, entry.scopes[0].max_rel) = (1e9, 0.0);
+    let n = snap.n_terms * snap.n_conds;
+    let zero = num_complex::Complex64::new(0.0, 0.0);
+    cap.p_kw = vec![0.0; n];
+    cap.p_kvar = vec![0.0; n];
+    snap.powers = vec![zero; n];
+    cap.loss_w = vec![0.0, 0.0];
+    snap.loss_w = (0.0, 0.0);
+    snap.voltages_mag_ang = vec![
+        Polar {
+            mag: 1000.0,
+            ang: 0.0
+        };
+        n
+    ];
+    cap.res_mag = vec![0.0];
+    cap.res_ang = vec![0.0];
+    snap.residuals = vec![Polar { mag: 0.0, ang: 0.0 }];
+    cap.pl_kw = vec![0.0; snap.n_phases];
+    cap.pl_kvar = vec![0.0; snap.n_phases];
+    snap.phase_losses = vec![zero; snap.n_phases];
+    cap.tp_kw = vec![0.0];
+    cap.tp_kvar = vec![0.0];
+    snap.total_powers = vec![zero];
+    (entry, cap, snap)
+}
+
+/// Move sub-channel `ch` of the port's snapshot by exactly `1.0` in capture
+/// units at its first slot (the `phase_losses` snapshot is W, its capture kW).
+#[cfg(test)]
+fn perturb_sub_channel(snap: &mut dss_core::exec::ElementSnapshot, ch: &str) {
+    match ch {
+        "currents" => snap.currents[0].re += 1.0,
+        "powers" => snap.powers[0].re += 1.0,
+        "losses" => snap.loss_w.0 += 1.0,
+        "currents_mag_ang" => snap.currents_mag_ang[0].mag += 1.0,
+        "voltages_mag_ang" => snap.voltages_mag_ang[0].mag += 1.0,
+        "residuals" => snap.residuals[0].mag += 1.0,
+        "phase_losses" => snap.phase_losses[0].re += 1000.0,
+        "seq_currents" => snap.seq_currents[0] += 1.0,
+        "seq_voltages" => snap.seq_voltages[0] += 1.0,
+        "seq_powers" => snap.seq_powers[0].re += 1.0,
+        "cplx_seq_currents" => snap.cplx_seq_currents[0].re += 1.0,
+        "cplx_seq_voltages" => snap.cplx_seq_voltages[0].re += 1.0,
+        "total_powers" => snap.total_powers[0].re += 1.0,
+        other => panic!(
+            "sub-channel {other:?} has no drive in \
+             every_declared_sub_channel_is_honoured_by_the_runtime — add its \
+             perturbation here and its capture slice to `sub_channel_slice`"
+        ),
+    }
+}
+
+/// The capture arrays sub-channel `ch` owns, concatenated (first half first).
+#[cfg(test)]
+fn sub_channel_slice(cap: &ElementCap, ch: &str) -> Vec<f64> {
+    let cat = |a: &[f64], b: &[f64]| a.iter().chain(b).copied().collect::<Vec<f64>>();
+    match ch {
+        "currents" => cat(&cap.i_re, &cap.i_im),
+        "powers" => cat(&cap.p_kw, &cap.p_kvar),
+        "losses" => cap.loss_w.clone(),
+        "currents_mag_ang" => cat(&cap.cma_mag, &cap.cma_ang),
+        "voltages_mag_ang" => cat(&cap.vma_mag, &cap.vma_ang),
+        "residuals" => cat(&cap.res_mag, &cap.res_ang),
+        "phase_losses" => cat(&cap.pl_kw, &cap.pl_kvar),
+        "seq_currents" => cap.seq_i.clone(),
+        "seq_voltages" => cap.seq_v.clone(),
+        "seq_powers" => cat(&cap.seq_p_kw, &cap.seq_p_kvar),
+        "cplx_seq_currents" => cat(&cap.cseq_i_re, &cap.cseq_i_im),
+        "cplx_seq_voltages" => cat(&cap.cseq_v_re, &cap.cseq_v_im),
+        "total_powers" => cat(&cap.tp_kw, &cap.tp_kvar),
+        other => panic!("sub-channel {other:?} has no capture slice here — add one"),
+    }
+}
+
+/// Every name [`SUBCHANNEL_FIELDS`] declares is honoured by BOTH element
+/// handlers, and only that name: a name added without a `want("…")` arm in
+/// [`envelope_element`] or [`rewrite_element_selected`] would pass the load-time
+/// `channels` rules, select nothing and leave its entry reporting itself
+/// applied.
+///
+/// * envelope — for every (selected `ch`, perturbed `d`) pair, a scope naming
+///   only `ch` records a floor-exceed iff `d == ch`, so `ch` is measured and no
+///   other sub-channel is;
+/// * rewrite — with every sub-channel perturbed, a scope naming only `ch` moves
+///   exactly `ch`'s capture slice onto the port's values (its first slot by
+///   exactly `1.0`) and leaves every other slice untouched, under both kinds.
+///
+/// A new name with no row in [`perturb_sub_channel`] / [`sub_channel_slice`]
+/// fails here by name.
+#[test]
+fn every_declared_sub_channel_is_honoured_by_the_runtime() {
+    let tol = crate::harness::tol_for("micro");
+    for (field, names) in SUBCHANNEL_FIELDS {
+        assert_eq!(
+            *field, "element",
+            "SUBCHANNEL_FIELDS row {field:?} has no handler drive here — add one"
+        );
+        for ch in names.iter() {
+            for d in names.iter() {
+                let (mut entry, cap, mut snap) = every_sub_channel_fixture();
+                entry.scopes[0].channels = vec![ch.to_string()];
+                perturb_sub_channel(&mut snap, d);
+                envelope_element(&entry, &entry.scopes[0], &snap, &cap, &tol, "unit");
+                assert_eq!(
+                    entry.exceeded_floor.load(Ordering::Relaxed),
+                    ch == d,
+                    "envelope: a scope naming {ch:?} with {d:?} diverging must record \
+                     a floor-exceed iff the two are the same sub-channel"
+                );
+                assert_eq!(
+                    entry.scopes[0].dead_channels().is_empty(),
+                    ch == d,
+                    "envelope: the exceed of {d:?} must be attributed to {ch:?} iff \
+                     they are the same sub-channel"
+                );
+            }
+        }
+        for exclusion in [false, true] {
+            for ch in names.iter() {
+                let (mut entry, mut cap, mut snap) = every_sub_channel_fixture();
+                entry.scopes[0].channels = vec![ch.to_string()];
+                for d in names.iter() {
+                    perturb_sub_channel(&mut snap, d);
+                }
+                let before: Vec<Vec<f64>> =
+                    names.iter().map(|n| sub_channel_slice(&cap, n)).collect();
+                rewrite_element_selected(&mut cap, &entry.scopes[0], &snap, exclusion);
+                for (n, was) in names.iter().zip(&before) {
+                    let mut want = was.clone();
+                    if n == ch {
+                        want[0] += 1.0;
+                    }
+                    assert_eq!(
+                        sub_channel_slice(&cap, n),
+                        want,
+                        "rewrite (exclusion {exclusion}): a scope naming {ch:?} must \
+                         move exactly its own slice — {n:?} is wrong"
+                    );
+                }
+            }
+        }
+    }
 }
