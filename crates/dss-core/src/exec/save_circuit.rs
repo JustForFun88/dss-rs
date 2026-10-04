@@ -12,55 +12,18 @@
 //! is verified by *round-trip* (recompile + re-solve on our own engine), never
 //! by byte-matching the oracle's Save output (PHASE8_PLAN §2.4).
 //!
-//! **Flags.** `Circuit.Save` is parameterized by a `DSSSaveFlags` set. The
-//! executive `Save circuit` command (`DoSaveCmd`) always calls it with an
-//! **empty** set, so every flag-gated branch below
-//! (`SingleFile`/`KeepOrder`/`IncludeOptions`/`SetVoltageBases`/`IsOpen`/
-//! `IncludeDisabled`/`ExcludeDefault`/`ExcludeMeterZones`) is DORMANT. The
-//! [`SaveFlags`] set is defined faithfully for C-API parity, but only the
-//! reachable empty-set path is exercised/gated. `CalcVoltageBases` left that
-//! list at RP3.11: r4133 writes the `CalcVoltageBases` line unconditionally, so
-//! [`Dss::save_voltage_bases`] no longer reads the bit at all.
+//! **One layout.** `Save circuit` writes a file per class, a subdirectory per
+//! enabled meter zone, no solution options, and a `BusVoltageBases.dss` that
+//! always ends in `CalcVoltageBases`. It writes a disabled circuit element, with
+//! `ENABLED=NO`, in three cases only: the first Vsource (always written, as an
+//! `Edit`), a control that a meter zone writes after the element it acts on,
+//! and a shunt element (load, generator, capacitor, ...) that a meter zone
+//! collected before it was disabled, since the save does not rebuild the zones.
+//! The command takes no option that changes this, so the writers below take
+//! none either.
 
 use super::*;
 use crate::report::save::save::{SaveCtx, class_file_text, write_dss_object};
-
-/// Pascal `DSSSaveFlag` (`Common/DSSClass.pas:58-69`), the per-`Save` option
-/// bits. The command path passes the empty set, so these are all off there.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // C-API parity: only the empty-set path is reachable here.
-pub(crate) enum DssSaveFlag {
-    CalcVoltageBases = 0,
-    SetVoltageBases = 1,
-    IncludeOptions = 2,
-    IncludeDisabled = 3,
-    ExcludeDefault = 4,
-    SingleFile = 5,
-    KeepOrder = 6,
-    ExcludeMeterZones = 7,
-    IsOpen = 8,
-    ToString = 9,
-}
-
-/// Pascal `DSSSaveFlags = set of DSSSaveFlag`. The command path builds
-/// [`SaveFlags::empty`]; the `contains` predicate mirrors Pascal's `in`.
-#[derive(Clone, Copy, Default)]
-pub(crate) struct SaveFlags(u16);
-
-impl SaveFlags {
-    /// The empty set — the only value reachable from `Save circuit`.
-    pub(crate) fn empty() -> Self {
-        SaveFlags(0)
-    }
-
-    /// Pascal `flag in saveFlags`. Unread since RP3.11 removed the last
-    /// flag-gated branch on the command path (`CalcVoltageBases`); kept, like
-    /// the [`DssSaveFlag`] bits themselves, for C-API parity.
-    #[allow(dead_code)] // C-API parity: no reachable caller passes a non-empty set.
-    pub(crate) fn contains(self, f: DssSaveFlag) -> bool {
-        (self.0 & (1u16 << (f as u16))) != 0
-    }
-}
 
 /// Pascal `TDSSCircuit.SaveMasterFile`'s per-class ordering for the library
 /// classes written *before* the vsource / feeders / general objects
@@ -147,8 +110,6 @@ impl Dss {
         // Pascal `DSS.SetCurrentDSSDir(CurrDir)`.
         self.current_dir = target.clone();
 
-        let flags = SaveFlags::empty();
-
         // Pascal chains every sub-step through `Success` and, on any failure,
         // reports err 434 with GlobalResult = the error text instead of the
         // "saved" string (`Circuit.pas:2590-2648`). The sub-writers here push
@@ -189,15 +150,15 @@ impl Dss {
 
         // Save feeders (one subdir per enabled EnergyMeter). Dormant when the
         // circuit has no meters (all three round-trip masters).
-        self.save_feeders(&target, flags, &mut saved_files);
+        self.save_feeders(&target, &mut saved_files);
 
         // Save the rest of the objects (every remaining populated class).
-        self.save_dss_objects(flags, &mut class_saved, &mut saved_files);
+        self.save_dss_objects(&mut class_saved, &mut saved_files);
 
         // BusVoltageBases.dss, BusCoords.dss, then the Master.dss header+footer.
-        self.save_voltage_bases(&target, flags);
+        self.save_voltage_bases(&target);
         self.save_bus_coords(&target);
-        self.save_master_file(&target, flags, &saved_files);
+        self.save_master_file(&target, &saved_files);
 
         // Return to the original directory (Pascal `:2652`).
         self.current_dir = saved_dir;
@@ -302,12 +263,7 @@ impl Dss {
     /// `saveFlags = []`, `KeepOrder` off): write every populated, not-yet-`Saved`
     /// class via [`Self::write_class_file_circuit`], in DSSClassList order,
     /// passing `IsCktElement = (cls is TCktElementClass)`.
-    fn save_dss_objects(
-        &mut self,
-        _flags: SaveFlags,
-        class_saved: &mut [bool],
-        saved_files: &mut Vec<PathBuf>,
-    ) {
+    fn save_dss_objects(&mut self, class_saved: &mut [bool], saved_files: &mut Vec<PathBuf>) {
         for ci in 0..self.classes.len() {
             if class_saved[ci] {
                 continue;
@@ -321,7 +277,7 @@ impl Dss {
     /// **enabled** EnergyMeter (named after it), into which its zone is written
     /// by [`Self::save_zone`]. The zone files join `saved_files` (relative
     /// Redirects). Disabled meters are skipped; err 436 on a subdir failure.
-    fn save_feeders(&mut self, base: &Path, flags: SaveFlags, saved_files: &mut Vec<PathBuf>) {
+    fn save_feeders(&mut self, base: &Path, saved_files: &mut Vec<PathBuf>) {
         let meters: Vec<ElemId> = match &self.circuit {
             Some(ckt) => ckt.energy_meters.clone(),
             None => return,
@@ -349,7 +305,7 @@ impl Dss {
                 ));
                 return;
             }
-            self.save_zone(mr, &meter_dir, flags, saved_files);
+            self.save_zone(mr, &meter_dir, saved_files);
         }
     }
 
@@ -371,13 +327,7 @@ impl Dss {
     /// are therefore NOT written in-zone and fall through to `SaveDSSObjects`
     /// instead. No corpus deck places a fleet control inside a meter zone, so the
     /// divergence is unobservable (mirrors the same project-wide limitation).
-    fn save_zone(
-        &mut self,
-        meter: ElemId,
-        dir: &Path,
-        _flags: SaveFlags,
-        saved_files: &mut Vec<PathBuf>,
-    ) {
+    fn save_zone(&mut self, meter: ElemId, dir: &Path, saved_files: &mut Vec<PathBuf>) {
         // Snapshot the branch walk (branch ref + its shunt refs) so the meter's
         // immutable tree borrow is released before we mutate objects/classes.
         let branches: Vec<(ElemId, Vec<ElemId>)> = {
@@ -574,7 +524,7 @@ impl Dss {
     /// `Set VoltageBases=<get voltagebases>` followed — **unconditionally** — by
     /// `CalcVoltageBases`. r4133 writes the pair as two plain `Writeln`s with no
     /// flag in sight; its per-bus `SetkVBase` block is commented out in the
-    /// Pascal (`:2727-2729`) and flag-gated here → dormant either way.
+    /// Pascal (`:2727-2729`) and not written here either.
     ///
     /// **Why not 0.14.5's commented form (RP3.11 P1).** dss_capi 0.14.5 is the
     /// only engine that ever comments the second line
@@ -592,10 +542,7 @@ impl Dss {
     /// reporting, not the absolute-volt re-solve" — is measurably false and is
     /// retracted. Pinned by
     /// [`crate::exec::tests::report`]`::save_writes_calcvoltagebases_like_r4133`.
-    ///
-    /// [`DssSaveFlag::CalcVoltageBases`] stays defined for C-API parity; it
-    /// simply no longer suppresses the line.
-    fn save_voltage_bases(&mut self, dir: &Path, _flags: SaveFlags) {
+    fn save_voltage_bases(&mut self, dir: &Path) {
         let Some(ckt) = self.circuit.as_ref() else {
             return;
         };
@@ -647,11 +594,11 @@ impl Dss {
     /// `Set Cktmodel`/`AllowDuplicates`/`LongLineCorrection`, `Set EarthModel`)
     /// then a footer of `Redirect <relative>` per saved file, `MakeBusList`,
     /// `Redirect BusVoltageBases.dss  ! set voltage bases`, and `BusCoords
-    /// BusCoords.dss` (the file is always created above). The `IncludeOptions`
-    /// solution dump and `IsOpen` `SaveOpenTerminals` are flag-gated → dormant.
+    /// BusCoords.dss` (the file is always created above). No solution-options
+    /// dump and no open-terminal list are written.
     /// The `! Last saved by …` stamp is written as the port's own analogous
     /// comment (ignored on re-compile; round-trip, not byte-match).
-    fn save_master_file(&mut self, dir: &Path, _flags: SaveFlags, saved_files: &[PathBuf]) {
+    fn save_master_file(&mut self, dir: &Path, saved_files: &[PathBuf]) {
         let mut out = String::new();
         // Port's own stamp (Pascal `! Last saved by AltDSS/…`); a comment, so
         // the round-trip ignores it.

@@ -300,6 +300,17 @@ fn index_of_in(order: &[usize], prop_index: usize) -> i64 {
         .map_or(-1, |p| (p + 1) as i64)
 }
 
+impl ClassProps {
+    /// The `$dssPropertyOrder` `class_schema` gives the property `prop_index`
+    /// (whose `$dssPropertyIndex` is `prop_index` itself) before the
+    /// array-alternative redirect: its 1-based position in the JSON order, `-1`
+    /// outside it. Also answers for a property the schema does not render, so
+    /// the order recorded for a hidden one can be checked against the table.
+    pub fn schema_property_order(&self, prop_index: usize) -> i64 {
+        index_of_in(self.alt_property_order(), prop_index)
+    }
+}
+
 /// Port of `prepareClassJsonSchema(cls, enumIds)` — build the `$defs/<Class>`
 /// schema object from the class's property table and a live all-default sample
 /// object. `class_name` is the Pascal `cls.Name` (== `cls.Class_Name`).

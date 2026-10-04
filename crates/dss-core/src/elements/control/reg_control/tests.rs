@@ -569,8 +569,10 @@ fn reg_control_action_pins_queue_codes() {
 /// `Version8/Source/Controls/RegControl.pas:1399-1421`) writes `transformer=`
 /// **first**, outside the property chain, and then skips index 1 in the walk.
 /// Pascal's own reason: *"Write Transformer name out first so that it is set for
-/// later operations"* — `winding=`/`tapnum=`/`vreg=`/`ptratio=` are all resolved
-/// against the controlled transformer as they are parsed.
+/// later operations"*. The one such operation is `tapnum=`: it positions the
+/// controlled transformer's tap as it is parsed, so ahead of `transformer=` it
+/// finds no transformer (error 124) and the tap is lost. `winding=`, `vreg=` and
+/// `ptratio=` are plain values and reload the same in any order.
 ///
 /// Measured before this override, on a deck typing `transformer=` last, the port
 /// wrote `New "RegControl.rc1" Winding=2 VReg=122 Band=3 PTRatio=20
@@ -583,6 +585,16 @@ fn reg_control_action_pins_queue_codes() {
 /// (`CAPI:Controls/RegControl.pas:417`, *"not really required"*) and this port
 /// followed — round-trip-safe, since re-parsing `Winding=2` re-fires the same
 /// `TapWinding := winding` side effect.
+///
+/// A second control, `rc2`, types `tapnum=4` after `transformer=` and then
+/// re-sets `transformer=`, which moves the transformer's sequence stamp behind
+/// `TapNum=`: in chain order its line would read `Winding=2 TapNum=4
+/// Transformer=t2` and reload with error 124 and `TapNum=0`. r4133 saves it as
+/// `New "RegControl.rc2" transformer=t2 winding=2 tapwinding=2 TapNum=4` and
+/// rejects the chain-order line the same way, with error 124 and `TapNum` 0
+/// (epri-worker probe, OpenDSSDirect.dll 11.0.0.1 r4133, 2026-10-04). The
+/// saved tree is re-compiled and both controls read back their transformer,
+/// winding and settings, `rc2` its tap position.
 #[test]
 fn regcontrol_save_write_puts_the_transformer_first() {
     use crate::exec::Dss;
@@ -597,6 +609,11 @@ fn regcontrol_save_write_puts_the_transformer_first() {
          kvas=[1000 1000] xhl=6",
         // `transformer=` typed LAST
         "new regcontrol.rc1 winding=2 vreg=122 band=3 ptratio=20 transformer=t1",
+        "new transformer.t2 windings=2 buses=[src c] conns=[wye wye] kvs=[12.47 4.16] \
+         kvas=[1000 1000] xhl=6",
+        // `tapnum=` needs the transformer, and the `edit` stamps it after `tapnum=`
+        "new regcontrol.rc2 transformer=t2 winding=2 tapnum=4",
+        "edit regcontrol.rc2 transformer=t2",
     ] {
         dss.command(c);
     }
@@ -622,5 +639,41 @@ fn regcontrol_save_write_puts_the_transformer_first() {
         1,
         "the transformer must be written exactly once: {line:?}"
     );
+    let line2 = text
+        .lines()
+        .find(|l| l.contains("RegControl.rc2"))
+        .unwrap_or_else(|| panic!("no RegControl.rc2 line in {text:?}"));
+    assert_eq!(
+        line2, "New \"RegControl.rc2\" Transformer=t2 Winding=2 TapNum=4",
+        "r4133 writes `New \"RegControl.rc2\" transformer=t2 winding=2 tapwinding=2 \
+         TapNum=4`: the transformer must precede the tap position it is needed for"
+    );
+
+    // The re-compiled tree controls the same transformer windings at the same tap.
+    let mut back = Dss::new();
+    back.command(&format!(
+        "compile \"{}\"",
+        dir.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    assert!(
+        back.errors().is_empty(),
+        "re-compile errors: {:?}",
+        back.errors()
+    );
+    for (rc, prop, want) in [
+        ("rc1", "transformer", "t1"),
+        ("rc1", "winding", "2"),
+        ("rc1", "tapwinding", "2"),
+        ("rc1", "vreg", "122"),
+        ("rc1", "band", "3"),
+        ("rc1", "ptratio", "20"),
+        ("rc2", "transformer", "t2"),
+        ("rc2", "winding", "2"),
+        ("rc2", "tapnum", "4"),
+    ] {
+        let query = format!("? regcontrol.{rc}.{prop}");
+        back.command(&query);
+        assert_eq!(back.result(), want, "{query} after the round trip");
+    }
     std::fs::remove_dir_all(&dir).ok();
 }

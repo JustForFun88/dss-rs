@@ -23,9 +23,12 @@
 //! Regenerate the PORT full-document golden: run the test with
 //! `REGEN_SCHEMA_PORT=1` after a reviewed change.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
+use dss_core::obj::dss_enum::EnumRegistry;
+use dss_core::obj::props::ClassProps;
 use dss_core::report::export::json::schema;
 use dss_core::report::export::json::{FPJSON_SPELLING, Json, write_pretty_with};
 use serde_json::Value;
@@ -876,4 +879,253 @@ fn every_class_is_gated_or_inventoried() {
         schema::DSS_CLASS_LIST_ORDER.len(),
         "gated + port-authored must cover every class exactly once"
     );
+}
+
+// ---- Ranks of the inventoried port-only properties. A hidden property renders
+// no block, and `renumber_field` shifts every rendered rank the same way for any
+// removed rank inside a gap, so the byte gates above cannot see a wrong
+// `index`/`order` inside a hidden run. The two tests below check the recorded
+// ranks against the engine's class table and against the free slots of the two
+// documents. ------------------------------------------------------------------
+
+/// The inventory's rank fields and the schema markers they stand for.
+const RANK_FIELDS: [(&str, &str); 2] = [
+    ("index", "$dssPropertyIndex"),
+    ("order", "$dssPropertyOrder"),
+];
+
+/// The `port_hidden_property` / `port_extra_property` rows of the inventory.
+fn inventoried_property_rows(inv: &Value) -> Vec<&Value> {
+    inv["divergences"]
+        .as_array()
+        .expect("divergences array")
+        .iter()
+        .filter(|d| {
+            matches!(
+                d["kind"].as_str(),
+                Some("port_hidden_property" | "port_extra_property")
+            )
+        })
+        .collect()
+}
+
+/// The classes those rows name, each once, in first-seen order.
+fn inventoried_classes<'a>(rows: &[&'a Value]) -> Vec<&'a str> {
+    let mut classes: Vec<&str> = Vec::new();
+    for d in rows {
+        let class = d["class"].as_str().expect("divergence class");
+        if !classes.contains(&class) {
+            classes.push(class);
+        }
+    }
+    classes
+}
+
+/// The property table of a class that carries an inventoried property, from the
+/// constructor `Dss::new` registers. [`inventoried_property_ranks_match_the_class_table`]
+/// proves it is the table the engine renders from.
+fn class_table(class: &str) -> ClassProps {
+    use dss_core::elements::{control, general, meter, pc, pd};
+    let enums = EnumRegistry::new();
+    let table = match class {
+        "CNData" => general::conductor_data::cn_data::class_props(&enums),
+        "LineSpacing" => general::line_spacing::class_props(&enums),
+        "Line" => pd::line::class_props(&enums),
+        "Transformer" => pd::transformer::class_props(&enums),
+        "AutoTrans" => pd::auto_trans::class_props(&enums),
+        "Fuse" => pd::fuse::class_props(&enums),
+        "RegControl" => control::reg_control::class_props(&enums),
+        "Generator" => pc::generator::class_props(&enums),
+        "Sensor" => meter::sensor::class_props(&enums),
+        other => panic!("no class table wired for `{other}`: add its constructor to class_table"),
+    };
+    assert!(
+        table.class_name().eq_ignore_ascii_case(class),
+        "class_table(`{class}`) built the `{}` table",
+        table.class_name()
+    );
+    table
+}
+
+/// The ranks a class def renders under `marker`, by property key.
+fn rendered_ranks(def: &Value, marker: &str) -> BTreeMap<String, i64> {
+    def["properties"]
+        .as_object()
+        .expect("class def properties")
+        .iter()
+        .filter_map(|(k, v)| v[marker].as_i64().map(|r| (k.clone(), r)))
+        .collect()
+}
+
+/// Every `port_hidden_property` / `port_extra_property` row records the
+/// `$dssPropertyIndex` and `$dssPropertyOrder` the engine's class table gives
+/// the property ([`ClassProps::schema_property_order`]); a row without `order`
+/// is a property outside the JSON order. An extra property's rendered block
+/// carries the same two ranks, and every rendered block's index names the
+/// property of the same key in the table, which ties the table to the render.
+#[test]
+fn inventoried_property_ranks_match_the_class_table() {
+    let dss = Dss::new();
+    let inv = load_divergences();
+    let rows = inventoried_property_rows(&inv);
+    let classes = inventoried_classes(&rows);
+    assert!(
+        rows.iter().any(|d| d["kind"] == "port_hidden_property"),
+        "the inventory carries no port_hidden_property row"
+    );
+
+    for class in classes {
+        let table = class_table(class);
+        let def = dss
+            .schema_class_def(class)
+            .unwrap_or_else(|| panic!("class {class} not registered"));
+        let def: Value = serde_json::from_str(&render(&def)).expect("parse rendered class def");
+        for (key, index) in rendered_ranks(&def, "$dssPropertyIndex") {
+            if key == "Name" {
+                continue; // index 0, not a table property
+            }
+            assert_eq!(
+                table.prop(index as usize).json_key(false),
+                key,
+                "{class}: the rendered `{key}` block's $dssPropertyIndex {index} names \
+                 another property in the class table"
+            );
+        }
+
+        for d in rows.iter().filter(|d| d["class"] == class) {
+            let key = d["prop_key"].as_str().expect("prop_key");
+            let found: Vec<usize> = (1..=table.num_properties())
+                .filter(|&i| table.property_name(i).eq_ignore_ascii_case(key))
+                .collect();
+            let &[index] = found.as_slice() else {
+                panic!(
+                    "{class}.{key}: {} properties of that name in the class table",
+                    found.len()
+                )
+            };
+            assert_eq!(
+                table.prop(index).json_key(false),
+                key,
+                "{class}.{key}: the property renders under another JSON key"
+            );
+            let order = table.schema_property_order(index);
+            assert_eq!(
+                d["index"].as_i64(),
+                Some(index as i64),
+                "{class}.{key}: schema_divergences.json `index` is not the class table's"
+            );
+            assert_eq!(
+                d["order"].as_i64().unwrap_or(-1),
+                order,
+                "{class}.{key}: schema_divergences.json `order` is not the class table's \
+                 (a row without `order` stands for -1, outside the JSON order)"
+            );
+            if d["kind"] == "port_extra_property" {
+                let block = &def["properties"][key];
+                assert_eq!(
+                    (
+                        block["$dssPropertyIndex"].as_i64(),
+                        block["$dssPropertyOrder"].as_i64()
+                    ),
+                    (Some(index as i64), Some(order)),
+                    "{class}.{key}: the rendered block's ranks differ from the class table's"
+                );
+            }
+        }
+    }
+}
+
+/// Every hidden row sits in a free slot of `schema_full_port.json`, the slot
+/// its rendered neighbours leave. Between two adjacent properties both
+/// documents render, the port has `(b - a - 1) - (b' - a' - 1)` port-only slots
+/// (`a`, `b` the port's ranks, `a'`, `b'` the oracle's); the inventoried rows
+/// inside fill exactly that many, none on a rendered rank, and where the oracle
+/// renders the two neighbours adjacent every slot between them is port-only, so
+/// the rows' ranks are those slots exactly. Where the oracle leaves its own
+/// slots in the gap (Transformer's BH run) the goldens fix only the count, and
+/// [`inventoried_property_ranks_match_the_class_table`] places the run.
+#[test]
+fn hidden_property_ranks_fill_the_free_slots_of_the_port_document() {
+    let port: Value =
+        serde_json::from_str(&read_golden("schema_full_port.json")).expect("parse port document");
+    let oracle: Value = serde_json::from_str(&read_golden("schema_full_oracle.json"))
+        .expect("parse oracle document");
+    let inv = load_divergences();
+    let rows = inventoried_property_rows(&inv);
+
+    for class in inventoried_classes(&rows) {
+        for (field, marker) in RANK_FIELDS {
+            let port_ranks = rendered_ranks(&port["$defs"][class], marker);
+            let oracle_ranks = rendered_ranks(&oracle["$defs"][class], marker);
+            let rendered: Vec<i64> = port_ranks.values().copied().collect();
+            let mut inventoried: Vec<i64> = Vec::new();
+            for d in rows.iter().filter(|d| d["class"] == class) {
+                let key = d["prop_key"].as_str().expect("prop_key");
+                let Some(rank) = d[field].as_i64() else {
+                    continue;
+                };
+                assert!(
+                    !inventoried.contains(&rank),
+                    "{class}.{key}: {field} {rank} is recorded twice"
+                );
+                inventoried.push(rank);
+                if d["kind"] == "port_extra_property" {
+                    assert_eq!(
+                        port_ranks.get(key),
+                        Some(&rank),
+                        "{class}.{key}: the extra property renders another {field}"
+                    );
+                } else {
+                    assert!(
+                        !rendered.contains(&rank),
+                        "{class}.{key}: hidden {field} {rank} is a rank the port renders"
+                    );
+                }
+            }
+
+            let mut shared: Vec<(i64, i64)> = port_ranks
+                .iter()
+                .filter_map(|(k, &p)| oracle_ranks.get(k).map(|&o| (p, o)))
+                .collect();
+            shared.sort_unstable();
+            for pair in shared.windows(2) {
+                let ((a, oa), (b, ob)) = (pair[0], pair[1]);
+                let mut inside: Vec<i64> = inventoried
+                    .iter()
+                    .copied()
+                    .filter(|&r| a < r && r < b)
+                    .collect();
+                inside.sort_unstable();
+                if ob == oa + 1 {
+                    assert_eq!(
+                        inside,
+                        (a + 1..b).collect::<Vec<_>>(),
+                        "{class}: the {field} slots between the rendered {a} and {b} are all \
+                         port-only, the inventory must fill exactly them"
+                    );
+                } else {
+                    let port_only = (b - a - 1) - (ob - oa - 1);
+                    assert_eq!(
+                        inside.len() as i64,
+                        port_only,
+                        "{class}: {port_only} port-only {field} slot(s) between the rendered \
+                         {a} and {b}, the inventory places {inside:?} there"
+                    );
+                }
+            }
+            let top = shared.last().expect("Name renders in both documents").0;
+            for d in rows.iter().filter(|d| d["class"] == class) {
+                if d["kind"] == "port_hidden_property"
+                    && let Some(rank) = d[field].as_i64()
+                {
+                    let key = d["prop_key"].as_str().unwrap_or("?");
+                    assert!(
+                        rank < top,
+                        "{class}.{key}: hidden {field} {rank} lies above every property both \
+                         documents render, no neighbour fixes it"
+                    );
+                }
+            }
+        }
+    }
 }
