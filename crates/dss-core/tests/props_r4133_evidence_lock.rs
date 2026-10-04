@@ -32,7 +32,10 @@
 //!    including every value column: both `max_rel` columns against their pair
 //!    files and against the numeric bin rule (`bin = 7` iff `max_rel >= 1e-4`),
 //!    and every `(pair, rust-example, r4133-example)` triple of the two
-//!    in-scope extracts as a row of the digest-locked `examples_full.txt`.
+//!    in-scope extracts as a row of the digest-locked `examples_full.txt`, and
+//!    every example of `structural_pairs.txt` as such a row, exactly or cut,
+//!    bar its one escaped render, classified into its pair's bin
+//!    ([`structural_pairs_examples_are_census_cells`]).
 //!    These catch a partial regeneration and tie the files to each other;
 //!    what pins a value the triple check admits (another recorded spelling of
 //!    the same pair) is the digest of item 1.
@@ -59,6 +62,14 @@
 //!    section counts are still the ones it names ([`R4133_SKIPS`]). These read
 //!    live files, so they are the tripwire for the README's population prose
 //!    (RETRO_FIXES RF-D00-16).
+//! 7. **The README's tables and headline counts for these files** — the row
+//!    counts and byte totals of its §"Files", the census cell sum, the two
+//!    traps of item 4 with their tables, the per-bin totals and the bin-8
+//!    sentence, each rebuilt from the constants here or from the vendored files
+//!    in the README's own spelling ([`the_readme_quotes_the_locked_numbers`]
+//!    lists them). An in-scope per-cell count is read where the pair's
+//!    `bins.tsv` counts fix it ([`in_scope_share`]), and only the local census
+//!    holds the others.
 //!
 //! Nothing here needs an oracle, a solve or a feature flag: it is a data lock,
 //! green in both lanes.
@@ -67,6 +78,7 @@
 //! files updates the constants below in the same commit — that diff is the
 //! review artifact.
 
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -191,6 +203,21 @@ const SUPPLEMENT_BINS: &[(&str, u8)] = &[
     ("regcontrol.revthreshold", 7),
 ];
 
+/// Characters `structural_pairs.txt` keeps of a longer example value (README
+/// §"Known data traps").
+const STRUCTURAL_PAIRS_CUT: usize = 40;
+
+/// The `structural_pairs.txt` pairs whose printed example is a
+/// [`STRUCTURAL_PAIRS_CUT`]-character prefix of its census cell, so it joins
+/// `examples_full.txt` by prefix only.
+const STRUCTURAL_PAIRS_CUT_PAIRS: &[&str] = &["energymeter.mask"];
+
+/// The one `structural_pairs.txt` example that joins no `examples_full.txt`
+/// row: it prints its census cell's [`STRUCTURAL_PAIRS_CUT`]-character prefix
+/// with every `\` doubled, an escaped, cut render of the cell, not the cell
+/// itself.
+const STRUCTURAL_PAIRS_ESCAPED: &str = "storage.dynadll";
+
 /// `R4133_PROPS_PLAN.md` §1.1: bin → (pairs, cells) over the full census.
 const BIN_TOTALS: &[(u8, usize, usize)] = &[
     (1, 75, 297_593),
@@ -204,6 +231,15 @@ const BIN_TOTALS: &[(u8, usize, usize)] = &[
 
 /// Structural bins in scope (`cells_in_scope > 0`), §1.1's 198.
 const STRUCTURAL_IN_SCOPE: &[(u8, usize)] = &[(1, 75), (2, 59), (3, 7), (4, 14), (5, 43)];
+
+/// Bin 2's two subbins (README §"Per-bin totals"): subbin, pairs, cells (full
+/// census), pairs in scope.
+const BIN2_SUBBINS: &[(&str, usize, usize, usize)] =
+    &[("case", 59, 72_007, 57), ("trail", 2, 21_206, 2)];
+
+/// The in-scope numeric pairs by their re-derived class (README §"Known data
+/// traps"): display precision (bin 6), genuine value jump (bin 7).
+const NUMERIC_IN_SCOPE: (usize, usize) = (37, 16);
 
 /// The eleven Delphi boolean spellings r4133 answers with (README §bin 1).
 /// Anything else on a bin-1 pair is a `PropertyValue[]` echo.
@@ -251,6 +287,12 @@ const HETEROGENEOUS: &[(&str, u8, usize)] = &[
     ("storagecontroller.seasontargetslow", 5, 25),
     ("swtcontrol.action", 3, 6),
 ];
+
+/// The README's in-scope per-cell counts that `bins.tsv` fixes
+/// ([`in_scope_share`]): the off-bin cells in scope of `fuse.switchedobj`, all
+/// of whose cells are in scope, and the echo cells in scope of bin 1's five
+/// pure-echo pairs.
+const IN_SCOPE_CELLS_FIXED: usize = 6;
 
 /// `shape_in_scope.txt`: class → (rows, rows in scope). 429 → 149 (§1.1,
 /// WP-RP1's acceptance number).
@@ -960,6 +1002,100 @@ fn examples_full_carries_every_pair_and_every_cell() {
     );
 }
 
+/// `structural_pairs.txt` prints one representative cell per pair. Every
+/// example is a row of the digest-locked `examples_full.txt`, exactly or cut at
+/// [`STRUCTURAL_PAIRS_CUT`] characters ([`STRUCTURAL_PAIRS_CUT_PAIRS`]), except
+/// [`STRUCTURAL_PAIRS_ESCAPED`], which joins no row and is a cut census cell
+/// once its doubled backslashes are undone. The example is also the cell the
+/// pair's `bins.tsv` label was classified on (README §"`bins.tsv` — the
+/// assignment rule"), so [`classify`] reproduces every structural bin and
+/// bin-2 subbin from this file alone.
+#[test]
+fn structural_pairs_examples_are_census_cells() {
+    let full = examples_full_triples();
+    let mut census: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (pair, rust, r4133) in &full {
+        census
+            .entry(pair.as_str())
+            .or_default()
+            .push((rust.as_str(), r4133.as_str()));
+    }
+    // One side of an example against one side of a census cell.
+    let same_or_cut = |example: &str, cell: &str| {
+        example == cell
+            || (example.chars().count() == STRUCTURAL_PAIRS_CUT
+                && cell.chars().count() > STRUCTURAL_PAIRS_CUT
+                && cell.starts_with(example))
+    };
+    let joins = |pair: &str, rust: &str, r4133: &str| {
+        census.get(pair).is_some_and(|cells| {
+            cells
+                .iter()
+                .any(|(r, o)| same_or_cut(rust, r) && same_or_cut(r4133, o))
+        })
+    };
+    let label: BTreeMap<String, (u8, String)> = bins()
+        .into_iter()
+        .filter(|b| b.kind == "structural")
+        .map(|b| (b.pair, (b.bin, b.subbin)))
+        .collect();
+
+    let (mut exact, mut cut, mut escaped) = (0usize, Vec::new(), Vec::new());
+    for line in data_rows(
+        "structural_pairs.txt",
+        Some("class.prop | rust-example | r4133-example | rows"),
+    ) {
+        let (pair, rust, r4133, _) = parse_row("structural_pairs.txt", &line);
+        let (bin, subbin) = label.get(&pair).unwrap_or_else(|| {
+            panic!("structural_pairs.txt: {pair} has no structural bins.tsv row")
+        });
+        assert_eq!(
+            classify(&rust, &r4133),
+            *bin,
+            "structural_pairs.txt: {pair}'s example ('{rust}' | '{r4133}') does not classify into \
+             its bins.tsv bin"
+        );
+        let want_subbin = match (*bin, rust.to_lowercase() == r4133.to_lowercase()) {
+            (2, true) => "case",
+            (2, false) => "trail",
+            _ => "-",
+        };
+        assert_eq!(
+            subbin, want_subbin,
+            "structural_pairs.txt: {pair}'s bins.tsv subbin"
+        );
+
+        if full.contains(&(pair.clone(), rust.clone(), r4133.clone())) {
+            exact += 1;
+        } else if joins(&pair, &rust, &r4133) {
+            cut.push(pair);
+        } else {
+            let (rust, r4133) = (rust.replace("\\\\", "\\"), r4133.replace("\\\\", "\\"));
+            assert!(
+                joins(&pair, &rust, &r4133),
+                "structural_pairs.txt: {pair}'s example joins no examples_full.txt row — not \
+                 exactly, not cut at {STRUCTURAL_PAIRS_CUT} characters, not once its doubled \
+                 backslashes are undone"
+            );
+            escaped.push(pair);
+        }
+    }
+    assert_eq!(
+        cut, STRUCTURAL_PAIRS_CUT_PAIRS,
+        "the structural_pairs.txt examples that join examples_full.txt only as a cut value"
+    );
+    assert_eq!(
+        escaped,
+        [STRUCTURAL_PAIRS_ESCAPED],
+        "the structural_pairs.txt examples that join no examples_full.txt row as printed"
+    );
+    assert_eq!(
+        exact + cut.len() + escaped.len(),
+        label.len(),
+        "every structural pair has one structural_pairs.txt example"
+    );
+}
+
 /// **The RP2.1 supplement.** `examples_supplement.txt` is not a copy of anything
 /// — it is a measurement (a full `DSS_PROPS_CENSUS=1` run on the post-RP1.4 tree,
 /// 2026-08-23) of the pairs the frozen extracts *structurally cannot* contain,
@@ -1090,7 +1226,7 @@ fn per_bin_totals_match_the_plan() {
     let mut pairs: BTreeMap<u8, usize> = BTreeMap::new();
     let mut cells: BTreeMap<u8, usize> = BTreeMap::new();
     let mut structural_in_scope: BTreeMap<u8, usize> = BTreeMap::new();
-    let mut subbin: BTreeMap<String, usize> = BTreeMap::new();
+    let mut subbin: BTreeMap<String, (usize, usize, usize)> = BTreeMap::new();
     let (mut display, mut jump) = (0usize, 0usize);
 
     for b in &bins {
@@ -1107,7 +1243,10 @@ fn per_bin_totals_match_the_plan() {
                 if b.cells_in_scope > 0 {
                     *structural_in_scope.entry(b.bin).or_default() += 1;
                 }
-                *subbin.entry(b.subbin.clone()).or_default() += 1;
+                let s = subbin.entry(b.subbin.clone()).or_default();
+                s.0 += 1;
+                s.1 += b.cells;
+                s.2 += usize::from(b.cells_in_scope > 0);
             }
             _ => {
                 assert!(
@@ -1150,16 +1289,13 @@ fn per_bin_totals_match_the_plan() {
     }
     assert_eq!(bins.len(), 303, "303 census pairs");
     assert_eq!(cells.values().sum::<usize>(), 1_055_446, "total cells");
-    assert_eq!(
-        subbin.get("case").copied().unwrap_or(0),
-        59,
-        "bin-2 case pairs"
-    );
-    assert_eq!(
-        subbin.get("trail").copied().unwrap_or(0),
-        2,
-        "bin-2 trailing-space pairs"
-    );
+    for (name, want_pairs, want_cells, want_in_scope) in BIN2_SUBBINS {
+        assert_eq!(
+            subbin.get(*name).copied().unwrap_or_default(),
+            (*want_pairs, *want_cells, *want_in_scope),
+            "bin-2 {name} subbin: (pairs, cells, pairs in scope)"
+        );
+    }
 
     for (bin, want) in STRUCTURAL_IN_SCOPE {
         assert_eq!(
@@ -1175,7 +1311,7 @@ fn per_bin_totals_match_the_plan() {
     );
     assert_eq!(
         (display, jump),
-        (37, 16),
+        NUMERIC_IN_SCOPE,
         "in-scope numeric split (README §per-bin totals)"
     );
 }
@@ -1299,6 +1435,427 @@ fn the_readme_data_traps_are_still_the_measurement() {
         "bin-1 echo cells"
     );
     assert_eq!(bin1.len(), 75, "bin 1 has 75 pairs");
+}
+
+/// `n` the way the README writes it: digits grouped in threes by a space
+/// (`24 944`, `3 378`, `209`).
+fn grouped(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, d) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(' ');
+        }
+        out.push(d);
+    }
+    out
+}
+
+/// A small count the way the README spells it out (`nine`).
+fn word(n: usize) -> &'static str {
+    const WORDS: [&str; 13] = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve",
+    ];
+    WORDS
+        .get(n)
+        .copied()
+        .unwrap_or_else(|| panic!("no word for {n}"))
+}
+
+/// A count the way the README's tables write it: [`grouped`], a zero in bold.
+fn table_cell(n: usize) -> String {
+    if n == 0 {
+        "**0**".to_string()
+    } else {
+        grouped(n)
+    }
+}
+
+/// The in-scope cells of a `part` of a pair's `cells` cells, `in_scope` of
+/// them in scope, when those counts fix it. It lies between `part` less the
+/// out-of-scope cells and the smaller of `part` and `in_scope`, which meet
+/// only for a pair with no out-of-scope cell or no in-scope cell, or a `part`
+/// that is empty or every cell.
+fn in_scope_share(part: usize, cells: usize, in_scope: usize) -> Option<usize> {
+    let out_of_scope = cells
+        .checked_sub(in_scope)
+        .unwrap_or_else(|| panic!("{in_scope} cells in scope of {cells}"));
+    let lowest = part.saturating_sub(out_of_scope);
+    let highest = part.min(in_scope);
+    (lowest == highest).then_some(lowest)
+}
+
+/// The data rows of the first table in the README section headed exactly
+/// `heading` (header and separator rows dropped), each split into its trimmed
+/// cells.
+fn readme_table_cells(readme: &str, heading: &str) -> Vec<Vec<String>> {
+    let mut lines = readme.lines().map(|l| l.trim_end_matches('\r'));
+    assert!(
+        lines.any(|l| l == heading),
+        "README.md has no section headed {heading:?}"
+    );
+    lines
+        .take_while(|l| !l.starts_with('#'))
+        .skip_while(|l| !l.starts_with('|'))
+        .take_while(|l| l.starts_with('|'))
+        .skip(2)
+        .map(|l| {
+            let inner = l.trim_end();
+            let inner = inner.strip_prefix('|').unwrap_or(inner);
+            let inner = inner.strip_suffix('|').unwrap_or(inner);
+            inner.split('|').map(|c| c.trim().to_string()).collect()
+        })
+        .collect()
+}
+
+/// The row of `rows` whose first cell is `first`.
+fn readme_row<'a>(rows: &'a [Vec<String>], first: &str) -> &'a [String] {
+    rows.iter()
+        .find(|r| r.first().is_some_and(|c| c == first))
+        .unwrap_or_else(|| panic!("README.md has no table row for {first}"))
+}
+
+/// The README states numbers this lock measures, so it is read here: each one
+/// is rebuilt from this file's constants or from the vendored files in the
+/// README's own spelling (digits grouped by a space, small counts as words)
+/// and must appear in its text, line breaks aside. Read: the row counts, the
+/// line count of `triage.md` and the byte totals of §"Files"; the census cell
+/// sum of §"Row formats"; the heterogeneous pairs' headline counts, their share
+/// of the structural cells and their table; bin 1's echo counts and table; the
+/// per-bin totals table and the bin-8 sentence; a cell of the two tables'
+/// in-scope per-cell columns (off-bin in scope, echo cells in scope) where the
+/// pair's `bins.tsv` counts fix it ([`in_scope_share`]). Not read: the other
+/// in-scope per-cell counts and the counts drawn from them, which only the
+/// local census holds, and prose that repeats a number already read. A README
+/// edit that changes a number read here, or a constant that moves without the
+/// README, fails here.
+#[test]
+fn the_readme_quotes_the_locked_numbers() {
+    let readme = read("README.md");
+    let text = readme.split_whitespace().collect::<Vec<_>>().join(" ");
+    let quotes = |want: String| {
+        assert!(text.contains(&want), "README.md no longer quotes {want:?}");
+    };
+
+    // §"Files": every row-shaped file's data-row count, the line count of the
+    // one LF copy, `triage.md`, the five verbatim copies' total bytes, and
+    // `triage.md`'s share of them.
+    for (name, rows) in ROW_COUNTS {
+        quotes(format!("| `{name}` | {} data", grouped(*rows)));
+    }
+    quotes(format!(
+        "| `triage.md` | {} lines |",
+        grouped(read("triage.md").lines().count())
+    ));
+    let verbatim_bytes: usize = VERBATIM.iter().map(|(_, _, len)| len).sum();
+    let triage_bytes = VERBATIM
+        .iter()
+        .find(|(name, _, _)| *name == "triage.md")
+        .map(|(_, _, len)| *len)
+        .unwrap_or_default();
+    quotes(format!("({} bytes total)", grouped(verbatim_bytes)));
+    quotes(format!(
+        "({} of the {} bytes)",
+        grouped(triage_bytes),
+        grouped(verbatim_bytes)
+    ));
+
+    // §"Row formats": the census cells `examples_full.txt` accounts for.
+    let cells = |bins: std::ops::RangeInclusive<u8>| -> usize {
+        BIN_TOTALS
+            .iter()
+            .filter(|(bin, _, _)| bins.contains(bin))
+            .map(|(_, _, cells)| cells)
+            .sum()
+    };
+    let (structural_cells, numeric_cells) = (cells(1..=5), cells(6..=7));
+    let examples_rows = ROW_COUNTS
+        .iter()
+        .find(|(name, _)| *name == "examples_full.txt")
+        .map(|(_, rows)| *rows)
+        .unwrap_or_default();
+    quotes(format!(
+        "The {} rows' counts sum to {} = every value cell in the census ({} structural + {} \
+         numeric)",
+        grouped(examples_rows),
+        grouped(structural_cells + numeric_cells),
+        grouped(structural_cells),
+        grouped(numeric_cells)
+    ));
+
+    // §"A pair's bin is a label": the 17 heterogeneous pairs, the structural
+    // pairs in scope, the off-bin cells and their share of the structural
+    // cells, and one table row per pair.
+    let structural_pairs: usize = BIN_TOTALS
+        .iter()
+        .filter(|(bin, _, _)| *bin <= 5)
+        .map(|(_, pairs, _)| pairs)
+        .sum();
+    let structural_in_scope: usize = STRUCTURAL_IN_SCOPE.iter().map(|(_, pairs)| pairs).sum();
+    let off_bin: usize = HETEROGENEOUS.iter().map(|(_, _, off)| off).sum();
+    quotes(format!(
+        "**{} of the {}** structural pairs",
+        HETEROGENEOUS.len(),
+        grouped(structural_pairs)
+    ));
+    quotes(format!(
+        "of the {} in scope) split across two or three bins: {} cells — {:.2} % of the \
+         structural population,",
+        grouped(structural_in_scope),
+        grouped(off_bin),
+        100.0 * off_bin as f64 / structural_cells as f64
+    ));
+    quotes(format!("— {} pairs are heterogeneous", HETEROGENEOUS.len()));
+
+    // The table, every column of it (the off-bin cells in scope only where the
+    // pair's counts fix them). The last column lists the pair's cells by the
+    // bin they classify into, largest first.
+    let pair_cells: BTreeMap<String, (usize, usize)> = bins()
+        .into_iter()
+        .filter(|b| b.kind == "structural")
+        .map(|b| (b.pair, (b.cells, b.cells_in_scope)))
+        .collect();
+    let mut per_bin: BTreeMap<String, BTreeMap<u8, usize>> = BTreeMap::new();
+    for line in data_rows(
+        "examples_full.txt",
+        Some("class.prop | rust | r4133 | count"),
+    ) {
+        let (pair, rust, r4133, tail) = parse_row("examples_full.txt", &line);
+        if HETEROGENEOUS.iter().any(|(p, _, _)| *p == pair) {
+            *per_bin
+                .entry(pair)
+                .or_default()
+                .entry(classify(&rust, &r4133))
+                .or_default() += rows_field("examples_full.txt", &tail);
+        }
+    }
+    let rows = readme_table_cells(
+        &readme,
+        "### A pair's bin is a label, not a per-cell classification",
+    );
+    assert_eq!(
+        rows.len(),
+        HETEROGENEOUS.len(),
+        "README.md's heterogeneous-pair table rows"
+    );
+    let mut fixed_cells = 0usize;
+    for (pair, bin, off) in HETEROGENEOUS {
+        let row = readme_row(&rows, &format!("`{pair}`"));
+        assert_eq!(row.len(), 7, "README.md's heterogeneous-pair row {row:?}");
+        let (pair_total, pair_in_scope) = pair_cells[*pair];
+        let mut by_size: Vec<(u8, usize)> = per_bin[*pair].iter().map(|(b, c)| (*b, *c)).collect();
+        by_size.sort_by_key(|&(b, c)| (Reverse(c), b));
+        let split = by_size
+            .iter()
+            .map(|(b, c)| format!("{b}: {}", grouped(*c)))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let want = [
+            format!("`{pair}`"),
+            bin.to_string(),
+            grouped(pair_total),
+            grouped(*off),
+            grouped(pair_in_scope),
+            split,
+        ];
+        let got = [0, 1, 2, 3, 4, 6].map(|i| row[i].clone());
+        assert_eq!(
+            got, want,
+            "README.md's heterogeneous-pair row for {pair} (its off-bin-in-scope column aside)"
+        );
+        if let Some(off_in_scope) = in_scope_share(*off, pair_total, pair_in_scope) {
+            assert_eq!(
+                row[5],
+                table_cell(off_in_scope),
+                "README.md's off-bin-in-scope cell for {pair}, which its cells ({pair_total}, \
+                 {pair_in_scope} in scope) and off-bin cells ({off}) fix"
+            );
+            fixed_cells += 1;
+        }
+    }
+
+    // §"Bin 1 carries nine echo pairs": the pair counts, the echo cells, and
+    // one table row per echo pair, every column of it (the echo cells in scope
+    // only where the pair's counts fix them).
+    let bin1_pairs = BIN_TOTALS
+        .iter()
+        .find(|(bin, _, _)| *bin == 1)
+        .map(|(_, pairs, _)| *pairs)
+        .unwrap_or_default();
+    let echo_pairs = BIN1_ECHO.len();
+    let mixed = BIN1_ECHO.iter().filter(|(_, f, _, _)| *f > 0).count();
+    let echo_cells: usize = BIN1_ECHO.iter().map(|(_, _, e, _)| e).sum();
+    let heading = format!(
+        "### Bin 1 carries {} echo pairs, not three",
+        word(echo_pairs)
+    );
+    quotes(heading.clone());
+    quotes(format!(
+        "Of bin 1's {bin1_pairs} pairs, {} render one of the {} Delphi boolean spellings",
+        bin1_pairs - echo_pairs,
+        word(BOOL_SPELLINGS.len())
+    ));
+    quotes(format!(
+        "**{}** answer with an echo in some or all cells — {} echo cells",
+        word(echo_pairs),
+        grouped(echo_cells)
+    ));
+    quotes(format!("**{} genuinely mixed pairs**", word(mixed)));
+    quotes(format!("**{} pure-echo pairs**", word(echo_pairs - mixed)));
+    quotes(format!(
+        "**{} pairs** that are pure boolean rendering",
+        bin1_pairs - echo_pairs
+    ));
+    quotes(format!(
+        "bin 1 holds {} echo-carrying pairs",
+        word(echo_pairs)
+    ));
+    let rows = readme_table_cells(&readme, &heading);
+    assert_eq!(rows.len(), echo_pairs, "README.md's bin-1 echo table rows");
+    for (pair, foldable, echo, spelling) in BIN1_ECHO {
+        let row = readme_row(&rows, &format!("`{pair}`"));
+        let foldable = table_cell(*foldable);
+        let spelling = format!("`{}`", if spelling.is_empty() { "''" } else { spelling });
+        assert!(
+            row.len() == 5
+                && row[1] == foldable
+                && row[2] == grouped(*echo)
+                && row[3].starts_with(&spelling),
+            "README.md's bin-1 echo row for {pair} is {row:?}, not {foldable} | {} | {spelling} \
+             (its in-scope column aside)",
+            grouped(*echo)
+        );
+        let (pair_total, pair_in_scope) = pair_cells[*pair];
+        if let Some(echo_in_scope) = in_scope_share(*echo, pair_total, pair_in_scope) {
+            assert_eq!(
+                row[4],
+                table_cell(echo_in_scope),
+                "README.md's echo-cells-in-scope cell for {pair}, which its cells ({pair_total}, \
+                 {pair_in_scope} in scope) and echo cells ({echo}) fix"
+            );
+            fixed_cells += 1;
+        }
+    }
+    assert_eq!(
+        fixed_cells, IN_SCOPE_CELLS_FIXED,
+        "README.md in-scope per-cell counts that bins.tsv fixes"
+    );
+
+    // §"Per-bin totals": one row per bin and the total row, every column but
+    // the bin's description. Bin 2 spells out its two subbins.
+    let in_scope_pairs = |bin: u8| -> usize {
+        match bin {
+            6 => NUMERIC_IN_SCOPE.0,
+            7 => NUMERIC_IN_SCOPE.1,
+            _ => STRUCTURAL_IN_SCOPE
+                .iter()
+                .find(|(b, _)| *b == bin)
+                .map(|(_, pairs)| *pairs)
+                .unwrap_or_default(),
+        }
+    };
+    let with_subbins =
+        |total: usize, parts: Vec<String>| format!("{} ({})", grouped(total), parts.join(" + "));
+    let rows = readme_table_cells(
+        &readme,
+        "### Per-bin totals (both the full census and the in-scope re-derivation)",
+    );
+    assert_eq!(
+        rows.len(),
+        BIN_TOTALS.len() + 1,
+        "README.md's per-bin totals rows: one per bin and the total"
+    );
+    for (bin, pairs, bin_cells) in BIN_TOTALS {
+        let in_scope = in_scope_pairs(*bin);
+        let want = if *bin == 2 {
+            [
+                with_subbins(
+                    *pairs,
+                    BIN2_SUBBINS
+                        .iter()
+                        .map(|(name, p, _, _)| format!("{} {name}", grouped(*p)))
+                        .collect(),
+                ),
+                with_subbins(
+                    *bin_cells,
+                    BIN2_SUBBINS
+                        .iter()
+                        .map(|(_, _, c, _)| grouped(*c))
+                        .collect(),
+                ),
+                with_subbins(
+                    in_scope,
+                    BIN2_SUBBINS
+                        .iter()
+                        .map(|(_, _, _, s)| grouped(*s))
+                        .collect(),
+                ),
+            ]
+        } else {
+            [grouped(*pairs), grouped(*bin_cells), grouped(in_scope)]
+        };
+        let row = readme_row(&rows, &bin.to_string());
+        assert_eq!(row.len(), 5, "README.md's per-bin totals row {row:?}");
+        assert_eq!(
+            row[2..],
+            want,
+            "README.md's per-bin totals row for bin {bin} (its description aside)"
+        );
+    }
+    let total_pairs: usize = BIN_TOTALS.iter().map(|(_, pairs, _)| pairs).sum();
+    let total_in_scope: usize = BIN_TOTALS
+        .iter()
+        .map(|(bin, _, _)| in_scope_pairs(*bin))
+        .sum();
+    assert_eq!(
+        readme_row(&rows, "**total**"),
+        [
+            "**total**".to_string(),
+            String::new(),
+            format!("**{}**", grouped(total_pairs)),
+            format!("**{}**", grouped(structural_cells + numeric_cells)),
+            format!("**{}**", grouped(total_in_scope)),
+        ],
+        "README.md's per-bin totals row"
+    );
+
+    // Bin 8, the sentence under that table: `shape_in_scope.txt`'s classes and
+    // rows, the in-scope classes largest first, the others by their rows. The
+    // README capitalises the sentence's first word and two class names.
+    let mut kept: Vec<(&str, usize)> = SHAPE_IN_SCOPE
+        .iter()
+        .filter(|(_, _, k)| *k > 0)
+        .map(|(class, _, k)| (*class, *k))
+        .collect();
+    kept.sort_by_key(|&(_, k)| Reverse(k));
+    let mut dropped: Vec<(&str, usize)> = SHAPE_IN_SCOPE
+        .iter()
+        .filter(|(_, _, k)| *k == 0)
+        .map(|(class, rows, _)| (*class, *rows))
+        .collect();
+    dropped.sort_by_key(|&(_, rows)| Reverse(rows));
+    let bin8 = format!(
+        "bin 8 (property-table shape, `shape.txt`): {} classes / {} element rows in the full \
+         census; **{}** rows over {} classes in scope — {} ({} sit entirely on capi-only cases)",
+        SHAPE_IN_SCOPE.len(),
+        grouped(SHAPE_IN_SCOPE.iter().map(|(_, rows, _)| rows).sum()),
+        grouped(SHAPE_IN_SCOPE.iter().map(|(_, _, k)| k).sum()),
+        kept.len(),
+        kept.iter()
+            .map(|(class, k)| format!("{class} {}", grouped(*k)))
+            .collect::<Vec<_>>()
+            .join(", "),
+        dropped
+            .iter()
+            .map(|(class, rows)| format!("{class}'s {}", grouped(*rows)))
+            .collect::<Vec<_>>()
+            .join(" and "),
+    );
+    assert!(
+        text.to_lowercase().contains(&bin8),
+        "README.md no longer quotes {bin8:?} (case aside)"
+    );
 }
 
 #[test]
