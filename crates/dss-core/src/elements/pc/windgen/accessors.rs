@@ -638,11 +638,11 @@ impl DssObject for WindGen {
                 self.duty_shape_ref = load_shape_ref();
                 self.duty_shape_obj = load_shape();
             }
-            DYNAMICEQ => {
-                self.dyneq.dynamic_eq = name;
-                self.dyneq.dynamic_eq_ref = resolved.and_then(|o| o.idx::<DynamicExpObj>());
-                self.dyneq.dynamic_eq_obj = resolved.and_then(|o| o.cloned::<DynamicExpObj>());
-            }
+            DYNAMICEQ => self.dyneq.link(
+                name,
+                resolved.and_then(|o| o.idx::<DynamicExpObj>()),
+                resolved.and_then(|o| o.cloned::<DynamicExpObj>()),
+            ),
             VV_CURVE => {
                 self.vv_curve = name;
                 self.vv_curve_ref = xy_curve_ref();

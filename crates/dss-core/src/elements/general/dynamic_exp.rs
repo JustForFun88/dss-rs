@@ -31,9 +31,8 @@ use crate::obj::props::{PropDef, PropFlags, define_properties};
 
 define_properties! {
     class "DynamicExp", abbrev true, enums enums;
-    // Pascal leaves NVariables un-flagged (`DynamicExp.pas:143` — the
-    // `Unused, SuppressJSON` flags are commented out), so it IS emitted in the
-    // JSON/schema (default 0).
+    // NVariables carries no flag, so the JSON export and the schema emit it
+    // (default `DEFAULT_N_VARIABLES`).
     1 NVARIABLES => PropDef::integer("NVariables");
     2 VARNAMES   => PropDef::string_list("VarNames").flags(PropFlags::TRANSFORM_LOWERCASE);
     3 VR         => PropDef::string("Var")
@@ -48,6 +47,11 @@ use prop::{DOMAIN, EXPRESSION, NVARIABLES, VARIDX, VARNAMES, VR};
 /// Pascal `DYN_SLOT_LENGTH`: each state variable owns a 2-slot memory cell —
 /// `[value, derivative]` (one `z-1` slot for now).
 pub const DYN_SLOT_LENGTH: usize = 2;
+
+/// The memory rows an equation holds when `NVariables` is not written, so an
+/// equation that names its `VarNames` and omits the count still integrates
+/// (`every_host_integrates_an_omitted_nvariables_like_the_written_count`).
+pub const DEFAULT_N_VARIABLES: usize = 20;
 
 /// `TDynamicExpObj`.
 #[derive(Debug, Clone)]
@@ -67,7 +71,8 @@ pub struct DynamicExpObj {
     /// The differential equation in RPN, as written (kept verbatim; cleared on
     /// a compile error).
     expression: String,
-    /// Number of state variables (`NVariables`; "not really used", per Pascal).
+    /// Number of state variables (`NVariables`): the memory rows a host
+    /// allocates for this equation.
     n_variables: i32,
     /// `Domain` ordinal (0 = Time, 1 = dq).
     domain: i32,
@@ -83,7 +88,7 @@ impl DynamicExpObj {
             cmds: Vec::new(),
             active_var: String::new(),
             expression: String::new(),
-            n_variables: 0,
+            n_variables: DEFAULT_N_VARIABLES as i32,
             domain: 0, // TDynDomain.Time
         }
     }
@@ -93,6 +98,12 @@ impl DynamicExpObj {
     /// `NumVariables` by this (`* DYN_SLOT_LENGTH`), not by `var_names.len()`.
     pub fn n_variables(&self) -> i32 {
         self.n_variables
+    }
+
+    /// Whether `NVariables` was written, as opposed to holding
+    /// [`DEFAULT_N_VARIABLES`].
+    pub fn n_variables_written(&self) -> bool {
+        self.data.prp_specified(NVARIABLES)
     }
 
     /// Pascal `Get_Var_Idx` (`DynamicExp.pas:283`): classify `var_name` as a
@@ -523,7 +534,6 @@ impl DssObject for DynamicExpObj {
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         match idx {
-            // `NVariables`: "Not really used, ignore" (Pascal).
             EXPRESSION => self.interpret_diff_eq(),
             VR => {
                 // Pascal: `VarIdx := VarNames.IndexOf(ActiveVar)`; a miss logs

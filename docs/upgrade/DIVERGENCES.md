@@ -3093,16 +3093,20 @@ complete ledger and not loads plus `Circuit.Losses`.
 
 **Observable.** A Generator, WindGen, PVSystem or Storage linked by
 `DynamicEq=` integrates the equation's memory, one row per declared variable
-(`NVariables`, default 0 in the port). When that memory has no row, when
-`DynOut` is not set, or when the outputs, the calculated values or the
+(`NVariables`, default 20, see the row "`DynamicExp.NVariables` defaults to 20"
+below). When that memory has no row, when `DynOut` names fewer outputs than
+the host integrates, or when the outputs, the calculated values or the
 equations reach past its last row, the integration has nothing to read or
 write. The port refuses the dynamics `Solve` before its first step with error
 482, `Error Encountered in Solve: Generator.e1: DynamicExp.de declares no state
 variables (NVariables=0). Set NVariables to the number of its VarNames.` (or the
-`DynOut is not set` and `declares NVariables=1 but its equations use 2 state
-variables` forms), and the solution aborts. Entering dynamics stays silent. A
-`DynOut` read of an equation without `VarNames` answers the empty value, and a
-memory row past `VarNames` is named by the empty string.
+`declares NVariables=1 but its equations use 2 state variables` form, which
+reads `holds the default NVariables=20` when the count was not written, or the
+`DynOut` forms of the row "A `DynOut` list with a name that is not an output is
+refused" below), and the solution aborts. The memory is checked before
+`DynOut`. Entering dynamics stays silent. A `DynOut` read of an equation
+without `VarNames` answers the empty value, and a memory row past `VarNames` is
+named by the empty string.
 
 **Measured 2026-10-04** with the epri-worker on the r4133 DLL and the pinned
 dss-python 0.15.7, on the pins' deck for each host (dss_capi 0.14.5 has no
@@ -3133,7 +3137,8 @@ WindGen):
 - Two `VarNames` with `NVariables` omitted: r4133 integrates, because its
   `NumVars` defaults to 20 (`General/DynamicExp.pas:305`). dss_capi 0.14.5
   defaults `NVariables` to 0 (`src/General/DynamicExp.pas:218`) and fails the
-  `Solve` with 482 `Access violation`. The port keeps 0 and refuses.
+  `Solve` with 482 `Access violation`. The port defaults to 20 and integrates
+  as r4133 does (the row "`DynamicExp.NVariables` defaults to 20" below).
 - `DynOut` read back after an unresolved `DynOut=` on an equation without
   `VarNames`: both oracles raise 303 `List index out of bounds (0)`
   (`PCElements/PCElement.pas:205`).
@@ -3146,15 +3151,14 @@ write and hang are accidents of their implementation, not a rule. The port
 refuses with a message naming the element and the property to set, and never
 falls back to the built-in model in place of the equation the user linked. For
 no state and no `DynOut` that is the oracles' outcome class (a failed `Solve`,
-482, aborted). For a too small or omitted `NVariables` the port refuses where
-r4133 integrates. Whether the port should take r4133's default of 20 is a
-separate language question, open (the 0.14.5 default 0 is in the
-`dynamicexp_default` props golden).
+482, aborted). For an `NVariables` too small for what the equations use, the
+default 20 included, the port refuses where r4133 writes or reads past the
+memory without an error. An omitted `NVariables` holds 20 rows and integrates.
 
 **Pins** (`crates/dss-core/src/exec/tests/dynamic_eq_memory.rs`, both lanes):
 `windgen_`, `generator_`, `pvsystem_` and
-`storage_dynamic_eq_without_state_variables_refuses_the_dynamics_solve`,
-`an_omitted_nvariables_holds_no_state_variables`,
+`storage_dynamic_eq_without_state_variables_refuses_the_dynamics_solve` (an
+explicit `nvariables=0`), `an_omitted_nvariables_holds_twenty_rows`,
 `a_dynamic_eq_without_dynout_refuses_the_dynamics_solve`,
 `a_dynamic_eq_with_too_few_rows_refuses_the_dynamics_solve`,
 `generator_init_values_without_a_memory_row_refuse_the_dynamics_solve`,
@@ -3210,3 +3214,171 @@ refused the same way instead of taking its first two names as both oracles do.
 `every_host_refuses_a_dynout_longer_than_two_outputs`. No corpus deck, golden
 or test deck names more than two outputs (the corpus writes `[Speed theta]` and
 `[it]`), so no ledger entry, exclusion, golden byte or tolerance moved.
+
+## `DynamicExp.NVariables` defaults to 20 — 2026-10-04
+
+**Observable.** A `DynamicExp` that never writes `NVariables` holds 20 memory
+rows. `? DynamicExp.de.NVariables` reads `20` for `New DynamicExp.de`, for an
+equation with `VarNames` only and for a `like=` copy (which copies nothing),
+and a written count reads back as written, `0` included. An equation that
+names its `VarNames` and omits the count integrates on a Generator, WindGen,
+PVSystem or Storage exactly like the same equation with the count written. Its
+host reports the 20 rows, the rows past `VarNames` as unnamed zeros. An
+equation without `VarNames` (`New DynamicExp.de`, a `like=` copy) holds the 20
+rows but no output: its `DynOut=` never resolves, a re-link to it empties the
+`DynOut` its host had, and the host refuses the dynamics `Solve` (the row "A
+`DynOut` list with a name that is not an output is refused" below). An
+equation whose equations, outputs or calculated values reach past row 20
+(21 `VarNames` and `v1 dt = v21`) is refused with 482, `DynamicExp.de holds
+the default NVariables=20 but its equations use 21 state variables. Set
+NVariables to the number of its VarNames.`. `Save` writes `NVariables` only
+when the deck wrote it, so a saved equation reloads with the count it had. The
+JSON schema gives the property `"default" : 20`.
+
+**Measured 2026-10-04** with the epri-worker on the r4133 DLL and the pinned
+dss-python 0.15.7:
+
+- Readback: r4133 answers `20` for `New DynamicExp.de`, for `varnames=[a b]`
+  only and for `like=base` (its `MakeLike` copies nothing and reports no
+  error), and `0` for `nvariables=0`. dss_capi 0.14.5 answers `0` for all four
+  and refuses the `like=` with 50099.
+- Integration, on each host's deck (a swing equation started at `Speed=0.05`
+  for the machines, the filter current of a grid-following inverter for
+  Storage at 0.69 kV and PVSystem at 12.47 kV, 51 steps): r4133 runs the
+  omitted and the written count without an error, and the host powers, the
+  node voltages and its variable reads are bit-identical between the two on
+  all four hosts. dss_capi 0.14.5 fails the omitted count's `Solve` with 482
+  `Access violation` on Generator, PVSystem and Storage, and the machine deck's
+  initial values with 303.
+- More than 20 names: 21 `VarNames` with `NVariables` omitted run on r4133
+  without an error whether the equations stay in the first 20 rows or read
+  the 21st, which reads past the memory.
+- Variables: r4133's `AllVariableNames` of a linked host stays the classic
+  list (6 Generator, 22 WindGen and PVSystem, 34 Storage names) for either
+  count. A mode-3 monitor on a host whose equation omits the count fails with
+  670 `List index out of bounds (6). TStringList range is 0..5` (it names the
+  20 rows through `VarNames`), and the monitor then reports a garbage channel
+  count.
+- `Save`: r4133 writes no `nvariables` for the omitted count and
+  `nvariables=0` for the written one, as dss_capi 0.14.5 does.
+
+**Decision** (user, 2026-10-04). The default is a script-language choice:
+physics is indifferent to it and r4133's 20 is logical, since a user who
+writes `VarNames` and forgets the count gets a working equation. The port
+takes it in both lanes. r4133's read past row 20, its monitor failure and its
+integration of an equation without `VarNames` out of a zero row are not
+copied: a reach past the memory is refused, an unnamed row is named by the
+empty string (the first row above), and a host without an output refuses the
+solve (the row below). The pinned 0.14.5 oracle prints `0`,
+and regenerating its capture would print `0` again, so the two capture cells
+are excluded instead: `dynamicexp_default` / `NVariables` and
+`dynamicexp_makelike` / `NVariables` in `props_roundtrip.rs`'s
+`LANE_SKIP_SCENARIO_PROPS`. The schema default is a `port_changed_line` in
+`tests/golden/json/schema_divergences.json` and moves
+`tests/golden/json/schema_full_port.json`. No corpus deck omits `NVariables`,
+so no ledger entry moved.
+
+**Pins** (`crates/dss-core/src/exec/tests/dynamic_eq_memory.rs`, both lanes):
+`an_omitted_nvariables_reads_back_twenty` (it replays both excluded
+scenarios), `every_host_integrates_an_omitted_nvariables_like_the_written_count`,
+`an_omitted_nvariables_holds_twenty_rows` and
+`save_reloads_an_omitted_nvariables_as_the_default`, with the four
+`<host>_dynamic_eq_without_state_variables_refuses_the_dynamics_solve` pins
+for an explicit `nvariables=0`.
+
+## A `DynOut` list with a name that is not an output is refused, and a machine needs both outputs — 2026-10-04
+
+**Observable.** `DynOut=` names the outputs a host integrates, in slot order:
+a Generator or a WindGen integrates the first as its speed and the second as
+its angle, a PVSystem or a Storage the first as its current. A name resolves
+when it is an output of the linked `DynamicExp`, a variable with a
+`<name> dt =` equation. A list with a name that does not resolve is refused
+whole, like a list of three names (the row "`DynOut` with more names than its
+two output slots is refused" above): each such name records error 50008,
+`DynamicExp variable "zzz" not found or not defined as an output. DynOut is
+unchanged.`, and the element keeps the outputs it had. `DynOut` so holds only
+outputs a list named, and reads back as written: `[it]` for `DynOut=[it]`. A
+host refuses the dynamics `Solve` with 482 when `DynOut` names fewer outputs
+than it integrates: `DynOut is not set. Name the output variables of
+DynamicExp.de with DynOut=[...].` when it names none (no list, `DynOut=[]`, or
+only lists that did not resolve), and `DynOut names one output, but a machine
+integrates two, its speed and its angle. Name both output variables of
+DynamicExp.de with DynOut=[...].` for a machine given one name. A re-link,
+`DynamicEq=` set again, resolves the outputs `DynOut` reads back against the
+new equation by name: they stay when every one is an output of it, and
+`DynOut` is emptied otherwise, also when `DynamicEq=` names an equation that
+does not exist. A `DynOut=` list after `DynamicEq=` on the same
+line names outputs of the new equation. An equation without `VarNames`, such as
+the bare `New DynamicExp.de` or a `like=` copy, has no output to name, so its
+host refuses the solve whatever its memory holds, also after a re-link to it.
+
+**Measured 2026-10-04** with the epri-worker on the r4133 DLL and the pinned
+dss-python 0.15.7, on the pins' 0.69 kV deck for each host, 21 dynamics steps
+(dss_capi 0.14.5 has no WindGen):
+
+- `New DynamicExp.de` with `DynOut=[Speed theta]`, or a `like=` copy with
+  `DynOut=[a b]` (50008 for the names): r4133 reports no error at the `Solve`
+  and integrates both slots out of row 0 of its 20 zero rows. The Generator
+  falls from -500.0 kW / -269.8 kvar to -34.2 kW / -344.3 kvar per phase, the
+  WindGen ends at 2.5 kW / -11997 kvar and the Storage output at 0, and the
+  PVSystem diverges, as its built-in model does on this deck. dss_capi 0.14.5
+  fails the `Solve` with 482 `Access violation`, its default count being 0
+  (after 50099 on the `like=`).
+- `nvariables=2 varnames=[a b] expression=[a dt = b]` with `DynOut=[zzz]`:
+  both oracles record 50008 (the r4133 WindGen 303) and integrate both slots
+  out of row 0 without an error, with the same -34.2 kW on the Generator.
+  dss_capi reads `DynOut` back as `[a, a]`.
+- `nvariables=2 varnames=[Speed theta] expression=[Speed dt = theta; theta dt =
+  Speed]` with `DynOut=[Speed]`: the Generator integrates its angle out of the
+  speed row on both oracles without an error (-34.2 kW again) and reads back
+  `[speed, speed]`. The r4133 WindGen raises 303 on the one-name list, since it
+  reads a second name (`PCElements/WindGen.pas:1098-1101`), and integrates the
+  same way. With the count omitted r4133 does the same and dss_capi fails the
+  `Solve` with 482.
+- `DynOut=[]` on the bare equation: both oracles fail the `Solve` with 482.
+- After `DynOut=[a b]`, `DynOut=[b zzz]` takes `b` and leaves the slot whose
+  name failed at its old index on both oracles (dss_capi reads back `[b, b]`).
+- A re-link, `Edit Generator.e1 DynamicEq=b`, after `DynOut=[Speed theta]`
+  (`[it]` on an inverter) resolved on the six-name (four-name) equation `a`:
+  both oracles keep the slots' indices into `a`, and their memory. To a copy of
+  `a` they run bit-identically to the deck that never re-linked, where the port
+  allocates a fresh memory. To the bare `New DynamicExp.b`, a `like=` copy, a
+  written count without names, or `a`'s names with no equation for the last
+  output (`theta`, `it`), r4133 integrates without an error at the `Solve`:
+  the Generator holds -499.99 kW with its angle frozen, the WindGen ends at
+  2.5 kW / -11997 kvar, the PVSystem diverges to 9.2e65 and the Storage output
+  falls to 0. dss_capi integrates the written count and the missing equation
+  the same way, and fails the bare equation and the `like=` copy with 303 or
+  482. Both raise 303 on the `DynOut` readback of an equation without names.
+  `DynamicEq=b DynOut=[w th]` on one line reads back `[w, th]` on dss_capi.
+
+**Decision.** A slot holds an output its host integrates. A slot that no list
+filled holds none: the oracles' row 0 in its place is the zero of a fresh index
+array, and a list that fails part-way leaves them a mix of two lists. Either
+makes a machine integrate its speed and its angle out of one row, or out of a
+row of zeros, so its rotor angle collapses and its output with it. That is not
+dynamics. The port takes a list whole or not at all, keeping the outputs last
+set as for three names, and refuses a dynamics solve whose host lacks an
+output. The 20 default rows made the case reachable from an equation without
+`VarNames`: refused before for its empty memory, it now meets the `DynOut`
+refusal where r4133 integrates the collapsed state. A re-link replaces the
+equation a slot's index points into, so the port resolves the outputs again by
+the names `DynOut` reads back, whole or not at all. An equation that defines
+the same outputs keeps them, as the oracles' indices do for a copy, and any
+other empties `DynOut`.
+
+**Pins** (`crates/dss-core/src/exec/tests/dynamic_eq_memory.rs`, both lanes):
+`every_host_refuses_a_dynout_that_names_no_output_of_its_equation` (the bare
+equation, a `like=` copy and a written count),
+`every_host_refuses_an_empty_dynout`, `a_machine_refuses_a_dynout_with_one_output`,
+`every_host_keeps_its_dynout_through_a_list_with_an_unresolved_name`,
+`every_host_reads_back_no_dynout_from_an_equation_without_var_names`, which now
+covers the bare equation too,
+`every_host_refuses_a_relink_to_an_equation_without_its_outputs` (the bare
+equation, a `like=` copy, a written count without names, a missing equation for
+the last output and a smaller equation) and
+`every_host_keeps_its_dynout_through_a_relink_to_an_equation_with_its_outputs`
+(a copy, and `DynamicEq=` with `DynOut=` on one line). No corpus deck, golden
+or test deck names an output that does not resolve, gives a machine one name or
+re-links a host (the corpus writes `[Speed theta]` on machines and `[it]` on
+inverters), so no ledger entry, exclusion, golden byte or tolerance moved.

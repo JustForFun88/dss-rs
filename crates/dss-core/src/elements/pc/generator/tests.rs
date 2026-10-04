@@ -799,19 +799,21 @@ fn a_lone_shaft_model_names_its_own_tail() {
     assert_eq!(s[..4], dump, "the tail write leaves the dump alone");
 }
 
-/// A linked `DynamicExp` without variables keeps the classic layout: the same
-/// count, names and values as before the link, the 6 GenVars then both model
-/// tails.
+/// A linked `DynamicExp` without variables (`NVariables=0`) keeps the classic
+/// layout: the same count, names and values as before the link, the 6 GenVars
+/// then both model tails.
 #[test]
 fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
-    use crate::elements::general::dynamic_exp::DynamicExpObj;
+    use crate::elements::general::dynamic_exp::{DynamicExpObj, prop as dexp};
     let mut g = gen_3ph();
     bind_both_models(&mut g);
     let names: Vec<String> = (0..=35).map(|i| g.variable_name(i)).collect();
     let values = all_variables(&mut g);
     assert_eq!(values.len(), 6 + 14 + 14);
 
-    g.dyneq.dynamic_eq_obj = Some(DynamicExpObj::new("empty"));
+    let mut empty = DynamicExpObj::new("empty");
+    empty.set_i32(dexp::NVARIABLES, 0);
+    g.dyneq.dynamic_eq_obj = Some(empty);
     g.dyneq.on_dynamic_eq_set();
     assert_eq!(g.dyneq.num_variables(), 0);
     assert_eq!(g.num_variables(), 6 + 14 + 14);

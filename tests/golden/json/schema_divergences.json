@@ -343,6 +343,15 @@
       "count": 1,
       "props": ["InterruptingRating"],
       "cause": "OpenDSS r4133 (WP-U2.1, Version8 Controls/fuse.pas:192 InterruptingRating) added the informational Fuse rated interrupting current (default 0.0, not used internally). The port adopted it (elements/pd/fuse/mod.rs); absent from the pinned dss_capi 0.14.5 oracle, inserted at ordinal 12."
+    },
+    {
+      "class": "DynamicExp",
+      "kind": "port_changed_line",
+      "from": "      \"default\" : 20,",
+      "to": "      \"default\" : 0,",
+      "count": 1,
+      "props": ["NVariables"],
+      "cause": "OpenDSS r4133 defaults DynamicExp NVariables to 20 memory rows (General/DynamicExp.pas:305), so an equation that names its VarNames and omits the count integrates. The port adopted the r4133 default (elements/general/dynamic_exp.rs, DEFAULT_N_VARIABLES). The pinned 0.14.5 oracle defaults it to 0."
     }
   ]
 }

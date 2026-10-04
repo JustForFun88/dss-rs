@@ -689,16 +689,18 @@ fn a_dynamic_eq_pvsystem_keeps_its_model_tail() {
     assert_eq!(all_variables(&mut pv)[..4], dump);
 }
 
-/// A linked `DynamicExp` without variables keeps the classic layout: the same
-/// count and names as before the link, every classic value read as
-/// `-9999.99`, then the `UserModel` tail.
+/// A linked `DynamicExp` without variables (`NVariables=0`) keeps the classic
+/// layout: the same count and names as before the link, every classic value
+/// read as `-9999.99`, then the `UserModel` tail.
 #[test]
 fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
-    use crate::elements::general::dynamic_exp::DynamicExpObj;
+    use crate::elements::general::dynamic_exp::{DynamicExpObj, prop as dexp};
     let mut pv = pvsystem_with_user_model();
     let names: Vec<String> = (0..=27).map(|i| pv.variable_name(i)).collect();
 
-    pv.base.dyneq.dynamic_eq_obj = Some(DynamicExpObj::new("empty"));
+    let mut empty = DynamicExpObj::new("empty");
+    empty.set_i32(dexp::NVARIABLES, 0);
+    pv.base.dyneq.dynamic_eq_obj = Some(empty);
     pv.base.dyneq.on_dynamic_eq_set();
     assert_eq!(pv.base.dyneq.num_variables(), 0);
     assert_eq!(pv.num_variables(), 22 + 4);
