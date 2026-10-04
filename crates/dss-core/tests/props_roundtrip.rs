@@ -1,11 +1,15 @@
-//! Phase 2 gate: property round-trip against the dss-python oracle.
+//! Phase 2 gate: property round-trip against the committed props goldens.
 //!
 //! For each scenario under `tests/golden/props/` (one `<class>.json` per DSS
 //! class, each holding that class's scenarios; the gate runs every file in the
 //! directory), replay the identical command script through the Rust [`Dss`]
-//! executive and check that every property reads back the same value the oracle
-//! produced. Per PORTING_PLAN.md §4, numbers are compared with tolerance and the
-//! surrounding structure exactly, never by raw float-string diffing.
+//! executive and check that every property reads back the value its golden
+//! records. A file's values are what its `golden.lock.json` anchor names: an
+//! oracle capture for every file but the two [`PROPS_SELF_ANCHORED`] ones,
+//! whose values are the port's own renders
+//! ([`props_self_anchored_share_is_locked`]). Per PORTING_PLAN.md §4, numbers
+//! are compared with tolerance and the surrounding structure exactly, never by
+//! raw float-string diffing.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -63,14 +67,30 @@ struct Scenario {
 /// reaches, and is checked as `compared + lane_skips`, both counted at the
 /// comparison site itself — an added `continue` that stopped comparing cells
 /// would move `compared` without moving the corpus.
+///
+/// **Not every locked cell is an oracle comparison.** `golden.lock.json`
+/// anchors `recloser.json` and `relay.json` ([`PROPS_SELF_ANCHORED`]) as
+/// `self`: their committed values are the port's own renders, so their 15 of
+/// the 322 scenarios and 985 of the 8343 cells are port-render regression pins,
+/// not comparisons against an oracle.
+/// [`props_self_anchored_share_is_locked`] reads the anchors from the lock and
+/// keeps that share a reviewed number.
 const PROPS_CLASS_FILES: usize = 51;
 const PROPS_SCENARIOS: usize = 322;
 const PROPS_PROPERTY_CELLS: usize = 8343;
 
-/// The `props/` corpus as the gate sees it: the flattened scenarios plus the
-/// number of class files they came from ([`PROPS_CLASS_FILES`]).
+/// The class files `golden.lock.json` anchors `self`, in file-name order.
+const PROPS_SELF_ANCHORED: &[&str] = &["recloser.json", "relay.json"];
+/// The scenarios of the [`PROPS_SELF_ANCHORED`] files.
+const PROPS_SELF_ANCHORED_SCENARIOS: usize = 15;
+/// The property cells of the [`PROPS_SELF_ANCHORED`] files.
+const PROPS_SELF_ANCHORED_CELLS: usize = 985;
+
+/// The `props/` corpus as the gate sees it: the flattened scenarios plus, per
+/// class file name, its scenario and property-cell counts (one entry per
+/// file, so its length is checked against [`PROPS_CLASS_FILES`]).
 struct PropsCorpus {
-    class_files: usize,
+    files: BTreeMap<String, (usize, usize)>,
     scenarios: Vec<Scenario>,
 }
 
@@ -94,6 +114,7 @@ fn load_scenarios() -> PropsCorpus {
         .collect();
     files.sort();
     let mut scenarios = Vec::new();
+    let mut counts = BTreeMap::new();
     for p in &files {
         let text = std::fs::read_to_string(p)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", p.display()));
@@ -105,10 +126,17 @@ fn load_scenarios() -> PropsCorpus {
             "{}: props class file holds no scenarios",
             p.display()
         );
+        let name = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_else(|| panic!("{}: no UTF-8 file name", p.display()))
+            .to_string();
+        let cells = f.scenarios.iter().map(|s| s.properties.len()).sum();
+        counts.insert(name, (f.scenarios.len(), cells));
         scenarios.extend(f.scenarios);
     }
     PropsCorpus {
-        class_files: files.len(),
+        files: counts,
         scenarios,
     }
 }
@@ -325,6 +353,10 @@ fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
     }
 }
 
+/// Replays every scenario and compares every property cell against its
+/// committed value. The cells of the `self`-anchored class files
+/// ([`PROPS_SELF_ANCHORED`]) compare the port against its own committed
+/// renders, not against an oracle ([`props_self_anchored_share_is_locked`]).
 #[test]
 fn props_roundtrip_matches_oracle() {
     let corpus = load_scenarios();
@@ -334,11 +366,12 @@ fn props_roundtrip_matches_oracle() {
     // The population lock (see the constants): a class file or a scenario
     // cannot leave this gate without moving a number here.
     assert_eq!(
-        corpus.class_files, PROPS_CLASS_FILES,
+        corpus.files.len(),
+        PROPS_CLASS_FILES,
         "the props gate replays {} class files, {PROPS_CLASS_FILES} are locked. A file that \
          leaves takes its whole class's property coverage with it — move this number only in the \
          commit that argues for the new population.",
-        corpus.class_files
+        corpus.files.len()
     );
     assert_eq!(
         scenarios.len(),
@@ -457,5 +490,85 @@ fn props_roundtrip_matches_oracle() {
          {LANE_SKIP_PROP_VALUE_CELLS} recorded. Every skipped cell is a value \
          the oracle no longer checks, so this number only moves in the commit \
          that argues for the new set."
+    );
+}
+
+/// The `self`-anchored share of the population lock. Every class file has
+/// exactly one `golden.lock.json` row; the ones anchored `self` are exactly
+/// [`PROPS_SELF_ANCHORED`], and they hold [`PROPS_SELF_ANCHORED_SCENARIOS`] of
+/// the [`PROPS_SCENARIOS`] scenarios and [`PROPS_SELF_ANCHORED_CELLS`] of the
+/// [`PROPS_PROPERTY_CELLS`] cells [`props_roundtrip_matches_oracle`] replays.
+/// Those cells compare the port against its own renders, not an oracle.
+#[test]
+fn props_self_anchored_share_is_locked() {
+    let corpus = load_scenarios();
+    let lock_path: PathBuf = [
+        env!("CARGO_MANIFEST_DIR"),
+        "..",
+        "..",
+        "tests",
+        "golden",
+        "golden.lock.json",
+    ]
+    .iter()
+    .collect();
+    let text = std::fs::read_to_string(&lock_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", lock_path.display()));
+    let lock: serde_json::Value = serde_json::from_str(&text)
+        .unwrap_or_else(|e| panic!("cannot parse {}: {e}", lock_path.display()));
+    let artifacts = lock["artifacts"]
+        .as_array()
+        .expect("golden.lock.json carries an `artifacts` array");
+
+    let mut anchors: BTreeMap<&str, &str> = BTreeMap::new();
+    for row in artifacts {
+        let path = row["path"].as_str().expect("a lock row without a `path`");
+        let Some(file) = path.strip_prefix("tests/golden/props/") else {
+            continue;
+        };
+        let anchor = row["anchor"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{path}: a lock row without an `anchor`"));
+        assert!(
+            anchors.insert(file, anchor).is_none(),
+            "{path}: two golden.lock.json rows"
+        );
+    }
+    assert_eq!(
+        anchors.keys().copied().collect::<Vec<_>>(),
+        corpus.files.keys().map(String::as_str).collect::<Vec<_>>(),
+        "the props class files and their golden.lock.json rows differ"
+    );
+
+    let self_files: Vec<&str> = anchors
+        .iter()
+        .filter(|(_, anchor)| **anchor == "self")
+        .map(|(file, _)| *file)
+        .collect();
+    assert_eq!(
+        self_files, PROPS_SELF_ANCHORED,
+        "the self-anchored props class files moved"
+    );
+    let (all_scenarios, all_cells) = corpus
+        .files
+        .values()
+        .fold((0, 0), |(s, c), (fs, fc)| (s + fs, c + fc));
+    assert_eq!(
+        (all_scenarios, all_cells),
+        (PROPS_SCENARIOS, PROPS_PROPERTY_CELLS),
+        "the props corpus population (scenarios, cells)"
+    );
+    let (scenarios, cells) = self_files
+        .iter()
+        .map(|f| corpus.files[*f])
+        .fold((0, 0), |(s, c), (fs, fc)| (s + fs, c + fc));
+    assert_eq!(
+        (scenarios, cells),
+        (PROPS_SELF_ANCHORED_SCENARIOS, PROPS_SELF_ANCHORED_CELLS),
+        "the self-anchored class files hold {scenarios} of the {all_scenarios} scenarios and \
+         {cells} of the {all_cells} cells the props gate replays; \
+         {PROPS_SELF_ANCHORED_SCENARIOS} and {PROPS_SELF_ANCHORED_CELLS} are locked. These cells \
+         compare the port against its own renders, so the share moves only in the commit that \
+         argues for it."
     );
 }

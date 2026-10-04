@@ -787,45 +787,151 @@ mod tests {
         }
     }
 
+    /// The native `TWindGenVars` layout the P10 probe measured, read from the
+    /// committed artifact rather than transcribed.
+    const WINDGEN_PROBE: &str =
+        include_str!("../../../docs/wasm/probes/p10_offsets_windgenvars_r4133.txt");
+
     /// `TWindGenVars` **wasm image** offsets against the P10 probe
-    /// (`docs/wasm/probes/p10_offsets_windgenvars_r4133.txt`): the head is the
-    /// probe's native head verbatim (no `deltaQNom`, so the integers sit at
-    /// 176/180/184 and the unaligned Thevenin tail at 188…244), and the turbine
-    /// tail is the probe's 252…356 block shifted down 8 by dropping the managed
-    /// `PLoss` reference — `ag` at 244, `s` at 340, total 348.
+    /// ([`WINDGEN_PROBE`]): every field before the managed `PLoss` reference
+    /// sits at its probed native offset, every field after it at its probed
+    /// offset less `SizeOf(string)` (the image drops the reference and closes
+    /// the hole), and the image is the probed `SizeOf(TWindGenVars)` less that
+    /// reference. Every field the probe names is read here, so a field the
+    /// probe adds or the codec moves fails this test.
     #[test]
     fn wind_gen_vars_offsets_match_probe() {
+        use std::collections::BTreeMap;
+
+        let number = |line: &str, v: &str| -> usize {
+            v.trim()
+                .parse()
+                .unwrap_or_else(|e| panic!("probe line {line:?}: {e}"))
+        };
+        let (mut record_size, mut string_size) = (None, None);
+        let mut native: BTreeMap<&str, usize> = BTreeMap::new();
+        for line in WINDGEN_PROBE.lines().map(str::trim_end) {
+            if let Some(v) = line.strip_prefix("SizeOf(TWindGenVars) = ") {
+                record_size = Some(number(line, v));
+            } else if let Some(v) = line.strip_prefix("SizeOf(string) = ") {
+                string_size = Some(number(line, v));
+            } else if let Some(rest) = line.strip_prefix("TWindGenVars.") {
+                let (field, v) = rest
+                    .split_once(" offset = ")
+                    .unwrap_or_else(|| panic!("probe line {line:?} has no offset"));
+                assert!(
+                    native.insert(field, number(line, v)).is_none(),
+                    "probe names {field} twice"
+                );
+            }
+        }
+        let record_size = record_size.expect("the probe states SizeOf(TWindGenVars)");
+        let string_size = string_size.expect("the probe states SizeOf(string)");
+        assert_eq!(record_size, 356, "SizeOf(TWindGenVars) on the probe");
+        let ploss = native["PLoss"];
+        let image = |field: &str| {
+            let o = *native
+                .get(field)
+                .unwrap_or_else(|| panic!("the probe does not name {field}"));
+            if o > ploss { o - string_size } else { o }
+        };
+
         let w = wind_gen_sample();
         let b = w.to_bytes();
-        assert_eq!(b.len(), 348);
+        assert_eq!(b.len(), record_size - string_size);
+        assert_eq!(WindGenVars::SIZE, record_size - string_size);
         let f = |o: usize| f64::from_le_bytes(b[o..o + 8].try_into().unwrap());
         let i = |o: usize| i32::from_le_bytes(b[o..o + 4].try_into().unwrap());
-        // Head: probe offsets 0…244 (identical to the GeneratorVars wasm image).
-        assert_eq!(f(0), 1.0); // Theta
-        assert_eq!(f(64), 9.0); // kVArating
-        assert_eq!(f(72), 10.0); // kVWindGenBase (the renamed field)
-        assert_eq!(f(168), 22.0); // Qnominalperphase — NOT followed by deltaQNom
-        assert_eq!(i(176), 23); // NumPhases
-        assert_eq!(i(180), 24); // NumConductors
-        assert_eq!(i(184), 25); // Conn
-        assert_eq!(f(188), 26.0); // VthevMag (unaligned tail begins)
-        assert_eq!(f(220), 30.0); // Zthev.re
-        assert_eq!(f(228), 31.0); // Zthev.im
-        assert_eq!(f(236), 32.0); // XRdp
-        // Turbine tail: probe 252…356 minus the 8-byte PLoss reference.
-        assert_eq!(f(244), 33.0); // ag      (probe 252)
-        assert_eq!(f(252), 34.0); // Cp      (probe 260)
-        assert_eq!(f(260), 35.0); // Lamda   (probe 268)
-        assert_eq!(f(268), 36.0); // Poles   (probe 276)
-        assert_eq!(f(276), 37.0); // pd      (probe 284)
-        assert_eq!(f(284), 38.0); // Rad     (probe 292)
-        assert_eq!(f(292), 39.0); // VCutin  (probe 300)
-        assert_eq!(f(300), 40.0); // VCutout (probe 308)
-        assert_eq!(f(308), 41.0); // Pm      (probe 316)
-        assert_eq!(f(316), 42.0); // Ps      (probe 324)
-        assert_eq!(f(324), 43.0); // Pr      (probe 332)
-        assert_eq!(f(332), 44.0); // Pg      (probe 340)
-        assert_eq!(f(340), 45.0); // s       (probe 348)
+
+        let doubles = [
+            ("Theta", w.theta),
+            ("Pshaft", w.pshaft),
+            ("Speed", w.speed),
+            ("w0", w.w0),
+            ("Hmass", w.hmass),
+            ("Mmass", w.mmass),
+            ("D", w.d),
+            ("Dpu", w.dpu),
+            ("kVArating", w.kva_rating),
+            ("kVWindGenBase", w.kv_windgen_base),
+            ("Xd", w.xd),
+            ("Xdp", w.xdp),
+            ("Xdpp", w.xdpp),
+            ("puXd", w.pu_xd),
+            ("puXdp", w.pu_xdp),
+            ("puXdpp", w.pu_xdpp),
+            ("dTheta", w.dtheta),
+            ("dSpeed", w.dspeed),
+            ("ThetaHistory", w.theta_history),
+            ("SpeedHistory", w.speed_history),
+            ("Pnominalperphase", w.pnominalperphase),
+            ("Qnominalperphase", w.qnominalperphase),
+            ("VthevMag", w.vthev_mag),
+            ("VThevHarm", w.vthev_harm),
+            ("ThetaHarm", w.theta_harm),
+            ("VTarget", w.vtarget),
+            ("Zthev.re", w.zthev.0),
+            ("Zthev.im", w.zthev.1),
+            ("XRdp", w.xrdp),
+            ("ag", w.ag),
+            ("Cp", w.cp),
+            ("Lamda", w.lamda),
+            ("Poles", w.poles),
+            ("pd", w.pd),
+            ("Rad", w.rad),
+            ("VCutin", w.v_cutin),
+            ("VCutout", w.v_cutout),
+            ("Pm", w.pm),
+            ("Ps", w.ps),
+            ("Pr", w.pr),
+            ("Pg", w.pg),
+            ("s", w.s),
+        ];
+        let integers = [
+            ("NumPhases", w.num_phases),
+            ("NumConductors", w.num_conductors),
+            ("Conn", w.conn),
+        ];
+        // Distinct sample values, so a read at a swapped offset cannot pass.
+        let mut values: Vec<u64> = doubles.iter().map(|(_, v)| v.to_bits()).collect();
+        values.extend(integers.iter().map(|(_, v)| f64::from(*v).to_bits()));
+        let n = values.len();
+        values.sort_unstable();
+        values.dedup();
+        assert_eq!(values.len(), n, "wind_gen_sample repeats a value");
+        for (field, want) in doubles {
+            assert_eq!(
+                f(image(field)),
+                want,
+                "{field} at image offset {}",
+                image(field)
+            );
+        }
+        for (field, want) in integers {
+            assert_eq!(
+                i(image(field)),
+                want,
+                "{field} at image offset {}",
+                image(field)
+            );
+        }
+        // `Zthev` is its own `.re` half; `PLoss` does not cross into the image.
+        assert_eq!(native["Zthev"], native["Zthev.re"]);
+        let read: Vec<&str> = doubles
+            .iter()
+            .map(|(n, _)| *n)
+            .chain(integers.iter().map(|(n, _)| *n))
+            .chain(["Zthev", "PLoss"])
+            .collect();
+        let mut read_sorted = read.clone();
+        read_sorted.sort_unstable();
+        read_sorted.dedup();
+        assert_eq!(read_sorted.len(), read.len(), "a field is read twice");
+        assert_eq!(
+            native.keys().copied().collect::<Vec<_>>(),
+            read_sorted,
+            "the probe's fields and the fields read here differ"
+        );
     }
 
     /// The load-bearing design property of ABI §2.6: the `TWindGenVars` wasm
