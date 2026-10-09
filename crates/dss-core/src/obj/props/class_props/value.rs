@@ -104,8 +104,14 @@ impl ClassProps {
                 // its JSON arm at `:1242-1266` repeats the same slip), so it
                 // reads uninitialized memory and prints ~0 whatever was stored.
                 // That is UB and is not reproduced in any lane.
-                let order = obj.get_i32(pd.size_prop).max(0) as usize;
                 let vals = obj.get_f64_array(idx);
+                // A matrix a later `phases=` edit left of another order reads
+                // back at its own order, the matrix the element holds (pinned
+                // by `elements::pd::fault::tests::a_refused_matrix_element_saves_and_reloads_refused`).
+                let order = crate::report::save::dump::held_matrix_order(
+                    obj.get_i32(pd.size_prop).max(0) as usize,
+                    vals.as_ref().map_or(0, |v| v.len()),
+                );
                 if order == 0 {
                     return String::new();
                 }

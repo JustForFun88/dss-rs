@@ -35,7 +35,8 @@ mod tests;
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pd::matrix_order_refusal;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan, pos_seq_self_term};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
@@ -275,14 +276,38 @@ impl CktElement for Fault {
         &mut self.cd
     }
 
-    /// Pascal `TFaultObj.MakePosSequence` (Fault.pas:604-609): a multi-phase
-    /// fault collapses to `Phases := 1` (a bare single edit), then `inherited`
-    /// (the base bus rename). A 1-phase fault only runs the base rename.
+    /// A multi-phase fault collapses to `Phases := 1` (a bare single edit),
+    /// then the base bus rename. A `gmatrix` fault also writes `R`, in ohms,
+    /// as `1 / S(G)` with `S` the positive-sequence self term
+    /// [`pos_seq_self_term`] of its nodal conductance, so it keeps its power
+    /// under a balanced voltage (pinned by
+    /// `elements::pd::fault::tests::make_pos_sequence_gmatrix_fault_keeps_its_current`
+    /// and `make_pos_sequence_two_phase_gmatrix_fault_keeps_its_power`).
+    /// A matrix with no positive-sequence conductance (`S(G) <= 0`, no
+    /// resistance network but the zero matrix) only gets the bare
+    /// `Phases := 1` (pinned for the zero matrix by
+    /// `make_pos_sequence_gmatrix_fault_with_no_conductance_draws_nothing`).
+    /// A 1-phase fault only runs the base rename, and so does a fault the solve
+    /// refuses.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
-        if self.cd.nphases > 1 {
-            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(prop::PHASES, 1)])
+        let nphases = self.cd.nphases;
+        if nphases <= 1 || self.refusal().is_some() {
+            return PosSeqPlan::base();
+        }
+        let g1 = match (self.spec_type, self.gmatrix.as_deref()) {
+            (2, Some(gm)) if gm.len() >= nphases * nphases => pos_seq_self_term(gm, nphases),
+            _ => 0.0,
+        };
+        if g1 > 0.0 {
+            PosSeqPlan::with_actions(vec![
+                PosSeqAction::BeginEdit,
+                PosSeqAction::SetI32(prop::PHASES, 1),
+                // `R` stores its inverse, so the action carries ohms.
+                PosSeqAction::SetF64(prop::R, 1.0 / g1),
+                PosSeqAction::EndEdit,
+            ])
         } else {
-            PosSeqPlan::base()
+            PosSeqPlan::with_actions(vec![PosSeqAction::SetI32(prop::PHASES, 1)])
         }
     }
 
@@ -328,11 +353,28 @@ impl CktElement for Fault {
             random_mult = 0.000001;
         }
 
+        if let Some(msg) = self.refusal() {
+            // An enabled fault refuses the solve (pinned by
+            // `a_gmatrix_short_of_the_phases_refuses_the_solve`). A disabled
+            // one is out of the model and keeps a zero stamp.
+            if self.cd.enabled {
+                self.cd.obj.push_error(msg);
+                self.cd.yprim_refused = true;
+            }
+            self.cd.yprim_freq = sys.frequency;
+            self.cd.yprim_series = Some(CMatrix::new(yorder));
+            self.cd.yprim_shunt = Some(CMatrix::new(yorder));
+            self.cd.yprim = Some(CMatrix::new(yorder));
+            self.cd.yprim_invalid = false;
+            return;
+        }
+
         let mut work = CMatrix::new(yorder);
         match self.spec_type {
             2 => {
-                // Gmatrix specified.
-                let gm = self.gmatrix.as_ref().expect("SpecType 2 has Gmatrix");
+                // Gmatrix specified, `nphases²` entries, or more on one phase
+                // (`refusal`).
+                let gm = self.gmatrix.as_deref().unwrap_or_default();
                 let is_on = self.is_on;
                 work.stamp_two_terminal_block(nphases, StampBl::Transposed, |i, j| {
                     if is_on {
@@ -376,6 +418,27 @@ impl CktElement for Fault {
 }
 
 impl Fault {
+    /// Why the solve refuses this fault, if it does: a `gmatrix` whose order is
+    /// not its phase count, as a `phases=` edit after the matrix leaves it
+    /// (pinned by `a_gmatrix_short_of_the_phases_refuses_the_solve` and
+    /// `a_gmatrix_larger_than_the_phases_refuses_the_solve`). One phase reads
+    /// the first entry of a larger matrix, the `G11` the bare `Phases := 1`
+    /// reduction leaves.
+    fn refusal(&self) -> Option<String> {
+        let nphases = self.cd.nphases;
+        let len = self.gmatrix.as_ref().map_or(0, Vec::len);
+        let fits = if nphases >= 2 {
+            len == nphases * nphases
+        } else {
+            len >= nphases
+        };
+        if self.spec_type != 2 || fits {
+            return None;
+        }
+        let full = format!("Fault.{}", self.cd.obj.name());
+        matrix_order_refusal(&full, nphases, "gmatrix", len, "gmatrix")
+    }
+
     /// Pascal `TFaultObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);

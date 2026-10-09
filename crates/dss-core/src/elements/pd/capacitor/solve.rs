@@ -5,7 +5,8 @@ use num_complex::Complex64;
 
 use super::{CUF_SCALE, Capacitor, CapacitorSpecType};
 use crate::elements::ckt::CktElementData;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pd::matrix_order_refusal;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan, pos_seq_self_term};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::util::sqrt3;
@@ -25,15 +26,14 @@ impl Capacitor {
         match self.spec_type {
             CapacitorSpecType::Kvar => {
                 phase_kv = self.phase_kv();
-                // `FC[i] := 1.0 / (w * SQR(PhasekV) * 1000.0 / (FkvarRating[1] /
-                // Fnphases))` — `SQR` binds first, so the square is an atom:
-                // `w * (kv*kv)`, not `(w*kv) * kv`. The two associations differ by
-                // one ULP for many realistic (kV, kvar, f) triples and the result
-                // is rendered verbatim as the `Cuf` property (pinned bit-exactly
-                // against the oracle in `tests.rs`).
-                let fc = 1.0 / (w * phase_kv.powi(2) * 1000.0 / (self.fkvarrating[0] / nphases));
-                for v in self.fc.iter_mut() {
-                    *v = fc;
+                // Each step's capacitance comes from its own rating (pinned by
+                // `derived_cuf_multistep_takes_each_steps_own_rating` and
+                // `a_kvar_bank_of_unequal_steps_draws_its_rating`). The square
+                // is one factor, `w * (kv*kv)`, which `Cuf` renders to the bit
+                // (`derived_cuf_kvar_wye_matches_oracle_bit_exactly`).
+                let kv_sq = phase_kv.powi(2);
+                for (c, &kvar) in self.fc.iter_mut().zip(&self.fkvarrating) {
+                    *c = 1.0 / (w * kv_sq * 1000.0 / (kvar / nphases));
                 }
                 for &k in self.fkvarrating.iter().take(n) {
                     self.ftotalkvar += k;
@@ -89,10 +89,35 @@ impl Capacitor {
         }
     }
 
-    /// Pascal `MakeYprimWork`: build one energized step's admittance into
-    /// `ywork`. The matrix is *reused across steps without clearing* (faithful to
-    /// the Pascal: wye/cmatrix overwrite their positions; delta accumulates).
+    /// Why the solve refuses this `cmatrix` bank, if it does: a nodal matrix
+    /// has no defined delta stamp for two or more phases, and the matrix must
+    /// be `nphases × nphases`.
+    fn refusal(&self) -> Option<String> {
+        if self.spec_type != CapacitorSpecType::CMatrix {
+            return None;
+        }
+        let full = format!("Capacitor.{}", self.cd.obj.name());
+        let nphases = self.cd.nphases;
+        if self.connection == 1 && nphases >= 2 {
+            return Some(format!(
+                "{full}: a cmatrix bank of {nphases} phases cannot be connected in delta. \
+                 Specify it with conn=wye. Aborting solution."
+            ));
+        }
+        let len = self.cmatrix.as_ref().map_or(0, Vec::len);
+        matrix_order_refusal(&full, nphases, "cmatrix", len, "cmatrix")
+    }
+
+    /// A closed three-phase delta: three legs, one conductor per phase.
+    fn is_closed_delta(&self) -> bool {
+        self.connection == 1 && self.cd.nphases == 3 && self.cd.nconds == 3
+    }
+
+    /// Build one energized step's admittance into `ywork`, cleared first, so
+    /// the steps of a bank add as capacitors in parallel in every connection
+    /// (pinned by `a_multistep_delta_bank_draws_the_sum_of_its_steps`).
     fn make_yprim_work(&self, ywork: &mut CMatrix, istep: usize, freq: f64) {
+        ywork.clear();
         let two_pi = 2.0 * std::f64::consts::PI;
         let freq_multiple = freq / self.cd.base_frequency;
         let w = two_pi * freq;
@@ -107,7 +132,7 @@ impl Capacitor {
             CapacitorSpecType::Kvar | CapacitorSpecType::Cuf => {
                 let mut value = Complex64::new(0.0, self.fc[i_step] * w);
                 if self.connection == 1 {
-                    // Delta (line-line); AddElement accumulates.
+                    // Delta (line-line): each leg adds to the two nodes it joins.
                     ywork.stamp_delta_series(nphases, nconds, value);
                 } else {
                     // Wye; assignment overwrites.
@@ -118,7 +143,10 @@ impl Capacitor {
                 }
             }
             CapacitorSpecType::CMatrix => {
-                let cm = self.cmatrix.as_ref().expect("SpecType 3 has a CMatrix");
+                // `calc_yprim` refuses the delta form of two or more phases and
+                // a matrix of another order before it reaches here, so the
+                // matrix holds `nphases²` entries.
+                let cm = self.cmatrix.as_deref().unwrap_or_default();
                 ywork.stamp_two_terminal_block(nphases, StampBl::Transposed, |i, j| {
                     Complex64::new(0.0, cm[i * nphases + j] * w)
                 });
@@ -211,6 +239,23 @@ impl CktElement for Capacitor {
         let mut yp_shunt = CMatrix::new(yorder);
         let mut ywork = CMatrix::new(yorder);
 
+        if let Some(msg) = self.refusal() {
+            // An enabled bank refuses the solve (pinned by
+            // `a_delta_cmatrix_bank_refuses_the_solve` and
+            // `a_cmatrix_of_another_phase_count_refuses_the_solve`). A disabled
+            // one is out of the model and keeps a zero stamp (pinned by
+            // `a_disabled_delta_cmatrix_bank_leaves_the_solve_to_the_rest`).
+            if self.cd.enabled {
+                self.cd.obj.push_error(msg);
+                self.cd.yprim_refused = true;
+            }
+            self.cd.yprim_series = Some(yp_series);
+            self.cd.yprim_shunt = Some(yp_shunt);
+            self.cd.yprim = Some(ywork);
+            self.cd.yprim_invalid = false;
+            return;
+        }
+
         {
             let temp = if self.is_shunt {
                 &mut yp_shunt
@@ -243,62 +288,24 @@ impl CktElement for Capacitor {
         self.cd.yprim_invalid = false;
     }
 
-    /// Pascal `TCapacitorObj.MakePosSequence` (Capacitor.pas:768-819). Collapse
-    /// a capacitor bank to its positive-sequence single-phase form (done for
-    /// 1-phase too). By `SpecType`:
+    /// Collapse a capacitor bank to its positive-sequence single-phase form,
+    /// keeping the bank's power under a balanced voltage (the positive-sequence
+    /// circuit reports three times the one phase). By `SpecType`:
     /// - 1 (kvar): kV per the connection/phase rule, per-step kvar/3, `Phases:=1`.
-    /// - 2 (Cuf): a *bare* `Phases := 1` — a single Set with no surrounding
-    ///   `BeginEdit`/`EndEdit` (the applier auto-brackets it).
-    /// - 3 (CMatrix, only when multi-phase): average the self/mutual of `CMatrix`
-    ///   into `Cuf`, the same value on every step (the mutual loop includes the
-    ///   2..N diagonals, as in Pascal).
+    /// - 2 (Cuf): a *bare* `Phases := 1` (the applier brackets it), which keeps
+    ///   the per-phase capacitance. A closed three-phase delta bank also writes
+    ///   its wye equivalent, three times the leg value, on every step (pinned by
+    ///   `elements::pd::capacitor::tests::make_pos_sequence_delta_cuf_bank_keeps_its_power`).
+    /// - 3 (CMatrix, two or more phases): the positive-sequence self term
+    ///   [`pos_seq_self_term`] of the nodal matrix goes to the array property
+    ///   `Cuf` in its own µF units, the same value on every step, since every
+    ///   energized step stamps the whole matrix (pinned by
+    ///   `elements::pd::capacitor::tests::make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`
+    ///   and `make_pos_sequence_cmatrix_multistep_bank_keeps_every_step`). A
+    ///   bank the solve refuses, a delta bank of two or more phases or a matrix
+    ///   of another order than its phases, is left as it is.
     ///
-    /// # The `Cuf` write of the `CMatrix` arm
-    ///
-    /// `Cuf` is a *double-array* property (per switched step;
-    /// `.inputs/dss_capi/src/PDElements/Capacitor.pas:240`), and neither oracle
-    /// revision actually applies the `Cs - Cm` it computes for it:
-    ///
-    /// * pinned dss_capi 0.14.5 aims the **scalar** setter at it —
-    ///   `SetDouble(ord(TProp.Cuf), (Cs - Cm), [])` (`Capacitor.pas:814`) —
-    ///   whose trailing `case PropertyType`
-    ///   (`src/General/DSSObjectHelper.pas:2812-2834`) enumerates only the three
-    ///   scalar double types and has no `else`, so the value is dropped with no
-    ///   error while `SetDouble`'s success path (`:3050-3054`) still marks the
-    ///   property sequence and runs the `Cuf` side effect `SpecType := 2`
-    ///   (`Capacitor.pas:383-386`). The bank is then computed from whatever
-    ///   `FC` happened to hold, and the `cmatrix` the user gave is switched out
-    ///   of `MakeYprimWork` for good (`:926-978`; the matrix arm needs
-    ///   `SpecType = 3`). Oracle-verified: `? Capacitor.…cuf` is unchanged
-    ///   across `makeposseq`. The sibling `kvar` arm two branches up writes its
-    ///   own array property correctly with `SetDoubles` (`:793`).
-    /// * EPRI r4133 predates the typed setters and formats the value into a
-    ///   command string instead — `S := S + Format(' Cuf=%-.5g', [(Cs - Cm)])`,
-    ///   then one `Edit(ActorID)`
-    ///   (`Version8/Source/PDElements/Capacitor.pas:829`, `:834-835`) — so it
-    ///   *does* apply it, through `InterpretDblArray`
-    ///   (`Version8/Source/Common/Utilities.pas:788-791`, "Fills array with
-    ///   zeros if we run out of numbers"). But `Cmatrix` is already in farads
-    ///   there (`:255`) while the `cuf` side effect multiplies the parsed array
-    ///   by `1.0e-6` again (`:411`), so r4133 lands 4e-12 F where 4e-6 F was
-    ///   meant — the same value, six orders of magnitude down.
-    ///
-    /// What both revisions *intend* is unambiguous — r4133 spells the array
-    /// write out — so `GOLDEN_REBASE_PLAN.md` G2.5 performs it in both lanes
-    /// (CLAUDE.md 2026-08-02: upstream bugs are never reproduced): the array
-    /// write, in the property's own µF units, so the `SpecType := 2` the side
-    /// effect sets is backed by the capacitance the reduction computed. Every
-    /// energized step of the bank stamps the whole `cmatrix`, so every step of
-    /// the reduced bank carries the value (pinned by
-    /// `elements::pd::capacitor::tests::make_pos_sequence_cmatrix_multistep_bank_keeps_every_step`).
-    /// The gated deck that sees it
-    /// (`modes/makeposseq/makeposseq_shunt.dss`, `Capacitor.cap_cmat`) then
-    /// diverges from the `capi_v0145` oracle across the whole post-`makeposseq`
-    /// model; that is ledgered (`tests/corpus/ledger.json`
-    /// `makeposseq-cuf-applied-capi`) and the applied value pinned by
-    /// `elements::pd::capacitor::tests::make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`.
-    ///
-    /// The value is written at full `f64` precision.
+    /// Values are written at full `f64` precision.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop::*;
 
@@ -325,44 +332,39 @@ impl CktElement for Capacitor {
                     PosSeqAction::EndEdit,
                 ]
             }
+            CapacitorSpecType::Cuf if self.is_closed_delta() => {
+                // Each leg's capacitance is a third of its wye equivalent.
+                let new_cuf: Vec<Option<f64>> = self
+                    .fc
+                    .iter()
+                    .take(self.n_steps())
+                    .map(|&c| Some(3.0 * c / CUF_SCALE))
+                    .collect();
+                vec![
+                    PosSeqAction::BeginEdit,
+                    PosSeqAction::SetI32(PHASES, 1),
+                    PosSeqAction::SetStructF64s(CUF, new_cuf),
+                    PosSeqAction::EndEdit,
+                ]
+            }
             CapacitorSpecType::Cuf => {
                 // Bare single-set edit (no BeginEdit/EndEdit).
                 vec![PosSeqAction::SetI32(PHASES, 1)]
             }
-            CapacitorSpecType::CMatrix => {
-                if nphases > 1 {
-                    // C Matrix: average self/mutual → Cuf.
-                    let cmat = self.cmatrix.as_deref().expect("SpecType 3 CMatrix");
-                    let np = nphases;
-                    let npf = np as f64;
-                    let mut cs = 0.0; // Avg Self
-                    for i in 0..np {
-                        cs += cmat[i * np + i];
-                    }
-                    cs /= npf;
-                    let mut cm = 0.0; // Avg mutual (2..N diagonals included)
-                    for i0 in 1..np {
-                        for j0 in i0..np {
-                            cm += cmat[i0 * np + j0];
-                        }
-                    }
-                    cm /= npf * (npf - 1.0) / 2.0;
-                    // `Cs - Cm` goes to the array property `Cuf` in its own µF
-                    // units (`Cmatrix` is stored in farads), one value per
-                    // step: every energized step stamps the whole `cmatrix`, so
-                    // every step of the reduced bank carries it.
-                    let nsteps = self.fnumsteps.max(1) as usize;
-                    let new_cuf: Vec<Option<f64>> = vec![Some((cs - cm) / CUF_SCALE); nsteps];
-                    vec![
-                        PosSeqAction::BeginEdit,
-                        PosSeqAction::SetI32(PHASES, 1),
-                        PosSeqAction::SetStructF64s(CUF, new_cuf),
-                        PosSeqAction::EndEdit,
-                    ]
-                } else {
-                    Vec::new()
-                }
+            CapacitorSpecType::CMatrix if nphases > 1 && self.refusal().is_none() => {
+                // `Cmatrix` is stored in farads, `Cuf` is written in µF. With
+                // no refusal it holds `nphases²` entries.
+                let cmat = self.cmatrix.as_deref().unwrap_or_default();
+                let c1 = pos_seq_self_term(cmat, nphases) / CUF_SCALE;
+                let nsteps = self.fnumsteps.max(1) as usize;
+                vec![
+                    PosSeqAction::BeginEdit,
+                    PosSeqAction::SetI32(PHASES, 1),
+                    PosSeqAction::SetStructF64s(CUF, vec![Some(c1); nsteps]),
+                    PosSeqAction::EndEdit,
+                ]
             }
+            CapacitorSpecType::CMatrix => Vec::new(),
         };
 
         PosSeqPlan::with_actions(actions)

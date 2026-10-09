@@ -282,8 +282,8 @@ impl Disposition {
     /// channel but `R4133` (plan mechanic (b) at the measurement layer, pinned
     /// in `props_norm`), and what remains on capi is the **ledger** link, which
     /// is a real capi mechanism — the gate's own capi property compare applies
-    /// `property`-scoped entries (`makeposseq-cuf-applied-capi-props`), and the
-    /// full-population claims run measures 11 such hits. Before the RP2.1 audit
+    /// `property`-scoped entries (`makeposseq-cuf-applied-capi-props`), and a
+    /// full-population claims run reports their hits. Before the RP2.1 audit
     /// round this function was channel-blind, so a capi divergence whose
     /// spelling an r4133 rule folds would have been reported
     /// `normalized-by-<rule>` while the live capi comparator still failed on it.
@@ -1745,9 +1745,10 @@ mod tests {
     ///
     /// Three of the chain's four links are r4133 mechanisms; the ledger link is
     /// a real capi one (the gate applies `property`-scoped entries on that
-    /// channel — `makeposseq-cuf-applied-capi-props`, 11 hits on the measured
-    /// full population). So the SAME cell that folds on r4133 must come back
-    /// `UNCLAIMED` on capi, while a ledger-named cell is `ledger-hit` on both.
+    /// channel — `makeposseq-cuf-applied-capi-props` and its sibling
+    /// `makeposseq-matrix-average-capi-props`). So the SAME cell that folds on
+    /// r4133 must come back `UNCLAIMED` on capi, while a ledger-named cell is
+    /// `ledger-hit` on both.
     ///
     /// This is the RP2.1 audit round's fix: `annotate` used to ignore the row's
     /// channel, so the measured "capi normalizes nothing" was a statement about

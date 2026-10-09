@@ -139,9 +139,8 @@ impl DssObject for Capacitor {
     /// the array is (re)sized to the supplied count, matching `SetObjDoubles`.
     fn set_struct_f64_array(&mut self, idx: usize, values: &[Option<f64>]) {
         use super::prop::*;
-        // `MakePosSequence`'s `CMatrix` arm drives `Cuf` the same way
-        // (`solve.rs`), which is what r4133's `Format(' Cuf=%-.5g', …)` +
-        // `Edit` does through `InterpretDblArray`.
+        // `MakePosSequence`'s `CMatrix` and closed-delta `Cuf` arms drive `Cuf`
+        // the same way (`solve.rs`).
         match idx {
             KVAR => {
                 let old = std::mem::take(&mut self.fkvarrating);

@@ -2462,7 +2462,7 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
         )),
     ),
     // G2.5, row 2 of 3. `TCapacitorObj.MakePosSequence`'s `CMatrix` arm computes
-    // the positive-sequence `Cs - Cm` and then loses it: dss_capi 0.14.5 aims
+    // a reduced `Cuf` and then loses it: dss_capi 0.14.5 aims
     // the scalar `SetDouble` at the array property `Cuf`
     // (`.inputs/dss_capi/src/PDElements/Capacitor.pas:814` +
     // `src/General/DSSObjectHelper.pas:2812-2834`, three scalar arms and no
@@ -2470,8 +2470,9 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // computes from stale `FC` and the user's `cmatrix` is switched out of
     // `MakeYprimWork` for good; r4133 formats the same value into a command
     // string (`Version8/Source/PDElements/Capacitor.pas:829`) but re-applies the
-    // `1.0e-6` property scale (`:411`) to an already-farad value. Both lanes now
-    // perform the array write in µF.
+    // `1.0e-6` property scale (`:411`) to an already-farad value. Both lanes
+    // perform the array write in µF, of the positive-sequence self term of the
+    // matrix (ledger cause `makeposseq-matrix-average-skips-the-first-row`).
     (
         "MAKEPOSSEQ_CUF_LOST_ON_THE_SCALAR_SETTER",
         Kind::WholeCase,

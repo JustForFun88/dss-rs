@@ -5,7 +5,8 @@ use num_complex::Complex64;
 
 use super::{Reactor, ReactorSpecType};
 use crate::elements::ckt::CktElementData;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pd::matrix_order_refusal;
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan, pos_seq_self_term};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::support::mathutil::etk_invert;
@@ -65,6 +66,14 @@ impl Reactor {
         if self.is_parallel && self.spec_type == ReactorSpecType::Matrices {
             let nphases = self.cd.nphases;
             let n2 = nphases * nphases;
+            let fits = |m: &Option<Vec<f64>>| m.as_ref().is_none_or(|m| m.len() == n2);
+            if !(fits(&self.rmatrix) && fits(&self.xmatrix)) {
+                // A matrix of another order than the phases has nothing to
+                // invert: the solve refuses the reactor (`refusal`).
+                self.gmatrix = None;
+                self.bmatrix = None;
+                return;
+            }
             // Copy Rmatrix to Gmatrix and invert (Pascal comment notes the source
             // bug where Rmatrix was inverted in place; the ported code inverts the
             // copy, matching the shipped binary).
@@ -97,18 +106,182 @@ impl Reactor {
         }
     }
 
-    /// Build the series-impedance `ZMatrix` (already inverted to a Y matrix) for
-    /// `SpecType = 3` series and `SpecType = 4`, then stamp it into the four
-    /// quadrants of the two-terminal `work` matrix. `zmat[i][j]` is `nphases²`
-    /// row-major. Mirrors the shared Pascal stamping loop.
-    fn stamp_series(work: &mut CMatrix, zmat: &mut CMatrix, nphases: usize) {
+    /// The `R`, `X` and `Rp` writes of a matrix reactor's positive-sequence
+    /// reduction, two or more phases. The value is the positive-sequence self
+    /// term [`pos_seq_self_term`] of the matrix the element stamps:
+    /// - series form, two or three phases: `R + jX = 1 / S(Y)` with
+    ///   `Y = (R + jX)⁻¹` inverted as the stamp inverts it;
+    /// - parallel form, two or three phases: `R = 0`, `X = −1 / S(B)` and
+    ///   `Rp = 1 / S(G)`, from the `G = R⁻¹` and `B = −X⁻¹` the stamp uses;
+    /// - above three phases: `S(rmatrix)` and `S(xmatrix)` (user ruling
+    ///   2026-10-04), as `R` and `X` for the series form, as `Rp` and `X` with
+    ///   `R = 0` for the parallel form.
+    ///
+    /// A zero self term has no finite element and takes the open fallback of
+    /// the stamp, at every phase count: a parallel `X` of `1 / EPSILON`, and a
+    /// series `R` of `1 / EPSILON` with `X = 0` (pinned by
+    /// `make_pos_sequence_four_conductor_zero_self_term_stays_finite`).
+    ///
+    /// The R + jX element the reduction leaves stamps `Rp` whenever one was
+    /// given, while the matrix stamp never reads it, so a reduction that writes
+    /// no `Rp` of its own writes 0 over a given one.
+    fn matrix_pos_seq(&self) -> Vec<PosSeqAction> {
+        use super::prop::*;
+        let n = self.cd.nphases;
+        let zeros = vec![0.0; n * n];
+        let rm = self.rmatrix.as_deref().unwrap_or(&zeros);
+        let xm = self.xmatrix.as_deref().unwrap_or(&zeros);
+        let (r, x, rp) = if self.is_parallel {
+            let (x, rp) = if n <= 3 {
+                let g = pos_seq_self_term(self.gmatrix.as_deref().unwrap_or(&zeros), n);
+                let b = pos_seq_self_term(self.bmatrix.as_deref().unwrap_or(&zeros), n);
+                let x = if b != 0.0 { -1.0 / b } else { 1.0 / EPSILON };
+                (x, if g != 0.0 { 1.0 / g } else { 0.0 })
+            } else {
+                let x = pos_seq_self_term(xm, n);
+                let x = if x != 0.0 { x } else { 1.0 / EPSILON };
+                (x, pos_seq_self_term(rm, n))
+            };
+            (0.0, x, rp)
+        } else if n <= 3 {
+            let mut y = self.series_zmatrix(1.0).unwrap_or_else(|| CMatrix::new(n));
+            Self::invert_series(&mut y, n);
+            let y: Vec<Complex64> = (0..n * n).map(|k| y.get(k / n, k % n)).collect();
+            let s = pos_seq_self_term(&y, n);
+            let z1 = if s != Complex64::ZERO {
+                1.0 / s
+            } else {
+                Complex64::new(1.0 / EPSILON, 0.0)
+            };
+            (z1.re, z1.im, 0.0)
+        } else {
+            let (r, x) = (pos_seq_self_term(rm, n), pos_seq_self_term(xm, n));
+            if r == 0.0 && x == 0.0 {
+                (1.0 / EPSILON, 0.0, 0.0)
+            } else {
+                (r, x, 0.0)
+            }
+        };
+        let mut out = vec![PosSeqAction::SetF64(R, r), PosSeqAction::SetF64(X, x)];
+        if rp != 0.0 || self.rp_specified {
+            out.push(PosSeqAction::SetF64(RP, rp));
+        }
+        out
+    }
+
+    /// Invert the series impedance `zmat` in place into its admittance. On an
+    /// inversion error it becomes a tiny series conductance on the diagonal.
+    /// The solve refuses a series `rmatrix`/`xmatrix` pair that does not
+    /// invert at base frequency ([`Self::refusal`]), so the fallback is left to
+    /// a symmetrical-component matrix with a zero sequence impedance and to a
+    /// series matrix at another frequency (a GIC solve stamps `rmatrix` alone).
+    fn invert_series(zmat: &mut CMatrix, nphases: usize) {
         if zmat.invert().is_err() {
-            // Inversion error: tiny series conductance on the diagonal.
             zmat.clear();
             for i in 0..nphases {
                 zmat.set(i, i, Complex64::new(EPSILON, 0.0));
             }
         }
+    }
+
+    /// The first given matrix of the parallel form, `rmatrix` then `xmatrix`,
+    /// that does not invert. A matrix nobody gave stamps no branch.
+    fn singular_parallel_matrix(&self) -> Option<&'static str> {
+        let n = self.cd.nphases;
+        [("rmatrix", &self.rmatrix), ("xmatrix", &self.xmatrix)]
+            .into_iter()
+            .find(|(_, m)| {
+                m.as_ref()
+                    .is_some_and(|m| etk_invert(&mut m.clone(), n).is_err())
+            })
+            .map(|(prop, _)| prop)
+    }
+
+    /// The series-form impedance matrix `R + jX` at base frequency, when both
+    /// matrices are given.
+    fn series_zmatrix(&self, freq_multiplier: f64) -> Option<CMatrix> {
+        let (rm, xm) = (self.rmatrix.as_ref()?, self.xmatrix.as_ref()?);
+        let nphases = self.cd.nphases;
+        let mut zmat = CMatrix::new(nphases);
+        for i in 0..nphases {
+            for j in 0..nphases {
+                let k = i * nphases + j;
+                zmat.set(i, j, Complex64::new(rm[k], xm[k] * freq_multiplier));
+            }
+        }
+        Some(zmat)
+    }
+
+    /// Why the solve refuses this reactor, if it does: a delta matrix or
+    /// symmetrical-component reactor of two or more phases has no defined
+    /// stamp, a given matrix must be `nphases × nphases`, and the series matrix
+    /// form needs both matrices, whose impedance `R + jX` must invert (a
+    /// singular one has a current pattern that meets no impedance, and so no
+    /// admittance, pinned by `a_singular_series_matrix_refuses_the_solve`).
+    /// The parallel form stamps `R⁻¹` and `−X⁻¹`, so a given `rmatrix` or
+    /// `xmatrix` must invert for the same reason (pinned by
+    /// `a_singular_parallel_matrix_refuses_the_solve`).
+    fn refusal(&self) -> Option<String> {
+        let full = format!("Reactor.{}", self.cd.obj.name());
+        let nphases = self.cd.nphases;
+        let delta_multi = self.connection == 1 && nphases >= 2;
+        match self.spec_type {
+            ReactorSpecType::Matrices | ReactorSpecType::SymComponents if delta_multi => {
+                let form = if self.spec_type == ReactorSpecType::Matrices {
+                    "rmatrix/xmatrix"
+                } else {
+                    "z1/z2/z0"
+                };
+                Some(format!(
+                    "{full}: a reactor of {nphases} phases given by {form} cannot be \
+                     connected in delta. Specify it with conn=wye. Aborting solution."
+                ))
+            }
+            ReactorSpecType::Matrices => {
+                for (prop, m) in [("rmatrix", &self.rmatrix), ("xmatrix", &self.xmatrix)] {
+                    let order = m.as_ref().and_then(|m| {
+                        matrix_order_refusal(&full, nphases, prop, m.len(), "rmatrix and xmatrix")
+                    });
+                    if order.is_some() {
+                        return order;
+                    }
+                }
+                if self.is_parallel {
+                    return self.singular_parallel_matrix().map(|prop| {
+                        format!(
+                            "{full}: {prop} is singular, so the parallel reactor has no \
+                             admittance. Specify an {prop} that can be inverted. Aborting solution."
+                        )
+                    });
+                }
+                let missing = match (&self.rmatrix, &self.xmatrix) {
+                    (None, _) => "rmatrix",
+                    (_, None) => "xmatrix",
+                    _ => {
+                        let z = self.series_zmatrix(1.0);
+                        return z.filter(|z| z.clone().invert().is_err()).map(|_| {
+                            format!(
+                                "{full}: the impedance rmatrix + j xmatrix is singular and has \
+                                 no admittance. Specify matrices that can be inverted. \
+                                 Aborting solution."
+                            )
+                        });
+                    }
+                };
+                Some(format!(
+                    "{full}: {missing} is missing. A reactor given by matrices needs both \
+                     rmatrix and xmatrix. Aborting solution."
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// Invert the series impedance `zmat` ([`Self::invert_series`]) and stamp
+    /// the admittance into the four quadrants of the two-terminal `work`
+    /// matrix. `zmat[i][j]` is `nphases²` row-major.
+    fn stamp_series(work: &mut CMatrix, zmat: &mut CMatrix, nphases: usize) {
+        Self::invert_series(zmat, nphases);
         // `StampBl::Direct` places the bottom-left block at `(i+n, j)`, NOT
         // `(j+n, i)` (Pascal `YPrimTemp[i + Fnphases, j] := -Value`,
         // `Reactor.pas:936`, the SpecType-3/4 stamp). For a **symmetric** series Y
@@ -146,9 +319,16 @@ impl CktElement for Reactor {
         self.emerg_amps
     }
 
-    /// Pascal `TReactorObj.GetLosses` (Reactor.pas l.1017): no-load losses are
-    /// `V²/Rp` across the shunt — only when `Rp` is specified on a shunt
-    /// reactor; otherwise the default element behavior.
+    /// The total, load and no-load losses. A shunt reactor's no-load loss is
+    /// the loss of the `Rp` its stamp holds (the kvar and R + jX forms), `V²/Rp`
+    /// at the voltage the stamp puts across each `Rp`: the leg voltages of a
+    /// delta, node to node or node to ground as the legs run, and terminal 1 to
+    /// terminal 2 of a wye (pinned by `a_delta_reactor_loses_its_rp_across_the_legs`
+    /// and `a_wye_reactor_loses_its_rp_between_its_terminals`). The matrix
+    /// and Z1 stamps read no `Rp`, so a given one adds nothing, and the whole
+    /// loss of a matrix reactor, `Parallel=yes` included, is load loss (pinned
+    /// by `the_no_load_loss_is_the_parallel_branch_the_stamp_holds`). A
+    /// positive-sequence circuit reports three times the one phase.
     fn get_losses_split(
         &mut self,
         sys: &SysCtx,
@@ -157,23 +337,36 @@ impl CktElement for Reactor {
         if !self.cd.enabled || self.cd.node_ref.is_empty() {
             return (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO);
         }
-        if self.rp_specified && self.is_shunt && self.rp != 0.0 {
-            let total = self.losses(sys, node_v);
-            let mut no_load = 0.0_f64;
-            let cd = &self.cd;
-            for i in 0..cd.nphases {
-                let v = node_v[cd.node_ref[i]];
-                no_load += (v.re * v.re + v.im * v.im) / self.rp;
-            }
-            if sys.positive_sequence {
-                no_load *= 3.0;
-            }
-            let no_load = Complex64::new(no_load, 0.0);
-            (total, total - no_load, no_load)
+        let total = self.losses(sys, node_v);
+        let cd = &self.cd;
+        let n = cd.nphases;
+        let stamps_rp = matches!(
+            self.spec_type,
+            ReactorSpecType::Kvar | ReactorSpecType::RplusJx
+        );
+        let mut no_load = if self.is_shunt && stamps_rp && self.rp_specified && self.rp != 0.0 {
+            let nconds = cd.nconds;
+            // The two conductors of each `Rp`, as `calc_yprim` stamps them.
+            let across = |i: usize| -> (usize, usize) {
+                if self.connection == 1 {
+                    (i, if i + 1 < nconds { i + 1 } else { 0 })
+                } else {
+                    (i, n + i)
+                }
+            };
+            (0..n).fold(0.0, |acc, i| {
+                let (a, b) = across(i);
+                let v = node_v[cd.node_ref[a]] - node_v[cd.node_ref[b]];
+                acc + v.norm_sqr() / self.rp
+            })
         } else {
-            let total = self.losses(sys, node_v);
-            (total, total, Complex64::ZERO)
+            0.0
+        };
+        if sys.positive_sequence {
+            no_load *= 3.0;
         }
+        let no_load = Complex64::new(no_load, 0.0);
+        (total, total - no_load, no_load)
     }
 
     /// Pascal `TPDElement.IsShunt` (set by the Bus1/Bus2 side effects).
@@ -205,6 +398,24 @@ impl CktElement for Reactor {
         self.cd.yprim_freq = yprim_freq;
 
         let mut work = CMatrix::new(yorder);
+
+        if let Some(msg) = self.refusal() {
+            // An enabled reactor refuses the solve (pinned by
+            // `a_delta_matrix_reactor_refuses_the_solve`,
+            // `a_matrix_reactor_without_both_matrices_refuses_the_solve` and
+            // `a_matrix_of_another_phase_count_refuses_the_solve`). A disabled
+            // one is out of the model and keeps a zero stamp (pinned by
+            // `a_refused_reactor_set_aside_by_disable_leaves_the_solve_to_the_rest`).
+            if self.cd.enabled {
+                self.cd.obj.push_error(msg);
+                self.cd.yprim_refused = true;
+            }
+            self.cd.yprim_series = Some(CMatrix::new(yorder));
+            self.cd.yprim_shunt = Some(CMatrix::new(yorder));
+            self.cd.yprim = Some(work);
+            self.cd.yprim_invalid = false;
+            return;
+        }
 
         match self.spec_type {
             ReactorSpecType::Kvar | ReactorSpecType::RplusJx => {
@@ -255,30 +466,29 @@ impl CktElement for Reactor {
                         }
                     });
                 } else {
-                    // Series R and X: build Z, invert, stamp.
-                    let rm = self.rmatrix.as_ref().expect("SpecType 3 has Rmatrix");
-                    let xm = self.xmatrix.as_ref().expect("SpecType 3 has Xmatrix");
-                    let mut zmat = CMatrix::new(nphases);
-                    for i in 0..nphases {
-                        for j in 0..nphases {
-                            let k = i * nphases + j;
-                            zmat.set(i, j, Complex64::new(rm[k], xm[k] * freq_multiplier));
-                        }
-                    }
+                    // Series R and X: build Z, invert, stamp. `refusal` has
+                    // checked that both matrices are given, `nphases²` each.
+                    let mut zmat = self
+                        .series_zmatrix(freq_multiplier)
+                        .expect("refusal checks both matrices");
                     Self::stamp_series(&mut work, &mut zmat, nphases);
                 }
             }
             ReactorSpecType::SymComponents => {
                 // Symmetrical-component Z's specified.
                 let mut zmat = CMatrix::new(nphases);
-                // Diagonal — all the same.
+                // Diagonal — all the same: `Z1` on one phase (pinned by
+                // `a_single_phase_z1_reactor_stamps_z1`), `(Z0 + Z1 + Z2) / 3`
+                // on more.
                 let mut value = if nphases == 1 {
                     self.z1
                 } else {
                     self.z2 + self.z1 + self.z0
                 };
                 value.im *= freq_multiplier;
-                value /= 3.0;
+                if nphases > 1 {
+                    value /= 3.0;
+                }
                 for i in 0..nphases {
                     zmat.set(i, i, value);
                 }
@@ -347,21 +557,45 @@ impl CktElement for Reactor {
         self.cd.yprim_invalid = false;
     }
 
-    /// Pascal `TReactorObj.MakePosSequence` (Reactor.pas:1052-1115). Collapse a
-    /// reactor to its positive-sequence single-phase form. Always wraps the
-    /// edit in `BeginEdit`/`EndEdit`; what happens inside depends on `SpecType`:
-    /// - 2 (R+jX) / 4 (Z1): just `Phases := 1`.
-    /// - 1 (kvar): kvar/3 per phase, kV per the connection/phase rule.
-    /// - 3 (matrices, only when multi-phase): average the self/mutual of
-    ///   `RMatrix`/`XMatrix` into `R1`/`X1` (the Pascal mutual loop includes the
-    ///   2..N diagonal terms — reproduced verbatim).
+    /// Collapse a reactor to its positive-sequence single-phase form, keeping
+    /// its power under a balanced voltage (the positive-sequence circuit
+    /// reports three times the one phase). The edit sits in
+    /// `BeginEdit`/`EndEdit`. Inside it, by `SpecType`:
+    /// - 2 (R+jX) / 4 (Z1): `Phases := 1`. A closed three-phase delta R+jX
+    ///   reactor also writes its wye equivalent, a third of the leg `R`, `X`
+    ///   and `Rp`.
+    /// - 1 (kvar): kvar/3 per phase, kV per the connection/phase rule. A closed
+    ///   three-phase delta also writes a third of the leg `R` and `Rp`.
+    /// - 3 (matrices, two or more phases): see [`Self::matrix_pos_seq`]. The
+    ///   matrix stamp reads no `RCurve`/`LCurve`, so the reduction drops them
+    ///   (pinned by `make_pos_sequence_matrix_drops_the_curves_it_never_read`).
+    ///
+    /// A delta matrix or Z1 reactor of two or more phases, a matrix of another
+    /// order than the phases, and a series matrix reactor missing one of its
+    /// matrices or with a singular impedance get no actions: the solve refuses
+    /// them. Pinned by the
+    /// `make_pos_sequence_*` and `*_refuses_the_solve` tests of
+    /// `elements::pd::reactor::tests`.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop::*;
 
+        if self.cd.nphases >= 2 && self.refusal().is_some() {
+            return PosSeqPlan::base();
+        }
+
         let nphases = self.cd.nphases;
+        let closed_delta = self.connection == 1 && nphases == 3 && self.cd.nconds == 3;
         let mut actions = vec![PosSeqAction::BeginEdit];
 
         match self.spec_type {
+            ReactorSpecType::RplusJx if closed_delta => {
+                actions.push(PosSeqAction::SetI32(PHASES, 1));
+                actions.push(PosSeqAction::SetF64(R, self.z.re / 3.0));
+                actions.push(PosSeqAction::SetF64(X, self.z.im / 3.0));
+                if self.rp_specified {
+                    actions.push(PosSeqAction::SetF64(RP, self.rp / 3.0));
+                }
+            }
             ReactorSpecType::RplusJx | ReactorSpecType::SymComponents => {
                 actions.push(PosSeqAction::SetI32(PHASES, 1));
             }
@@ -376,35 +610,28 @@ impl CktElement for Reactor {
                 actions.push(PosSeqAction::SetI32(PHASES, 1));
                 actions.push(PosSeqAction::SetF64(KV, phase_kv));
                 actions.push(PosSeqAction::SetF64(KVAR, kvar_per_phase));
-                // Leave R as specified.
+                // kV and kvar already give the wye X of a delta leg.
+                if closed_delta {
+                    if self.z.re != 0.0 {
+                        actions.push(PosSeqAction::SetF64(R, self.z.re / 3.0));
+                    }
+                    if self.rp_specified {
+                        actions.push(PosSeqAction::SetF64(RP, self.rp / 3.0));
+                    }
+                }
             }
             ReactorSpecType::Matrices => {
                 if nphases > 1 {
-                    // Average the self/mutual of RMatrix and XMatrix. `avg`
-                    // mirrors the Pascal loops exactly (`i := 2..N`, `j := i..N`
-                    // — the mutual sum picks up the (2,2)..(N,N) diagonals).
-                    let avg = |m: &[f64]| -> f64 {
-                        let np = nphases;
-                        let npf = np as f64;
-                        let mut rs = 0.0; // Avg Self
-                        for i in 0..np {
-                            rs += m[i * np + i];
-                        }
-                        rs /= npf;
-                        let mut rm = 0.0; // Avg mutual
-                        for i0 in 1..np {
-                            for j0 in i0..np {
-                                rm += m[i0 * np + j0];
-                            }
-                        }
-                        rm /= npf * (npf - 1.0) / 2.0;
-                        rs - rm
-                    };
-                    let r = avg(self.rmatrix.as_deref().expect("SpecType 3 RMatrix"));
-                    let x = avg(self.xmatrix.as_deref().expect("SpecType 3 XMatrix"));
                     actions.push(PosSeqAction::SetI32(PHASES, 1));
-                    actions.push(PosSeqAction::SetF64(R, r));
-                    actions.push(PosSeqAction::SetF64(X, x));
+                    actions.extend(self.matrix_pos_seq());
+                    // The R + jX stamp reads `RCurve`/`LCurve`, the matrix
+                    // stamp does not: the reduced reactor keeps none.
+                    self.r_curve_name.clear();
+                    self.r_curve = None;
+                    self.l_curve_name.clear();
+                    self.l_curve = None;
+                    self.cd.obj.clear_seq(RCURVE);
+                    self.cd.obj.clear_seq(LCURVE);
                 }
             }
         }

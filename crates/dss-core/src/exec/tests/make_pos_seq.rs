@@ -246,3 +246,124 @@ fn makeposseq_strips_line_node_extension_and_is_idempotent() {
     );
     assert!(dss.circuit().unwrap().is_solved);
 }
+
+// ---------------------------------------------------------------------------
+// The whole shunt deck: a positive-sequence reduction of a balanced circuit
+// reproduces its three-phase solution.
+// ---------------------------------------------------------------------------
+
+/// Build `modes/makeposseq/makeposseq_shunt.dss` up to its first `solve`
+/// (without the trailing `makeposseq`/`solve`), with `edit` applied to the
+/// deck text, and return the solved three-phase circuit.
+fn shunt_deck_before_makeposseq(edit: impl Fn(&str) -> String) -> Dss {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus/modes/makeposseq/makeposseq_shunt.dss");
+    let text = std::fs::read_to_string(&path).expect("vendored corpus deck");
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('!'))
+        .collect();
+    let n = lines.len();
+    assert_eq!(
+        &lines[n - 3..],
+        ["solve", "makeposseq", "solve"],
+        "the deck ends with solve, makeposseq, solve"
+    );
+    let mut dss = Dss::new();
+    for l in &lines[..n - 2] {
+        dss.command(&edit(l));
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert!(dss.circuit().unwrap().is_solved);
+    dss
+}
+
+/// Every bus's node-1 magnitude (V) and every element's power at its first
+/// terminal (kW + j kvar), each by name.
+type DeckState = (Vec<(String, f64)>, Vec<(String, num_complex::Complex64)>);
+
+/// The [`DeckState`] of the solved deck, in the deck's order.
+fn shunt_deck_state(dss: &mut Dss) -> DeckState {
+    let buses = dss
+        .all_bus_voltages()
+        .into_iter()
+        .map(|b| (b.name.clone(), b.vmag_angle[0].0))
+        .collect();
+    let elems = dss
+        .snapshot_elements()
+        .into_iter()
+        .map(|e| {
+            let s = e.powers[..e.n_conds].iter().sum();
+            (e.name, s)
+        })
+        .collect();
+    (buses, elems)
+}
+
+/// Reduce the solved deck and assert that every bus |V| stays within `v_rel`
+/// and every element's power within `s_rel` of the three-phase solution.
+fn assert_shunt_deck_reduces_exactly(mut dss: Dss, v_rel: f64, s_rel: f64, what: &str) {
+    let (buses0, elems0) = shunt_deck_state(&mut dss);
+    dss.command("makeposseq");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{what}: {:?}", dss.errors());
+    assert!(dss.circuit().unwrap().is_solved, "{what}: not solved");
+    let (buses1, elems1) = shunt_deck_state(&mut dss);
+    assert_eq!(buses0.len(), buses1.len(), "{what}: bus count");
+    for (name, v0) in &buses0 {
+        let v1 = buses1
+            .iter()
+            .find(|(n, _)| n == name)
+            .unwrap_or_else(|| panic!("{what}: bus {name} after makeposseq"))
+            .1;
+        assert!(
+            (v1 - v0).abs() <= v_rel * v0,
+            "{what}: bus {name} |V| {v0} three-phase, {v1} reduced (rel {:.3e})",
+            (v1 - v0).abs() / v0
+        );
+    }
+    assert_eq!(elems0.len(), elems1.len(), "{what}: element count");
+    for ((name, s0), (name1, s1)) in elems0.iter().zip(&elems1) {
+        assert_eq!(name, name1, "{what}: element order");
+        assert!(
+            (s1 - s0).norm() <= s_rel * s0.norm(),
+            "{what}: {name} S {s0} three-phase, {s1} reduced (rel {:.3e})",
+            (s1 - s0).norm() / s0.norm()
+        );
+    }
+}
+
+/// `makeposseq_shunt.dss` holds only balanced three-phase elements, so its
+/// positive-sequence reduction reproduces the three-phase solution: every bus
+/// |V| within 1e-7 (measured 2.7e-8) and every element's power within 5e-7
+/// (measured 1.9e-7).
+///
+/// Two residuals remain, and the second half of the pin takes both away. The
+/// first is the truncated `CALPHA` of the three-phase Z1/Z0 reactor stamp
+/// (`Reactor::calc_yprim`, the precision-compat twin of `util::CALPHA`):
+/// `|CALPHA − e^(−j2π/3)|` = 4.04e-7 moves that stamp's equivalent Z1 by
+/// 2.3e-7, which shows as 1.8e-7 on `Reactor.rx_z1` and 2.7e-8 on the bus
+/// voltages. The second is the solver's convergence floor: a constant-PQ load
+/// reports `V conj(I)` with `I` from the previous iterate, and the three-phase
+/// and the reduced solve stop after different iterations, which leaves up to
+/// 1.9e-7 on the two loads under the default tolerance. The same deck with
+/// `rx_z1` declared `r=1 x=12` and solved to `tolerance=1e-13` reduces to 1e-10
+/// (measured 2026-10-04: 5.8e-12 in |V|, 2.5e-14 in power).
+#[test]
+fn makeposseq_shunt_reproduces_its_three_phase_solution() {
+    let dss = shunt_deck_before_makeposseq(str::to_string);
+    assert_shunt_deck_reduces_exactly(dss, 1e-7, 5e-7, "makeposseq_shunt.dss");
+
+    let exact = |l: &str| {
+        if l.starts_with("new reactor.rx_z1") {
+            "new reactor.rx_z1 bus1=b2 phases=3 r=1 x=12".to_string()
+        } else if l == "set maxiterations=100" {
+            "set maxiterations=100 tolerance=1e-13".to_string()
+        } else {
+            l.to_string()
+        }
+    };
+    let dss = shunt_deck_before_makeposseq(exact);
+    assert_shunt_deck_reduces_exactly(dss, 1e-10, 1e-10, "rx_z1 as r=1 x=12, tolerance 1e-13");
+}

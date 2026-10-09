@@ -14,16 +14,15 @@ impl Reactor {
     pub(crate) fn dump_body(&self, out: &mut String, cx: &DumpCtx, complete: bool) {
         dump::prefix_ckt(out, cx, self, &self.cd, complete);
 
-        let n = self.cd.nphases;
         for k in 1..=cx.cls.num_properties() {
             let name = cx.cls.property_name(k);
             if name.eq_ignore_ascii_case("RMatrix") {
                 if let Some(m) = &self.rmatrix {
-                    write_matrix(out, name, m, n);
+                    write_matrix(out, name, m);
                 }
             } else if name.eq_ignore_ascii_case("XMatrix") {
                 if let Some(m) = &self.xmatrix {
-                    write_matrix(out, name, m, n);
+                    write_matrix(out, name, m);
                 }
             } else if name.eq_ignore_ascii_case("Z1") {
                 out.push_str(&format!(
@@ -65,8 +64,10 @@ impl Reactor {
 }
 
 /// Pascal `<PropName>= (` + row-major `%-.5g ` cells, `|` between rows, ` )`.
-/// The matrix is the full (symmetric) `nphases²` array.
-fn write_matrix(out: &mut String, name: &str, m: &[f64], n: usize) {
+/// The matrix is the full (symmetric) array the reactor holds, of its own
+/// order: a `phases=` edit after it leaves the order apart from the phases.
+fn write_matrix(out: &mut String, name: &str, m: &[f64]) {
+    let n = dump::matrix_order(m.len());
     out.push_str(name);
     out.push_str("= (");
     for i in 0..n {

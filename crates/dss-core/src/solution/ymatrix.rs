@@ -183,6 +183,7 @@ pub fn build_y_matrix(
         );
     }
     let mut yprim_errors = crate::diag::ErrorLog::new();
+    let mut refused = false;
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
         // Pascal `ReCalcAllYPrims`/`ReCalcInvalidYPrims` (Ymatrix.pas @ 0.15.0b4):
@@ -197,6 +198,7 @@ pub fn build_y_matrix(
         // A `CalcYPrim` that aborts (e.g. a `LineGeometry` Zmatrix error) queues a
         // deferred message instead of building YPrim; collect it below.
         yprim_errors.extend(elem.cd_mut().obj.take_errors());
+        refused |= std::mem::take(&mut elem.cd_mut().yprim_refused);
     }
     if !yprim_errors.is_empty() {
         // Pascal: the geometry getter raised `ELineGeometryProblem` and set
@@ -209,7 +211,9 @@ pub fn build_y_matrix(
     }
     ckt.solution.frequency_changed = false;
 
-    if ckt.log_events {
+    // A refused build logs no build event (pinned by
+    // `tests::a_refused_build_leaves_no_y_and_logs_no_build_event`).
+    if !refused && ckt.log_events {
         log_event(
             ckt,
             match option {
@@ -223,7 +227,8 @@ pub fn build_y_matrix(
     // Add in Yprims for all enabled devices. `PDE_ONLY` restricts the element
     // set to PD elements + sources (Ymatrix.pas l.463-467) and, like
     // `WholeMatrix`, uses the FULL (`ALL_YPRIM`) primitive — not the series one.
-    {
+    // A build an element refused assembles nothing.
+    if !refused {
         // Pascal iterates all `CktElements` and filters; PD/source membership is
         // disjoint, so iterating `pd_elements` then `sources` visits exactly the
         // qualifying set once each (order is irrelevant — the assembled matrix
@@ -286,6 +291,33 @@ pub fn build_y_matrix(
         sol.error_saved = vec![0.0; n];
         sol.node_vbase = vec![0.0; n];
         initialize_node_vbase(ckt);
+    }
+
+    if refused {
+        // An element without a defined stamp fails the build. The solution
+        // arrays are still allocated above when asked, so a report after the
+        // refusal reads zeros instead of indexing past them. The matrix this
+        // build cleared is dropped, so `Export Y` and `Show Y` answer that no
+        // Y is built, and marked invalid, so the next solve builds again and
+        // refuses again (pinned by
+        // `elements::pd::capacitor::tests::a_delta_cmatrix_bank_refuses_the_solve`).
+        match option {
+            BuildOption::WholeMatrix => {
+                ckt.solution.y_system = None;
+                ckt.solution.system_y_changed = true;
+            }
+            BuildOption::SeriesOnly | BuildOption::PdeOnly => {
+                ckt.solution.y_series = None;
+                ckt.solution.series_y_invalid = true;
+            }
+        }
+        // Each bus gets its saved voltages back at its new nodes, as after a
+        // build that succeeds (pinned by
+        // `tests::a_refused_build_keeps_each_bus_voltage_across_a_renumbering`).
+        if ckt.solution.preserve_node_voltages {
+            restore_node_v_from_vbus(ckt);
+        }
+        return Err("an element has no defined primitive admittance".to_string());
     }
 
     match option {
@@ -521,6 +553,120 @@ mod tests {
             ckt.buses[0].vbus,
             vec![sentinel; 3],
             "update_vbus must NOT run with the flag clear"
+        );
+    }
+
+    /// A build that an element refuses (a three-phase delta `cmatrix` bank has
+    /// no stamp) leaves no system Y and logs the Yprim recalculation it ran but
+    /// no "Building ... Y Matrix" event. The series build of `calcvoltagebases`
+    /// is refused the same way and leaves no series Y, the matrix `Export Y`
+    /// and `Show Y` read before a solve, so both answer 222 `Y Matrix not
+    /// Built.` With the bank disabled the next build logs the event, keeps its
+    /// Y and solves.
+    #[test]
+    fn a_refused_build_leaves_no_y_and_logs_no_build_event() {
+        use crate::elements::pos_seq::balance;
+        let mut dss = balance::stiff_metered("yrefused");
+        let dir = std::env::temp_dir().join(format!("dss_yrefused_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dss.command(&format!("set datapath=\"{}\"", dir.display()));
+        dss.command("new capacitor.cd bus1=c phases=3 conn=delta cmatrix=[10 | -2 10 | -2 -2 10]");
+        dss.command("set log=yes");
+        dss.command("set voltagebases=[12.47]");
+        dss.command("calcvoltagebases");
+        for cmd in ["export y", "show y"] {
+            let n_err = dss.errors().len();
+            dss.command(cmd);
+            assert!(
+                dss.errors()[n_err..]
+                    .iter()
+                    .any(|d| d.code == Some(222) && d.message == "Y Matrix not Built."),
+                "`{cmd}` after the refused series build: {:?}",
+                &dss.errors()[n_err..]
+            );
+        }
+        let ckt = dss.circuit().unwrap();
+        assert!(
+            ckt.solution.y_series.is_none(),
+            "a refused series build left a Y"
+        );
+        let (n, n_err) = (dss.event_log().len(), dss.errors().len());
+        dss.command("solve");
+        let events = &dss.event_log()[n..];
+        assert!(events.iter().any(|e| e.contains("Yprims")), "{events:?}");
+        assert!(!events.iter().any(|e| e.contains("Building")), "{events:?}");
+        assert!(
+            dss.errors()[n_err..]
+                .iter()
+                .any(|d| d.code == Some(482) && d.message == balance::REFUSED_SOLVE),
+            "{:?}",
+            &dss.errors()[n_err..]
+        );
+        let ckt = dss.circuit().unwrap();
+        assert!(ckt.solution.y_system.is_none(), "a refused build left a Y");
+        assert!(!ckt.is_solved, "solved");
+
+        dss.command("disable capacitor.cd");
+        let (n, n_err) = (dss.event_log().len(), dss.errors().len());
+        dss.command("solve");
+        let events = &dss.event_log()[n..];
+        assert!(
+            events.iter().any(|e| e.contains("Building Whole Y Matrix")),
+            "{events:?}"
+        );
+        assert_eq!(dss.errors().len(), n_err, "{:?}", &dss.errors()[n_err..]);
+        let ckt = dss.circuit().unwrap();
+        assert!(ckt.solution.y_system.is_some(), "no Y after a clean build");
+        assert!(ckt.is_solved, "not solved with the bank disabled");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A refused build in a solution that preserves node voltages (the flag the
+    /// dynamics and harmonics modes set, set here directly) puts each bus's
+    /// saved voltages back at its new nodes, as a build that succeeds does.
+    /// Moving `line.feed` to a new bus `d` renumbers bus `c`, and a delta
+    /// `cmatrix` bank on `c` refuses the build: `c` still reads the voltages of
+    /// the last solve, and `d`, never solved, reads zero.
+    #[test]
+    fn a_refused_build_keeps_each_bus_voltage_across_a_renumbering() {
+        use crate::elements::pos_seq::balance;
+        let node_v = |dss: &crate::exec::Dss, bus: &str| -> (Vec<usize>, Vec<Complex64>) {
+            let ckt = dss.circuit().unwrap();
+            let idx = ckt
+                .bus_list
+                .find(bus)
+                .unwrap_or_else(|| panic!("bus {bus}"));
+            let refs = ckt.buses[idx].ref_no.clone();
+            let v = refs.iter().map(|&r| ckt.solution.node_v[r]).collect();
+            (refs, v)
+        };
+        let mut dss = balance::stiff("yrenum");
+        dss.command("new line.feed bus1=b bus2=c phases=3 r1=0.1 x1=0.3 length=1");
+        dss.command("new load.ld bus1=c phases=3 kv=12.47 kw=100");
+        balance::solve_clean(&mut dss, "before the renumbering");
+        let (refs_c, v_c) = node_v(&dss, "c");
+        assert!(v_c.iter().all(|v| v.norm() > 7000.0), "{v_c:?}");
+
+        dss.circuit_mut().unwrap().solution.preserve_node_voltages = true;
+        dss.command("edit line.feed bus2=d");
+        dss.command("new line.l2 bus1=d bus2=c phases=3 r1=0.1 x1=0.3 length=1");
+        dss.command("new capacitor.cd bus1=c phases=3 conn=delta cmatrix=[10 | -2 10 | -2 -2 10]");
+        let n = dss.errors().len();
+        dss.command("solve");
+        assert!(
+            dss.errors()[n..]
+                .iter()
+                .any(|d| d.code == Some(482) && d.message == balance::REFUSED_SOLVE),
+            "{:?}",
+            &dss.errors()[n..]
+        );
+        let (refs_c2, v_c2) = node_v(&dss, "c");
+        assert_ne!(refs_c2, refs_c, "bus c was not renumbered");
+        assert_eq!(v_c2, v_c, "bus c after the refused build");
+        let (_, v_d) = node_v(&dss, "d");
+        assert!(
+            v_d.iter().all(|v| *v == Complex64::ZERO),
+            "bus d after the refused build: {v_d:?}"
         );
     }
 }

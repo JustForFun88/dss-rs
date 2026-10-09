@@ -2771,11 +2771,12 @@ apply. Every entry is fingerprinted
 into the population lock as `id@FNV-1a64(entry JSON)` per channel — adding,
 widening, or re-scoping an entry is always a reviewable lock diff.
 
-Current contents (re-counted off the file 2026-09-12, after G1.4a's D12/D14
+Current contents (re-counted off the file 2026-10-04, after G1.4a's D12/D14
 channel flip, G1.3b's D31 entry, G1.4b's D29 `distance` entry, G1.3c's
 **25** widenings of existing `element` scopes — which added no entry and no
-cause — G1.10a's `run_files` entry and G1.10c's four `di` entries): 61 entries
-over 35 documented causes — 5 r4133 `skip`
+cause — G1.10a's `run_files` entry, G1.10c's four `di` entries and the three
+MakePosSequence matrix-reduction entries): 64 entries
+over 37 documented causes — 5 r4133 `skip`
 (the four #303 crash decks plus `r4133-espvlcontrol-uninstantiable`, where the
 r4133 DLL cannot construct an `ESPVLControl` at all), 29 r4133 `divergence`
 (Delphi 6-sig-fig display-precision
@@ -2785,7 +2786,7 @@ IndMach asymmetric decks, one monitor sequence-magnitude drift, the GFM
 revThreshold/fwdThreshold getter-convention exact-pair, and the **eight**
 `property` entries R4133_PROPS RP4.1 landed with its unmask — `swtcontrol.delay`
 ×2 (RP3.1), `windgen.kvar` ×4 (RP3.2) and `gictransformer.r2` ×2 (RP3.4), each
-an exact pair on the r4133 channel), 11 capi_v0145
+an exact pair on the r4133 channel), 12 capi_v0145
 `divergence` (the `line_spacing_asym` and the Generator `MakePosSequence`
 exact-pair-numeric upgrade pins, one G2.5 property-jump entry —
 `Capacitor.cap_cmat.Cuf`/`NormAmps`/`EmergAmps`, pinned as an exact pair rather
@@ -2793,9 +2794,11 @@ than skipped; the two `GICTransformer.tg3/tg5.R2` twins went with the D12/D14
 flip below — the three `property` entries the
 R4133_PROPS line-merge/switch fixes landed on the live capi compare
 (`reduce-merge-units-restored-midi-capi-props`, RP3.5, and
-`line-switch-keeps-linecode-zone2/zone3-capi-props`, RP3.6a) and the five
-`swtcontrol-per-phase-state-*-capi-props` entries RP3.7 landed), and 16
-`exclusion` — 6 capi_v0145 + 10 r4133, from four engine fixes, three measured
+`line-switch-keeps-linecode-zone2/zone3-capi-props`, RP3.6a), the five
+`swtcontrol-per-phase-state-*-capi-props` entries RP3.7 landed and
+`makeposseq-matrix-average-capi-props`, the `Reactor.rx_mat` probes and
+properties of the positive-sequence matrix reduction), and 18
+`exclusion` — 8 capi_v0145 + 10 r4133, from six engine fixes, three measured
 oracle-channel defects, one product divergence and (GOLDEN_REBASE G1.10c,
 2026-09-12) the two demand-interval columns of
 `EPRITestCircuits/ckt7/RunDSS_ckt7.dss` — `kvarh` (cause
@@ -2844,6 +2847,16 @@ pair on r4133 where the port emits a JSON plot payload, so those two names
 **product** divergence, so `docs/upgrade/DIVERGENCES.md` and no
 `investigations/to_opendss/` report, pinned by
 `visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port`.
+The seventh and eighth capi_v0145 `exclusion` hold one `yprim` each on
+`modes:makeposseq/makeposseq_shunt.dss` (2026-10-04): `makeposseq-matrix-average-capi`
+(`Reactor.rx_mat`, cause `makeposseq-matrix-average-skips-the-first-row`, both
+oracles reduce a matrix element to (N-2)/N of its positive-sequence self term)
+and `reactor-one-phase-z1-capi` (`Reactor.rx_z1`, cause
+`reactor-one-phase-z1-stamped-as-a-third`), while `makeposseq-cuf-applied-capi`
+gained the `injection` field on the same case. The engine computes the
+positive-sequence self term and stamps a one-phase Z1 reactor at Z1, pinned by
+`exec::tests::make_pos_seq::makeposseq_shunt_reproduces_its_three_phase_solution`
+and the element balance pins the two causes name.
 
 **`channels` names sub-channels, and must be spelled out** (GOLDEN_REBASE G1.0,
 2026-09-04). `element` is today the only field whose comparison has sub-channels

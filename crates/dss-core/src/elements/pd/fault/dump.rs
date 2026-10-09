@@ -41,7 +41,9 @@ impl Fault {
             fixed(self.stddev * 100.0, 1)
         ));
         if let Some(gm) = &self.gmatrix {
-            let n = self.cd.nphases;
+            // The matrix the fault holds, of its own order: a `phases=` edit
+            // after it leaves the order apart from the phases.
+            let n = dump::matrix_order(gm.len());
             out.push_str(&format!("~ {}= (", name(prop::GMATRIX)));
             for i in 1..=n {
                 for j in 1..=i {

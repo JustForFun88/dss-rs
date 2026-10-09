@@ -3382,3 +3382,421 @@ the last output and a smaller equation) and
 or test deck names an output that does not resolve, gives a machine one name or
 re-links a host (the corpus writes `[Speed theta]` on machines and `[it]` on
 inverters), so no ledger entry, exclusion, golden byte or tolerance moved.
+
+## A matrix-defined Capacitor, Reactor, Line or Fault reduces to its positive-sequence self term under MakePosSequence — user decision 2026-10-04
+
+**Observable.** `MakePosSequence` writes, for an element given by a matrix of
+N conductors, the positive-sequence self term `S` of the matrix it stamps.
+For N = 2 or 3 that is `S(M) = (Σ M_ii − Σ_{i<j} M_ij) / 3` on the symmetric
+part of `M`, for N > 3 the mean of the diagonal minus the mean over all
+off-diagonal pairs (the user's ruling of 2026-10-04). A `cmatrix` bank writes
+`Cuf = S(C)` on every step: 12 µF for `[10|-2 10|-2 -2 10]` and for
+`[12|-3 10|-1 -2 8]`, 22/3 µF for the two-phase `[10|-2 10]`. A series matrix
+Reactor writes `R + jX = 1 / S((R + jX)⁻¹)`: 0.8 + j9 Ω for
+`rmatrix=[1|.2 1|.2 .2 1] xmatrix=[10|1 10|1 1 10]` and for the corpus deck's
+`rx_mat`, 1.31826664 + j14.14381841 Ω for the two-phase `[1|.2 1]`/`[10|1 10]`.
+A `Parallel=yes` matrix Reactor writes `r=0`, `x = −1/S(B)`, `rp = 1/S(G)` from
+the `G = R⁻¹`, `B = −X⁻¹` it stamps (`r=0 x=10 rp=100` for diagonal R 100,
+X 10), and a matrix reduction that writes no `rp` of its own writes `rp=0` over
+a given one, which the matrix stamp never used. `rp=0` stands for no parallel
+branch, the reading the R + jX stamp gives it (the documentation says only
+that `Rp` is "Assumed infinite if not specified"), and `Save circuit` writes
+it as `Rp=0`, which the reload reads the same way. A matrix Line writes C1 by
+the same rule (22/3 nF for the two-phase `[10|-2 10]`, 12 nF for the balanced
+4×4), with Z1 the mean diagonal minus the mean off-diagonal term at every N
+and the three-phase reduction unchanged to the bit. A `gmatrix` Fault writes
+`R = 1 / S(G)` ohm: 8.3333 Ω for `[0.1|-0.02 0.1|-0.02 -0.02 0.1]`, and
+12.5 Ω for the two-phase `[0.12|0 0.12]`, which keeps its 12440.1 kW, where
+its `r=8.3333` twin keeps its per-phase `r` and draws 18660.1 kW after the
+reduction (open question 1). On the
+same path: a closed three-phase delta `cuf` Capacitor writes three times its
+leg value, a closed three-phase delta R + jX Reactor a third of its leg `r`,
+`x` and `rp`, a closed three-phase delta `kvar` Reactor a third of its leg
+`r` and `rp`, and a
+one-phase symmetrical-component Reactor stamps `Z1` (three-phase stamps keep
+`(Z0 + Z1 + Z2)/3` on the diagonal). A delta-connected `cmatrix` Capacitor or
+matrix or `z1` Reactor of two or more phases, a series matrix Reactor given
+only one of `rmatrix`/`xmatrix` or whose impedance `rmatrix + j xmatrix` does
+not invert, a `cmatrix`, `rmatrix` or `xmatrix` of another order than the
+element's phases, and a `gmatrix` of another order than a fault's two or more
+phases (the last two as a `phases=` edit after the matrix leaves them) are
+refused by the solve with a message naming the element and the remedy (`…
+cannot be connected in delta. Specify it with conn=wye.`, `… xmatrix is
+missing. …`, `… the impedance rmatrix + j xmatrix is singular and has no
+admittance. …`, `Capacitor.c has 4 phases but its cmatrix has 3 x 3 entries.
+Specify cmatrix for 4 phases.`), followed by 482 `Error Encountered in Solve:
+an element has no defined primitive admittance`, and `makeposseq` leaves them
+as they are. The failed Y build still sizes the solution arrays, so
+`summary`, `show currents`, `export summary` and `sample` after the refusal
+read the circuit as not solved, and the next solve builds again and refuses
+again. A disabled element is out of the model and refuses nothing, so the rest
+of the circuit solves as it does without it. Before, the port panicked on the
+delta forms (disabled or not), on the half-given reactor and on a phase count
+above the matrix's order, read a matrix of an order above the phase count by
+its first entries, a matrix nobody gave, and stamped a singular series matrix as a tiny
+conductance in silence. The matrix reduction of a Reactor drops its `RCurve`
+and `LCurve`, which the matrix stamp never reads and the R + jX stamp it
+leaves would apply. Above three conductors a zero self term takes the stamp's
+open fallback, as at three (`x = 1/EPSILON` in the parallel form, `r =
+1/EPSILON` with `x = 0` in the series form), where `r = x = 0` turned the
+solve NaN with no error. A shunt Reactor's no-load loss (`Export Losses`, the
+meters' loss registers) is `V²/Rp` where the stamp adds `Rp` (the `kvar` and
+R + jX forms). A matrix or Z1 reactor carrying `rp` reports no no-load loss
+its stamp does not draw, and a `Parallel=yes` matrix reactor reports its whole
+loss as I²R, as both oracles do, until `makeposseq` writes its resistance
+branch as `rp` and the same loss turns no-load (open question 7). `?`, `Dump`
+and the JSON export show a
+matrix at the order it holds, and `Save circuit` writes it behind `Phases=`
+at that order, so the reload holds the same element and its solve refuses it
+again. A refused build drops the Y matrix it cleared, so `Export Y` and
+`Show Y` answer 222 `Y Matrix not Built.` Before, the JSON export panicked on
+a matrix short of the phases, `?` and `Save circuit` padded it with zeros to
+the new order, which the reload took for a matrix of that order and solved in
+silence, and `Export Y` wrote the emptied matrix as the system Y. The
+energized steps of a bank are capacitors in parallel, so a closed delta bank
+of two or more energized steps draws the sum of its steps at 12.47 kV: 600
+kvar for `kvar=[300 300]`, and for `cuf=[4 3]` the 1231.1 kvar of its `cuf=7`
+twin. Before, step k stamped steps 1 to k, a running sum (900 and 1934.5 kvar).
+A `Parallel=yes` matrix Reactor whose given `rmatrix` or `xmatrix` does not
+invert is refused by the solve (`Reactor.p: xmatrix is singular, so the
+parallel reactor has no admittance. …`). Before, it solved with that branch
+zeroed, an open branch where all-equal entries short every voltage pattern
+orthogonal to (1, 1, 1), the positive sequence included.
+
+**Physics.** Under a balanced positive-sequence voltage `V1 [1, a², a]` an
+element of nodal matrix `Y` draws exactly `S = 3 |V1|² conj((1/3) v1ᴴ Y v1)`,
+for any `Y`, and every off-diagonal pair of a symmetric `Y` contributes
+`−Y_ij`. The positive-sequence circuit reports every element's power three
+times the one phase, so a one-phase element carrying `S(Y)` reports the
+multi-phase element's power exactly. That fixes the shunt values above. For a
+balanced impedance matrix `1/S(Y)` equals the textbook `Zs − Zm`. Measured on
+the port in a stiff 12.47 kV circuit, the reduced elements keep their power to
+1.6e-16 .. 2e-11 (balanced and unbalanced banks, shunt, series, parallel,
+two-phase and delta reactors, the fault), and the corpus deck
+`modes/makeposseq/makeposseq_shunt.dss`, which holds only balanced three-phase
+elements, reproduces its three-phase solution to 2.7e-8 in |V|. The rest is
+the truncated `CALPHA` of its three-phase Z1/Z0 reactor and the solver's
+convergence floor: with that reactor declared `r=1 x=12` and the solve at
+`tolerance=1e-13` it agrees to 5.8e-12 in |V| and 2.5e-14 in power.
+
+**Measured 2026-10-04** with the epri-worker on the r4133 DLL and the pinned
+dss-python 0.15.7 (the same decks as the pins):
+
+- Both oracles average the mutual terms over rows 2..N with the diagonals 2..N
+  in, so a balanced matrix reduces to (N−2)/N of its value: `cmatrix`
+  `[10|-2 10|-2 -2 10]` gives 4 (read back `[ 4E-006]` on r4133, which scales
+  the farads by 1e-6 a second time, and the 20.47 µF creation default on
+  dss_capi, which drops the scalar write onto the array property), the two-phase
+  bank 0, the reactor `0.26667 + j3` (r4133) and `0.266666666666667 + j3`
+  (dss_capi). The reduced balanced shunt reactor draws exactly three times its
+  power on both (4571.3 + j51427.3 kVA against 1523.77 + j17142.43), the
+  balanced two-phase matrix reactor turns into `R = X = 0` and a NaN solution,
+  an unequal one (`rmatrix=[1|0.2 1.3] xmatrix=[10|1 12]`) into `R = −0.15,
+  X = −1`, the `(M11 − M22)/2` the loop gives at two phases, an element that
+  delivers 22.8 MW where the matrix element draws 972.5 + j9922.3 kVA, and a
+  balanced series matrix reactor feeding a 40 + j30 Ω wye load drops 2.6 times
+  too little voltage (the load gets 17.5 % too much power).
+- A `Parallel=yes` matrix reactor becomes a series R + jX on both (4618.8 +
+  j461.9 kVA against 1555.0 + j15550.1).
+- A one-phase `z1=[1, 12]` reactor draws 3.000000 times its `r=1 x=12` twin on
+  both.
+- A three-phase delta `cuf=4` bank and delta `r=2.4 x=27` reactor (with or
+  without `rp=3000`) draw a third of their power after `makeposseq` on both
+  (703.47 → 234.49 kvar, 1523.77 + j17142.43 → 507.92 + j5714.14 kVA).
+- A three-phase delta `kvar=17277.89 kv=12.47 r=2.4` reactor gets its wye X
+  but keeps its leg R after `makeposseq` on both, so its power moves from
+  1523.77 + j17142.44 to 4301.5 + j16130.8 kVA.
+- A three-phase `gmatrix` fault keeps `G11` on both (863.95 → 719.96 A per
+  phase).
+- A two-phase `gmatrix=[0.12|0 0.12]` fault and its `r=8.333333333333334`
+  twin each draw 12440.072 kW (863.947 A per phase) before `makeposseq` on
+  both. After it both keep `G11` per phase for the matrix and the per-phase
+  `r` for the twin, so each draws 18660.108 kW on dss_capi and 18660.326 kW
+  on r4133 (re-measured 2026-10-05).
+- The Line C1 divisor `N(N−1)/2` is right only at three phases: 22 nF for the
+  two-phase line, 8.6667 for the balanced 4×4, on both.
+- A delta `cmatrix` bank: both solve it to an active element that delivers
+  67.7 kW (−67.7 kW and −664.4 kvar into its terminal), and the dss_capi
+  process then dies with an access violation at exit, where its wye twin exits
+  cleanly. A series matrix reactor given only `xmatrix` or only `rmatrix`: both
+  stop with an access violation.
+- The same delta `cmatrix` bank with `enabled=no` beside a 100 kW load: both
+  solve the load at 100 + j53.9743 kVA, the value of the circuit without the
+  bank, and the dss_capi process then dies with an access violation at exit
+  (re-measured 2026-10-05, two runs of two).
+- A 3 × 3 matrix after `phases=4` on a stiff 12.47 kV bus: the `cmatrix` bank
+  and the `gmatrix` fault solve to NaN on dss_capi. On r4133, whose stamps
+  read past the nine-entry arrays, both are reported converged: the fault
+  with zero volts at every node, the source bus included, and the bank with
+  the source voltage held on nodes 1 to 3 (7199.56 V, 0 V on node 4) and
+  −33.846 kW − j19.541 kvar into its terminal, real power from a capacitor.
+  The series matrix reactor stops dss_capi's Y build with error 234 `Matrix
+  Inversion Error for Reactor "r"`. On r4133 its stamp reads past the matrix
+  with a result that depends on the deck: error 303 (an access violation) and
+  482 at `Solve` on this bus, a converged 1.573e21 + j2.581e21 kVA behind
+  1e10 MVA. After `phases=2` both read the first four entries of the old
+  array as a 2 × 2 matrix: the bank draws −195.408 kvar and the reactor
+  11491.8 + j66982.5 kVA.
+- A balanced series or `Parallel=yes` matrix reactor with flat curves
+  `LCurve` 2 and `RCurve` 3 draws its curve-free power before `makeposseq` on
+  both, and after it 3395.2 + j25464.1 kVA (dss_capi) and 3395.3 + j25464.4
+  (r4133) against 4571.3 + j51427.3 and 4571.4 + j51427.9 without the curves:
+  both apply the curves to the R + jX element they write.
+- A shunt matrix reactor `rmatrix=[1|.2 1|.2 .2 1] xmatrix=[10|1 10|1 1 10]`
+  and its `rp=500` twin each draw 1523.772 + j17142.431 kVA before
+  `makeposseq` on both, the matrix stamp reading no `rp`. After it r4133
+  gives 4571.425 and 4882.430 kW, dss_capi 4571.315 and 4882.317: both keep
+  `rp=500` on the R + jX element they write, which stamps it, so the twin
+  gains 311.0 kW (re-measured 2026-10-05).
+- A series matrix reactor with all-equal entries (`rmatrix` all 1, `xmatrix`
+  all 10): dss_capi aborts the Y build with error 234 `Matrix Inversion Error
+  for Reactor "s3"` ("Invalid impedance specified. Replaced with tiny
+  conductance."), r4133 stops with an access violation, and both solve to NaN
+  after `makeposseq`. A four-conductor `Parallel=yes` reactor given only
+  `rmatrix` stops both with an access violation at its `new`.
+- `Export Losses` of a shunt matrix reactor and of a `z1=[1, 12] z0=[3, 20]`
+  reactor, each with `rp=500`: both report a no-load loss of 311001.8 W that
+  their stamps do not draw (the totals equal the `rp`-free twins', 1523772 W
+  and 1072420 W). Both report the whole loss of a `Parallel=yes` matrix
+  reactor as I²R.
+- A closed delta bank of two energized steps on the stiff 12.47 kV bus
+  (measured 2026-10-09): `kvar=[300 300]` draws 900.0 kvar on both, where its
+  `kvar=[600]` twin and the wye `kvar=[300 300]` draw 600.0. `cuf=[4 3]` and
+  `cuf=[1 2 4]` draw 1934.5 kvar (11 µF per leg), where `cuf=7` draws 1231.1.
+  With `xl=[5 5]` the bank draws 917.8 kvar, where two one-step `xl=5` banks
+  draw 302.9 each. One energized step (`states=[1 0]` or `[0 1]`) draws 300.0.
+- A `Parallel=yes` reactor with `rmatrix` diagonal 100 and `xmatrix` all 10:
+  both report error 233 `Error inverting X Matrix for Reactor.p - B is
+  zeroed.` at its `new` and solve it to 1555.0 + j0 kVA, with the reactance
+  branch open. With `rmatrix` all 100 and `xmatrix` diagonal 10: error 232
+  (`G is zeroed`) and 0 + j15550.1 kVA (measured 2026-10-09).
+- A `kvar=[200 400]` bank on the stiff 12.47 kV bus (measured 2026-10-09):
+  both draw 400.0 kvar in wye and 600.0 in delta, and with `states=[0 1]`
+  200.0 in either connection, where its rated steps give 600, 600 and 400.
+  Every step takes the capacitance of the first step's 200 kvar (`Cuf` reads
+  `[3.41166 3.41166]` in wye and `[1.13722 1.13722]` in delta), and the delta
+  bank reaches 600 only through the running sum of its two steps. After
+  `makeposseq` both write `kvar=[66.667 133.33]` with the first step's
+  capacitance and the reduced banks draw the same 400, 600 and 200.
+  A wye bank given `numsteps=2` and then `kvar=300` holds `kvar=[300 0]` on
+  both and draws 600.0 kvar with `Cuf=[5.11749 5.11749]`, where its rated 300
+  kvar is what the port draws. The wye `kvar=[200 400] harm=[5 5]` bank draws
+  416.667 kvar on both, each step tuned at the first step's capacitance (`xl`
+  reads `[31.1002 31.1002]`), where each step tuned to its own, `xl = X_C,i /
+  25` (31.1002 and 15.5501 Ω), draws (25/24) × 600 = 625.0 kvar (measured
+  2026-10-10).
+- `Export Losses` of a closed delta reactor `kvar=17277.89 kv=12.47 r=2.4
+  rp=3000` and of its `r=2.4 x=27 rp=3000` twin (measured 2026-10-09): both
+  report a no-load loss of 51833.63 W, `3 |V1|² / 3000` node to ground, where
+  the `rp` across the legs loses `3 |V_LL|² / 3000` = 155500.9 W, the no-load
+  loss of their wye twin `r=0.8 x=9 rp=1000`. The two-phase delta `r=2.4 x=27
+  rp=3000` on `b.1.2` (legs 1-2 and 2 to ground) reports 34555.76 W,
+  `2 |V1|² / 3000`, where its legs lose `4 |V1|² / 3000` = 69111.5 W. The
+  totals (1679275, 1679273 and 746343.4 W) are right on both, so the I²R
+  column carries the difference. A wye reactor from node 1 to node 2 of the
+  bus, `bus1=b.1 bus2=b.2 phases=1 r=0.8 x=9 rp=1000`, a shunt by its bus
+  names, reports 51833.63 W on both, `|V1|² / 1000` node 1 to ground, where
+  its `rp` between the terminals loses `|V1 − V2|² / 1000` = 155500.9 W, with
+  the same total of 1679273 W (measured 2026-10-10).
+
+**Sources.** r4133 `Version8/Source/PDElements/Capacitor.pas:817-829` and
+`Reactor.pas:1169-1191` (the averaging loops), `Line.pas:1579-1585` (the C1
+divisor), `Reactor.pas:927-933` (the one-phase `Z1` divided by 3),
+`Reactor.pas:771-780` (SpecType 1/2 never reads `Parallel`), the delta arms
+`Capacitor.pas:814-816` and `Reactor.pas:1157-1168`, `Fault.pas:720-731`. A
+matrix is allocated at the phase count of its parse (`Capacitor.pas:249-255`,
+`Fault.pas:203-209`), a `phases=` edit changes only the conductor count
+(`Capacitor.pas:400-408`, `Fault.pas:303-309`), and the stamps read the old
+array at the new count (`Capacitor.pas:1033-1040`, `Reactor.pas:830-832`,
+`Fault.pas:539-546`). `Reactor.pas:238-240` (the `RCurve`/`LCurve` help: R or
+Z, and X, LmH, Z or kvar), `:836-838` and `:968-970` (error 234 on a series
+matrix that does not invert), `:1049-1078` (`GetLosses`: the `Rp` branch for
+every spec type, summed node to ground where the delta stamp at
+`:782-795` puts `Gp` across the legs), `:686` (`Gp = 0` for `Rp = 0`), `:938` (the sequence
+matrix gets off-diagonal terms at three phases only), `:698` and `:706`
+(errors 232 and 233, the parallel matrix zeroed). `Capacitor.pas:682-686` (one
+work matrix for every step, added after each) and `:1016-1017` (`AddElement`
+in the delta arm, where the wye arm at `:1026` uses `SetElement`), `:611`
+(every step's `FC` from `FkvarRating^[1]`). The same
+procedures in
+the vendored dss_capi 0.14.5 (`src/PDElements/Capacitor.pas:768-819` and `:642`, `Reactor.pas:1052-1115` and its
+`CalcYPrim` at `:880-881`, `Line.pas:1594`, `Fault.pas:604-609`).
+
+**Decision.** Physics decides the value, and no engine computes it: the port
+writes `S` of the stamped matrix in both lanes and reproduces neither the
+averaging nor the one-phase `Z1/3`. Above three conductors the ruling's mean
+diagonal minus mean off-diagonal term applies to `cmatrix`, the Line C1 and,
+read literally, to `rmatrix` and `xmatrix` (open question 3 below). The delta
+matrix forms and the half-given matrix reactor have no stamp the port can
+defend, so it refuses them (open questions 2 and 4). A matrix of another order
+than the phases describes no element of that phase count, so it is refused
+too, and what a `phases=` edit does to the matrix stays open (question 5). A
+one-phase fault still reads the first entry of a larger `gmatrix`, the `G11`
+that the bare `Phases=1` reduction of a fault with no positive-sequence
+conductance (`S(G) <= 0`) leaves (part of question 5). A series matrix whose
+impedance does not invert has a current pattern that meets no impedance and so no admittance:
+it is refused, where dss_capi stops with error 234 and r4133 crashes, and the
+open circuit the tiny conductance stood for is wrong in every sequence. The
+curves and the `rp` a matrix stamp never reads are not carried into the R + jX
+element (question 6), and a zero self term above three conductors takes the
+open fallback the stamp takes at three. A `Parallel=yes` matrix reactor
+stamps `R⁻¹` and `−X⁻¹`, so a given matrix that does not invert has no
+admittance and is refused like the series form. The no-load loss is the loss
+of the `rp` branch the stamp holds, at the voltage the stamp puts across it:
+the leg voltages of a delta, terminal to terminal of a wye. A matrix or Z1
+reactor carrying `rp` reports none. A `Parallel=yes` matrix reactor keeps the I²R label both oracles give
+its whole loss, and the reduction, which writes that branch as `rp`, moves it
+to no-load (question 7). The steps of a bank are capacitors in parallel, each
+of the capacitance of its own rating and tuned by `harm` to that capacitance,
+so a bank draws the sum of its energized steps and a delta bank stamps each step once, in both lanes. A disabled
+element is out of the model, as on r4133, so its refusal is not asked. One-
+and two-phase `cuf`, R/X and Z1 elements, a Fault given by `r` and the
+one-phase `cmatrix` bank keep their per-phase value as before, which
+overstates them by 3/N (open question 1), and the Line's two-phase Z1 stays
+per phase beside its shunt-exact C1.
+
+**Exclusion.** One corpus case moves, `modes:makeposseq/makeposseq_shunt.dss`
+on `capi_v0145` (the r4133 channel runs no matrix reduction):
+`makeposseq-matrix-average-capi` (`yprim` of `Reactor.rx_mat`),
+`reactor-one-phase-z1-capi` (`yprim` of `Reactor.rx_z1`),
+`makeposseq-matrix-average-capi-props` (the `rx_mat` probes `r`, `x` and
+properties `r`, `x`, `z`, `lmh`, exact pairs), the `cuf`/`normamps`/`emergamps`
+pairs of `makeposseq-cuf-applied-capi-props` re-pinned (12 µF), and the
+`injection` field added to `makeposseq-cuf-applied-capi`. No golden byte, no
+tolerance and no other case moves. No corpus case holds a delta bank of two or
+more steps, a `kvar` bank of unequal steps or of a `kvar` array shorter than
+its steps, a Capacitor with `harm`, a shunt reactor with `rp` or a
+`Parallel=yes` reactor, and no golden or ledger entry holds the unequal or
+short steps or the `rp` reactor.
+
+**Pins** (both lanes): `elements::pd::capacitor::tests::make_pos_sequence_cmatrix`,
+`make_pos_sequence_cmatrix_applies_the_positive_sequence_cuf`,
+`make_pos_sequence_unbalanced_cmatrix_keeps_the_banks_power`,
+`make_pos_sequence_two_phase_cmatrix_keeps_the_banks_power`,
+`make_pos_sequence_four_conductor_cmatrix_takes_mean_self_minus_mean_mutual`,
+`make_pos_sequence_delta_cuf_bank_keeps_its_power`,
+`a_delta_cmatrix_bank_refuses_the_solve`,
+`a_disabled_delta_cmatrix_bank_leaves_the_solve_to_the_rest`,
+`a_cmatrix_of_another_phase_count_refuses_the_solve`,
+`a_multistep_delta_bank_draws_the_sum_of_its_steps`,
+`a_kvar_bank_of_unequal_steps_draws_its_rating`,
+`derived_cuf_multistep_takes_each_steps_own_rating`;
+`elements::pd::reactor::tests::make_pos_sequence_matrix`,
+`make_pos_sequence_matrix_shunt_keeps_the_reactors_power`,
+`make_pos_sequence_matrix_series_keeps_loss_and_load`,
+`make_pos_sequence_unbalanced_matrix_shunt_keeps_the_reactors_power`,
+`make_pos_sequence_parallel_matrix_keeps_the_reactors_power`,
+`make_pos_sequence_parallel_matrix_takes_the_admittance_self_terms`,
+`make_pos_sequence_two_phase_matrix_keeps_the_reactors_power`,
+`make_pos_sequence_four_conductor_matrix_takes_mean_self_minus_mean_mutual`,
+`make_pos_sequence_four_conductor_parallel_matrix_takes_mean_self_minus_mean_mutual`,
+`a_single_phase_z1_reactor_stamps_z1`,
+`make_pos_sequence_delta_reactor_keeps_its_power`,
+`a_delta_matrix_reactor_refuses_the_solve`,
+`a_matrix_reactor_without_both_matrices_refuses_the_solve`,
+`a_refused_reactor_set_aside_by_disable_leaves_the_solve_to_the_rest`,
+`a_matrix_of_another_phase_count_refuses_the_solve`,
+`a_singular_series_matrix_refuses_the_solve`,
+`a_singular_parallel_matrix_refuses_the_solve`,
+`make_pos_sequence_four_conductor_zero_self_term_stays_finite`,
+`make_pos_sequence_matrix_drops_the_curves_it_never_read`,
+`the_no_load_loss_is_the_parallel_branch_the_stamp_holds`,
+`a_delta_reactor_loses_its_rp_across_the_legs`,
+`a_wye_reactor_loses_its_rp_between_its_terminals`,
+`dump_prints_the_matrices_a_reactor_holds`;
+`elements::pd::line::tests::make_pos_sequence_matrix_branch` (the three-phase
+reduction to the bit), `make_pos_sequence_two_phase_line_c1_is_the_shunt_self_term`,
+`make_pos_sequence_four_conductor_line_takes_mean_self_minus_mean_mutual`,
+`make_pos_sequence_four_wire_geometry_line_takes_mean_self_minus_mean_mutual_per_length`;
+`elements::pd::fault::tests::make_pos_sequence_gmatrix_fault_keeps_its_current`,
+`make_pos_sequence_two_phase_gmatrix_fault_keeps_its_power`,
+`make_pos_sequence_gmatrix_fault_with_no_conductance_draws_nothing`,
+`a_gmatrix_short_of_the_phases_refuses_the_solve`,
+`a_gmatrix_larger_than_the_phases_refuses_the_solve`,
+`a_refused_matrix_element_saves_and_reloads_refused`;
+`exec::tests::make_pos_seq::makeposseq_shunt_reproduces_its_three_phase_solution`;
+`solution::ymatrix::tests::a_refused_build_leaves_no_y_and_logs_no_build_event`,
+`a_refused_build_keeps_each_bus_voltage_across_a_renumbering`;
+the helper's own tests in `elements::pos_seq::tests`.
+
+**Open, for the user.** (1) Whether one- and two-phase elements of every class
+should keep their total under `makeposseq`. The `kvar` arms and the Load do,
+bar a two-phase delta `kvar` Reactor, the `cuf`, R/X, Z1 and Fault `r` arms
+do not: two two-phase banks with one YPrim reduce to 20/3 µF
+(`cmatrix=[10|0 10]`) and 10 µF (`cuf=10`), the two-phase
+`gmatrix=[0.12|0 0.12]` fault keeps 12440.1 kW where its `r=` twin draws
+18660.1 kW, and a two-phase Line writes its shunt total as C1 (22/3 nF for
+`[10|-2 10]`) beside a Z1 per phase. A two-phase delta Reactor (legs 1-2 and
+2 to ground) given by `kvar=11518.59 kv=12.47 r=2.4 rp=3000` draws 746.3 +
+j7618.9 kVA before `makeposseq` and 2036.8 + j11165.7 after, its
+`r=2.4 x=27` twin with the same `rp` 559.8 + j5714.1 after, on the port and
+dss_capi and within 0.1 kvar on r4133 (measured 2026-10-09): the `kvar` arm
+keeps the nameplate kvar, which the leg to ground does not draw. (2) Whether a delta matrix element of
+two or more phases is refused (taken) or read with a meaning. The Capacitor
+page reads "Cmatrix Alternate method of defining a capacitor bank. Enter nodal
+capacitance matrix in uf. Can be used to define either series or shunt banks."
+and gives `Conn` as "{delta | ll} for delta (line-line) connected banks". A
+nodal matrix supports one reading, the same nodal block on the bus whatever
+`conn` says (`conn=delta` only drops the second terminal, so the bank draws
+what its wye twin with a grounded `bus2` draws), and the refusal of a delta
+bank narrows input the documentation accepts. The Reactor page gives a delta
+matrix no meaning. (3) Whether a reactor above three conductors reduces
+`rmatrix` and `xmatrix` each (taken) or its admittance (0.825 + j8.25 against
+0.7939 + j7.9391 for an unbalanced 4×4, equal for a balanced one). (4) Whether
+a missing `rmatrix` or `xmatrix` is refused or read as an absent branch. The
+series form refuses it (taken). The parallel form reads it as an open branch,
+with an error at the edit (taken), which
+`make_pos_sequence_four_conductor_zero_self_term_stays_finite` pins. The
+inversion the parallel refusal shares with the stamp pivots on the diagonal,
+so it also refuses an invertible matrix with a zero diagonal entry, such as
+`rmatrix=[0|1 0|0 0 1]`, and calls it singular. Such a matrix is not passive. (5) What
+a `phases=` edit does to a matrix given before it: drop it, resize it, or keep
+it and the solve refuses the element (taken, and the kept matrix reads back
+and saves at its own order), and what a one-phase fault reads from a larger
+`gmatrix` (its first entry, taken). The order itself is closed by the
+documentation, which is the language specification (user ruling 2026-10-04):
+the Reactor and Line pages say "Order of the matrix is the number of phases",
+and the Capacitor and Fault pages call their matrices nodal, which fixes the
+order to the terminal's node count (an inference). (6) Whether `rp`, `RCurve`
+and `LCurve` on a matrix reactor, which its stamp never reads, are refused,
+stamped with the whole matrix branch, or ignored (ignored, taken), and with
+them the `rp=0` the reduction writes for no parallel branch. (7) Whether the
+resistive loss of a `Parallel=yes` matrix reactor is no-load like that of `rp`,
+or I²R as both oracles report it (taken). `makeposseq` writes that branch as
+`rp`, so its loss moves from I²R to no-load. (8) Whether a line above three
+conductors with its neutral retained, the documentation's own example of such
+a line ("a 4x4 Z matrix with the neutral retained", and LineGeometry `reduce`
+defaults to no), reduces over its phase conductors alone, the neutral
+Kron-reduced in `Z` and struck in `C`. With the neutral on node 0 at both ends
+that gives the exact values, and the ruling's mean over all four conductors
+misses them: a 5-mile four-wire line feeding a 3000 kW, 1500 kvar
+constant-impedance load at 12.47 kV delivers 2683.6 + j1341.8 kVA with 99.0 kW
+of line loss, and after `makeposseq` (R1 0.3775, X1 0.63075, C1 17.5)
+2631.9 + j1316.0 kVA with 119.7 kW, where the phase values 0.306, 0.5618 and
+18 give the unreduced solution exactly (both oracles write the same R1 and X1
+with C1 12.75, measured 2026-10-05). A plain matrix line above three
+conductors marks no neutral, so what it means is part of the question.
+(9) Whether a two-phase `z1` Reactor, which stamps only the diagonal
+`(Z0 + Z1 + Z2)/3` in the port and on both oracles, takes the 2 × 2 block of
+the three-phase sequence matrix, keeps the diagonal (kept) or is refused: the
+documentation gives no rule for two phases. Left for later on the same path:
+the property order `conn=delta phases=3` giving a three-phase delta element
+four conductors (only guarded here, the delta factors require three), as on
+dss_capi, where r4133 keeps three and the `r=2.4 x=27 rp=3000` reactor draws
+its closed-delta 1679273 W against 1306101 W in the port and on dss_capi
+(measured 2026-10-10), a second
+`makeposseq` dividing a Vsource's base kV by √3 again, and the default
+`NormAmps` and `EmergAmps` of a `Cuf` Capacitor, which the reduced bank
+inherits: `1e6 × phases` too small on both oracles and in the port (43.9695 A
+for a 703.47 kvar bank at 12.47 kV given by `kvar`, 1.46565e-5 A for its
+`cuf=12` twin). So `Export Powers` shows every `Cuf` bank, shunt banks
+included, over its normal and emergency ratings by its whole power (703.5
+kvar for `cuf=12`, 0 for its `kvar` twin, on r4133 and in the port), and
+`makeposseq` gives a `cmatrix` bank that reading (0 before, 703.5 after). On
+the same stamp, on all three engines: the default `NormAmps` of a delta bank is
+its `kvar` per phase over the line-to-line kV, a leg current held against the
+line current, so a 600 kvar delta bank at its rated 12.47 kV shows 132.3 kvar
+over its normal rating. Off the path, still stamped as
+a tiny conductance in silence: a
+Z1 Reactor with a zero sequence impedance, and a series matrix reactor in a GIC
+solve, which stamps `rmatrix` alone, when that matrix does not invert.
