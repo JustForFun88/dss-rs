@@ -16,7 +16,8 @@ use super::{Json, JsonOpts};
 
 /// Pascal `PropertyType[iProp] in [ ... ]` — the array-related types eligible
 /// for the redundant-property deferral (`CAPI_Obj.pas:702-715`). `DoubleProperty`
-/// is included (Vsource `R1`→`Z1`, LineCode `B1`→`C1`).
+/// is included (Vsource `R1`→`Z1`, LineCode `B1`→`C1`), and so are the rating
+/// kinds, which are double properties there.
 fn is_deferral_type(t: PropType) -> bool {
     matches!(
         t,
@@ -31,6 +32,8 @@ fn is_deferral_type(t: PropType) -> bool {
             | PropType::DoublePoints
             | PropType::DoubleArray
             | PropType::Double
+            | PropType::RatingArray
+            | PropType::Rating
     )
 }
 

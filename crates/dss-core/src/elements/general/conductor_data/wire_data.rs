@@ -15,12 +15,12 @@ define_properties! {
     6  RADIUS    => PropDef::double("Radius")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
     7  RADUNITS  => PropDef::mapped_string_enum("RadUnits", enums.units);
-    8  NORMAMPS  => PropDef::double("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT);
-    9  EMERGAMPS => PropDef::double("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    8  NORMAMPS  => PropDef::rating("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT);
+    9  EMERGAMPS => PropDef::rating("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT);
     10 DIAM      => PropDef::double("Diam").scale(0.5)
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::REDUNDANT);
     11 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
-    12 RATINGS   => PropDef::double_array("Ratings", SEASONS);
+    12 RATINGS   => PropDef::rating_array("Ratings", SEASONS);
     13 CAPRADIUS => PropDef::double("CapRadius")
         .flags(PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
 }
@@ -42,7 +42,7 @@ impl WireDataObj {
 
     /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` — the rating fields a
     /// `LineGeometry` defaults from its first conductor.
-    pub fn amps(&self) -> (f64, f64, i32, &[f64]) {
+    pub fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         self.cond.amps()
     }
 
@@ -76,17 +76,23 @@ impl DssObject for WireDataObj {
     fn set_f64(&mut self, idx: usize, value: f64) {
         self.cond.set_f64(idx, value);
     }
+    fn get_rating(&self, idx: usize) -> Rating {
+        self.cond.get_rating(idx)
+    }
+    fn set_rating(&mut self, idx: usize, value: Rating) {
+        self.cond.set_rating(idx, value);
+    }
     fn get_i32(&self, idx: usize) -> i32 {
         self.cond.get_i32(idx)
     }
     fn set_i32(&mut self, idx: usize, value: i32) {
         self.cond.set_i32(idx, value);
     }
-    fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
+    fn get_rating_array(&self, idx: usize) -> Option<&[Rating]> {
         debug_assert_eq!(idx, prop::RATINGS);
         (!self.cond.amp_ratings.is_empty()).then_some(self.cond.amp_ratings.as_slice())
     }
-    fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
+    fn set_rating_array(&mut self, idx: usize, value: Vec<Rating>) {
         debug_assert_eq!(idx, prop::RATINGS);
         self.cond.amp_ratings = value;
     }

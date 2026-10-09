@@ -17,12 +17,12 @@ impl Reactor {
 
     /// Pascal `TDSSCktElement.NormAmps`. Read-only accessor for the CIM export
     /// (`WriteTerminals` operational limits).
-    pub fn norm_amps(&self) -> f64 {
+    pub fn norm_amps(&self) -> crate::obj::Rating {
         self.norm_amps
     }
 
     /// Pascal `TDSSCktElement.EmergAmps`. Read-only accessor for the CIM export.
-    pub fn emerg_amps(&self) -> f64 {
+    pub fn emerg_amps(&self) -> crate::obj::Rating {
         self.emerg_amps
     }
 }
@@ -59,9 +59,12 @@ impl Reactor {
         self.l_curve_name = other.l_curve_name.clone();
         self.l_curve = other.l_curve.clone();
 
-        // TPDElement.MakeLike copies the rating fields.
+        // A typed rating, `none` included, stays typed: the copy does not derive
+        // it from kvar again.
         self.norm_amps = other.norm_amps;
         self.emerg_amps = other.emerg_amps;
+        self.norm_amps_specified = other.norm_amps_specified;
+        self.emerg_amps_specified = other.emerg_amps_specified;
         self.fault_rate = other.fault_rate;
         self.pct_perm = other.pct_perm;
         self.hrs_to_repair = other.hrs_to_repair;
@@ -85,13 +88,25 @@ impl DssObject for Reactor {
             X => self.z.im,
             RP => self.rp,
             LMH => self.l,
-            NORMAMPS => self.norm_amps,
-            EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
             BASE_FREQ => self.cd.base_frequency,
             _ => unreachable!("Reactor has no double property {idx}"),
+        }
+    }
+    fn get_rating(&self, idx: usize) -> crate::obj::Rating {
+        match idx {
+            super::prop::NORMAMPS => self.norm_amps,
+            super::prop::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("no rating property {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: crate::obj::Rating) {
+        match idx {
+            super::prop::NORMAMPS => self.norm_amps = value,
+            super::prop::EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("no rating property {idx}"),
         }
     }
     fn set_f64(&mut self, idx: usize, value: f64) {
@@ -103,8 +118,6 @@ impl DssObject for Reactor {
             X => self.z.im = value,
             RP => self.rp = value,
             LMH => self.l = value,
-            NORMAMPS => self.norm_amps = value,
-            EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,

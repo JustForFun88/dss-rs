@@ -73,12 +73,16 @@ pub(crate) fn export_overloads(
             (0.0, i1, 0.0)
         };
 
-        // Only overloaded branches are reported (Pascal guards on a positive
-        // rating AND `Cmax` over one of the two ratings).
-        if !(norm_amps > 0.0 || emerg_amps > 0.0) {
+        // Only overloaded branches are reported: a positive rating AND `Cmax`
+        // over one of the two ratings. A rating that is not set takes no part
+        // (`export_overloads_ignores_a_rating_that_is_not_set`).
+        let (norm_amps, emerg_amps) = (norm_amps.if_set(), emerg_amps.if_set());
+        let positive = |r: Option<f64>| r.is_some_and(|v| v > 0.0);
+        let exceeded = |r: Option<f64>| r.is_some_and(|v| cmax > v);
+        if !(positive(norm_amps) || positive(emerg_amps)) {
             return;
         }
-        if !(cmax > norm_amps || cmax > emerg_amps) {
+        if !(exceeded(norm_amps) || exceeded(emerg_amps)) {
             return;
         }
 
@@ -103,24 +107,21 @@ pub(crate) fn export_overloads(
         // `iNormal` branch: AmpsOver / kVAOver / %Normal (no leading separator —
         // it rides I1's trailing comma), or a `Separator + '0.0'` that leaves the
         // empty AmpsOver field behind it.
-        if norm_amps > 0.0 {
-            row.push_str(&format!(
+        match norm_amps {
+            Some(norm) if norm > 0.0 => row.push_str(&format!(
                 "{}, {}, {}",
-                format::fixed(cmax - norm_amps, 2),
-                format::fixed(spower * (cmax - norm_amps) / norm_amps, 2),
-                format::fixed(cmax / norm_amps * 100.0, 1),
-            ));
-        } else {
-            row.push_str(", 0.0");
+                format::fixed(cmax - norm, 2),
+                format::fixed(spower * (cmax - norm) / norm, 2),
+                format::fixed(cmax / norm * 100.0, 1),
+            )),
+            _ => row.push_str(", 0.0"),
         }
         // `iEmerg` branch: %Emergency, or the literal `0.0` (both `Separator + …`).
-        if emerg_amps > 0.0 {
-            row.push_str(&format!(
-                ", {}",
-                format::fixed(cmax / emerg_amps * 100.0, 1)
-            ));
-        } else {
-            row.push_str(", 0.0");
+        match emerg_amps {
+            Some(emerg) if emerg > 0.0 => {
+                row.push_str(&format!(", {}", format::fixed(cmax / emerg * 100.0, 1)));
+            }
+            _ => row.push_str(", 0.0"),
         }
         // I2, then %I2/I1 (`0.0` when `I1 == 0`), then I0, then %I0/I1.
         row.push_str(&format!(", {}", format::fixed(i2, 1)));

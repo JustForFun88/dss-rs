@@ -65,15 +65,13 @@ pub(crate) fn export_seq_currents(
                 (0.0, 0.0)
             };
 
-            // A loading rating that is not positive means "no rating", so the
-            // column prints 0, the value the `else` arm writes for every other
-            // terminal. Pinned by `export_seqcurrents_prints_zero_for_an_undefined_rating`.
-            let pct_of_rating = |rating: f64| {
-                if rating > 0.0 {
-                    i1 / rating * 100.0
-                } else {
-                    0.0
-                }
+            // A loading rating that is not set or not positive means "no
+            // rating", so the column prints 0, the value the `else` arm writes
+            // for every other terminal. Pinned by
+            // `export_seqcurrents_prints_zero_for_an_undefined_rating`.
+            let pct_of_rating = |rating: crate::obj::Rating| match rating {
+                crate::obj::Rating::Set(r) if r > 0.0 => i1 / r * 100.0,
+                _ => 0.0,
             };
             let (i_normal, i_emerg) = if do_ratings && j == 1 {
                 (pct_of_rating(norm_amps), pct_of_rating(emerg_amps))

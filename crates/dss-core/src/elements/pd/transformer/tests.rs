@@ -306,23 +306,60 @@ fn seasonal_amp_ratings_drop_the_1_1_factor() {
         ("conns", "wye, wye"),
         ("kvas", "1000, 1000"),
         ("Seasons", "2"),
-        ("Ratings", "[1000 1200]"),
+        // The value as the command parser hands it over, without its brackets.
+        ("Ratings", "1000 1200"),
     ]);
+    assert_eq!(t.kva_ratings, [1000.0, 1200.0], "two seasonal kVA ratings");
     assert_eq!(t.amp_ratings.len(), 2, "two seasonal ratings");
+    let rating = |r: crate::obj::Rating| r.if_set().expect("derived ratings are set");
+    // Each seasonal kVA rating over three phases of the 115 kV wye winding.
+    let phase_kv = 115.0 / 3f64.sqrt();
+    for (i, kva) in [1000.0, 1200.0].into_iter().enumerate() {
+        let want = kva / 3.0 / phase_kv;
+        let got = rating(t.amp_ratings[i]);
+        assert!(
+            ((got - want) / want).abs() < 1e-12,
+            "amp_ratings[{i}] = {got}, want {kva} kVA over the phase voltage, {want}"
+        );
+    }
     // Reconstruct `np/vfactor` from the (unchanged) NormAmps relation
     // `norm_amps = norm_max_hkva / np / vfactor`, so
     // `amp_ratings[i] == kVARatings[i] * norm_amps / norm_max_hkva` post-D6.
     // Pre-D6 (with the `1.1 *`) each amp_ratings[i] was 1.1× this — so the
     // assertion is feature-sensitive to the dropped factor.
     for (i, &kva) in t.kva_ratings.iter().enumerate() {
-        let want = kva * t.norm_amps / t.norm_max_hkva;
+        let want = kva * rating(t.norm_amps) / t.norm_max_hkva;
+        let got = rating(t.amp_ratings[i]);
         assert!(
-            (t.amp_ratings[i] - want).abs() < 1e-9,
-            "amp_ratings[{i}] = {} (no-1.1 want {want}); 1.1× would be {}",
-            t.amp_ratings[i],
+            (got - want).abs() < 1e-9,
+            "amp_ratings[{i}] = {got} (no-1.1 want {want}); 1.1× would be {}",
             want * 1.1
         );
     }
+}
+
+/// The kVA ratings have no not-set state, so every current rating derived
+/// from them is set, `-1` A included: over a one-phase 1 kV wye winding 1 a
+/// kVA rating derives the same number of amperes, and `NormHkVA`, `EmergHkVA`
+/// and a seasonal kVA rating of `-1` derive `Set(-1.0)`.
+#[test]
+fn a_kva_rating_of_minus_one_derives_a_set_rating_of_minus_one_ampere() {
+    use crate::obj::Rating;
+    let t = edited(&[
+        ("phases", "1"),
+        ("windings", "2"),
+        ("kvs", "1, 0.48"),
+        ("conns", "wye, wye"),
+        ("kvas", "50, 50"),
+        ("NormHkVA", "-1"),
+        ("EmergHkVA", "-1"),
+        ("Seasons", "2"),
+        // The value as the command parser hands it over, without its brackets.
+        ("Ratings", "-1 -1.01"),
+    ]);
+    assert_eq!(t.norm_amps, Rating::Set(-1.0));
+    assert_eq!(t.emerg_amps, Rating::Set(-1.0));
+    assert_eq!(t.amp_ratings, [Rating::Set(-1.0), Rating::Set(-1.01)]);
 }
 
 /// WP-U1.5 E2 (dss_capi 0.15.x `55400a29`): the seasonal `GetRatings` override
@@ -339,9 +376,22 @@ fn get_ratings_applies_seasonal_index_on_transformer() {
         ("conns", "wye, wye"),
         ("kvas", "1000, 1000"),
         ("Seasons", "2"),
-        ("Ratings", "[1000 1200]"),
+        // The value as the command parser hands it over, without its brackets.
+        ("Ratings", "1000 1200"),
     ]);
     assert_eq!(t.num_amp_ratings(), 2);
+    assert_eq!(t.kva_ratings, [1000.0, 1200.0]);
+    let phase_kv = 115.0 / 3f64.sqrt();
+    for (i, kva) in [1000.0, 1200.0].into_iter().enumerate() {
+        let want = kva / 3.0 / phase_kv;
+        let crate::obj::Rating::Set(got) = t.amp_ratings[i] else {
+            panic!("amp_ratings[{i}] is not set");
+        };
+        assert!(
+            ((got - want) / want).abs() < 1e-12,
+            "amp_ratings[{i}] = {got}, want {want}"
+        );
+    }
     let (n0, e0) = t.get_ratings(0);
     assert_eq!((n0, e0), (t.amp_ratings[0], t.amp_ratings[0]));
     let (n1, e1) = t.get_ratings(1);

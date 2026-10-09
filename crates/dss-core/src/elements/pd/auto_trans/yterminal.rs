@@ -132,8 +132,11 @@ impl AutoTrans {
             },
             Connection::Series => w1.vbase * 0.001,
         };
-        self.norm_amps = self.norm_max_hkva / np as f64 / vfactor;
-        self.emerg_amps = self.emerg_max_hkva / np as f64 / vfactor;
+        // The kVA ratings have no not-set state, so the current ratings derived
+        // from them are set, `-1` A included: a negative one loads by its
+        // magnitude (`a_transformer_or_autotrans_derives_its_current_rating_whatever_is_typed`).
+        self.norm_amps = crate::obj::Rating::Set(self.norm_max_hkva / np as f64 / vfactor);
+        self.emerg_amps = crate::obj::Rating::Set(self.emerg_max_hkva / np as f64 / vfactor);
 
         self.calc_y_terminal(1.0, self.live_frequency);
     }

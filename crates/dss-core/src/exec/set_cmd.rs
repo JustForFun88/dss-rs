@@ -46,6 +46,25 @@ fn apply_data_path(
     }
 }
 
+/// `Set %Normal=pct`: every Line's normal rating becomes `pct` percent of its
+/// emergency rating, and stays not set where the emergency rating is not set.
+/// Pinned by `exec::tests::ratings::set_pct_normal_rates_every_line_from_its_emergency_rating`.
+fn set_line_normal_ratings(
+    classes: &mut [DssClass],
+    lines: &[crate::elements::traits::ElemId],
+    pct: f64,
+) {
+    let factor = pct * 0.01;
+    for &r in lines {
+        if let Some(line) = classes[r.class_ord()]
+            .arena
+            .get_mut::<crate::elements::pd::line::Line>(r.index())
+        {
+            line.norm_amps = line.emerg_amps.map(|e| factor * e);
+        }
+    }
+}
+
 /// Pascal `Set InjCurrent=`/`Set ITerminal=` (ExecOptions.pas @ 0.15.0b4): parse
 /// a complex vector of `NPhases` values into the active PCE's `InjCurrent` (or
 /// `ITerminal`, also flagging `ITerminalUpdated`) and set `Flg.ForceInjCurrents`
@@ -375,6 +394,20 @@ impl Dss {
                     opt::NORMVMAXPU => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
                             ckt.normal_max_volts = v;
+                        }
+                    }
+                    opt::PCT_NORMAL => {
+                        if let Some(v) = get_dbl(parser, vars, errors) {
+                            if v.is_finite() {
+                                ckt.pct_normal_factor = v;
+                                set_line_normal_ratings(classes, &ckt.lines, v);
+                            } else {
+                                // A rating is a finite number: the Line ratings stay.
+                                errors.push(format!(
+                                    "Set %Normal: {v} is not a finite percentage of the \
+                                     emergency rating."
+                                ));
+                            }
                         }
                     }
                     opt::EMERGVMINPU => {

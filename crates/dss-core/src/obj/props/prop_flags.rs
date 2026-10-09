@@ -554,6 +554,11 @@ impl PropFlags {
         self.0 & other.0 == other.0
     }
 
+    /// Whether any flag of `other` is set.
+    pub fn intersects(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
+
     /// Whether the property is excluded from the JSON/schema **output** — a
     /// [`Self::SUPPRESS_JSON`] (excluded from `AltPropertyOrder` too) or a
     /// [`Self::SUPPRESS_JSON_LATE`] (kept in `AltPropertyOrder`, output-suppressed

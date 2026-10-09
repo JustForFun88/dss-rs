@@ -1141,12 +1141,19 @@ fn derived_cuf_multistep_takes_each_steps_own_rating() {
     close(c.fc[0], c0, "step 1 vs (300 kvar) / (ω V_ph²)");
     assert_eq!(c.fc, vec![c.fc[0], c.fc[0] / 2.0, c.fc[0] / 4.0]);
     assert_eq!(c.ftotalkvar, 1575.0);
-    close(c.norm_amps, 525e3 / v_ph * 1.35, "NormAmps");
+    let crate::obj::Rating::Set(norm_amps) = c.norm_amps else {
+        panic!("a kvar bank derives its NormAmps");
+    };
+    close(norm_amps, 525e3 / v_ph * 1.35, "NormAmps");
     // The order `w (kv kv)` and `kvar / kv × 1.35` give these bits, which
     // `Cuf` and `NormAmps` render: `(w kv) kv` gives `…362e-6` and
     // `kvar × 1.35 / kv` gives `…296`.
     assert_eq!(c.fc[0], 3.850460712534363e-6, "step 1 to the bit");
-    assert_eq!(c.norm_amps, 49.3008437696563, "NormAmps to the bit");
+    assert_eq!(
+        c.norm_amps,
+        crate::obj::Rating::Set(49.3008437696563),
+        "NormAmps to the bit"
+    );
 }
 
 /// `Capacitor.pas:664` (`Ftotalkvar + w * FC[i] * SQR(PhasekV) / 1000.0`),
@@ -1161,8 +1168,11 @@ fn derived_amps_from_cuf_spec_match_oracle_bit_exactly() {
     c.kvrating = 24.9;
     c.fc = vec![7.2 * 1.0e-6];
     c.recalc();
-    assert_eq!(c.norm_amps, 1.755960930107517e-05);
-    assert_eq!(c.emerg_amps, 2.3412812401433556e-05);
+    assert_eq!(c.norm_amps, crate::obj::Rating::Set(1.755960930107517e-05));
+    assert_eq!(
+        c.emerg_amps,
+        crate::obj::Rating::Set(2.3412812401433556e-05)
+    );
 }
 
 /// The `SpecType` ordinals are pinned twice: to the Pascal literals

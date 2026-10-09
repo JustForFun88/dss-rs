@@ -64,13 +64,25 @@ impl DssObject for GicTransformer {
             PCT_R1 => self.pct_r1,
             PCT_R2 => self.pct_r2,
             K => self.k_factor,
-            NORMAMPS => self.norm_amps,
-            EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
             BASE_FREQ => self.cd.base_frequency,
             _ => unreachable!("GICTransformer has no double property {idx}"),
+        }
+    }
+    fn get_rating(&self, idx: usize) -> crate::obj::Rating {
+        match idx {
+            super::prop::NORMAMPS => self.norm_amps,
+            super::prop::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("no rating property {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: crate::obj::Rating) {
+        match idx {
+            super::prop::NORMAMPS => self.norm_amps = value,
+            super::prop::EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("no rating property {idx}"),
         }
     }
     fn set_f64(&mut self, idx: usize, value: f64) {
@@ -84,8 +96,6 @@ impl DssObject for GicTransformer {
             PCT_R1 => self.pct_r1 = value,
             PCT_R2 => self.pct_r2 = value,
             K => self.k_factor = value,
-            NORMAMPS => self.norm_amps = value,
-            EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,

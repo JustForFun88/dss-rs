@@ -54,6 +54,8 @@ impl Line {
                 // populated, but our `get_value` re-renders from state and can be
                 // empty for an unset alias; skipping an empty value only drops a
                 // redundant token, exactly as every other class's generic save.
+                // A rating that is not set is omitted.
+                _ if cx.cls.holds_no_rating(self, ip) => {}
                 _ => {
                     let val = cx.cls.get_value(self, ip, cx.enums);
                     let mut s = val.trim();

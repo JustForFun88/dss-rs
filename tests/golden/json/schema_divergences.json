@@ -352,6 +352,51 @@
       "count": 1,
       "props": ["NVariables"],
       "cause": "OpenDSS r4133 defaults DynamicExp NVariables to 20 memory rows (General/DynamicExp.pas:305), so an equation that names its VarNames and omits the count integrates. The port adopted the r4133 default (elements/general/dynamic_exp.rs, DEFAULT_N_VARIABLES). The pinned 0.14.5 oracle defaults it to 0."
+    },
+    {
+      "class": "GICTransformer",
+      "kind": "port_changed_line",
+      "from": "    \"NormAmps\" : {\r\n      \"type\" : \"number\",",
+      "to": "    \"NormAmps\" : {\r\n      \"type\" : \"number\",\r\n      \"default\" : 0.0000000000000000E+000,",
+      "count": 1,
+      "props": ["NormAmps"],
+      "cause": "User decision 2026-10-04: a rating that is not set is its own value, not a number. Nothing gives a GICTransformer a current rating, so the port's schema writes no default for NormAmps. The pinned 0.14.5 oracle writes 0 as the default. Pinned by unset_ratings_read_none_by_default."
+    },
+    {
+      "class": "GICTransformer",
+      "kind": "port_changed_line",
+      "from": "    \"EmergAmps\" : {\r\n      \"type\" : \"number\",",
+      "to": "    \"EmergAmps\" : {\r\n      \"type\" : \"number\",\r\n      \"default\" : 0.0000000000000000E+000,",
+      "count": 1,
+      "props": ["EmergAmps"],
+      "cause": "User decision 2026-10-04: a rating that is not set is its own value, not a number. Nothing gives a GICTransformer a current rating, so the port's schema writes no default for EmergAmps. The pinned 0.14.5 oracle writes 0 as the default. Pinned by unset_ratings_read_none_by_default."
+    },
+    {
+      "class": "WireData",
+      "kind": "port_changed_line",
+      "from": "      \"$ref\" : \"#/$defs/ArrayOrFilePath\",\r\n      \"$dssLength\" : \"Seasons\",",
+      "to": "      \"$ref\" : \"#/$defs/ArrayOrFilePath\",\r\n      \"default\" : [\r\n        -1.0000000000000000E+000\r\n      ],\r\n      \"$dssLength\" : \"Seasons\",",
+      "count": 1,
+      "props": ["Ratings"],
+      "cause": "User decision 2026-10-04: a rating that is not set is its own value, not a number. A conductor's seasonal ratings start not set, so the port's schema writes no default for WireData.Ratings. The pinned 0.14.5 oracle writes its -1 sentinel as the default. Pinned by unset_ratings_read_none_by_default."
+    },
+    {
+      "class": "CNData",
+      "kind": "port_changed_line",
+      "from": "      \"$ref\" : \"#/$defs/ArrayOrFilePath\",\r\n      \"$dssLength\" : \"Seasons\",",
+      "to": "      \"$ref\" : \"#/$defs/ArrayOrFilePath\",\r\n      \"default\" : [\r\n        -1.0000000000000000E+000\r\n      ],\r\n      \"$dssLength\" : \"Seasons\",",
+      "count": 1,
+      "props": ["Ratings"],
+      "cause": "User decision 2026-10-04: a rating that is not set is its own value, not a number. A conductor's seasonal ratings start not set, so the port's schema writes no default for CNData.Ratings. The pinned 0.14.5 oracle writes its -1 sentinel as the default. Pinned by unset_ratings_read_none_by_default."
+    },
+    {
+      "class": "TSData",
+      "kind": "port_changed_line",
+      "from": "      \"$ref\" : \"#/$defs/ArrayOrFilePath\",\r\n      \"$dssLength\" : \"Seasons\",",
+      "to": "      \"$ref\" : \"#/$defs/ArrayOrFilePath\",\r\n      \"default\" : [\r\n        -1.0000000000000000E+000\r\n      ],\r\n      \"$dssLength\" : \"Seasons\",",
+      "count": 1,
+      "props": ["Ratings"],
+      "cause": "User decision 2026-10-04: a rating that is not set is its own value, not a number. A conductor's seasonal ratings start not set, so the port's schema writes no default for TSData.Ratings. The pinned 0.14.5 oracle writes its -1 sentinel as the default. Pinned by unset_ratings_read_none_by_default."
     }
   ]
 }

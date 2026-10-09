@@ -1678,13 +1678,14 @@ const TORN_DOWN_ROWS: &[TornDownRow] = &[
     // prints its loading against the magnitude instead, pinned by
     // `golden_reports.rs::export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`
     // and the AutoTrans pin named below.
-    // Only a negative rating moves a cell (at `normamps=0` the two readings
-    // coincide). The one `Export SeqCurrents` golden (IEEE13) rates every
-    // element positively. Four gated corpus decks carry negative ratings
-    // (measured 2026-10-02 over every gated case): the nine `wires=` lines of
+    // Only a negative rating or one that is not set moves a cell (at
+    // `normamps=0` the two readings coincide). The one `Export SeqCurrents`
+    // golden (IEEE13) rates every element positively. Four gated corpus decks
+    // carry such ratings: the nine `wires=` lines of
     // `Test/IEEE13_LineSpacing.dss`, `Test/IEEE13_LineAndCableSpacing.dss` and
-    // `Test/CapControlFollow.dss` take −1/−1 from a WireData that sets no
-    // rating, the class the row's pin covers with `Line.bad`, and
+    // `Test/CapControlFollow.dss` read `none` (a rating that is not set, from a
+    // WireData that sets none; the oracles print `-1`), the class the row's pin
+    // covers with `Line.bad`, and
     // `AutoTrans.at` of `modes/makeposseq/makeposseq_xfmr.dss` derives
     // −152.848446716868/−208.429700068457, pinned by
     // `golden_reports.rs::export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`.
@@ -10456,4 +10457,194 @@ fn the_rf_i00_05_names_the_docs_cite_exist_exactly_once() {
             "the RF-I00-05 record no longer names the rail `{pin}`"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// A rating that is not set is never turned into a number.
+// ---------------------------------------------------------------------------
+
+/// The name of the `Rating` accessor that hands a set rating out as an
+/// `Option<f64>`, spelled at runtime so this file does not trip its own rail.
+fn rating_accessor() -> String {
+    ["if", "set"].join("_")
+}
+
+/// The files allowed to use the accessor, how many times, and why none of
+/// them reads a sentinel. Every use counts, a call that keeps the `Option`
+/// included, so a new reader of a rating's number names its reason here
+/// whatever it does with the `Option` afterwards.
+const RATING_NUMBER_ALLOWED: &[(&str, usize, &str)] = &[
+    (
+        "crates/dss-core/src/cim/export.rs",
+        1,
+        "a Line rating that is not set gives its switch no rated current, and the writer omits it",
+    ),
+    (
+        "crates/dss-core/src/cim/power_xfmr.rs",
+        1,
+        "an emergency rating that is not set takes the set normal rating: a rule, not a sentinel",
+    ),
+    (
+        "crates/dss-core/src/elements/pd/auto_trans/tests.rs",
+        1,
+        "a unit test that expects the derived ratings to be set and fails when one is not",
+    ),
+    (
+        "crates/dss-core/src/elements/pd/transformer/tests.rs",
+        1,
+        "a unit test that expects the derived ratings to be set and fails when one is not",
+    ),
+    (
+        "crates/dss-core/src/obj/rating.rs",
+        1,
+        "the unit test of the accessor itself",
+    ),
+    (
+        "crates/dss-core/src/report/export/json/schema/classes.rs",
+        2,
+        "a schema default: none for a rating that is not set, and an array default only when every \
+         entry is set",
+    ),
+    (
+        "crates/dss-core/src/report/export/overloads.rs",
+        2,
+        "the overload gate and row match each rating, and one that is not set takes no part",
+    ),
+    (
+        "crates/dss-core/src/report/show/overloads.rs",
+        2,
+        "the overload gate and row match each rating, and one that is not set takes no part",
+    ),
+];
+
+/// How many times `text` uses the accessor: every occurrence of its name as a
+/// whole identifier, outside a `//` comment line and its own definition, so a
+/// method call, a call through the type path and a function reference all
+/// count, whatever follows them.
+fn rating_number_sites(text: &str) -> usize {
+    let name = rating_accessor();
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let definition = |head: &str| {
+        head.trim_end()
+            .strip_suffix("fn")
+            .is_some_and(|h| !h.chars().next_back().is_some_and(ident))
+    };
+    text.lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .map(|line| {
+            line.match_indices(&name)
+                .filter(|(at, _)| {
+                    let head = &line[..*at];
+                    let tail = &line[at + name.len()..];
+                    !head.chars().next_back().is_some_and(ident)
+                        && !tail.chars().next().is_some_and(ident)
+                        && !definition(head)
+                })
+                .count()
+        })
+        .sum()
+}
+
+/// The verdict on the sites found per file (repository-relative, forward
+/// slashes): every site sits in an allowed file and every allowed file holds
+/// exactly its count, so a stale entry fails as surely as a new site.
+fn check_rating_number_sites(found: &BTreeMap<String, usize>) -> Result<(), String> {
+    let mut wrong = Vec::new();
+    for (file, n) in found {
+        if !RATING_NUMBER_ALLOWED.iter().any(|(f, _, _)| f == file) {
+            wrong.push(format!("{file}: {n} use(s) of the rating accessor"));
+        }
+    }
+    for (file, want, _) in RATING_NUMBER_ALLOWED {
+        let n = found.get(*file).copied().unwrap_or(0);
+        if n != *want {
+            wrong.push(format!("{file}: {n} site(s), the allow-list holds {want}"));
+        }
+    }
+    if wrong.is_empty() {
+        Ok(())
+    } else {
+        Err(wrong.join("; "))
+    }
+}
+
+/// No crate source uses the `Rating` accessor that hands out a set rating's
+/// number outside [`RATING_NUMBER_ALLOWED`]: a rating that is not set has no
+/// number, so every reader of the number names its reason there, and a reader
+/// that needs a number matches `Rating::NotSet` itself. A `match` arm that
+/// maps `NotSet` to a number is not seen here and stays a review item.
+#[test]
+fn no_rating_is_turned_into_a_number_outside_its_allow_list() {
+    let root = repo_root();
+    let mut found = BTreeMap::new();
+    for path in rust_sources(&root) {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if !(rel.starts_with("crates/") && rel.contains("/src/")) {
+            continue;
+        }
+        let n = rating_number_sites(&fs::read_to_string(&path).expect("source is readable"));
+        if n > 0 {
+            found.insert(rel, n);
+        }
+    }
+    if let Err(e) = check_rating_number_sites(&found) {
+        panic!("the rating accessor is used outside RATING_NUMBER_ALLOWED: {e}");
+    }
+}
+
+/// The rail on synthetic sources: every use of the accessor counts, through
+/// an `Option` adapter, over two statements, through the type path, as a
+/// function reference and split over lines, a comment line, the definition
+/// and a longer identifier do not, and a new site in a reader, a stale
+/// allow-list entry and one site too many all fail.
+#[test]
+fn the_rating_rail_counts_every_use_of_the_accessor_and_a_stale_entry() {
+    let a = rating_accessor();
+    for site in [
+        format!("let x = r.{a}().unwrap_or(0.0);"),
+        format!("let x = r.{a}().map(f64::abs).unwrap_or(0.0);"),
+        format!("let x = r.{a}().filter(|v| *v > 0.0).unwrap_or(-1.0);"),
+        format!("let x = r.{a}().or(Some(-1.0)).unwrap();"),
+        format!("let x: f64 = r.{a}().into_iter().sum();"),
+        format!("let x = r.{a}().is_some_and(|v| v > 0.0);"),
+        format!("if let Some(v) = r.{a}() {{"),
+        format!("let x = Rating::{a}(r).unwrap_or(0.0);"),
+        format!("let v: Vec<_> = rs.iter().copied().map(Rating::{a}).collect();"),
+        format!("let x = r\n    .{a}()\n    .unwrap_or(0.0);"),
+    ] {
+        assert_eq!(rating_number_sites(&site), 1, "{site}");
+    }
+    let split = format!("let (n, e) = (norm.{a}(), emerg.{a}());\nlet n = n.unwrap_or(-1.0);");
+    assert_eq!(rating_number_sites(&split), 2, "{split}");
+    for not_a_use in [
+        format!("    pub fn {a}(self) -> Option<f64> {{"),
+        format!("    /// [`Rating::{a}`] hands out the number"),
+        format!("// let x = r.{a}().unwrap_or(0.0);"),
+        format!("let x = r.{a}_or_zero();"),
+        format!("let x = r.not_{a}();"),
+    ] {
+        assert_eq!(rating_number_sites(&not_a_use), 0, "{not_a_use}");
+    }
+
+    let allowed: BTreeMap<String, usize> = RATING_NUMBER_ALLOWED
+        .iter()
+        .map(|(f, n, _)| (f.to_string(), *n))
+        .collect();
+    assert_eq!(check_rating_number_sites(&allowed), Ok(()));
+    let mut added = allowed.clone();
+    added.insert("crates/dss-core/src/report/export/capacity.rs".into(), 1);
+    let err = check_rating_number_sites(&added).expect_err("a new reader site");
+    assert!(err.contains("report/export/capacity.rs"), "{err}");
+    let mut stale = allowed.clone();
+    stale.remove("crates/dss-core/src/cim/power_xfmr.rs");
+    let err = check_rating_number_sites(&stale).expect_err("a stale entry");
+    assert!(err.contains("cim/power_xfmr.rs: 0 site(s)"), "{err}");
+    let mut more = allowed;
+    more.insert("crates/dss-core/src/cim/power_xfmr.rs".into(), 2);
+    let err = check_rating_number_sites(&more).expect_err("one site too many");
+    assert!(err.contains("cim/power_xfmr.rs: 2 site(s)"), "{err}");
 }

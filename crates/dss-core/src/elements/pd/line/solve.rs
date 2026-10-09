@@ -241,16 +241,16 @@ impl CktElement for Line {
         }
     }
 
-    fn norm_amps(&self) -> f64 {
+    fn norm_amps(&self) -> crate::obj::Rating {
         self.norm_amps
     }
-    fn emerg_amps(&self) -> f64 {
+    fn emerg_amps(&self) -> crate::obj::Rating {
         self.emerg_amps
     }
     fn num_amp_ratings(&self) -> i32 {
         self.num_amp_ratings
     }
-    fn amp_ratings(&self) -> &[f64] {
+    fn amp_ratings(&self) -> &[crate::obj::Rating] {
         &self.amp_ratings
     }
 
@@ -672,8 +672,8 @@ impl CktElement for Line {
         }
 
         // Conductor Current Ratings (PD-element prop pair).
-        actions.push(PosSeqAction::SetF64(NORMAMPS, norm_amps0));
-        actions.push(PosSeqAction::SetF64(EMERGAMPS, emerg_amps0));
+        actions.push(PosSeqAction::SetRating(NORMAMPS, norm_amps0));
+        actions.push(PosSeqAction::SetRating(EMERGAMPS, emerg_amps0));
         // Repeat the Length Units to compensate for unexpected reset.
         actions.push(PosSeqAction::SetI32(UNITS, length_units0));
         actions.push(PosSeqAction::EndEdit);

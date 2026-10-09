@@ -99,19 +99,14 @@ pub(crate) fn show_currents(
                 (0.0, 0.0)
             };
             // `%Normal`/`%Emergency` = `Cmax / rating * 100`, non-capacitor +
-            // terminal 1 only, and only when the rating is `> 0` (else 0).
+            // terminal 1 only, and only when the rating is set and `> 0`
+            // (else 0).
+            let pct_of = |rating: crate::obj::Rating| match rating {
+                crate::obj::Rating::Set(r) if r > 0.0 => cmax / r * 100.0,
+                _ => 0.0,
+            };
             let (inormal, iemerg) = if do_ratings && !is_cap && j == 1 {
-                let n = if norm_amps > 0.0 {
-                    cmax / norm_amps * 100.0
-                } else {
-                    0.0
-                };
-                let e = if emerg_amps > 0.0 {
-                    cmax / emerg_amps * 100.0
-                } else {
-                    0.0
-                };
-                (n, e)
+                (pct_of(norm_amps), pct_of(emerg_amps))
             } else {
                 (0.0, 0.0)
             };

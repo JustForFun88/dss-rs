@@ -521,6 +521,7 @@ pub(crate) mod opt {
     pub const MAX_CONTROL_ITER: usize = 55;
     pub const ALLOCATION_FACTORS: usize = 48;
     pub const DEMAND_INTERVAL: usize = 60;
+    pub const PCT_NORMAL: usize = 61;
     pub const DI_VERBOSE: usize = 62;
     pub const CASE_NAME: usize = 63;
     pub const MARKER_CODE: usize = 64;

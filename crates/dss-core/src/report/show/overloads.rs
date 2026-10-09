@@ -8,6 +8,9 @@
 //! `Export`-only), fixed-width fields (`%3d%8.1f`, then `%8.2f`/`%8.1f`), and the
 //! degenerate `NormAmps <= 0` / `EmergAmps <= 0` branches emit the literal
 //! `     0.0` (8 chars) exactly as Pascal.
+//!
+//! A rating that is not set takes no part in the overload test and prints the
+//! same `     0.0` (`export_overloads_ignores_a_rating_that_is_not_set`).
 
 use num_complex::Complex64;
 
@@ -70,8 +73,8 @@ pub(crate) fn show_overloads(
             return;
         }
         elem.compute_iterminal(sys, node_v);
-        let norm_amps = elem.loading_rating(elem.norm_amps());
-        let emerg_amps = elem.loading_rating(elem.emerg_amps());
+        let norm_amps = elem.loading_rating(elem.norm_amps()).if_set();
+        let emerg_amps = elem.loading_rating(elem.emerg_amps()).if_set();
         let nphases = elem.cd().nphases;
 
         // Terminal 1 only (Pascal `for j := 1 to 1`): `Cmax` = max phase magnitude
@@ -92,11 +95,14 @@ pub(crate) fn show_overloads(
             (0.0, i1, 0.0, i1)
         };
 
-        // Only overloaded branches (a positive rating AND `Cmax` over one of them).
-        if !(norm_amps > 0.0 || emerg_amps > 0.0) {
+        // Only overloaded branches (a positive rating AND `Cmax` over one of
+        // them). A rating that is not set takes no part.
+        let positive = |r: Option<f64>| r.is_some_and(|v| v > 0.0);
+        let exceeded = |r: Option<f64>| r.is_some_and(|v| cmax > v);
+        if !(positive(norm_amps) || positive(emerg_amps)) {
             return;
         }
-        if !(cmax > norm_amps || cmax > emerg_amps) {
+        if !(exceeded(norm_amps) || exceeded(emerg_amps)) {
             return;
         }
 
@@ -104,19 +110,17 @@ pub(crate) fn show_overloads(
         // as Pascal's `'     0.0'` (8 chars) does.
         let zero = || format::fixed(0.0, 1);
         // IOver (`Cmax - NormAmps`) / %Normal, or `0.0` twice when `NormAmps <= 0`.
-        let (iover, pct_norm) = if norm_amps > 0.0 {
-            (
-                format::fixed(cmax - norm_amps, 2),
-                format::fixed(cmax / norm_amps * 100.0, 1),
-            )
-        } else {
-            (zero(), zero())
+        let (iover, pct_norm) = match norm_amps {
+            Some(norm) if norm > 0.0 => (
+                format::fixed(cmax - norm, 2),
+                format::fixed(cmax / norm * 100.0, 1),
+            ),
+            _ => (zero(), zero()),
         };
         // %Emergency, then %I2/I1 and %I0/I1 (`0.0` when `I1 == 0`).
-        let pct_emerg = if emerg_amps > 0.0 {
-            format::fixed(cmax / emerg_amps * 100.0, 1)
-        } else {
-            zero()
+        let pct_emerg = match emerg_amps {
+            Some(emerg) if emerg > 0.0 => format::fixed(cmax / emerg * 100.0, 1),
+            _ => zero(),
         };
         let pct_of_i1 = |v: f64| {
             if i1 > 0.0 {

@@ -247,7 +247,105 @@ fn run(circuit: &str, compile_path: &Path, post: &[&str]) {
     );
 
     let rust = locate_cim100(scratch.path(), circuit);
-    assert_cim_bytes_eq(&expected_cim(&oracle).0, &rust, circuit);
+    let expected = expected_unrated_wire_info(&expected_cim(&oracle).0, circuit);
+    assert_cim_bytes_eq(&expected, &rust, circuit);
+}
+
+/// The conductors of each CIM golden whose `NormAmps` nothing set, by
+/// `IdentifiedObject.name`. The pinned oracle writes their
+/// `WireInfo.ratedCurrent` as `0` (its `-1` sentinel clamped at zero). The
+/// engine writes no rated current for a rating that is not set (user decision
+/// 2026-10-04), pinned by [`cim_omits_the_rated_current_of_an_unrated_conductor`].
+const UNRATED_WIRE_INFO: &[(&str, &[&str])] = &[("cim_lines", &["acsr_556_5", "acsr_4_0"])];
+
+/// The oracle text with the `<cim:WireInfo.ratedCurrent>0</…>` line of each
+/// [`UNRATED_WIRE_INFO`] conductor dropped. Each named conductor must lose
+/// exactly one line, so a recaptured golden or a renamed wire fails here.
+fn expected_unrated_wire_info(expected: &str, circuit: &str) -> String {
+    let names = UNRATED_WIRE_INFO
+        .iter()
+        .find(|(c, _)| *c == circuit)
+        .map_or(&[][..], |(_, n)| *n);
+    let mut dropped = vec![0usize; names.len()];
+    let mut current = "";
+    let mut out: Vec<&str> = Vec::new();
+    for line in expected.split('\n') {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("<cim:IdentifiedObject.name>") {
+            current = rest.trim_end_matches("</cim:IdentifiedObject.name>");
+        }
+        if t == "<cim:WireInfo.ratedCurrent>0</cim:WireInfo.ratedCurrent>"
+            && let Some(i) = names.iter().position(|n| *n == current)
+        {
+            dropped[i] += 1;
+            continue;
+        }
+        out.push(line);
+    }
+    for (n, d) in names.iter().zip(&dropped) {
+        assert_eq!(
+            *d, 1,
+            "{circuit}: the rated current of {n} must be dropped exactly once"
+        );
+    }
+    out.join("\n")
+}
+
+/// The CIM export of a conductor and a switch whose rating is not set: no
+/// `WireInfo.ratedCurrent` for the two unrated wires of the `cim_lines` deck
+/// while the rated ones keep theirs (the pinned oracle writes `0` for both,
+/// its `-1` sentinel clamped at zero), and no `Switch.ratedCurrent` or
+/// `ProtectedSwitch.breakingCapacity` for a switch line without a rating.
+#[test]
+fn cim_omits_the_rated_current_of_an_unrated_conductor() {
+    let deck = decks_dir().join("cim_lines.dss");
+    let compile = format!("compile \"{}\"", deck.to_string_lossy().replace('\\', "/"));
+    let xml = export_cim100_of("cim_lines", &[compile.as_str()]);
+    let rated = |name: &str| -> Option<String> {
+        let mut current = "";
+        for line in xml.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("<cim:IdentifiedObject.name>") {
+                current = rest.trim_end_matches("</cim:IdentifiedObject.name>");
+            }
+            if current == name
+                && let Some(v) = t.strip_prefix("<cim:WireInfo.ratedCurrent>")
+            {
+                return Some(
+                    v.trim_end_matches("</cim:WireInfo.ratedCurrent>")
+                        .to_string(),
+                );
+            }
+        }
+        None
+    };
+    assert_eq!(rated("acsr_556_5"), None);
+    assert_eq!(rated("acsr_4_0"), None);
+    assert_eq!(rated("cu_1_0").as_deref(), Some("100"));
+    assert_eq!(rated("ts_1_0").as_deref(), Some("165"));
+    assert_eq!(rated("cn_250").as_deref(), Some("260"));
+
+    let xml = export_cim100_of(
+        "unrated_switch",
+        &[
+            "clear",
+            "new circuit.unrated_switch basekv=12.47 bus1=src",
+            "new line.sw phases=3 bus1=src bus2=b1 switch=y normamps=none r1=1e-4 r0=1e-4 \
+             x1=0 x0=0 c1=0 c0=0",
+            "new load.ld bus1=b1 kw=100 kv=12.47",
+            "set voltagebases=[12.47]",
+            "calcv",
+        ],
+    );
+    assert!(
+        xml.contains("<cim:LoadBreakSwitch "),
+        "the switch line exports as a switch"
+    );
+    assert!(
+        !xml.contains("Switch.ratedCurrent"),
+        "no rated current for an unrated switch"
+    );
+    assert!(!xml.contains("ProtectedSwitch.breakingCapacity"));
 }
 
 /// A micro-deck case (`tools/golden/cim_decks/<circuit>.dss`).

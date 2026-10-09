@@ -3,6 +3,7 @@
 //! `EndEdit` and `MakeLike`. Split out of `line_code/mod.rs` (no behavioral
 //! change).
 
+use crate::obj::Rating;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
@@ -54,8 +55,6 @@ impl DssObject for LineCodeObj {
             C1 | B1 => self.c1,
             C0 | B0 => self.c0,
             BASE_FREQ => self.base_frequency,
-            NORMAMPS => self.norm_amps,
-            EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
@@ -75,8 +74,6 @@ impl DssObject for LineCodeObj {
             C1 | B1 => self.c1 = value,
             C0 | B0 => self.c0 = value,
             BASE_FREQ => self.base_frequency = value,
-            NORMAMPS => self.norm_amps = value,
-            EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,
@@ -84,6 +81,21 @@ impl DssObject for LineCodeObj {
             XG => self.xg = value,
             RHO => self.rho = value,
             _ => unreachable!("LineCode has no double property {idx}"),
+        }
+    }
+
+    fn get_rating(&self, idx: usize) -> Rating {
+        match idx {
+            prop::NORMAMPS => self.norm_amps,
+            prop::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("LineCode has no rating property {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: Rating) {
+        match idx {
+            prop::NORMAMPS => self.norm_amps = value,
+            prop::EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("LineCode has no rating property {idx}"),
         }
     }
 
@@ -124,13 +136,13 @@ impl DssObject for LineCodeObj {
         }
     }
 
-    fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
+    fn get_rating_array(&self, idx: usize) -> Option<&[Rating]> {
         match idx {
             prop::RATINGS => Some(&self.amp_ratings),
             _ => unreachable!("LineCode has no array property {idx}"),
         }
     }
-    fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
+    fn set_rating_array(&mut self, idx: usize, value: Vec<Rating>) {
         match idx {
             prop::RATINGS => self.amp_ratings = value,
             _ => unreachable!("LineCode has no array property {idx}"),
@@ -231,7 +243,7 @@ impl DssObject for LineCodeObj {
             }
             SEASONS => {
                 self.amp_ratings
-                    .resize(self.num_amp_ratings.max(0) as usize, 0.0);
+                    .resize(self.num_amp_ratings.max(0) as usize, Rating::NotSet);
             }
             KRON if self.kron_pending => {
                 self.kron_pending = false;

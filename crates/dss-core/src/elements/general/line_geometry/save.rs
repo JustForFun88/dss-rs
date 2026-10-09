@@ -67,6 +67,8 @@ impl LineGeometryObj {
                 // its `get_value` is empty — skipping it drops a redundant clone
                 // directive, exactly as every other class's generic save does,
                 // since the real per-conductor props are emitted explicitly).
+                // A rating that is not set is omitted.
+                _ if cx.cls.holds_no_rating(self, ip) => {}
                 _ => {
                     let val = cx.cls.get_value(self, ip, cx.enums);
                     let s = val.trim();

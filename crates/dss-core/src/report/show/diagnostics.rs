@@ -36,7 +36,8 @@ pub(crate) fn show_event_log(entries: &[String]) -> String {
 }
 
 /// `Show Ratings` (Pascal `ShowRatings`): each PD element's normal/emergency amp
-/// ratings, `"FullName", normamps=%-.4g,  %-.4g  !Amps`.
+/// ratings, `"FullName", normamps=%-.4g,  %-.4g  !Amps`. A rating that is not
+/// set prints `none` (`show_ratings_prints_none`).
 pub(crate) fn show_ratings(classes: &[DssClass], ckt: &Circuit) -> String {
     let mut s = String::from("Power Delivery Elements Normal and Emergency (max) Ratings\n\n");
     for &r in &ckt.pd_elements {
@@ -47,12 +48,20 @@ pub(crate) fn show_ratings(classes: &[DssClass], ckt: &Circuit) -> String {
             s.push_str(&format!(
                 "\"{}\", normamps={},  {}  !Amps\n",
                 name,
-                format::g(elem.norm_amps(), 4),
-                format::g(elem.emerg_amps(), 4),
+                rating_text(elem.norm_amps()),
+                rating_text(elem.emerg_amps()),
             ));
         }
     }
     s
+}
+
+/// A rating at four significant digits, or `none` when it is not set.
+fn rating_text(rating: crate::obj::Rating) -> String {
+    match rating {
+        crate::obj::Rating::Set(v) => format::g(v, 4),
+        crate::obj::Rating::NotSet => crate::obj::Rating::NONE_TOKEN.to_string(),
+    }
 }
 
 /// `Show Variables` (Pascal `ShowVariables`): every enabled PC element with

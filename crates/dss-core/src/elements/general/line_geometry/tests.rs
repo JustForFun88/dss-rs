@@ -103,8 +103,8 @@ fn get(cls: &ClassProps, obj: &dyn DssObject, name: &str) -> String {
 
 #[test]
 fn defaults() {
-    // Pascal Create: nconds=0, nphases=0, cond=1, reduce=No, linetype=oh,
-    // empty object-ref arrays render `[]`, ratings `[ 0]`.
+    // Create: nconds=0, nphases=0, cond=1, reduce=No, linetype=oh, empty
+    // object-ref arrays render `[]`, and the ratings are not set.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let obj = LineGeometryObj::new("g1");
@@ -114,8 +114,8 @@ fn defaults() {
     assert_eq!(get(&cls, &obj, "reduce"), "No");
     assert_eq!(get(&cls, &obj, "wires"), "[]");
     assert_eq!(get(&cls, &obj, "cncables"), "[]");
-    assert_eq!(get(&cls, &obj, "normamps"), "0");
-    assert_eq!(get(&cls, &obj, "ratings"), "[ 0]");
+    assert_eq!(get(&cls, &obj, "normamps"), "none");
+    assert_eq!(get(&cls, &obj, "ratings"), "[ none]");
     assert_eq!(get(&cls, &obj, "linetype"), "oh");
 }
 
@@ -290,8 +290,8 @@ fn spacing_ratings_min_over_phase_conductors() {
     // eps=1.0, height_offset=0, height_unit=UNITS_M (4): the default medium.
     g.load_spacing_and_wires(&sp, &wires, 60.0, DERI, 1.0, 0.0, 4)
         .expect("spacing load succeeds");
-    assert_eq!(g.norm_amps(), 400.0);
-    assert_eq!(g.emerg_amps(), 500.0);
+    assert_eq!(g.norm_amps(), crate::obj::Rating::Set(400.0));
+    assert_eq!(g.emerg_amps(), crate::obj::Rating::Set(500.0));
 }
 
 #[test]

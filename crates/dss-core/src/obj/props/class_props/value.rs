@@ -2,11 +2,14 @@
 //! `DumpProperties` emit (Pascal `DSSObjectHelper.GetObjPropertyValue`). Split
 //! out of `class_props/mod.rs` (no behavioral change).
 
+use crate::obj::Rating;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::setters::get_obj_double;
 use crate::obj::props::{PropFlags, PropType};
-use crate::util::{float_to_str_ex, get_dss_array_f64, get_dss_array_i32, str_y_or_n};
+use crate::util::{
+    float_to_str, float_to_str_ex, get_dss_array_f64, get_dss_array_i32, str_y_or_n,
+};
 
 use super::ClassProps;
 
@@ -46,6 +49,28 @@ impl ClassProps {
                     pd.scale
                 };
                 float_to_str_ex(get_obj_double(pd, obj, idx, scale))
+            }
+            PropType::Rating => match obj.get_rating(idx) {
+                Rating::Set(v) => float_to_str_ex(v),
+                Rating::NotSet => Rating::NONE_TOKEN.to_string(),
+            },
+            PropType::RatingArray => {
+                // `[ 400 none]`: the double-array layout, `none` for an entry
+                // that is not set.
+                let n = obj.get_i32(pd.size_prop).max(0) as usize;
+                let Some(vals) = obj.get_rating_array(idx) else {
+                    return String::new();
+                };
+                let mut s = String::from("[");
+                for r in vals.iter().take(n) {
+                    s.push(' ');
+                    match r {
+                        Rating::Set(v) => s.push_str(&float_to_str(*v)),
+                        Rating::NotSet => s.push_str(Rating::NONE_TOKEN),
+                    }
+                }
+                s.push(']');
+                s
             }
             PropType::Integer => {
                 // Pascal `GetObjInteger` (DSSObjectHelper l.4350) subtracts

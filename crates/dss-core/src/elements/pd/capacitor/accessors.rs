@@ -30,9 +30,12 @@ impl Capacitor {
         self.spec_type = other.spec_type;
         self.cmatrix = other.cmatrix.clone();
 
-        // TPDElement.MakeLike copies the rating fields.
+        // A typed rating, `none` included, stays typed: the copy does not derive
+        // it from kvar again.
         self.norm_amps = other.norm_amps;
         self.emerg_amps = other.emerg_amps;
+        self.norm_amps_specified = other.norm_amps_specified;
+        self.emerg_amps_specified = other.emerg_amps_specified;
         self.fault_rate = other.fault_rate;
         self.pct_perm = other.pct_perm;
         self.hrs_to_repair = other.hrs_to_repair;
@@ -51,8 +54,6 @@ impl DssObject for Capacitor {
         use super::prop::*;
         match idx {
             KV => self.kvrating,
-            NORMAMPS => self.norm_amps,
-            EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
@@ -60,12 +61,24 @@ impl DssObject for Capacitor {
             _ => unreachable!("Capacitor has no double property {idx}"),
         }
     }
+    fn get_rating(&self, idx: usize) -> crate::obj::Rating {
+        match idx {
+            super::prop::NORMAMPS => self.norm_amps,
+            super::prop::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("no rating property {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: crate::obj::Rating) {
+        match idx {
+            super::prop::NORMAMPS => self.norm_amps = value,
+            super::prop::EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("no rating property {idx}"),
+        }
+    }
     fn set_f64(&mut self, idx: usize, value: f64) {
         use super::prop::*;
         match idx {
             KV => self.kvrating = value,
-            NORMAMPS => self.norm_amps = value,
-            EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,

@@ -221,8 +221,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // TPDClass tail. Unlike Transformer, AutoTrans does NOT flag NormAmps/
         // EmergAmps `SuppressJSON` (`AutoTrans.pas` has no such override), so both
         // are emitted in the schema/JSON exactly as the pinned oracle shows.
-        PropDef::double("NormAmps"),
-        PropDef::double("EmergAmps"),
+        PropDef::rating("NormAmps"),
+        PropDef::rating("EmergAmps"),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -335,8 +335,8 @@ pub struct AutoTrans {
     vabase: f64,
     zbase: f64,
     // PD-element common:
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
     fault_rate: f64,
     pct_perm: f64,
     hrs_to_repair: f64,
@@ -440,8 +440,8 @@ impl AutoTrans {
             pct_imag: 0.0,
             vabase: 0.0,
             zbase: 0.0,
-            norm_amps: 0.0,
-            emerg_amps: 0.0,
+            norm_amps: crate::obj::Rating::NotSet,
+            emerg_amps: crate::obj::Rating::NotSet,
             fault_rate: 0.007,
             pct_perm: 0.0,
             hrs_to_repair: 0.0,

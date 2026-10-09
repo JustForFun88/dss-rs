@@ -7,3 +7,6 @@ pub mod arena;
 pub mod base;
 pub mod dss_enum;
 pub mod props;
+pub mod rating;
+
+pub use rating::Rating;

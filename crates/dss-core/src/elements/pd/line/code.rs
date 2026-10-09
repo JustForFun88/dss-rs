@@ -331,7 +331,7 @@ impl Line {
         }
 
         let mut new_num_rat = 1i32;
-        let mut new_ratings: Vec<f64> = Vec::new();
+        let mut new_ratings: Vec<crate::obj::Rating> = Vec::new();
         let mut ratings_inc = false;
         for (k, i) in (istart..=nwires).enumerate() {
             // A `none` slot (AllowNoneItem) stays NIL and contributes no ratings.

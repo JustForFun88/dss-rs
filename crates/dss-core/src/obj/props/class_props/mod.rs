@@ -87,6 +87,28 @@ impl ClassProps {
             "{class_name}: a ref_miss_message is only emitted for a PropType::ObjectRef row \
              with a named object_class — anywhere else it is a silently dead message"
         );
+        // A rating row reads a number or `none` and stores it as it is: the
+        // scale, range and transform options of a double row have no rating
+        // form, so a row carrying one would silently drop it.
+        debug_assert!(
+            defs.iter()
+                .filter(|d| matches!(d.ptype, PropType::Rating | PropType::RatingArray))
+                .all(|d| d.scale == 1.0
+                    && d.trap_zero == 0.0
+                    && !d.flags.intersects(
+                        PropFlags::REPLACE_ZERO
+                            | PropFlags::GREATER_THAN_ONE
+                            | PropFlags::NON_ZERO
+                            | PropFlags::NON_NEGATIVE
+                            | PropFlags::NON_POSITIVE
+                            | PropFlags::INVERSE_VALUE
+                            | PropFlags::INTERVAL_UNITS
+                            | PropFlags::SCALED_BY_FUNCTION
+                            | PropFlags::APPLY_ROUND
+                            | PropFlags::ON_ARRAY
+                    )),
+            "{class_name}: a rating row carries no scale, range or transform option"
+        );
 
         let mut props = Vec::with_capacity(defs.len() + 1);
         props.push(PropDef::base("", PropType::Integer)); // slot 0, never addressed
@@ -128,6 +150,25 @@ impl ClassProps {
     /// abbreviated) property name to its 1-based index.
     pub fn property_index(&self, name: &str) -> Option<usize> {
         self.command_list.get_command(name).map(|i| i + 1)
+    }
+
+    /// Whether property `idx` is a rating that holds no set value: a
+    /// [`PropType::Rating`] that is not set, or a [`PropType::RatingArray`] none
+    /// of whose entries is set. `Save` omits such a property.
+    pub fn holds_no_rating(&self, obj: &dyn DssObject, idx: usize) -> bool {
+        let pd = &self.props[idx];
+        match pd.ptype {
+            PropType::Rating => !obj.get_rating(idx).is_set(),
+            PropType::RatingArray => {
+                let n = obj.get_i32(pd.size_prop).max(0) as usize;
+                !obj.get_rating_array(idx)
+                    .unwrap_or_default()
+                    .iter()
+                    .take(n)
+                    .any(|r| r.is_set())
+            }
+            _ => false,
+        }
     }
 
     /// One iteration of the Pascal `Edit` loop body: parse + write, record the

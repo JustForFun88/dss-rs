@@ -972,8 +972,14 @@ fn make_pos_sequence_matrix_branch() {
         ref a => panic!("expected SetF64(C1), got {a:?}"),
     }
     assert_eq!(plan.actions[4], SetI32(prop::PHASES, 1));
-    assert_eq!(plan.actions[5], SetF64(prop::NORMAMPS, 400.0));
-    assert_eq!(plan.actions[6], SetF64(prop::EMERGAMPS, 600.0));
+    assert_eq!(
+        plan.actions[5],
+        SetRating(prop::NORMAMPS, crate::obj::Rating::Set(400.0))
+    );
+    assert_eq!(
+        plan.actions[6],
+        SetRating(prop::EMERGAMPS, crate::obj::Rating::Set(600.0))
+    );
     assert_eq!(plan.actions[7], SetI32(prop::UNITS, 0)); // None (reset by matrix)
     assert_eq!(plan.actions[8], EndEdit);
     assert_eq!(plan.actions.len(), 9);
@@ -1219,8 +1225,8 @@ fn make_pos_sequence_switch_branch() {
             SetF64(prop::C1, 1.1),
             SetI32(prop::PHASES, 1),
             SetF64(prop::LENGTH, 0.001),
-            SetF64(prop::NORMAMPS, 400.0),
-            SetF64(prop::EMERGAMPS, 600.0),
+            SetRating(prop::NORMAMPS, crate::obj::Rating::Set(400.0)),
+            SetRating(prop::EMERGAMPS, crate::obj::Rating::Set(600.0)),
             SetI32(prop::UNITS, 0), // default units (None)
             EndEdit,
         ]
@@ -1324,17 +1330,18 @@ fn long_line_correction_changes_the_long_line_yprim() {
 /// base ratings (a regression that dropped the guard would index the array).
 #[test]
 fn get_ratings_applies_seasonal_index() {
+    use crate::obj::Rating::Set;
     let mut line = Line::new("l1");
-    line.norm_amps = 100.0;
-    line.emerg_amps = 120.0;
+    line.norm_amps = Set(100.0);
+    line.emerg_amps = Set(120.0);
     line.num_amp_ratings = 4;
-    line.amp_ratings = vec![100.0, 50.0, 40.0, 30.0];
+    line.amp_ratings = vec![Set(100.0), Set(50.0), Set(40.0), Set(30.0)];
     // In range → both norm & emerg == AmpRatings[idx].
-    assert_eq!(line.get_ratings(2), (40.0, 40.0));
-    assert_eq!(line.get_ratings(0), (100.0, 100.0));
+    assert_eq!(line.get_ratings(2), (Set(40.0), Set(40.0)));
+    assert_eq!(line.get_ratings(0), (Set(100.0), Set(100.0)));
     // Inactive (-1) or out of range → base NormAmps/EmergAmps.
-    assert_eq!(line.get_ratings(-1), (100.0, 120.0));
-    assert_eq!(line.get_ratings(4), (100.0, 120.0));
+    assert_eq!(line.get_ratings(-1), (Set(100.0), Set(120.0)));
+    assert_eq!(line.get_ratings(4), (Set(100.0), Set(120.0)));
     // r4133's guard is `(RatingIdx <= NumAmpRatings) and (NumAmpRatings > 1)`.
     // A SINGLE-season element (`NumAmpRatings == 1`, the default) keeps its base
     // `(NormAmps, EmergAmps)` at every index — it never binds `AmpRatings[0]`.
@@ -1343,9 +1350,9 @@ fn get_ratings_applies_seasonal_index() {
     // norm and emerg, hiding real overloads) — proven a bug vs r4133 + physics
     // (0.15.x-adoption sweep, DIVERGENCES L4/E2); the port follows r4133.
     line.num_amp_ratings = 1;
-    line.amp_ratings = vec![50.0];
-    assert_eq!(line.get_ratings(0), (100.0, 120.0));
-    assert_eq!(line.get_ratings(1), (100.0, 120.0));
+    line.amp_ratings = vec![Set(50.0)];
+    assert_eq!(line.get_ratings(0), (Set(100.0), Set(120.0)));
+    assert_eq!(line.get_ratings(1), (Set(100.0), Set(120.0)));
 }
 
 /// `ResetLengthUnits` clears `LengthUnits`, never `FUserLengthUnits` — r4133

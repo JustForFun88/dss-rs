@@ -2972,12 +2972,16 @@ Transformer or an AutoTrans measures against the magnitude of its rating
 (`CktElement::loading_rating`, the same in both lanes): the six report sites,
 the excess kVA, the overload registers, the zone loads' EEN/UE factors and with
 them `Export Unserved`, `Show Unserved` and the AutoAdd objective. A zero rating
-stays unrated. Every other class keeps the oracles' reading of a non-positive
-rating, which is "no rating" everywhere but `Export Capacity`. A Line built
-from a WireData without a rating takes −1/−1, whose magnitude means nothing.
-Whether `Export Capacity` should print 0/0 for such a rating instead of
-dividing by it is outside this decision and open, since it would be a new
-divergence from both oracles.
+stays unrated. Every other class reads a typed zero or negative rating as both
+oracles do at every site but `Export SeqCurrents`, which prints `0` for it where
+both oracles print the rating itself: no rating at the excess kVA, the overload
+registers and `Show Currents`, a divisor in `Export Capacity` (where a zero
+rating zeroes both columns), and, beside a positive rating, exceeded by any
+current at every overload test (`Export Overloads`, `Show Overloads`,
+`DI_Overloads`). Whether such a number is a rating at all is the open question
+Q1 of the next section. A rating that is not set (a Line built from a WireData
+without a rating, a typed `-1`) is no number since the decision of 2026-10-04,
+and `Export Capacity` prints 0 % for it (next section).
 
 **Pins** (`crates/dss-core/tests/golden_reports.rs`).
 `export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`
@@ -3000,11 +3004,316 @@ and `negative_transformer_rating_under_its_magnitude_reports_no_overload` pin
 the entry gate and the overload test against their twins, and
 `nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site` with
 `export_seqcurrents_prints_zero_for_an_undefined_rating` holds the Line at the
-oracles' reading, the signed `Export Capacity` division included. No
+oracles' reading, the signed `Export Capacity` division included (on a Line
+rated −2/−3, since a `-1` is a rating that is not set, next section). No
 `ledger.json` entry and no golden byte: the one gated deck with a negative
 transformer rating (`makeposseq_xfmr.dss`,
 `AutoTrans.at` loaded to 28.8 %) has no overload, no EnergyMeter, no AutoAdd
 and no compared report, so no gated channel moves.
+
+## A rating that is not set is `none`, not a number — user decision 2026-10-04
+
+**Observable.** Both oracles store a current rating nobody gave as a number and
+print it: `-1` for a WireData, CNData and TSData (`NormAmps`, `EmergAmps`, the
+one seasonal entry `[ -1]`), `0` for a LineGeometry (`[ 0]`), a Fault, a
+GICTransformer and a Line on a geometry of unrated wires (`0`/`0`/`[ 0]`), and
+`0` for a seasonal entry that `Seasons=` or a short `Ratings=` leaves
+unsupplied. A Line on a spacing one of whose phase wires carries no rating reads
+`-1` on r4133, where dss_capi 0.14.5 takes the first phase wire's rating (`-1`
+only when that wire has none). Every loading site then
+does arithmetic on that number: `Export Capacity` divides by `-1`
+(`-48783.79 %`), the overload reports read `-1` beside a positive rating as
+exceeded by every current, `Export SeqCurrents` prints `-1` as a percentage, and
+a conductor typed `normamps=-1` derives its emergency rating as `1.5 · -1`.
+
+**Sources (r4133).** The conductor defaults and the `1.5` derivation:
+`General/ConductorData.pas:241-246` and `:190-191`. The LineGeometry default and
+the spacing minimum, which takes a `0` as "no wire seen yet":
+`General/LineGeometry.pas:717-718` and `:1235-1239`. The LineGeometry fill from
+a conductor, which fills only a `0`: `General/LineGeometry.pas:381-382`,
+`:539-540` and `:573-574`. Fault and GICTransformer:
+`PDElements/Fault.pas:425-426`, `PDElements/GICTransformer.pas:464-465`. The
+signed `Export Capacity` division: `Common/ExportResults.pas:509-512`. The
+overload gates: `ExportResults.pas:2756`, `Common/ShowResults.pas:2286`,
+`Meters/EnergyMeter.pas:3213`. The CIM clamp of `WireInfo.ratedCurrent`:
+`Common/ExportCIMXML.pas:1960`. `Set %Normal`: `Executive/ExecOptions.pas:814-815`
+(get at `:1273`) and `Executive/ExecHelper.pas:3244-3257` (`DoSetNormal`).
+
+**Measured 2026-10-04** on the pinned dss-python and on the r4133 DLL through
+`epri-worker`, with six lines feeding 9 MW each (`l1` on a spacing with an
+unrated middle phase wire, `l2` typed `-1`/`-1`, `l3` `0`/`600`, `l4` on a
+geometry of unrated wires, `l5` `-1`/`600`, `l6` on rated wires): the read-backs
+above, `Export Capacity` `l2` `-48783.79, -48783.79` and `l5` `-48783.79, 81.31`
+on both (and `l1` `-49366.35, -49366.35` on r4133, whose spacing minimum takes
+the `-1`; capi 0.14.5 takes the first wire's `530`/`795`), `Export Overloads`
+rows for `l3` and `l5` at 487.8 A under 600 A, and `Export SeqCurrents` `-1` in
+the loading cells. A spacing Line on phase wires rated `530`, `0` and `400`
+reads `400`/`600`, `0`/`0` and `400`/`600` on r4133 for the orders `[a b c]`,
+`[a c b]` and `[b a c]` (capi: `530`, `530`, `0`). `Get %Normal` reads `0`, then
+`80` after `Set %Normal=80`, on both; both rate every Line at `0.8 ·` its
+emergency rating, `-0.8` where that is the `-1` sentinel.
+
+**Decision (user, 2026-10-04).** A rating that is not set is its own value, not
+a number (`crate::obj::Rating`). It reads back `none`. Input accepts `none`
+(any case) and `-1`, typed or computed, for `NormAmps` and `EmergAmps` of
+WireData, CNData, TSData, LineGeometry, Line, LineCode, Fault, GICTransformer,
+Capacitor, Reactor, Transformer and AutoTrans, and for each entry of the
+seasonal `Ratings` of WireData, CNData, TSData, LineGeometry, Line and LineCode.
+A Transformer and an AutoTrans derive `NormAmps` and `EmergAmps` from their kVA
+ratings at every recalculation, so a typed `none`, `-1` or number reads back the
+derived rating there, as a typed number does on both oracles (a 500 kVA,
+12.47 kV Transformer typed `normamps=-1` reads `25.4645267084438` here and on
+dss_capi 0.14.5 and `25.465` on r4133, measured 2026-10-04). A Capacitor and a
+Reactor derive them from kvar unless they are typed.
+The `none` token comes from this decision: the documentation's property
+descriptions do not have it, and it is the one input token the decision adds to
+the language. `Save` omits a rating that is not set. `Export Capacity` prints
+0 % in its column, so an unrated Line reads 0 %. No loading, overload, capacity
+or report computation reads a number from it:
+
+- a conductor's normal rating that is not set derives no emergency rating;
+- a rating derived as exactly `-1` is not set, since `-1` is the input token of
+  a rating that is not set (`Rating::from_number`): a WireData typed
+  `emergamps=-1.5` and `Set %Normal=80` on a Line typed `emergamps=-1.25` read
+  `none`, where both oracles store `-1` and divide by it in `Export Capacity`,
+  and so does a one-phase Capacitor or Reactor of `-1` kvar at a kV that
+  derives `-1`, where both oracles read `-1` (measured 2026-10-09). The current
+  rating a Transformer or an AutoTrans derives from its kVA rating
+  is the one exception: the kVA ratings have no not-set state (Q4), so a
+  derived `-1` A stays that number and loads by its magnitude;
+- the defaults nothing sets start not set (conductor, LineGeometry, Fault,
+  GICTransformer, the seasonal entries `Seasons=` adds);
+- a spacing Line takes its normal and its emergency rating each from the
+  weakest phase wire for that rating, not set when any phase wire has none,
+  whatever the conductor order;
+- excess kVA, the overload registers, `Export`/`Show Overloads` and
+  `DI_Overloads` give a rating that is not set no part (`DI_Overloads` prints
+  `none` in its rating column), `Show Currents` and `Export SeqCurrents` print
+  `0`, `Show Ratings` and `Dump` print `none`, JSON writes `null` (full sweep)
+  or omits it (set-order sweep) and loads `null` and `-1` as not set, the CIM
+  export writes no `WireInfo.ratedCurrent`, `Switch.ratedCurrent` or
+  `breakingCapacity` for it, and MakePosSequence and `like=` copy it.
+
+A typed number is that number: `0` stays `0` and is read as today, a typed
+negative Line rating keeps the oracles' reading, and a negative Transformer or
+AutoTrans rating keeps the magnitude rule of the section above.
+
+A rating holds a number, `none` or `-1`, and a value that is not a finite
+number is none of these, so the edit refuses it with a message that names the
+rating and the property keeps what it held: an inline `(0 0 /)` (NaN) or
+`(1 0 /)` (infinity), a seasonal entry, and a seasonal entry read from a file.
+`Set %Normal` refuses a percentage that is not finite and keeps its factor and
+every Line rating. Both oracles accept them without a message (measured
+2026-10-10 on the pinned dss-python and the r4133 DLL through `epri-worker`): a
+Line typed `emergamps=(0 0 /)` prints `NaN` in the emergency column of
+`Export Capacity` (`Line.L2, 480.371, 120.09, NAN` on r4133, `Nan` on capi
+0.14.5), `normamps=(1 0 /)` reads `+Inf` on capi 0.14.5 and its text `1 0 /` on
+r4133, and `Set %Normal=(1 0 /)` reads back `INF` (`+Inf`) and rates every Line
+at infinity. No corpus deck types a rating that is not finite.
+
+A `like=` copy of a Capacitor or a Reactor keeps a typed rating, `none`
+included, and derives only an untyped one from its own kvar. Both oracles copy
+the ratings but not the record that they were typed, so the end of the edit
+derives them from kvar again, and their `Save` then writes the derived numbers
+as typed. Measured 2026-10-04 on the pinned dss-python and the r4133 DLL
+through `epri-worker`: a copy of a 600 kvar, 12.47 kV Capacitor typed
+`normamps=-1` reads `37.5023029706172`, a copy of one typed `normamps=50
+emergamps=70` given `kvar=1200` reads `75.0046059412345`/`100.006141254979`,
+and the Reactor twins read `27.7794836819387` and
+`55.5589673638774`/`75.0046059412345`. The engine reads `none` and `50`/`70`.
+No gated deck and no props golden has a Capacitor or Reactor `like=` from a
+template with a typed rating, so no compared value moves.
+
+`Set %Normal=` (option 61) was not ported, and it is the one writer that would
+do arithmetic on a rating that is not set, so it is ported with this change
+under the rule that an unported piece found on the way is ported in the same
+change, and it stays (user decision 2026-10-04). It rates every Line at the
+percentage of its emergency rating and `Get %Normal` reads the factor back, as
+both oracles do for a rated Line. A Line whose emergency rating is not set gets
+a normal rating that is not set, a typed one included: `normamps=300
+emergamps=none` reads `none` after `Set %Normal=80`, where both oracles replace
+the live `300` by `-0.8` and divide by it (`Export Capacity` `-59830.53` at
+478.644 A, and r4133's `?` still reads the text `300`, Q9a), measured
+2026-10-05 on the pinned dss-python and the r4133 DLL through `epri-worker`
+with the Line typed `emergamps=-1`. The documentation says of it: "Sets the
+Normal rating of all lines to a specified percent of the emergency rating. Note:
+This action takes place immediately. Only the in-memory value is changed for the
+duration of the run." What `?` and `Save` show after it is open (Q9a, Q9b).
+
+The spacing minimum is a new divergence from r4133 for a phase wire typed `0`
+(`[530 0 400]` reads `400`/`600` on r4133, `0`/`0` here). No gated case has a
+spacing Line on a zero-rated phase wire (the corpus gate is unchanged on it).
+
+The line current flows through every phase wire, so the emergency limit of a
+spacing Line is the lowest emergency rating among its phase wires, as the normal
+limit is the lowest normal one. Both oracles instead keep the emergency rating
+of the wire that governs the normal rating (r4133 the first of equal normal
+ratings, capi 0.14.5 the first wire). Measured 2026-10-04 on the pinned
+dss-python and the r4133 DLL through `epri-worker`, with phase wires `wb`
+(`-1`/`600`), `wc` (`-1`/`300`), `wd` (`400`/`600`), `we` (`400`/`500`), `wf`
+(`400`/`800`), `wg` (`530`/`795`) and `wh` (`400`/`-1`) at 219.03 A: both read
+`[wb wc wb]` `-1`/`600` and `[wc wb wb]` `-1`/`300` (`Export Capacity` emergency
+`36.50` and `73.01`), `[wd we wd]` `400`/`600` and `[we wd wd]` `400`/`500`
+(`36.50` and `43.81`), `[wd wh wd]` `400`/`600` and `[wh wd wd]` `400`/`-1`, and
+`[wf wg wg]` `400`/`800` (`27.38`). For `[wg wf wg]` r4133 reads `400`/`800` and
+capi `530`/`795`. The engine reads `none`/`300`, `400`/`500`, `400`/`none` and
+`400`/`795` in every order. Every Line on a spacing in the gated corpus read with
+the pinned dss-python (2026-10-04): two of 35 have phase wires of different
+ratings, and both read the same under either rule, so the corpus gate is
+unchanged.
+
+A LineGeometry rating typed `none` or `-1` is kept against a later rated
+conductor, and only a rating never typed, or typed `0`, takes the conductor's.
+Both oracles read the same, since their fill tests only the `0` a geometry
+starts from (`General/LineGeometry.pas:381-382`, `:539-540`, `:573-574`), so
+the engine's `none` stands where they keep `-1`. Measured 2026-10-04 with `w2`
+rated `530`: `normamps=-1 cond=1 wire=w2` reads `-1`/`795` on both oracles and
+`none`/`795` here, `emergamps=-1` before the wire `530`/`-1` against
+`530`/`none`, `normamps=-1 wires=[w2]` and `normamps=-1` typed after the wire
+`-1`/`795` against `none`/`795`, and a geometry that types no rating, or types
+`0`, `530`/`795` on all three. A Line on a three-wire geometry typed `-1`/`-1`
+before its wires reads `-1`/`-1` and `Export Capacity` `-49697.28, -49697.28`
+on both oracles, `none`/`none` and `0.00, 0.00` here. Its twin on a geometry
+that types no rating reads `530`/`795` on all three and `93.77, 62.51` on both
+oracles. No corpus deck types a rating of `-1` or `none`.
+
+**Open questions, narrow path taken.** Q1: whether a typed `0`, or a typed
+negative other than `-1`, is "not set" (each stays that number: next to a
+positive rating it reads as exceeded at every overload test on all three
+engines, and a typed `0` beside a set rating prints `0.00` in both
+`Export Capacity` columns, as both oracles do, which hides the loading of the
+set one). Q1 also covers a derived negative other than `-1`: it stays a rating,
+while one that lands on exactly `-1` reads not set, so the two ratings of one
+element can disagree. A one-phase Capacitor of `-1` kvar at 1.35 kV derives a
+normal rating of `-1` (`none`) and an emergency rating of `-1.333`, and prints
+`0.00, -41.15` in `Export Capacity`, where both oracles read `-1` and
+`-1.33333333333333` and print `-54.87, -41.15` (measured 2026-10-10 on the
+pinned dss-python and the r4133 DLL through `epri-worker`). A conductor typed
+`emergamps=-1.6` derives the normal rating `-1.0667` the same way. Q2: `Save` omits a rating that is not set even where the class
+default is a value or derived (a Line at `400`/`600`, a LineGeometry after a
+rated `wire=`), so the reload comes back rated. Q3: a spacing Line with one
+phase wire unrated in the normal or the emergency rating reads that rating not
+set (the weakest-phase reading). Q4: the kVA
+ratings (`NormHkVA`, `EmergHkVA`, the kVA `Ratings` of Transformer, AutoTrans
+and XfmrCode) have no not-set state yet, so `normhkva=-1` is a 1 kVA rating under
+the magnitude rule, also where it derives exactly `-1` A: a one-phase
+Transformer with a 1 kV winding 1 reads `-1` and loads its 10.0081 A at
+`1000.81` % in both `Export Capacity` columns with a row in both overload
+reports, as its `-1.01` twin does at `990.90` %, where both oracles read `-1`,
+print `-1000.81` and `-990.90` and write no overload row (measured 2026-10-09
+on the pinned dss-python and the r4133 DLL through `epri-worker`). A
+`Seasons=` resize of a kVA array still fills `0`.
+Q5: the derived zero of a Capacitor without kvar and a Reactor with zero kvar
+stays `0`. Q6: `RatedCurrent`/`InterruptingRating` of Fuse, Recloser, Relay and
+SwtControl keep their `0` default. Q7: whether a derivation or a fill may
+overwrite a rating the user typed. The documentation says of the WireData
+`normamps` "Defaults to Emergency amps/1.5 if not specified", of its
+`emergamps` "Defaults to 1.5 * Normal Amps if not specified", and of the
+LineGeometry `normamps` and `emergamps` "Defaults to first conductor if not
+specified", and a typed value is specified. (a) A typed negative or not-set
+conductor rating is overwritten by a later partner: `emergamps=-2
+normamps=530`, `emergamps=-1 normamps=530` and `normamps=-1 emergamps=795` read
+`530`/`795` on both oracles and here. (b) A LineGeometry rating typed `0` is
+filled by a later rated conductor on all three. (c) A LineGeometry rating typed
+`none` or `-1` is kept against a later rated conductor, as on both oracles
+(above). (d) A Transformer or an AutoTrans derives its current ratings from
+its kVA ratings at every recalculation and overwrites a typed `normamps` or
+`emergamps`, `none` and `-1` included, as both oracles do
+(`a_transformer_or_autotrans_derives_its_current_rating_whatever_is_typed`).
+The narrow path is the oracles' reading in all four cases, which adds no
+numeric divergence. Q8: the frozen r4133 census row
+`line.ratings '[ 0]' '[0,]'` describes a spelling the engine no longer prints,
+and the offline replay still counts it. Q9: `Set %Normal` stays (above), and
+two readings after it are open, measured 2026-10-04 on a Line typed
+`normamps=530 emergamps=795` and a Line at the defaults after
+`Set %Normal=80`, `Solve`, `Save circuit` and a compile of the saved circuit.
+Q9a: `?` reads the live rating here and on capi 0.14.5 (`636` and `480`) and the
+property text typed before on r4133 (`530` and `400`). Q9b: `Save` writes the
+live `NormAmps=636` for the typed Line and no rating for the other here and on
+capi 0.14.5, so the reload reads `636` and `400` and the change persists for
+the typed Line only. r4133 writes the typed `normamps=530` and nothing for the
+other, so the reload reads `530` and `400` and the change stays in memory for
+the run, as the documentation says. A spacing Line (`636` live) writes no rating
+here and reloads its wires' `530`, where capi 0.14.5 writes `636` and r4133
+`normamps=530`. The narrow path for both is the reading of
+the code this change adds, kept until the answer because it needs no second
+stored value, and the documented run-only reading is the alternative. Q10: a
+LineGeometry rating typed `none` before a rated conductor, asked as Q7 (c).
+Q11: the `Help` texts of the rating properties do not mention `none` (they are
+the documentation's texts). Q12, decided by ruling 14.9 of `RULINGS_QUEUE.md` (coordinator, 2026-10-10):
+an input that makes a stamp or a derived rating non-finite, as a Capacitor
+`kv=0 kvar=100` whose rating reads `+Inf` on capi 0.14.5 and `INF` on r4133
+(measured 2026-10-10 with the tools above), is refused at the recalc of the
+element in queue step 10, for every class with a rating derived from `kv`.
+Until then the refusal holds only the typed rating properties, their seasonal
+and file entries and `Set %Normal`, and a derived rating stays the number the
+engine computes.
+
+**Pins.** `crates/dss-core/src/exec/tests/ratings.rs`:
+`none_and_minus_one_read_as_a_rating_that_is_not_set`,
+`unset_ratings_read_none_by_default`,
+`conductor_emergency_rating_follows_a_set_normal_rating_only`,
+`a_geometry_rating_typed_not_set_is_kept_against_a_later_conductor`,
+`seasonal_ratings_not_supplied_are_not_set`,
+`line_code_dump_prints_none_for_a_seasonal_rating_that_is_not_set`,
+`line_on_an_unrated_phase_wire_is_not_set`,
+`line_on_a_geometry_of_unrated_wires_is_not_set`,
+`spacing_minimum_does_not_depend_on_conductor_order`,
+`spacing_ratings_are_each_the_weakest_phase_wires_in_any_order`,
+`save_omits_a_rating_that_is_not_set`,
+`json_writes_a_rating_that_is_not_set_as_null_or_omits_it`,
+`make_pos_sequence_keeps_a_line_rating_that_is_not_set`,
+`like_copies_a_rating_that_is_not_set` (Line, WireData, Fault, Capacitor and
+Reactor), `a_rating_derived_as_minus_one_is_not_set`,
+`a_rating_that_is_not_a_finite_number_is_refused`,
+`a_transformer_or_autotrans_derives_its_current_rating_whatever_is_typed`,
+`set_pct_normal_rates_every_line_from_its_emergency_rating`.
+`crates/dss-core/src/elements/pd/transformer/tests.rs`:
+`a_kva_rating_of_minus_one_derives_a_set_rating_of_minus_one_ampere`.
+`crates/dss-core/src/elements/general/conductor_data/tests.rs`:
+`a_json_null_rating_entry_keeps_its_season`.
+`crates/dss-core/tests/golden_reports.rs`:
+`export_capacity_prints_zero_for_a_rating_that_is_not_set`,
+`export_overloads_ignores_a_rating_that_is_not_set`,
+`show_currents_prints_zero_for_a_rating_that_is_not_set`, `show_ratings_prints_none`,
+and the rewritten `nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site`
+(now `-2`/`-3`, re-measured on both oracles 2026-10-04) with
+`a_negative_line_rating_beside_a_positive_one_reads_as_exceeded` (`-2`/`600`,
+the narrow path of Q1) and
+`export_seqcurrents_prints_zero_for_an_undefined_rating`, and
+`a_transformer_rating_derived_as_minus_one_ampere_loads_by_its_magnitude`
+(Q4).
+`crates/dss-core/tests/golden_cim.rs`:
+`cim_omits_the_rated_current_of_an_unrated_conductor`.
+`crates/dss-core/tests/oracle_parity_cfg_gate.rs`:
+`no_rating_is_turned_into_a_number_outside_its_allow_list`, which holds every
+use of the accessor `Rating::if_set` to an allow-list of eight files with a
+reason each, so a new reader through the accessor fails it whatever it does
+with the number. A `match` on `Rating::Set` reads the number without the
+accessor and is not seen by the rail: it stays a review item.
+
+**Exclusions.** The corpus property compare excuses a cell, on both channels,
+only where the engine prints `none` and the oracle the number that row's class
+prints (`not_set_ratings::LANE_NOT_SET_RATINGS`, seven rows: `Fault` and
+`GICTransformer` `NormAmps`/`EmergAmps` (`0`), `Line.NormAmps`/`EmergAmps` (`-1`
+or `0`), `Line.Ratings` entry by entry (`0`)). A whole-population run must
+excuse exactly the measured cells per row and channel
+(`not_set_ratings::NOT_SET_RATING_HITS`, capi 0.14.5 and r4133, the same in
+both lanes): `Fault.EmergAmps` and `Fault.NormAmps` 42 and 388 each,
+`GICTransformer.EmergAmps` and `GICTransformer.NormAmps` 0 and 22 each,
+`Line.EmergAmps` and `Line.NormAmps` 254 and 24 each, `Line.Ratings` 197 and
+231. Each number a row accepts names the engine test that pins the `none` it
+lets through (`every_sentinel_of_a_row_names_the_pin_of_its_none`).
+`props_roundtrip.rs` excuses the 82 golden cells of WireData, CNData, TSData,
+LineGeometry, Fault and GICTransformer the same way
+(`LANE_NOT_SET_RATING_CELLS`). The Dump goldens are rewritten line by line
+before the compare (`golden_reports.rs::not_set_rating_dump_expected`, 18
+lines in eight goldens), `cim_lines.xml` loses the two unrated wires'
+`ratedCurrent` (`golden_cim.rs::expected_unrated_wire_info`), and five
+`schema_divergences.json` entries carry the schema defaults the port no longer
+writes (GICTransformer `NormAmps`/`EmergAmps`, WireData/CNData/TSData
+`Ratings`), with `schema_full_port.json` regenerated. No `ledger.json` entry and
+no other golden byte moves.
 
 ## TotalPower adds every terminal of every source, both oracles add terminal 1 alone — user decision 2026-10-03
 

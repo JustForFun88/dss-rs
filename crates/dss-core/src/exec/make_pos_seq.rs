@@ -209,6 +209,12 @@ impl Dss {
                         obj.end_edit(&live_sys);
                     }
                 }
+                PosSeqAction::SetRating(idx, v) => {
+                    props.set_prop_rating(obj, *idx, *v);
+                    if !editing_active {
+                        obj.end_edit(&live_sys);
+                    }
+                }
                 PosSeqAction::SetStructF64s(idx, vals) => {
                     props.set_prop_struct_f64s(obj, *idx, vals, &mut eng);
                     if !editing_active {

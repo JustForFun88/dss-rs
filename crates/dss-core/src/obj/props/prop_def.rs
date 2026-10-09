@@ -186,6 +186,18 @@ impl PropDef {
     pub fn double(name: &'static str) -> Self {
         Self::base(name, PropType::Double)
     }
+    /// A current or power rating ([`PropType::Rating`]).
+    pub fn rating(name: &'static str) -> Self {
+        Self::base(name, PropType::Rating)
+    }
+    /// A seasonal rating array ([`PropType::RatingArray`]) whose length is the
+    /// integer property `size_prop`.
+    pub fn rating_array(name: &'static str, size_prop: usize) -> Self {
+        Self {
+            size_prop,
+            ..Self::base(name, PropType::RatingArray)
+        }
+    }
     pub fn integer(name: &'static str) -> Self {
         Self::base(name, PropType::Integer)
     }

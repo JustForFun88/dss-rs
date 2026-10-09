@@ -3487,6 +3487,7 @@ deliberate exception: `skip_prop` is a free function taking the channel, so its
 |---|---|---|---|---|
 | 0 | shape allowlist `PROPS_015X` | `filter_015x`, `mod.rs::filter_015x` | drops a Rust-side prop the capture cannot carry — **shape only** | the name walk fails |
 | 1 | skip rows `SKIP_PROPS` / `LANE_SKIP_PROPS` | `skip_prop`, `mod.rs::skip_prop` (channel rule at `mod.rs::skip_prop_ub_on`) | value-only skip, per channel | fall through |
+| 1b | ratings not set `LANE_NOT_SET_RATINGS` | `not_set_ratings::excuse`, `not_set_ratings.rs::excuse` | excuses a cell where the engine prints `none` and the oracle the "no rating" number of that row's class, entry by entry for an array, both channels, counted per channel | fall through |
 | 2 | normalization `PROPS_NORM_R4133` | `PropsPolicy::normalize`, `mod.rs::PropsPolicy::normalize` | **re-spells** the oracle side when a typed rule proves the two are the same value | both raw spellings continue |
 | 3 | echo table `PROPS_ECHO_R4133` | `PropsPolicy::echo_excluded`, `mod.rs::PropsPolicy::echo_excluded` | drops the **value** compare of that cell (name + index order still assert) | fall through |
 | 4 | display floor `R4133_DISPLAY_FLOOR` | `PropsPolicy::under_display_floor`, `mod.rs::PropsPolicy::under_display_floor` | passes a numeric cell that is our value rendered to r4133's own digits | the cell reaches the assert |
@@ -3588,6 +3589,31 @@ union it), shown here because `skip_prop` consults it on the same call:
 | `SKIP_PROPS_CAPI_ONLY` (`mod.rs::SKIP_PROPS_CAPI_ONLY`) | 10 | **compared** | the justification is a 0.14.5-capture fact: the three changed defaults (`Fuse.FuseCurve`, `Fuse.RatedCurrent`, `RegControl.RevThreshold`), the two `pctperm` rows (`Capacitor`, `Reactor`), and RP3.8's five `''`-render rows (`IndMach012.PF`, the four `StorageController` totals) |
 | `SKIP_PROPS_BOTH_CHANNELS` (`mod.rs::SKIP_PROPS_BOTH_CHANNELS`) | 7 | **skipped** | channel-independent facts — the heap-garbage matrix reads (`Capacitor.CMatrix`, `Reactor.RMatrix`/`XMatrix`, `Fault.GMatrix`, `Transformer.WdgCurrents`) and the two `FaultRate` rows |
 | `LANE_SKIP_PROPS` (`mod.rs::LANE_SKIP_PROPS`) | 1 | **skipped, deliberately channel-blind** | `(Monitor, BaseFreq)` — an upstream bug BOTH gating oracles share (`Monitor.pas` r4133:552); the port's correct value is pinned by `monitor_basefreq_inherits_the_fundamental` |
+
+**Link 1b — ratings that are not set** (`not_set_ratings.rs::LANE_NOT_SET_RATINGS`,
+seven rows). The engine reads a current rating nobody gave as not set and
+prints `none` (user decision 2026-10-04, `DIVERGENCES.md` §"A rating that is not
+set is `none`, not a number"), where both oracles print the number their class
+starts from: `-1` for a spacing Line, `0` for a Fault, a GICTransformer and a
+geometry Line (`[ 0]` for its seasonal ratings). Each row names that number, and
+`not_set_ratings.rs::reads_not_set` excuses a cell only when every `none` faces
+it and every other array entry is equal by value, so a different reading still
+fails. It is channel-blind like `LANE_SKIP_PROPS` and sits before link 2, so the
+`line.ratings` `ArrayForm` row does not see the `[ 0]` cells of a geometry
+Line (it stays live on the `[ 400]` cells). *Count lock:* the excused cells are
+counted per row and per channel, and
+`not_set_ratings::assert_not_set_ratings_are_the_measured_population` in the
+gate epilogue holds every count equal to `not_set_ratings.rs::NOT_SET_RATING_HITS`
+on a whole-population run (silent under `DSS_GATE_ONLY`, the r4133 column held
+only where that channel runs). A row that excuses one cell more fails like a
+row that excuses none, so a set rating that starts reading `none` in a gated
+deck cannot pass behind a live row. *Shape lock:* `not_set_ratings.rs::every_row_names_a_rating_property`.
+*Disposition lock:* `not_set_ratings.rs::every_sentinel_of_a_row_names_the_pin_of_its_none`
+fails a row whose sentinels and engine pins differ in number, or whose pin is
+not defined exactly once in `exec/tests/ratings.rs`.
+The props goldens carry the same reading for the catalog classes too, excused
+by `props_roundtrip.rs::LANE_NOT_SET_RATING_CELLS` with the exact cell count
+`LANE_NOT_SET_RATING_CELL_COUNT` (82) asserted in both lanes.
 
 *Partition lock:*
 `skip_props_disposition_tests::every_skip_props_row_has_an_r4133_disposition`
@@ -4623,4 +4649,4 @@ gate instead of leaving a documented claim with no prover.
 - `tools/opendss/README.md` — the r4133 binary artifact + the `dss-epri` bridge.
 - `tools/oracle/README.md` — the pinned capi oracle server protocol.
 - `UNIFIED_GATE_PLAN.md` — the unified-gate design decisions (D1–D10) + phases.
-<!-- line-citations: 202 -->
+<!-- line-citations: 209 -->

@@ -5,6 +5,7 @@
 use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
+use crate::obj::Rating;
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use crate::support::cmatrix::CMatrix;
@@ -98,8 +99,6 @@ impl DssObject for Line {
             RHO => self.rho,
             EPS_R_MEDIUM => self.eps_r_medium,
             HEIGHT_OFFSET => self.height_offset,
-            NORMAMPS => self.norm_amps,
-            EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
@@ -122,13 +121,28 @@ impl DssObject for Line {
             RHO => self.rho = value,
             EPS_R_MEDIUM => self.eps_r_medium = value,
             HEIGHT_OFFSET => self.height_offset = value,
-            NORMAMPS => self.norm_amps = value,
-            EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,
             BASE_FREQ => self.cd.base_frequency = value,
             _ => unreachable!("Line has no double property {idx}"),
+        }
+    }
+
+    fn get_rating(&self, idx: usize) -> Rating {
+        use super::prop::*;
+        match idx {
+            NORMAMPS => self.norm_amps,
+            EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("Line has no rating property {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: Rating) {
+        use super::prop::*;
+        match idx {
+            NORMAMPS => self.norm_amps = value,
+            EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("Line has no rating property {idx}"),
         }
     }
 
@@ -174,13 +188,13 @@ impl DssObject for Line {
         }
     }
 
-    fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
+    fn get_rating_array(&self, idx: usize) -> Option<&[Rating]> {
         match idx {
             super::prop::RATINGS => Some(&self.amp_ratings),
             _ => unreachable!("Line has no array property {idx}"),
         }
     }
-    fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
+    fn set_rating_array(&mut self, idx: usize, value: Vec<Rating>) {
         match idx {
             super::prop::RATINGS => self.amp_ratings = value,
             _ => unreachable!("Line has no array property {idx}"),
@@ -622,7 +636,7 @@ impl DssObject for Line {
             }
             SEASONS => {
                 self.amp_ratings
-                    .resize(self.num_amp_ratings.max(0) as usize, 0.0);
+                    .resize(self.num_amp_ratings.max(0) as usize, Rating::NotSet);
             }
             // Pascal block 1 (Line.pas:599-610): a cable form drops linecode/
             // geometry and selects the conductor model, so a following `wires=`

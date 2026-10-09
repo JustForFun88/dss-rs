@@ -22,6 +22,7 @@ mod accessors;
 mod compute;
 mod dump;
 
+use crate::obj::Rating;
 use crate::obj::base::DssObjData;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
@@ -145,8 +146,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
                 | PropFlags::NON_ZERO
                 | PropFlags::UNITS_HZ,
         ),
-        PropDef::double("NormAmps"),
-        PropDef::double("EmergAmps"),
+        PropDef::rating("NormAmps"),
+        PropDef::rating("EmergAmps"),
         // dss_capi 0.15.x (LineCode.pas:283-288): FaultRate/PctPerm/Repair are
         // flagged Deprecated+Unused — a LineCode never propagated them to its
         // Lines (unused in the engine since 2014), so they carry a
@@ -173,7 +174,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("B0")
             .flags(PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | conditional),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double_array("Ratings", SEASONS),
+        PropDef::rating_array("Ratings", SEASONS),
         PropDef::mapped_string_enum("LineType", enums.line_type),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
@@ -217,15 +218,15 @@ pub struct LineCodeObj {
     x0: f64,
     c1: f64,
     c0: f64,
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: Rating,
+    emerg_amps: Rating,
     fault_rate: f64,
     pct_perm: f64,
     hrs_to_repair: f64,
     rg: f64,
     xg: f64,
     rho: f64,
-    amp_ratings: Vec<f64>,
+    amp_ratings: Vec<Rating>,
     fline_type: LineType,
     units: i32,
 }
@@ -253,8 +254,8 @@ impl LineCodeObj {
             x0: 0.4047,
             c1: 3.4e-9, // nF per 1000 ft (stored in farads)
             c0: 1.6e-9,
-            norm_amps: 400.0,
-            emerg_amps: 600.0,
+            norm_amps: Rating::Set(400.0),
+            emerg_amps: Rating::Set(600.0),
             fault_rate: 0.1,
             pct_perm: 20.0,
             // `TLineCodeObj.Create` (`LineCode.pas:456-501`) never assigns
@@ -273,7 +274,7 @@ impl LineCodeObj {
             rg: 0.01805, // ohms per 1000'
             xg: 0.155081,
             rho: 100.0,
-            amp_ratings: vec![400.0],
+            amp_ratings: vec![Rating::Set(400.0)],
             fline_type: LineType::Oh,
             units: 0, // UNITS_NONE
         };
@@ -331,16 +332,16 @@ impl LineCodeObj {
     pub fn units(&self) -> i32 {
         self.units
     }
-    pub fn norm_amps(&self) -> f64 {
+    pub fn norm_amps(&self) -> Rating {
         self.norm_amps
     }
-    pub fn emerg_amps(&self) -> f64 {
+    pub fn emerg_amps(&self) -> Rating {
         self.emerg_amps
     }
     pub fn num_amp_ratings(&self) -> i32 {
         self.num_amp_ratings
     }
-    pub fn amp_ratings(&self) -> &[f64] {
+    pub fn amp_ratings(&self) -> &[Rating] {
         &self.amp_ratings
     }
     pub fn nphases(&self) -> i32 {

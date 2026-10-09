@@ -35,6 +35,7 @@ use crate::elements::pd::line::Line;
 use crate::elements::pd::reactor::Reactor;
 use crate::elements::traits::{CktElement, ElemId};
 use crate::exec::registry::DssClass;
+use crate::obj::Rating;
 use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::obj::base::DssObject;
 use crate::support::line_units::LineUnits;
@@ -855,10 +856,9 @@ fn write_reference_terminals(
     nterm: usize,
     bus_specs: &[String],
     bus_refs: &[usize],
-    norm: f64,
-    emerg: f64,
+    norm: Rating,
+    emerg: Rating,
 ) {
-    let mut emerg = emerg;
     for j in 1..=nterm {
         let bus_spec = &bus_specs[j - 1];
         if writer::is_ground_bus(bus_spec) {
@@ -896,10 +896,16 @@ fn write_reference_terminals(
                 bus_uuid.to_cim_string()
             ),
         );
-        if j == 1 && norm > 0.0 {
-            if emerg < norm {
-                emerg = norm;
-            }
+        // Terminal 1 carries the current limits of a set positive normal
+        // rating. An emergency rating below it, or not set, takes the normal one.
+        if j == 1
+            && let Rating::Set(norm) = norm
+            && norm > 0.0
+        {
+            let emerg = match emerg {
+                Rating::Set(e) if e >= norm => e,
+                _ => norm,
+            };
             let limit_name = writer::op_lim_i_name(norm, emerg);
             let key = limit_name.to_ascii_lowercase();
             let limit_uuid = match op_limit_idx.get(&key) {
@@ -946,8 +952,8 @@ fn write_terminals(
     bus_refs: &[usize],
     geo_uuid: Uuid,
     crs_uuid: Uuid,
-    norm: f64,
-    emerg: f64,
+    norm: Rating,
+    emerg: Rating,
 ) {
     write_reference_terminals(
         buf,
@@ -1181,14 +1187,17 @@ pub(crate) fn phase_order_string(
 /// `LoadBreakSwitch` (ratings = the line's NormAmps); a controlling **Fuse**
 /// (priority) → `Fuse` (rated = `RatedCurrent`, breaking = 0); else a **Relay** →
 /// `Breaker`; else a **Recloser** → `Recloser` (both keep the default ratings).
+/// A line rating that is not set gives no rating (`None`), and the writer omits
+/// the attribute.
 /// Controls scanned in `Circuit.controls` (creation order — the same object set
 /// as Pascal's per-class `ActiveCircuit.Fuses/Relays/Reclosers` lists).
 fn parse_switch_class(
     classes: &mut [DssClass],
     ckt: &Circuit,
     line_ref: crate::elements::traits::ElemId,
-    line_norm_amps: f64,
-) -> (String, f64, f64) {
+    line_norm_amps: Rating,
+) -> (String, Option<f64>, Option<f64>) {
+    let line_norm_amps = line_norm_amps.if_set();
     // Does any control of `class` drive this line? Returns the matched control's
     // `ElemId` so a class-specific property can be read afterwards (never reads
     // any property here — Relay/Recloser have no double at Fuse's prop-6 slot, so
@@ -1216,7 +1225,7 @@ fn parse_switch_class(
     if let Some(c) = controlling("Fuse") {
         // Fuse wins: rated = RatedCurrent (prop 6), breaking = 0.
         let rated_current = classes[c.class_ord()].arena[c.index()].get_f64(6);
-        return ("Fuse".to_string(), rated_current, 0.0);
+        return ("Fuse".to_string(), Some(rated_current), Some(0.0));
     }
     if controlling("Relay").is_some() {
         return ("Breaker".to_string(), line_norm_amps, line_norm_amps);
@@ -1235,13 +1244,14 @@ fn parse_switch_class(
 /// `ConductorMaterialEnum` call is a no-op upstream (the writer is commented
 /// out, `ExportCIMXML.pas:1464`), so no material node is emitted. `class_name`
 /// is the object's `DSSClassName` (`WireData`/`CNData`/`TSData`), `norm_amps`
-/// its `NormAmps`.
+/// its `NormAmps`. A conductor without a rating writes no `ratedCurrent`
+/// (`cim_omits_the_rated_current_of_an_unrated_conductor`).
 fn write_wire_data(
     buf: &mut writer::Writer,
     class_name: &str,
     name: &str,
     geom: &ConductorGeom,
-    norm_amps: f64,
+    norm_amps: Rating,
 ) {
     // DisplayName is never populated (no field), so the else branch always fires.
     writer::string_node(
@@ -1259,12 +1269,14 @@ fn write_wire_data(
     writer::double_node(buf, ProfileChoice::Cat, "WireInfo.rAC25", geom.rac * v1);
     writer::double_node(buf, ProfileChoice::Cat, "WireInfo.rAC50", geom.rac * v1);
     writer::double_node(buf, ProfileChoice::Cat, "WireInfo.rAC75", geom.rac * v1);
-    writer::double_node(
-        buf,
-        ProfileChoice::Cat,
-        "WireInfo.ratedCurrent",
-        norm_amps.max(0.0),
-    );
+    if let Rating::Set(norm_amps) = norm_amps {
+        writer::double_node(
+            buf,
+            ProfileChoice::Cat,
+            "WireInfo.ratedCurrent",
+            norm_amps.max(0.0),
+        );
+    }
     writer::integer_node(buf, ProfileChoice::Cat, "WireInfo.strandCount", 0);
     writer::integer_node(buf, ProfileChoice::Cat, "WireInfo.coreStrandCount", 0);
     writer::double_node(buf, ProfileChoice::Cat, "WireInfo.coreRadius", 0.0);
@@ -1438,8 +1450,8 @@ struct LineSnap {
     spacing_name: Option<String>,
     z: Option<crate::support::cmatrix::CMatrix>,
     yc: Option<crate::support::cmatrix::CMatrix>,
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: Rating,
+    emerg_amps: Rating,
     num_cond_avail: i32,
     conductor_refs: Vec<ConductorRef>,
     bus_specs: Vec<String>,
@@ -1585,7 +1597,7 @@ fn attach_switch_phases(buf: &mut writer::Writer, cim: &mut CimExporter, snap: &
 fn conductor_geom_amps<T: ArenaClass + ConductorData>(
     arena: &ClassArena,
     oi: usize,
-) -> Option<(ConductorGeom, f64)> {
+) -> Option<(ConductorGeom, Rating)> {
     arena.get::<T>(oi).map(|c| (c.geom(), c.amps().0))
 }
 
@@ -2701,8 +2713,8 @@ pub(crate) fn export_cdpsm(
             &snap.bus_refs,
             geo_uuid,
             crs_uuid,
-            0.0,
-            0.0,
+            Rating::NotSet,
+            Rating::NotSet,
         );
         add_generator_ecp(
             &mut ecps,
@@ -2939,8 +2951,8 @@ pub(crate) fn export_cdpsm(
             snap.nterm,
             &snap.bus_specs,
             &snap.bus_refs,
-            0.0,
-            0.0,
+            Rating::NotSet,
+            Rating::NotSet,
         );
         write_positions(
             &mut buf,
@@ -3186,8 +3198,8 @@ pub(crate) fn export_cdpsm(
             snap.nterm,
             &snap.bus_specs,
             &snap.bus_refs,
-            0.0,
-            0.0,
+            Rating::NotSet,
+            Rating::NotSet,
         );
         write_positions(
             &mut buf,
@@ -3321,8 +3333,8 @@ pub(crate) fn export_cdpsm(
         // Pascal leaves `AttachPhases` commented out for EnergySource
         // (`ExportCIMXML.pas:3680`) — no AttachXxxPhases call here.
 
-        // `WriteTerminals(pVsrc, geoUUID, crsUUID)` — EnergySource passes
-        // `norm`/`emerg` = 0.0, so this never creates an `OperationalLimitSet`;
+        // `WriteTerminals(pVsrc, geoUUID, crsUUID)` — EnergySource has no
+        // rating, so this never creates an `OperationalLimitSet`;
         // the shared `op_limits` is threaded through for the Stage C+ producers.
         write_terminals(
             &mut buf,
@@ -3339,8 +3351,8 @@ pub(crate) fn export_cdpsm(
             &bus_refs,
             geo_uuid,
             crs_uuid,
-            0.0,
-            0.0,
+            Rating::NotSet,
+            Rating::NotSet,
         );
     }
 
@@ -3357,8 +3369,8 @@ pub(crate) fn export_cdpsm(
             states: Vec<i32>,
             name: String,
             nterm: usize,
-            norm_amps: f64,
-            emerg_amps: f64,
+            norm_amps: Rating,
+            emerg_amps: Rating,
             bus_specs: Vec<String>,
             bus_refs: Vec<usize>,
             /// Terminal-2 node refs — the wye point's actual connection, i.e.
@@ -3796,8 +3808,8 @@ pub(crate) fn export_cdpsm(
             nterm: usize,
             z_re: f64,
             z_im: f64,
-            norm_amps: f64,
-            emerg_amps: f64,
+            norm_amps: Rating,
+            emerg_amps: Rating,
             bus_specs: Vec<String>,
             bus_refs: Vec<usize>,
         }
@@ -4006,7 +4018,9 @@ pub(crate) fn export_cdpsm(
                 "ConductingEquipment.BaseVoltage",
                 vbase_uuid,
             );
-            if breaking_amps > 0.0 {
+            if let Some(breaking_amps) = breaking_amps
+                && breaking_amps > 0.0
+            {
                 writer::double_node(
                     &mut buf,
                     ProfileChoice::Ep,
@@ -4014,12 +4028,14 @@ pub(crate) fn export_cdpsm(
                     breaking_amps,
                 );
             }
-            writer::double_node(
-                &mut buf,
-                ProfileChoice::Ep,
-                "Switch.ratedCurrent",
-                rated_amps,
-            );
+            if let Some(rated_amps) = rated_amps {
+                writer::double_node(
+                    &mut buf,
+                    ProfileChoice::Ep,
+                    "Switch.ratedCurrent",
+                    rated_amps,
+                );
+            }
             // Disabled lines are skipped above, so the enabled branch always applies.
             writer::boolean_node(
                 &mut buf,
@@ -4589,8 +4605,8 @@ pub(crate) fn export_cdpsm(
             &snap.bus_refs,
             geo_uuid,
             crs_uuid,
-            0.0,
-            0.0,
+            Rating::NotSet,
+            Rating::NotSet,
         );
         add_load_ecp(
             &mut ecps,

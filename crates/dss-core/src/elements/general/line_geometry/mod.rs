@@ -40,6 +40,7 @@ use crate::elements::general::conductor_data::{
 };
 use crate::elements::general::line_code::LineType;
 use crate::elements::general::line_spacing::LineSpacingObj;
+use crate::obj::Rating;
 use crate::obj::base::DssObjData;
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::line_constants::LineConstants;
@@ -58,8 +59,8 @@ define_properties! {
     5  X         => PropDef::double("X");
     6  H         => PropDef::double("H");
     7  UNITS     => PropDef::mapped_string_enum("Units", enums.units);
-    8  NORMAMPS  => PropDef::double("NormAmps");
-    9  EMERGAMPS => PropDef::double("EmergAmps");
+    8  NORMAMPS  => PropDef::rating("NormAmps");
+    9  EMERGAMPS => PropDef::rating("EmergAmps");
     10 REDUCE    => PropDef::boolean("Reduce");
     11 SPACING   => PropDef::object_ref_class("LineSpacing", "Spacing");
     // r4133 LineGeometry.pas:346-396 (props 12/15/16): the direct `wires`/
@@ -75,7 +76,7 @@ define_properties! {
     15 CNCABLES  => PropDef::object_ref_array("CNData", "CNCables");
     16 TSCABLES  => PropDef::object_ref_array("TSData", "TSCables");
     17 SEASONS   => PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON);
-    18 RATINGS   => PropDef::double_array("Ratings", SEASONS);
+    18 RATINGS   => PropDef::rating_array("Ratings", SEASONS);
     19 LINETYPE  => PropDef::mapped_string_enum("LineType", enums.line_type);
     // EPRI r4133 (LineGeometry.pas prop 20, parse :410-540): `Conductors` — the
     // merged mixed wire/CN/TS object-reference-array. HIDE_015X keeps the
@@ -129,10 +130,10 @@ pub struct LineGeometryObj {
     /// calc knows to recompute. `LineSpacing` has no such flag, so the geometry
     /// tracks its own staleness.
     data_changed: bool,
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: Rating,
+    emerg_amps: Rating,
     num_amp_ratings: i32,
-    amp_ratings: Vec<f64>,
+    amp_ratings: Vec<Rating>,
     fline_type: LineType,
     /// Snapshot-cloned `LineSpacing` (`spacing=`), or `None`.
     line_spacing_obj: Option<LineSpacingObj>,
@@ -182,10 +183,10 @@ impl LineGeometryObj {
             freduce: false,
             fline_data: None,
             data_changed: true,
-            norm_amps: 0.0,
-            emerg_amps: 0.0,
+            norm_amps: Rating::NotSet,
+            emerg_amps: Rating::NotSet,
             num_amp_ratings: 1,
-            amp_ratings: vec![0.0],
+            amp_ratings: vec![Rating::NotSet],
             fline_type: LineType::Oh,
             line_spacing_obj: None,
             equivalent_spacing: false,
@@ -227,12 +228,12 @@ impl LineGeometryObj {
 
     /// Pascal `LineGeometryObj.NormAmps` (seeded from the first conductor unless
     /// set explicitly) — `TLineObj.FetchGeometryCode` copies it onto the Line.
-    pub fn norm_amps(&self) -> f64 {
+    pub fn norm_amps(&self) -> Rating {
         self.norm_amps
     }
 
     /// Pascal `LineGeometryObj.EmergAmps`.
-    pub fn emerg_amps(&self) -> f64 {
+    pub fn emerg_amps(&self) -> Rating {
         self.emerg_amps
     }
 
@@ -242,7 +243,7 @@ impl LineGeometryObj {
     }
 
     /// Pascal `LineGeometryObj.AmpRatings`.
-    pub fn amp_ratings(&self) -> &[f64] {
+    pub fn amp_ratings(&self) -> &[Rating] {
         &self.amp_ratings
     }
 

@@ -122,6 +122,8 @@ pub enum PosSeqAction {
     SetF64(usize, f64),
     /// Pascal `SetInteger(prop_idx, value)`.
     SetI32(usize, i32),
+    /// Set a rating property (`NormAmps`/`EmergAmps`) to a rating or none.
+    SetRating(usize, crate::obj::Rating),
     /// Pascal `SetDoubles(prop_idx, values)` onto a struct-array property
     /// (per-winding `kVs`/`kVAs`): `None` keeps the prior entry.
     SetStructF64s(usize, Vec<Option<f64>>),

@@ -73,11 +73,14 @@ impl LineCodeObj {
             name(prop::SEASONS),
             self.num_amp_ratings
         ));
-        // Pascal `Ratings`: `[` + `floattoStrf(AmpRatings[k], ffGeneral, 8, 4),`
-        // per entry (trailing comma) + `]`.
+        // `Ratings`: `[` + each entry (8 significant digits, or `none` when not
+        // set) + `,` + `]`.
         let mut ratings = String::from("[");
         for k in 0..self.num_amp_ratings.max(0) as usize {
-            ratings.push_str(&g(self.amp_ratings[k], 8));
+            match self.amp_ratings[k] {
+                crate::obj::Rating::Set(v) => ratings.push_str(&g(v, 8)),
+                crate::obj::Rating::NotSet => ratings.push_str(crate::obj::Rating::NONE_TOKEN),
+            }
             ratings.push(',');
         }
         ratings.push(']');

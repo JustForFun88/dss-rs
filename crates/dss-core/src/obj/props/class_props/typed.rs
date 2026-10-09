@@ -56,6 +56,22 @@ impl ClassProps {
         }
     }
 
+    /// The typed setter of a [`PropType::Rating`](crate::obj::props::PropType::Rating)
+    /// property: write the rating as it is, then `SetAsNextSeq(idx)` +
+    /// `PropertySideEffects(idx, 0)`.
+    pub fn set_prop_rating(&self, obj: &mut dyn DssObject, idx: usize, value: crate::obj::Rating) {
+        debug_assert_eq!(
+            self.props[idx].ptype,
+            crate::obj::props::PropType::Rating,
+            "{}.{} is not a rating",
+            self.class_name,
+            self.props[idx].name
+        );
+        obj.set_rating(idx, value);
+        obj.data_mut().set_as_next_seq(idx);
+        obj.side_effects(idx, 0);
+    }
+
     /// Pascal `TDSSObjectHelper.SetInteger` core: `SetObjInteger` (range/sign +
     /// `ValueOffset`, returning the previous value) then, only on success,
     /// `SetAsNextSeq(idx)` + `PropertySideEffects(idx, prevInt)`.
