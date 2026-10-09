@@ -22,3 +22,29 @@ pub use gic_transformer::GicTransformer;
 pub use line::Line;
 pub use reactor::Reactor;
 pub use transformer::Transformer;
+
+/// The solve's refusal of the element `full` when its matrix property `prop`
+/// holds `len` entries where its `nphases` phases need `nphases²`, as a
+/// `phases=` edit after the matrix leaves it. `None` when the order fits.
+/// `respecify` names what the user gives again.
+pub(crate) fn matrix_order_refusal(
+    full: &str,
+    nphases: usize,
+    prop: &str,
+    len: usize,
+    respecify: &str,
+) -> Option<String> {
+    if len == nphases * nphases {
+        return None;
+    }
+    let order = (len as f64).sqrt().round() as usize;
+    let held = if order * order == len {
+        format!("{order} x {order}")
+    } else {
+        len.to_string()
+    };
+    Some(format!(
+        "{full} has {nphases} phases but its {prop} has {held} entries. Specify {respecify} \
+         for {nphases} phases. Aborting solution."
+    ))
+}

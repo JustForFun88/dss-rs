@@ -190,23 +190,28 @@ impl ClassProps {
                     .collect(),
             ),
             PropType::DoubleSymMatrix => {
-                let order = obj.get_i32(pd.size_prop).max(0) as usize;
+                let live = obj.get_i32(pd.size_prop).max(0) as usize;
                 match obj.get_f64_array(idx) {
                     None => Json::Null,
-                    // Pascal reads the full order×order stored matrix,
-                    // row-major `darray[(i-1)*Norder + j] / scale`
-                    // (DSSObjectHelper.pas:1270-1283).
-                    Some(vals) => Json::Arr(
-                        (0..order)
-                            .map(|i| {
-                                Json::Arr(
-                                    (0..order)
-                                        .map(|j| Json::Float(scaled(vals[i * order + j], pd.scale)))
-                                        .collect(),
-                                )
-                            })
-                            .collect(),
-                    ),
+                    // The full order×order stored matrix, row-major, at the
+                    // order the element holds it (a later `phases=` edit can
+                    // leave it of another order).
+                    Some(vals) => {
+                        let order = crate::report::save::dump::held_matrix_order(live, vals.len());
+                        Json::Arr(
+                            (0..order)
+                                .map(|i| {
+                                    Json::Arr(
+                                        (0..order)
+                                            .map(|j| {
+                                                Json::Float(scaled(vals[i * order + j], pd.scale))
+                                            })
+                                            .collect(),
+                                    )
+                                })
+                                .collect(),
+                        )
+                    }
                 }
             }
             PropType::SymMatrixReal | PropType::SymMatrixImag => {

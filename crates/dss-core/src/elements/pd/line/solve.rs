@@ -566,10 +566,15 @@ impl CktElement for Line {
     /// - `IsSwitch`: fixed switch constants (R1=1, X1=1, C1=1.1 nF, Phases=1,
     ///   Length=0.001).
     /// - `SymComponentsModel`: keep the existing Z1 (R1, X1); C1 → nF.
-    /// - matrix/geometry/spacing: average the diagonal/off-diagonal of the
-    ///   solve-derived `Z`/`Yc` into Z1 and C1, dividing by `FUnitsConvert`
-    ///   (and, for the total-matrix geometry/spacing forms, the embedded
-    ///   length via `LengthMult`).
+    /// - matrix/geometry/spacing: Z1 is the mean diagonal minus the mean
+    ///   off-diagonal term of the solve-derived `Z`. C1 is the
+    ///   positive-sequence self term of `Yc`: `(Σ C_ii − Σ_{i<j} C_ij) / 3` for
+    ///   two or three phases (the matrix embedded in three phases), the mean
+    ///   diagonal minus the mean off-diagonal term above three. Both divide by
+    ///   `FUnitsConvert` (and, for the total-matrix geometry/spacing forms, the
+    ///   embedded length via `LengthMult`). Pinned by
+    ///   `elements::pd::line::tests::make_pos_sequence_matrix_branch` (three
+    ///   phases, to the bit) and its two-phase and four-conductor siblings.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use prop::*;
 
@@ -643,11 +648,17 @@ impl CktElement for Line {
                     }
                 }
                 let two_pi = 2.0 * std::f64::consts::PI;
-                let mut c1_new = (cs - cm)
-                    / two_pi
-                    / self.cd.base_frequency
-                    / (length_mult * npf * (npf - 1.0) / 2.0)
-                    * 1.0e9; // nanofarads
+                let mut c1_new = if np <= 3 {
+                    // The self term of the matrix embedded in three phases.
+                    (cs - cm) / two_pi / self.cd.base_frequency / (length_mult * 3.0) * 1.0e9
+                } else {
+                    // Mean self minus mean mutual.
+                    (cs / npf - cm / (npf * (npf - 1.0) / 2.0))
+                        / two_pi
+                        / self.cd.base_frequency
+                        / length_mult
+                        * 1.0e9
+                }; // nanofarads
 
                 // compensate for length units
                 z1 /= self.units_convert;

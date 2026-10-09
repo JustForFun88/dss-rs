@@ -131,6 +131,32 @@ pub(crate) fn enq(s: &str) -> String {
     format!("\"{s}\"")
 }
 
+/// The order `n` of a square matrix stored row-major in `len` entries: the
+/// largest `n` with `n² <= len`, so a dump indexes only entries it holds.
+pub(crate) fn matrix_order(len: usize) -> usize {
+    let mut n = (len as f64).sqrt() as usize;
+    while n * n > len {
+        n -= 1;
+    }
+    while (n + 1) * (n + 1) <= len {
+        n += 1;
+    }
+    n
+}
+
+/// The order a stored symmetric matrix is read back at: `live`, the value of
+/// its sizing property, or the matrix's own order when a later edit of that
+/// property (a `phases=` edit after the matrix) left the `len` entries of
+/// another order. A reader then shows the matrix the element holds, never one
+/// padded with zeros or cut short.
+pub(crate) fn held_matrix_order(live: usize, len: usize) -> usize {
+    if len == 0 || len == live * live {
+        live
+    } else {
+        matrix_order(len)
+    }
+}
+
 /// Pascal `TDSSObject.DumpProperties` header: a blank line then `New "FullName"`
 /// (`FullName = ParentClass.Name + '.' + Name`, `DSSObject.pas:232`).
 pub(crate) fn header(out: &mut String, full_name: &str) {

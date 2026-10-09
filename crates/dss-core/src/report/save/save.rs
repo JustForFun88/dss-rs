@@ -85,7 +85,7 @@
 //! [`ClassProps::get_value`]: crate::obj::props::ClassProps::get_value
 
 use crate::exec::registry::DssClass;
-use crate::obj::base::{DssObjData, DssObject};
+use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, PropType};
 
@@ -111,12 +111,57 @@ pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObje
         s = ""; // set to ignore this property
     }
     if !s.is_empty() {
+        // A matrix of another order than its sizer is written behind the sizer
+        // at the matrix's own order and followed by the live sizer unless the
+        // line writes it later, so the reload holds the same matrix and phases.
+        let held = held_order(cx.cls, obj, iprop);
+        if let Some((sizer, order)) = held {
+            write_sizer_once(out, cx.cls.property_name(sizer), &order.to_string());
+        }
         out.push(' ');
         out.push_str(cx.cls.property_name(iprop));
         out.push('=');
         // Pascal `CheckForBlanks` (`Utilities.pas:1212`): quote a value
         // containing spaces unless it starts with a quote/bracket char.
         out.push_str(&crate::util::check_for_blanks(s));
+        if let Some((sizer, _)) = held {
+            let data = obj.data();
+            let later = std::iter::successors(data.next_property_set(Some(iprop)), |&p| {
+                data.next_property_set(Some(p))
+            })
+            .any(|p| p == sizer);
+            if !later {
+                let live = cx.cls.get_value(obj, sizer, cx.enums);
+                write_sizer_once(out, cx.cls.property_name(sizer), live.trim());
+            }
+        }
+    }
+}
+
+/// The sizer and own order of the symmetric matrix `iprop` when a later edit
+/// of its sizer (a `phases=` edit after the matrix) left it of another order.
+fn held_order(cls: &ClassProps, obj: &dyn DssObject, iprop: usize) -> Option<(usize, usize)> {
+    let pd = cls.prop(iprop);
+    if pd.ptype != PropType::DoubleSymMatrix {
+        return None;
+    }
+    let live = obj.get_i32(pd.size_prop).max(0) as usize;
+    let len = obj.get_f64_array(iprop).map_or(0, |v| v.len());
+    let order = super::dump::held_matrix_order(live, len);
+    (order != live).then_some((pd.size_prop, order))
+}
+
+/// Append ` <name>=<value>` unless the line's last ` <name>=` token already
+/// sets that value.
+fn write_sizer_once(out: &mut String, name: &str, value: &str) {
+    let line = &out[out.rfind('\n').map_or(0, |i| i + 1)..];
+    let token = format!(" {name}=");
+    let set = line
+        .rfind(&token)
+        .and_then(|at| line[at + token.len()..].split(' ').next());
+    if set != Some(value) {
+        out.push_str(&token);
+        out.push_str(value);
     }
 }
 
@@ -333,7 +378,8 @@ struct Hoist {
 /// moves, and no other token is added or dropped. Values are rendered live, so
 /// a property written behind a sizer it used to precede reloads the value the
 /// object holds now.
-fn save_order(cls: &ClassProps, data: &DssObjData) -> Hoist {
+fn save_order(cls: &ClassProps, obj: &dyn DssObject) -> Hoist {
+    let data = obj.data();
     let chain: Vec<usize> = std::iter::successors(data.next_property_set(None), |&p| {
         data.next_property_set(Some(p))
     })
@@ -345,6 +391,11 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Hoist {
     let n = cls.num_properties();
     let sizer_of: Vec<Option<usize>> = (0..=n)
         .map(|p| if p == 0 { None } else { parse_sizer(cls, p) })
+        .collect();
+    // A matrix of another order than its sizer stays where the deck set it:
+    // [`save_write_token`] writes it behind the sizer at its own order.
+    let held: Vec<bool> = (0..=n)
+        .map(|p| p != 0 && held_order(cls, obj, p).is_some())
         .collect();
     let is_ref: Vec<bool> = (0..=n)
         .map(|p| {
@@ -375,12 +426,14 @@ fn save_order(cls: &ClassProps, data: &DssObjData) -> Hoist {
             .rposition(|&p| is_ref[p])
             .map_or(0, |r| r + 1);
         // Whether the member at chain index `i` (< `pos`) moves behind `S`.
-        let moves = |i: usize, p: usize| sizer_of[p] == Some(s) && (i >= fence || !clears_refs(p));
+        let moves = |i: usize, p: usize| {
+            sizer_of[p] == Some(s) && !held[p] && (i >= fence || !clears_refs(p))
+        };
         // A member the fence keeps ahead of `S` still parses against it.
         if order[..pos]
             .iter()
             .enumerate()
-            .any(|(i, &p)| sizer_of[p] == Some(s) && !moves(i, p))
+            .any(|(i, &p)| sizer_of[p] == Some(s) && !held[p] && !moves(i, p))
         {
             lead.push(s);
         }
@@ -486,7 +539,7 @@ pub fn write_dss_object(
     out.push('"');
     // The sizing-property hoist: the sizers it leads with, then the chain
     // re-stamped in save order; restored right after the dispatch below.
-    let Hoist { order, lead } = save_order(cx.cls, arena.obj(idx).data());
+    let Hoist { order, lead } = save_order(cx.cls, arena.obj(idx));
     for s in lead {
         save_write_token(out, cx, arena.obj(idx), s);
     }

@@ -136,6 +136,11 @@ pub struct CktElementData {
     /// writes it straight through the `ActiveCircuit` global from a property
     /// side effect — e.g. adding a model-3 generator forces a DQDV re-init).
     pub signal_reset_solution_initialized: bool,
+    /// Signal to the Y build: the last `calc_yprim` found no defined stamp for
+    /// the element as it is specified (it queued a message naming the remedy),
+    /// so the build fails and the next solve builds and refuses again. Read
+    /// and cleared by `solution::ymatrix::build_y_matrix`.
+    pub yprim_refused: bool,
 
     /// Pascal `Flags` (`TDSSObjectFlags`), element-level subset.
     pub flags: ElemFlags,
@@ -290,6 +295,7 @@ impl CktElementData {
             handle: None,
             signal_bus_name_redefined: false,
             signal_reset_solution_initialized: false,
+            yprim_refused: false,
             flags: ElemFlags::NONE,
             // Pascal `TPDElement.Create`: `FromTerminal := 1` (0-based terminal 0).
             from_terminal: Some(0),

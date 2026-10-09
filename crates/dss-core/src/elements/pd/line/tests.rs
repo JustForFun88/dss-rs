@@ -926,6 +926,26 @@ fn make_pos_sequence_matrix_branch() {
     let plan = line.make_pos_sequence(&PosSeqCtx::default());
     assert!(plan.run_base, "matrix branch ends with `inherited`");
 
+    // The three-phase reduction is pinned to the bit: it is the one the
+    // oracle-compared `makeposseq_line.dss` gates, and the two-phase and
+    // above-three-phase rules must leave it untouched.
+    let bits: Vec<u64> = plan.actions[1..4]
+        .iter()
+        .map(|a| match a {
+            PosSeqAction::SetF64(_, v) => v.to_bits(),
+            a => panic!("expected SetF64, got {a:?}"),
+        })
+        .collect();
+    assert_eq!(
+        bits,
+        [
+            0x3fca_e147_ae14_7ae0,
+            0x3fe3_3333_3333_3332,
+            0x4012_0000_0000_0001
+        ],
+        "R1, X1, C1 of the three-phase reduction"
+    );
+
     // Exact Pascal call shape: BeginEdit, R1/X1/C1/Phases, NormAmps/EmergAmps,
     // Units, EndEdit.
     use PosSeqAction::*;
@@ -965,6 +985,186 @@ fn make_pos_sequence_matrix_branch() {
     for p in [prop::RMATRIX, prop::XMATRIX, prop::CMATRIX, prop::LINECODE] {
         assert!(!line.cd.obj.prp_specified(p), "prop {p} not cleared");
     }
+}
+
+/// The R1, X1 and C1 values of a matrix line's reduction.
+fn reduced_r1_x1_c1(line: &mut Line) -> [f64; 3] {
+    let plan = line.make_pos_sequence(&PosSeqCtx::default());
+    let mut out = [0.0; 3];
+    for (k, want) in [prop::R1, prop::X1, prop::C1].into_iter().enumerate() {
+        match plan.actions[k + 1] {
+            PosSeqAction::SetF64(idx, v) if idx == want => out[k] = v,
+            ref a => panic!("expected SetF64({want}), got {a:?}"),
+        }
+    }
+    out
+}
+
+/// A matrix line built from row strings, `length=1`, no units.
+fn matrix_line(name: &str, phases: &str, r: &str, x: &str, c: &str) -> Line {
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut line = Line::new(name);
+    scalar(&lcls, &mut line, "phases", phases);
+    scalar(&lcls, &mut line, "length", "1");
+    scalar(&lcls, &mut line, "rmatrix", r);
+    scalar(&lcls, &mut line, "xmatrix", x);
+    scalar(&lcls, &mut line, "cmatrix", c);
+    line
+}
+
+/// A two-phase matrix line reduces its shunt capacitance to the self term of
+/// the `cmatrix` embedded in three phases, `(C11 + C22 − C12) / 3` = 22/3 nF
+/// for `[10|-2 10]`, and its Z1 to the mean self minus the mean mutual term
+/// (R1 0.8, X1 9). The identity: the reduced line's shunt admittance at one
+/// end is `S()` of the unreduced line's shunt block at that end, the value
+/// `make_pos_sequence_two_phase_cmatrix_keeps_the_banks_power` balances for
+/// the same nodal matrix. Both oracles write C1 22 nF here.
+#[test]
+fn make_pos_sequence_two_phase_line_c1_is_the_shunt_self_term() {
+    use crate::elements::pos_seq::balance;
+    let mut line = matrix_line("l2", "2", "1 | 0.2 1", "10 | 1 10", "10 | -2 10");
+    let [r1, x1, c1] = reduced_r1_x1_c1(&mut line);
+    assert_close(r1, 0.8, "r1");
+    assert_close(x1, 9.0, "x1");
+    balance::assert_rel(c1, 22.0 / 3.0, 1e-12, "c1 nF");
+
+    let mut line = matrix_line("l2", "2", "1 | 0.2 1", "10 | 1 10", "10 | -2 10");
+    line.calc_yprim(&test_sys());
+    let sh = line.cd.yprim_shunt.as_ref().expect("yprim_shunt");
+    let block: Vec<num_complex::Complex64> = (0..4).map(|k| sh.get(k / 2, k % 2)).collect();
+    let want = balance::seq11(&block, 2);
+
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let mut reduced = Line::new("l2r");
+    scalar(&lcls, &mut reduced, "phases", "1");
+    scalar(&lcls, &mut reduced, "length", "1");
+    scalar(&lcls, &mut reduced, "r1", &format!("{r1:e}"));
+    scalar(&lcls, &mut reduced, "x1", &format!("{x1:e}"));
+    scalar(&lcls, &mut reduced, "c1", &format!("{c1:e}"));
+    reduced.calc_yprim(&test_sys());
+    let got = reduced
+        .cd
+        .yprim_shunt
+        .as_ref()
+        .expect("yprim_shunt")
+        .get(0, 0);
+    assert!(
+        (got - want).norm() <= 1e-12 * want.norm(),
+        "reduced shunt {got} vs S(shunt block) {want}"
+    );
+}
+
+/// Above three conductors a matrix line reduces C1 like Z1, by the mean of the
+/// diagonal minus the mean over all off-diagonal pairs (user ruling
+/// 2026-10-04). The balanced 4x4 gives C1 12 nF (both oracles print 8.6667),
+/// R1 0.8 and X1 9. The unbalanced `cmatrix` gives 11.25 nF, where
+/// the three-conductor sum would give 16.
+#[test]
+fn make_pos_sequence_four_conductor_line_takes_mean_self_minus_mean_mutual() {
+    let r = "1 | 0.2 1 | 0.2 0.2 1 | 0.2 0.2 0.2 1";
+    let x = "10 | 1 10 | 1 1 10 | 1 1 1 10";
+    let mut line = matrix_line("l4", "4", r, x, "10 | -2 10 | -2 -2 10 | -2 -2 -2 10");
+    let [r1, x1, c1] = reduced_r1_x1_c1(&mut line);
+    assert_close(r1, 0.8, "r1");
+    assert_close(x1, 9.0, "x1");
+    assert_close(c1, 12.0, "c1 nF");
+
+    let mut line = matrix_line("l4u", "4", r, x, "12 | -3 10 | -1 -2 8 | -1 -1 -1 9");
+    let [_, _, c1] = reduced_r1_x1_c1(&mut line);
+    assert_close(c1, 11.25, "c1 nF of the unbalanced 4x4");
+}
+
+/// The symmetric matrix `?` reads back as its lower triangle (`[a |b c |…]`),
+/// row-major, and its order.
+fn query_sym(dss: &mut crate::exec::Dss, what: &str) -> (Vec<f64>, usize) {
+    dss.command(&format!("? {what}"));
+    let text = dss.result().to_string();
+    let rows: Vec<Vec<f64>> = text
+        .trim_matches(|c: char| c == '[' || c == ']' || c.is_whitespace())
+        .split('|')
+        .map(|row| {
+            row.split_whitespace()
+                .map(|v| {
+                    v.parse()
+                        .unwrap_or_else(|e| panic!("{what} = {text:?}: {e}"))
+                })
+                .collect()
+        })
+        .collect();
+    let n = rows.len();
+    let mut m = vec![0.0; n * n];
+    for (i, row) in rows.iter().enumerate() {
+        assert_eq!(row.len(), i + 1, "{what} = {text:?}");
+        for (j, &v) in row.iter().enumerate() {
+            m[i * n + j] = v;
+            m[j * n + i] = v;
+        }
+    }
+    (m, n)
+}
+
+/// The mean of the diagonal minus the mean over all off-diagonal pairs of the
+/// symmetric `n × n` matrix `m` (row-major), from its definition.
+fn mean_self_minus_mean_mutual(m: &[f64], n: usize) -> f64 {
+    let diag: f64 = (0..n).map(|i| m[i * n + i]).sum();
+    let pairs: f64 = (0..n)
+        .flat_map(|i| (i + 1..n).map(move |j| m[i * n + j]))
+        .sum();
+    diag / n as f64 - pairs / (n * (n - 1) / 2) as f64
+}
+
+/// A line on a four-wire `reduce=no` LineGeometry (three phase wires and a
+/// neutral) has four conductors, and its `Z` and `Yc` hold its whole 5 mi. The
+/// reduction divides them by that length: R1, X1 and C1 are the mean of the
+/// diagonal minus the mean over all off-diagonal pairs of the per-mile
+/// `rmatrix`, `xmatrix` and `cmatrix` the line reads back, and the reduced
+/// line keeps its 5 mi. This is the user ruling of 2026-10-04 read over all
+/// four conductors, neutral included. Whether a neutral the geometry names
+/// should be Kron-reduced out first, which gives the exact positive-sequence
+/// values of a line whose neutral is grounded at both ends, is open for the
+/// user.
+#[test]
+fn make_pos_sequence_four_wire_geometry_line_takes_mean_self_minus_mean_mutual_per_length() {
+    use crate::elements::pos_seq::balance;
+    let mut dss = balance::stiff("l4geo");
+    for cmd in [
+        "new wiredata.acsr336 gmrac=0.0255 rac=0.306 diam=0.721 normamps=530 runits=mi \
+         radunits=in gmrunits=ft",
+        "new wiredata.acsr4_0 gmrac=0.00814 rac=0.592 diam=0.563 normamps=340 runits=mi \
+         radunits=in gmrunits=ft",
+        "new linegeometry.g4 nconds=4 nphases=3 reduce=no",
+        "~ cond=1 wire=acsr336 x=-4 h=28 units=ft",
+        "~ cond=2 wire=acsr336 x=-1.5 h=28 units=ft",
+        "~ cond=3 wire=acsr336 x=3 h=28 units=ft",
+        "~ cond=4 wire=acsr4_0 x=0 h=24 units=ft",
+        "new line.lg bus1=b bus2=c geometry=g4 length=5 units=mi",
+        "new load.ld bus1=c phases=3 kv=12.47 kw=3000 kvar=1500 model=2",
+    ] {
+        dss.command(cmd);
+    }
+    balance::solve_clean(&mut dss, "four-wire line");
+    dss.command("? line.lg.phases");
+    assert_eq!(dss.result(), "4", "phases of the unreduced line");
+    let want: Vec<f64> = ["rmatrix", "xmatrix", "cmatrix"]
+        .iter()
+        .map(|p| {
+            let (m, n) = query_sym(&mut dss, &format!("line.lg.{p}"));
+            assert_eq!(n, 4, "order of {p}");
+            mean_self_minus_mean_mutual(&m, n)
+        })
+        .collect();
+
+    dss.command("makeposseq");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    for (p, want) in ["r1", "x1", "c1"].into_iter().zip(want) {
+        let got = balance::query_f64(&mut dss, &format!("line.lg.{p}"));
+        balance::assert_rel(got, want, 1e-12, p);
+    }
+    let length = balance::query_f64(&mut dss, "line.lg.length");
+    balance::assert_rel(length, 5.0, 1e-12, "length");
 }
 
 /// The symmetrical-components branch keeps the existing Z1 (R1, X1) and converts
