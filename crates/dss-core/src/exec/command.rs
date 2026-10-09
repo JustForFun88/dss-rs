@@ -1984,7 +1984,13 @@ impl Dss {
             let path = resolve(&gf.filename);
             match std::fs::read(&path) {
                 Ok(bytes) => {
-                    apply_generic_dbl_array_file(&mut active_arena[oi], gf, &bytes, errors)
+                    let what = format!(
+                        "{}.{}.{}",
+                        props.class_name(),
+                        active_arena[oi].data().name(),
+                        props.property_name(gf.prop)
+                    );
+                    apply_generic_dbl_array_file(&mut active_arena[oi], gf, &what, &bytes, errors)
                 }
                 // Pascal error 70401 (`InterpretDblArray`: "CSV file could not be
                 // opened") / 70501 / 70502.
@@ -2242,10 +2248,12 @@ pub(super) fn reattach_edited_control(
 /// the inline list path (`parse.rs`), and write the array + shrunk count through
 /// the object's typed accessors. The read is capped at the current count
 /// property so Pascal's in-place shrink of one array is visible to a later one
-/// (e.g. `%mag` shrinking `NumHarm` before `angle` reads).
+/// (e.g. `%mag` shrinking `NumHarm` before `angle` reads). A rating array
+/// holding a value that is not a finite number is refused and left as it was.
 fn apply_generic_dbl_array_file(
     obj: &mut dyn crate::obj::base::DssObject,
     gf: &crate::obj::base::GenericDblArrayFile,
+    what: &str,
     bytes: &[u8],
     errors: &mut crate::diag::ErrorLog,
 ) {
@@ -2292,7 +2300,22 @@ fn apply_generic_dbl_array_file(
         }
     }
     let count = vals.len() as i32;
-    obj.set_f64_array(gf.prop, vals);
+    if gf.rating && vals.iter().any(|v| !v.is_finite()) {
+        errors.push(format!(
+            "{what}: a rating in file \"{}\" is not a finite number.",
+            gf.filename
+        ));
+        return;
+    }
+    if gf.rating {
+        let ratings = vals
+            .into_iter()
+            .map(crate::obj::Rating::from_number)
+            .collect();
+        obj.set_rating_array(gf.prop, ratings);
+    } else {
+        obj.set_f64_array(gf.prop, vals);
+    }
     // Pascal `integerPtr^ := InterpretDblArray(...)`: shrink the count property to
     // the number of values read.
     obj.set_i32(gf.size_prop, count);

@@ -199,8 +199,8 @@ struct XfSnap {
     code_uuid: Option<Uuid>,
     bus_specs: Vec<String>,
     wdgs: Vec<WdgData>,
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
     // Case-3 synthesis source (the transformer's own web → `CIMXfmrCode_<name>`).
     xsc: Vec<f64>,
     pct_no_load_loss: f64,
@@ -248,8 +248,8 @@ struct AutoSnap {
     xsc: Vec<f64>,
     pct_no_load_loss: f64,
     pct_imag: f64,
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
 }
 
 /// The winding-web view [`write_xfmr_code`] reads (Pascal `TXfmrCodeObj`
@@ -582,15 +582,20 @@ fn xfmr_tank_phases_and_ground(buf: &mut writer::Writer, w: &WdgData) {
 
 /// The HV-winding (terminal 1) `OperationalLimitSet` — Pascal
 /// `ExportCIMXML.pas:3916-3927/4138-4150`: find-or-create the `(norm, emerg)`
-/// current-limit and reference it on terminal 1.
+/// current-limit and reference it on terminal 1. A normal rating that is not set
+/// writes no limit, and an emergency one that is not set takes the normal one.
 fn hv_current_limit(
     buf: &mut writer::Writer,
     cim: &mut CimExporter,
     op_limits: &mut Vec<OpLimit>,
     op_limit_idx: &mut HashMap<String, usize>,
-    norm: f64,
-    emerg: f64,
+    norm: crate::obj::Rating,
+    emerg: crate::obj::Rating,
 ) {
+    let crate::obj::Rating::Set(norm) = norm else {
+        return;
+    };
+    let emerg = emerg.if_set().unwrap_or(norm);
     let limit_name = writer::op_lim_i_name(norm, emerg);
     let key = limit_name.to_ascii_lowercase();
     let limit_uuid = match op_limit_idx.get(&key) {

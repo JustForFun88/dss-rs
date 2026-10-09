@@ -149,10 +149,10 @@ impl CktElement for GicTransformer {
         }
     }
 
-    fn norm_amps(&self) -> f64 {
+    fn norm_amps(&self) -> crate::obj::Rating {
         self.norm_amps
     }
-    fn emerg_amps(&self) -> f64 {
+    fn emerg_amps(&self) -> crate::obj::Rating {
         self.emerg_amps
     }
 

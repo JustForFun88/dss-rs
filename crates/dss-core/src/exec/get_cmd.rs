@@ -331,6 +331,7 @@ impl Dss {
                     append_result(&mut result, yes_no(ckt.em_di.save_demand_interval))
                 }
                 opt::DI_VERBOSE => append_result(&mut result, yes_no(ckt.em_di.di_verbose)),
+                opt::PCT_NORMAL => append_result(&mut result, &float_to_str(ckt.pct_normal_factor)),
                 opt::OVERLOAD_REPORT => {
                     append_result(&mut result, yes_no(ckt.em_di.do_overload_report))
                 }

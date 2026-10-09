@@ -2,6 +2,7 @@
 //! [`DssObject`] setters (Pascal `DSSObjectHelper.ParseObjPropertyValue` +
 //! `SetObj*`). Split out of `class_props/mod.rs` (no behavioral change).
 
+use crate::obj::Rating;
 use crate::obj::base::DssObject;
 use crate::obj::props::setters::{
     get_double, get_integer, interval_units_error, parse_interval_units_f64,
@@ -79,6 +80,44 @@ impl ClassProps {
                     pd.scale
                 };
                 set_obj_double(pd, obj, idx, v, scale, eng, &full);
+                Ok(0)
+            }
+            PropType::Rating => {
+                let rating = if Rating::is_none_token(value) {
+                    Rating::NotSet
+                } else {
+                    let v = get_double(eng, value)?;
+                    if !v.is_finite() {
+                        return Err(not_finite_rating(&full, pd.name, value));
+                    }
+                    Rating::from_number(v)
+                };
+                obj.set_rating(idx, rating);
+                Ok(0)
+            }
+            PropType::RatingArray => {
+                // Up to `size_prop` entries: a number, `none`, or nothing. `-1`
+                // and `none` are not set, and so is every entry not supplied.
+                if let Some(spec) = crate::util::parse_dbl_array_file_spec(value) {
+                    obj.data_mut()
+                        .queue_dbl_array_file(crate::obj::base::GenericDblArrayFile {
+                            prop: idx,
+                            size_prop: pd.size_prop,
+                            kind: spec.kind,
+                            filename: spec.filename,
+                            column: spec.column,
+                            header: spec.header,
+                            apply_round: false,
+                            scale: 1.0,
+                            non_zero: false,
+                            rating: true,
+                        });
+                    return Ok(0);
+                }
+                let max = obj.get_i32(pd.size_prop).max(0) as usize;
+                let buf = interpret_rating_array(eng, value, max)
+                    .map_err(|e| e.unwrap_or_else(|| not_finite_rating(&full, pd.name, value)))?;
+                obj.set_rating_array(idx, buf);
                 Ok(0)
             }
             PropType::Bus => {
@@ -417,6 +456,7 @@ impl ClassProps {
                             apply_round: pd.flags.contains(PropFlags::APPLY_ROUND),
                             scale: pd.scale,
                             non_zero: pd.flags.contains(PropFlags::NON_ZERO),
+                            rating: false,
                         });
                     return Ok(0);
                 }
@@ -757,6 +797,46 @@ fn parse_conductor_proxy(
     }
     obj.set_object_ref_array(idx, &refs);
     Ok(0)
+}
+
+/// The refusal of a rating that is not a finite number: a rating is a number,
+/// `none` or `-1`, and the edit leaves the property as it was
+/// (`a_rating_that_is_not_a_finite_number_is_refused`).
+pub(crate) fn not_finite_rating(full: &str, prop: &str, value: &str) -> ParserError {
+    ParserError::new(format!(
+        "{full}.{prop}: the rating {value} is not a finite number."
+    ))
+}
+
+/// The inline value of a [`PropType::RatingArray`], whose caller has queued a
+/// `file=`, `dblfile=` or `sngfile=` value already: `max` entries, each a
+/// number, `none`, or nothing. `none`, `-1` and an entry not supplied read as a
+/// rating that is not set. An entry that is not a finite number fails with
+/// `None`, a parse error with its own error.
+fn interpret_rating_array(
+    eng: &mut PropEngine,
+    value: &str,
+    max: usize,
+) -> Result<Vec<Rating>, Option<ParserError>> {
+    eng.parser.set_auto_increment(false);
+    eng.parser.set_cmd_string(value);
+    eng.parser.next_param(eng.vars);
+    let mut out = Vec::with_capacity(max);
+    for _ in 0..max {
+        let token = eng.parser.make_string(eng.vars);
+        let rating = if token.is_empty() || Rating::is_none_token(&token) {
+            Rating::NotSet
+        } else {
+            let v = eng.parser.make_double(eng.vars)?;
+            if !v.is_finite() {
+                return Err(None);
+            }
+            Rating::from_number(v)
+        };
+        out.push(rating);
+        eng.parser.next_param(eng.vars);
+    }
+    Ok(out)
 }
 
 /// EPRI r4133 `ParseAsSymMatrix` incomplete-matrix message (`ParserDel.pas`:

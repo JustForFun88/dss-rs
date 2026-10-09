@@ -35,8 +35,9 @@ fn recalc_series_vbase_and_derived_ratings() {
     // RDCOhms (winding 1) = 0.85·Rpu · VBase²/VABase — oracle dumps 5.95702717…
     assert!((t.windings[0].rdcohms - 5.957_027_176_666_67).abs() < 1e-6);
     // NormAmps = NormMaxHkVA/nphases/VFactor, VFactor = VBase·0.001 (series).
-    assert!((t.norm_amps - 6.194_141_189_004_08).abs() < 1e-6);
-    assert!((t.emerg_amps - 8.446_556_166_823_75).abs() < 1e-6);
+    let rating = |r: crate::obj::Rating| r.if_set().expect("derived ratings are set");
+    assert!((rating(t.norm_amps) - 6.194_141_189_004_08).abs() < 1e-6);
+    assert!((rating(t.emerg_amps) - 8.446_556_166_823_75).abs() < 1e-6);
 }
 
 #[test]

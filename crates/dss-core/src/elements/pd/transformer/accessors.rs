@@ -39,24 +39,24 @@ impl CktElement for Transformer {
         }
     }
 
-    fn norm_amps(&self) -> f64 {
+    fn norm_amps(&self) -> crate::obj::Rating {
         self.norm_amps
     }
-    fn emerg_amps(&self) -> f64 {
+    fn emerg_amps(&self) -> crate::obj::Rating {
         self.emerg_amps
     }
     fn num_amp_ratings(&self) -> i32 {
         self.num_amp_ratings
     }
-    fn amp_ratings(&self) -> &[f64] {
+    fn amp_ratings(&self) -> &[crate::obj::Rating] {
         &self.amp_ratings
     }
 
     /// The ratings derive from kVA and the winding 1 voltage base, so a negative
     /// one is still a rating and a loading takes its magnitude. Pinned by
     /// `export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`.
-    fn loading_rating(&self, rating: f64) -> f64 {
-        rating.abs()
+    fn loading_rating(&self, rating: crate::obj::Rating) -> crate::obj::Rating {
+        rating.map(f64::abs)
     }
 
     /// Pascal `TTransfObj.GetLosses` (Transformer.pas l.1635): no-load losses
@@ -383,13 +383,25 @@ impl DssObject for Transformer {
             EMERGHKVA => self.emerg_max_hkva,
             PCTIMAG => self.pct_imag,
             PPM_ANTIFLOAT => self.ppm_float_factor,
-            NORMAMPS => self.norm_amps,
-            EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
             BASE_FREQ => self.cd.base_frequency,
             _ => unreachable!("Transformer has no double property {idx}"),
+        }
+    }
+    fn get_rating(&self, idx: usize) -> crate::obj::Rating {
+        match idx {
+            prop::NORMAMPS => self.norm_amps,
+            prop::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("no rating property {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: crate::obj::Rating) {
+        match idx {
+            prop::NORMAMPS => self.norm_amps = value,
+            prop::EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("no rating property {idx}"),
         }
     }
     fn set_f64(&mut self, idx: usize, value: f64) {
@@ -419,8 +431,6 @@ impl DssObject for Transformer {
             EMERGHKVA => self.emerg_max_hkva = value,
             PCTIMAG => self.pct_imag = value,
             PPM_ANTIFLOAT => self.ppm_float_factor = value,
-            NORMAMPS => self.norm_amps = value,
-            EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,

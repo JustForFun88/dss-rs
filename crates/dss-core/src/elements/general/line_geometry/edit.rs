@@ -3,6 +3,7 @@
 //! the per-conductor ampacity defaulting.
 
 use crate::elements::general::conductor_data::{ConductorData, ConductorKind, ConductorObj};
+use crate::obj::Rating;
 use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_constants::LineConstants;
 
@@ -194,6 +195,10 @@ impl LineGeometryObj {
     /// Pascal `wire`/`cncable`/`tscable` side effect (active conductor) and the
     /// `wires`/`cncables`/`tscables` "traditional" branch (first conductor):
     /// default this geometry's ratings from the conductor's once, when unset.
+    ///
+    /// A positive conductor rating fills a geometry rating that was never
+    /// typed, or a typed zero. A typed `none` or `-1` is kept
+    /// (`a_geometry_rating_typed_not_set_is_kept_against_a_later_conductor`).
     pub(super) fn default_amps_from(&mut self, cond_index: usize) {
         let Some((cnorm, cemerg, cnum, crat)) = self
             .fwiredata
@@ -203,10 +208,25 @@ impl LineGeometryObj {
         else {
             return;
         };
-        if cnorm > 0.0 && self.norm_amps == 0.0 {
+        let fills = |conductor: Rating, geometry: Rating, typed: bool| {
+            matches!(conductor, Rating::Set(c) if c > 0.0)
+                && match geometry {
+                    Rating::NotSet => !typed,
+                    Rating::Set(g) => g == 0.0,
+                }
+        };
+        if fills(
+            cnorm,
+            self.norm_amps,
+            self.data.prp_specified(prop::NORMAMPS),
+        ) {
             self.norm_amps = cnorm;
         }
-        if cemerg > 0.0 && self.emerg_amps == 0.0 {
+        if fills(
+            cemerg,
+            self.emerg_amps,
+            self.data.prp_specified(prop::EMERGAMPS),
+        ) {
             self.emerg_amps = cemerg;
         }
         if cnum > 1 && self.num_amp_ratings == 1 {

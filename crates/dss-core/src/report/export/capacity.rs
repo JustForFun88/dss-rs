@@ -9,6 +9,7 @@ use num_complex::Complex64;
 use crate::circuit::Circuit;
 use crate::elements::traits::SysCtx;
 use crate::exec::registry::DssClass;
+use crate::obj::Rating;
 use crate::report::export::for_each_enabled_elem;
 use crate::report::format;
 
@@ -53,14 +54,18 @@ pub(crate) fn export_capacity(
         // `LocalPower := Power[1] * 0.001` (kW/kvar).
         let local_power = elem.terminal_power(sys, node_v, 1) * 0.001;
 
-        // A zero rating prints `0`/`0` percentages (Pascal guards the divide).
-        let (pct_norm, pct_emerg) = if norm_amps == 0.0 || emerg_amps == 0.0 {
-            (0.0, 0.0)
-        } else {
-            (
-                max_current / norm_amps * 100.0,
-                max_current / emerg_amps * 100.0,
-            )
+        // A rating that is not set prints 0 % in its own column, so an unrated
+        // Line reads 0 % and a set emergency rating next to an unset normal one
+        // still prints its loading
+        // (`export_capacity_prints_zero_for_a_rating_that_is_not_set`). With
+        // both ratings set, a zero one prints `0`/`0` in both columns.
+        let pct_of = |rating: Rating| match rating {
+            Rating::Set(v) if v != 0.0 => max_current / v * 100.0,
+            _ => 0.0,
+        };
+        let (pct_norm, pct_emerg) = match (norm_amps, emerg_amps) {
+            (Rating::Set(n), Rating::Set(e)) if n == 0.0 || e == 0.0 => (0.0, 0.0),
+            (norm, emerg) => (pct_of(norm), pct_of(emerg)),
         };
 
         let cd = elem.cd();

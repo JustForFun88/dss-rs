@@ -6,6 +6,7 @@ use crate::elements::general::conductor_data::{
     CableGeom, ConductorData, ConductorGeom, ConductorKind, ConductorObj,
 };
 use crate::elements::general::line_spacing::LineSpacingObj;
+use crate::obj::Rating;
 use crate::support::cmatrix::CMatrix;
 use crate::support::line_constants::ConductorType;
 
@@ -91,17 +92,18 @@ impl LineGeometryObj {
             self.flast_unit = spc.spacing_units();
         }
 
-        // Skip-NIL copy (r4133 :1220-1242): contiguous conductor `j`, spacing
-        // coordinates indexed by the ORIGINAL position `i`. NormAmps/EmergAmps are
-        // the running MINIMUM over the PHASE conductors (dss_capi 0.15.x D3 /
-        // r4133 :1235-1239, `j <= FNPhases`) — a phase with a lower rating governs
-        // the line; conductor 1's rating no longer wins by default.
+        // Skip-NIL copy: contiguous conductor `j`, spacing coordinates indexed by
+        // the ORIGINAL position `i`. NormAmps and EmergAmps are each the lowest
+        // among the PHASE conductors' ratings of that kind, since the line
+        // current flows through every phase conductor, and not set when any
+        // phase conductor has none. The result does not depend on conductor
+        // order (`spacing_minimum_does_not_depend_on_conductor_order`,
+        // `spacing_ratings_are_each_the_weakest_phase_wires_in_any_order`).
         let units = spc.spacing_units();
         let xs = spc.xcoord();
         let hs = spc.ycoord();
         let nph = self.fnphases.max(0) as usize;
-        self.norm_amps = 0.0;
-        self.emerg_amps = 0.0;
+        let (mut norm, mut emerg): (Option<Rating>, Option<Rating>) = (None, None);
         let mut j = 0usize; // 0-based contiguous conductor index (Pascal 1-based)
         for (i, o) in wires.iter().take(nwires).enumerate() {
             let Some(o) = o.as_ref() else { continue };
@@ -113,12 +115,14 @@ impl LineGeometryObj {
             }
             let (cn, ce) = conductor_norm_emerg(o);
             // 0-based `j < nph` == Pascal 1-based `(j+1) <= FNPhases`.
-            if (cn < self.norm_amps || self.norm_amps == 0.0) && j < nph {
-                self.norm_amps = cn;
-                self.emerg_amps = ce;
+            if j < nph {
+                norm = Some(weaker_rating(norm, cn));
+                emerg = Some(weaker_rating(emerg, ce));
             }
             j += 1;
         }
+        self.norm_amps = norm.unwrap_or(Rating::NotSet);
+        self.emerg_amps = emerg.unwrap_or(Rating::NotSet);
         self.data_changed = true;
 
         // dss_capi 0.15.x (Line.pas:2111-2113): apply the consuming Line's
@@ -346,7 +350,18 @@ impl LineGeometryObj {
 
 /// `(NormAmps, EmergAmps)` of a conductor (Pascal `Wires[1].NormAmps/EmergAmps`),
 /// whichever concrete catalog type it is.
-fn conductor_norm_emerg(o: &ConductorObj) -> (f64, f64) {
+fn conductor_norm_emerg(o: &ConductorObj) -> (Rating, Rating) {
     let (n, e, _, _) = o.amps();
     (n, e)
+}
+
+/// The weaker of the rating folded so far (`None` before the first phase
+/// conductor) and the next phase conductor's: a rating that is not set wins,
+/// else the lower number.
+fn weaker_rating(seen: Option<Rating>, next: Rating) -> Rating {
+    match (seen, next) {
+        (None, r) => r,
+        (Some(Rating::NotSet), _) | (_, Rating::NotSet) => Rating::NotSet,
+        (Some(Rating::Set(a)), Rating::Set(b)) => Rating::Set(if b < a { b } else { a }),
+    }
 }

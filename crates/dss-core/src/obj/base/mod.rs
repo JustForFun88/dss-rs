@@ -448,6 +448,11 @@ pub struct GenericDblArrayFile {
     pub scale: f64,
     /// Pascal `TPropertyFlag.NonPositive`-style guard — reject a zero element.
     pub non_zero: bool,
+    /// The array is a [`PropType::RatingArray`](crate::obj::props::PropType::RatingArray):
+    /// each value read becomes a [`crate::obj::Rating`] through
+    /// [`crate::obj::Rating::from_number`] and is written through
+    /// [`DssObject::set_rating_array`].
+    pub rating: bool,
 }
 
 impl FileLoad {
@@ -628,6 +633,24 @@ pub trait DssObject: Send {
     }
     fn set_f64(&mut self, idx: usize, value: f64) {
         unreachable!("set_f64 not implemented for property {idx}")
+    }
+    /// A [`PropType::Rating`](crate::obj::props::PropType::Rating) property.
+    fn get_rating(&self, idx: usize) -> crate::obj::Rating {
+        unreachable!("get_rating not implemented for property {idx}")
+    }
+    fn set_rating(&mut self, idx: usize, value: crate::obj::Rating) {
+        let _ = value;
+        unreachable!("set_rating not implemented for property {idx}")
+    }
+    /// A [`PropType::RatingArray`](crate::obj::props::PropType::RatingArray)
+    /// property. `None` is an array that does not exist (dumps as an empty
+    /// string).
+    fn get_rating_array(&self, idx: usize) -> Option<&[crate::obj::Rating]> {
+        unreachable!("get_rating_array not implemented for property {idx}")
+    }
+    fn set_rating_array(&mut self, idx: usize, value: Vec<crate::obj::Rating>) {
+        let _ = value;
+        unreachable!("set_rating_array not implemented for property {idx}")
     }
     fn get_i32(&self, idx: usize) -> i32 {
         unreachable!("get_i32 not implemented for property {idx}")

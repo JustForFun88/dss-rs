@@ -312,6 +312,17 @@ fn corpus_gate_all_cases_match_engines() {
     // the seam ran (RP4.1 audit settlement) — because a narrowed row can only
     // ever count a divergent cell.
     harness::props_norm::assert_echo_rows_are_live();
+    // And for the rating exclusion: every row of
+    // `not_set_ratings::LANE_NOT_SET_RATINGS` must excuse exactly its measured
+    // number of cells on each channel on a whole-population run
+    // (`not_set_ratings::NOT_SET_RATING_HITS`). Fewer cells mean a divergence
+    // that is no longer there, more a rating that now reads `none` where the
+    // oracle prints a number. Silent under `DSS_GATE_ONLY`.
+    eprintln!(
+        "corpus_gate not-set ratings: {:?} cell(s) excused per row (capi_v0145, r4133)",
+        harness::not_set_ratings::hits()
+    );
+    harness::not_set_ratings::assert_not_set_ratings_are_the_measured_population();
     // And the two GOLDEN_REBASE G1.6b PDElements guards, in that order for the
     // reason the property pair is in that order: "did the walk run at all, on
     // BOTH channels" is the precondition that makes the per-row verdicts mean

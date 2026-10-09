@@ -10,6 +10,7 @@
 //! Every accessor reused here is the same one `get_value` calls; only the
 //! assembly into the ordered [`Json`] tree differs.
 
+use crate::obj::Rating;
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::setters::get_obj_double;
@@ -74,6 +75,32 @@ impl ClassProps {
                         Json::Null
                     }
                 }
+            }
+            // A rating that is not set: `null` in the full sweep, omitted from
+            // the set-order sweep (as `Save` omits it).
+            PropType::Rating => match obj.get_rating(idx) {
+                Rating::Set(v) if v.is_finite() => Json::Float(v),
+                Rating::Set(_) => Json::Null,
+                Rating::NotSet if opts.contains(JsonOpts::FULL) => Json::Null,
+                Rating::NotSet => return None,
+            },
+            PropType::RatingArray => {
+                let n = obj.get_i32(pd.size_prop).max(0) as usize;
+                let Some(vals) = obj.get_rating_array(idx) else {
+                    return Some(Json::Null);
+                };
+                let vals = &vals[..n.min(vals.len())];
+                if !opts.contains(JsonOpts::FULL) && !vals.iter().any(|r| r.is_set()) {
+                    return None;
+                }
+                Json::Arr(
+                    vals.iter()
+                        .map(|r| match r {
+                            Rating::Set(v) if v.is_finite() => Json::Float(*v),
+                            _ => Json::Null,
+                        })
+                        .collect(),
+                )
             }
             PropType::Integer => {
                 if prefer_array && on_array {

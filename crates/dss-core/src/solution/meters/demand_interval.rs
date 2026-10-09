@@ -71,6 +71,21 @@ impl MeterStream {
         self.head = false;
     }
 
+    /// A rating cell: the number as [`Self::write_dbl`] writes it, or `none`
+    /// when the rating is not set.
+    pub(crate) fn write_rating(&mut self, r: crate::obj::Rating) {
+        match r {
+            crate::obj::Rating::Set(v) => self.write_dbl(v),
+            crate::obj::Rating::NotSet => {
+                if !self.head {
+                    self.buf.push_str(", ");
+                }
+                self.buf.push_str(crate::obj::Rating::NONE_TOKEN);
+                self.head = false;
+            }
+        }
+    }
+
     /// Pascal `CloseMHandler`: flush the buffered text to `path` (always
     /// `fmCreate` — the append flags are dead upstream, see the module doc).
     fn close_to(self, path: &Path, errors: &mut crate::diag::ErrorLog) {
@@ -770,9 +785,11 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
         if !elem.cd().enabled || elem.is_shunt() {
             continue;
         }
-        // Entry gate: a positive base loading rating.
-        if !(elem.loading_rating(elem.norm_amps()) > 0.0
-            || elem.loading_rating(elem.emerg_amps()) > 0.0)
+        // Entry gate: a positive base loading rating. A rating that is not set
+        // takes no part in the gate or the test below.
+        let positive = |r: crate::obj::Rating| matches!(r, crate::obj::Rating::Set(v) if v > 0.0);
+        if !(positive(elem.loading_rating(elem.norm_amps()))
+            || positive(elem.loading_rating(elem.emerg_amps())))
         {
             continue;
         }
@@ -787,9 +804,14 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
         // The ratings print as stored, the loading takes the loading ratings.
         let (norm_amps, emerg_amps) = elem.get_ratings(seasonal_idx);
         let (norm_load, emerg_load) = elem.loading_ratings(seasonal_idx);
-        if !(cmax > norm_load || cmax > emerg_load) {
+        let exceeded = |r: crate::obj::Rating| matches!(r, crate::obj::Rating::Set(v) if cmax > v);
+        if !(exceeded(norm_load) || exceeded(emerg_load)) {
             continue;
         }
+        let pct_of = |r: crate::obj::Rating| match r {
+            crate::obj::Rating::Set(v) if v > 0.0 => cmax / v * 100.0,
+            _ => 0.0,
+        };
 
         // `dVector[1..3]`: the per-**phase** currents. Pascal recovers each
         // conductor's phase number by re-parsing the FirstBus node designators;
@@ -828,18 +850,10 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
         if let Some(ov) = ckt.em_di.ov.as_mut() {
             ov.write_dbl(dbl_hour);
             ov.write_str(&format!(", \"{full_name}\""));
-            ov.write_dbl(norm_amps);
-            ov.write_dbl(emerg_amps);
-            ov.write_dbl(if norm_load > 0.0 {
-                cmax / norm_load * 100.0
-            } else {
-                0.0
-            });
-            ov.write_dbl(if emerg_load > 0.0 {
-                cmax / emerg_load * 100.0
-            } else {
-                0.0
-            });
+            ov.write_rating(norm_amps);
+            ov.write_rating(emerg_amps);
+            ov.write_dbl(pct_of(norm_load));
+            ov.write_dbl(pct_of(emerg_load));
             ov.write_dbl(kv_base);
             for v in d_vector {
                 ov.write_dbl(v);

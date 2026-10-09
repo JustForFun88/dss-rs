@@ -165,8 +165,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // TPDClass tail: Pascal sets these AFTER `inherited DefineProperties` with
         // `DynamicDefault + Units_A` (`Reactor.pas:310-311`) — emitted (no default),
         // in `A`.
-        PropDef::double("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_A),
-        PropDef::double("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_A),
+        PropDef::rating("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_A),
+        PropDef::rating("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_A),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -225,8 +225,8 @@ pub struct Reactor {
     z0_specified: bool,
     is_shunt: bool,
     // PD-element common:
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
     norm_amps_specified: bool,
     emerg_amps_specified: bool,
     fault_rate: f64,
@@ -277,15 +277,15 @@ impl Reactor {
             z2_specified: false,
             z0_specified: false,
             is_shunt: true,
-            norm_amps: kvarrating * sqrt3() / kvrating,
-            emerg_amps: 0.0,
+            norm_amps: crate::obj::Rating::from_number(kvarrating * sqrt3() / kvrating),
+            emerg_amps: crate::obj::Rating::NotSet,
             norm_amps_specified: false,
             emerg_amps_specified: false,
             fault_rate: 0.0005,
             pct_perm: 100.0,
             hrs_to_repair: 3.0,
         };
-        r.emerg_amps = r.norm_amps * 1.35;
+        r.emerg_amps = r.norm_amps.map(|n| n * 1.35);
         r.cd.yorder = r.cd.nterms * r.cd.nconds;
         r.recalc();
         r

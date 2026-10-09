@@ -95,6 +95,11 @@ pub mod export_policies;
 #[cfg(windows)]
 pub mod run_file_contents;
 
+/// A rating the engine reads as not set (`none`) where an oracle prints the
+/// number its class uses for "no rating": the table, the cell predicate and the
+/// liveness guard of the corpus property compare's exclusion.
+pub mod not_set_ratings;
+
 /// Run `f` and return its panic message, for the self-tests that prove a
 /// comparator arm fires.
 #[cfg(test)]
@@ -9447,6 +9452,14 @@ fn compare_prop_lists(
         if skip_prop(class, ename, policy.channel())
             || skip_transformer_cursor(class, ename, cursors_disagree)
         {
+            continue;
+        }
+        // A rating the engine reads as not set: `none` against the number the
+        // oracle prints for it, excused cell by cell on both channels
+        // ([`not_set_ratings`]), counted per channel. It sits before the
+        // normalization seam, so the `line.ratings` `ArrayForm` row does not see
+        // the `[ 0]` cells of a geometry Line.
+        if not_set_ratings::excuse(class, ename, aval, eval, policy.channel()) {
             continue;
         }
         // THE NORMALIZATION SEAM (plan §1.2): the channel-scoped, strictly

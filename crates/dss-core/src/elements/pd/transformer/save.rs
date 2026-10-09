@@ -100,8 +100,13 @@ impl Transformer {
                 done[ip] = true;
                 // Pascal: `if Length(PropertyValue[iProp]) > 0 then write
                 // name=CheckForBlanks(value)` — no `----`/trim handling here
-                // (that is the *generic* SaveWrite's job).
-                let val = cx.cls.get_value(self, ip, cx.enums);
+                // (that is the *generic* SaveWrite's job). A rating that is
+                // not set is omitted.
+                let val = if cx.cls.holds_no_rating(self, ip) {
+                    String::new()
+                } else {
+                    cx.cls.get_value(self, ip, cx.enums)
+                };
                 if !val.is_empty() {
                     out.push_str(&format!(
                         " {}={}",

@@ -12,6 +12,7 @@ use crate::elements::pc::storage::Storage;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
 use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
+use crate::obj::Rating;
 use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::solution::{LoadSolutionModel, SolveMode};
 use crate::support::dynamics::IterationFlag;
@@ -1029,15 +1030,15 @@ pub trait CktElement: Send {
         out
     }
 
-    /// `NormAmps` rating (PD elements override; 0 = no rating, like Pascal's
-    /// base where `Get_ExcesskVANorm` short-circuits to 0).
-    fn norm_amps(&self) -> f64 {
-        0.0
+    /// The normal current rating (PD elements override). Not set by default:
+    /// an element without a rating measures no loading.
+    fn norm_amps(&self) -> Rating {
+        Rating::NotSet
     }
 
-    /// `EmergAmps` rating (PD elements override).
-    fn emerg_amps(&self) -> f64 {
-        0.0
+    /// The emergency current rating (PD elements override).
+    fn emerg_amps(&self) -> Rating {
+        Rating::NotSet
     }
 
     /// `NumAmpRatings` — the number of seasonal current ratings (`Seasons`).
@@ -1048,25 +1049,16 @@ pub trait CktElement: Send {
 
     /// `AmpRatings` — the per-season current ratings array (PD elements with
     /// `Seasons > 1` override). Empty by default.
-    fn amp_ratings(&self) -> &[f64] {
+    fn amp_ratings(&self) -> &[Rating] {
         &[]
     }
 
-    /// Pascal `TPDElement.GetRatings` (EPRI r4133 PDElement.pas l.351): the
-    /// (norm, emerg) current ratings, overridden by the seasonal rating
-    /// `AmpRatings[seasonal_idx]` when the global season index is in range AND the
-    /// element carries more than one season. r4133's guard is
-    /// `(RatingIdx <= NumAmpRatings) and (NumAmpRatings > 1)`; a single-season
-    /// element (`NumAmpRatings == 1`) keeps its base `(NormAmps, EmergAmps)`.
-    /// dss_capi 0.15.x `55400a29` DROPPED the `NumAmpRatings > 1` guard, so on
-    /// capi015 a single-season element at idx 0 silently replaces its user-set
-    /// ratings with the stale constructor default `AmpRatings[0]` — proven a bug
-    /// vs r4133 + physics (0.15.x-adoption sweep, DIVERGENCES L4/E2), so the port
-    /// follows r4133 and keeps the `> 1` guard. We keep the memory-safe
-    /// `0 <= idx < NumAmpRatings` bound (r4133's own `<= NumAmpRatings` is an
-    /// off-the-end dynamic-array read — a UB defect not reproduced). Both norm and
-    /// emerg take the same seasonal value.
-    fn get_ratings(&self, seasonal_idx: i32) -> (f64, f64) {
+    /// The (normal, emergency) current ratings in force for the season
+    /// `seasonal_idx`: the seasonal rating `AmpRatings[seasonal_idx]` for both
+    /// when the element carries more than one season and the index is in range,
+    /// else the base pair. A single-season element keeps its base ratings
+    /// (pinned by `get_ratings_applies_seasonal_index`).
+    fn get_ratings(&self, seasonal_idx: i32) -> (Rating, Rating) {
         let norm = self.norm_amps();
         let emerg = self.emerg_amps();
         if self.num_amp_ratings() > 1 && seasonal_idx >= 0 && seasonal_idx < self.num_amp_ratings()
@@ -1086,14 +1078,15 @@ pub trait CktElement: Send {
     /// current ratings (`NormAmps`, `EmergAmps` or a seasonal entry): the rating
     /// itself, sign included (pinned for a Line by
     /// `nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site`).
-    /// The Transformer and the AutoTrans override it.
-    fn loading_rating(&self, rating: f64) -> f64 {
+    /// A rating that is not set stays not set. The Transformer and the
+    /// AutoTrans override it.
+    fn loading_rating(&self, rating: Rating) -> Rating {
         rating
     }
 
     /// [`Self::get_ratings`] as the pair a loading is measured against
     /// ([`Self::loading_rating`] of each).
-    fn loading_ratings(&self, seasonal_idx: i32) -> (f64, f64) {
+    fn loading_ratings(&self, seasonal_idx: i32) -> (Rating, Rating) {
         let (norm, emerg) = self.get_ratings(seasonal_idx);
         (self.loading_rating(norm), self.loading_rating(emerg))
     }
@@ -1124,11 +1117,14 @@ pub trait CktElement: Send {
         node_v: &[Complex64],
         idx_term: usize,
     ) -> Complex64 {
-        let norm_amps = self.loading_rating(self.norm_amps());
-        if norm_amps == 0.0 || !self.cd().enabled {
-            self.cd_mut().overload_een = 0.0;
-            return Complex64::ZERO;
-        }
+        // A rating that is not set, or zero, measures no overload.
+        let norm_amps = match self.loading_rating(self.norm_amps()) {
+            Rating::Set(v) if v != 0.0 && self.cd().enabled => v,
+            _ => {
+                self.cd_mut().overload_een = 0.0;
+                return Complex64::ZERO;
+            }
+        };
         let kva = self.terminal_power(sys, node_v, idx_term) * 0.001; // forces Iterminal
         let imax = self.max_terminal_one_imag(sys, node_v);
         let factor = imax / norm_amps - 1.0;
@@ -1150,11 +1146,14 @@ pub trait CktElement: Send {
         node_v: &[Complex64],
         idx_term: usize,
     ) -> Complex64 {
-        let emerg_amps = self.loading_rating(self.emerg_amps());
-        if emerg_amps == 0.0 || !self.cd().enabled {
-            self.cd_mut().overload_ue = 0.0;
-            return Complex64::ZERO;
-        }
+        // A rating that is not set, or zero, measures no overload.
+        let emerg_amps = match self.loading_rating(self.emerg_amps()) {
+            Rating::Set(v) if v != 0.0 && self.cd().enabled => v,
+            _ => {
+                self.cd_mut().overload_ue = 0.0;
+                return Complex64::ZERO;
+            }
+        };
         let kva = self.terminal_power(sys, node_v, idx_term) * 0.001;
         let imax = self.max_terminal_one_imag(sys, node_v);
         let factor = imax / emerg_amps - 1.0;

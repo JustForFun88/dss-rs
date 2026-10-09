@@ -6,6 +6,13 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropType {
     Double,
+    /// A current or power rating ([`crate::obj::Rating`]): a number, or none.
+    /// Read through [`DssObject::get_rating`](crate::obj::base::DssObject::get_rating);
+    /// `none` and `-1` read as not set, which renders `none`.
+    Rating,
+    /// A seasonal rating array of [`crate::obj::Rating`] whose length is the
+    /// integer property `size_prop`. Rendered `[ 400 none]`.
+    RatingArray,
     Integer,
     Boolean,
     String,

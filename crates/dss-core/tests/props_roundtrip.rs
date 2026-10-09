@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use dss_core::exec::Dss;
+use dss_test_harness::harness::not_set_ratings::reads_not_set;
 use serde::Deserialize;
 
 /// One per-class file: `{schema, oracle, class, scenarios}` (`oracle`/`class`
@@ -335,6 +336,47 @@ const LANE_SKIP_PROP_VALUES: &[(&str, &str)] = &[
 /// count at all.
 const LANE_SKIP_PROP_VALUE_CELLS: usize = 33;
 
+/// Ratings the engine reads as not set, as `(class, property, the numbers the
+/// capture prints for them)`: the engine renders `none` (a seasonal array
+/// `[ none]`, or `[ 600 none none]` for entries not supplied) where the pinned
+/// 0.14.5 oracle prints its "no rating" number. A conductor (`WireData`,
+/// `CNData`, `TSData`) starts at `-1` and fills seasons not supplied with `0`,
+/// which only a `WireData` capture shows, so only that row takes `0`; a
+/// `LineGeometry`, a `Fault` and a `GICTransformer` start at `0` (user decision
+/// 2026-10-04: a rating that is not set is its own value, not a number).
+///
+/// A cell is excused only through
+/// [`reads_not_set`](dss_test_harness::harness::not_set_ratings::reads_not_set):
+/// every `none` must face one of the row's numbers and every other entry must
+/// equal the capture by value, so the cell is still checked and counts as
+/// compared. The engine's spellings are pinned by
+/// `dss_core::exec::tests::ratings::unset_ratings_read_none_by_default` and
+/// `seasonal_ratings_not_supplied_are_not_set`.
+const LANE_NOT_SET_RATING_CELLS: &[(&str, &str, &[&str])] = &[
+    ("WireData", "NormAmps", &["-1"]),
+    ("WireData", "EmergAmps", &["-1"]),
+    ("WireData", "Ratings", &["-1", "0"]),
+    ("CNData", "NormAmps", &["-1"]),
+    ("CNData", "EmergAmps", &["-1"]),
+    ("CNData", "Ratings", &["-1"]),
+    ("TSData", "NormAmps", &["-1"]),
+    ("TSData", "EmergAmps", &["-1"]),
+    ("TSData", "Ratings", &["-1"]),
+    ("LineGeometry", "NormAmps", &["0"]),
+    ("LineGeometry", "EmergAmps", &["0"]),
+    ("LineGeometry", "Ratings", &["0"]),
+    ("Fault", "NormAmps", &["0"]),
+    ("Fault", "EmergAmps", &["0"]),
+    ("GICTransformer", "NormAmps", &["0"]),
+    ("GICTransformer", "EmergAmps", &["0"]),
+];
+
+/// How many cells [`LANE_NOT_SET_RATING_CELLS`] excuses over the committed
+/// goldens: `wiredata` NormAmps 6, EmergAmps 6, Ratings 8; `cndata` 6, 6, 7;
+/// `tsdata` 3, 3, 4; `linegeometry` 1, 1, 9; `fault` 6, 6; `gictransformer` 5,
+/// 5. An equality in both lanes, so the table is fail-on-stale both ways.
+const LANE_NOT_SET_RATING_CELL_COUNT: usize = 82;
+
 /// The value-free half of [`assert_value_matches`]: the rendered *shape* only —
 /// the literal text around the numbers and how many numbers there are. Used for
 /// [`LANE_SKIP_PROP_VALUES`] in **both** lanes, where the values are a
@@ -411,6 +453,7 @@ fn props_roundtrip_matches_oracle() {
     }
 
     let mut value_skips = 0usize;
+    let mut not_set_cells = 0usize;
     // The cell half of the population lock, counted where the comparison
     // happens: `compared` is every cell this run actually checked (by value or,
     // for the sym-matrix exclusion, by shape), `lane_skips` every cell
@@ -470,6 +513,14 @@ fn props_roundtrip_matches_oracle() {
                 compared += 1;
                 continue;
             }
+            if let Some((_, _, sentinels)) = LANE_NOT_SET_RATING_CELLS.iter().find(|(c, p, _)| {
+                c.eq_ignore_ascii_case(target_class) && p.eq_ignore_ascii_case(prop)
+            }) && reads_not_set(&actual, expected, sentinels)
+            {
+                not_set_cells += 1;
+                compared += 1;
+                continue;
+            }
             assert_value_matches(&actual, expected, &ctx);
             compared += 1;
         }
@@ -499,6 +550,12 @@ fn props_roundtrip_matches_oracle() {
         LANE_SKIP_SCENARIO_PROPS.len()
     );
 
+    assert_eq!(
+        not_set_cells, LANE_NOT_SET_RATING_CELL_COUNT,
+        "the not-set rating exclusion moved: {not_set_cells} cells excused, \
+         {LANE_NOT_SET_RATING_CELL_COUNT} recorded. Move this number only in the commit that \
+         argues for the new set."
+    );
     assert_eq!(
         value_skips, LANE_SKIP_PROP_VALUE_CELLS,
         "the sym-matrix value exclusion moved: {value_skips} cells skipped, \

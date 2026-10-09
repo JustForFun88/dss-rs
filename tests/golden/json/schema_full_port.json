@@ -2617,9 +2617,6 @@
         },
         "Ratings" : {
           "$ref" : "#/$defs/ArrayOrFilePath",
-          "default" : [
-            -1.0000000000000000E+000
-          ],
           "$dssLength" : "Seasons",
           "description" : "An array of ratings to be used when the seasonal ratings flag is True. It can be used to insert\nmultiple ratings to change during a QSTS simulation to evaluate different ratings in lines.",
           "title" : "Ratings",
@@ -2825,9 +2822,6 @@
         },
         "Ratings" : {
           "$ref" : "#/$defs/ArrayOrFilePath",
-          "default" : [
-            -1.0000000000000000E+000
-          ],
           "$dssLength" : "Seasons",
           "description" : "An array of ratings to be used when the seasonal ratings flag is True. It can be used to insert\nmultiple ratings to change during a QSTS simulation to evaluate different ratings in lines.",
           "title" : "Ratings",
@@ -3017,9 +3011,6 @@
         },
         "Ratings" : {
           "$ref" : "#/$defs/ArrayOrFilePath",
-          "default" : [
-            -1.0000000000000000E+000
-          ],
           "$dssLength" : "Seasons",
           "description" : "An array of ratings to be used when the seasonal ratings flag is True. It can be used to insert\nmultiple ratings to change during a QSTS simulation to evaluate different ratings in lines.",
           "title" : "Ratings",
@@ -3279,7 +3270,6 @@
         },
         "NormAmps" : {
           "type" : "number",
-          "default" : 0.0000000000000000E+000,
           "description" : "Normal ampacity, amperes for the line. Defaults to first conductor if not specified.",
           "title" : "NormAmps",
           "$dssPropertyIndex" : 8,
@@ -3287,7 +3277,6 @@
         },
         "EmergAmps" : {
           "type" : "number",
-          "default" : 0.0000000000000000E+000,
           "description" : "Emergency ampacity, amperes. Defaults to first conductor if not specified.",
           "title" : "EmergAmps",
           "$dssPropertyIndex" : 9,
@@ -3360,9 +3349,6 @@
         },
         "Ratings" : {
           "$ref" : "#/$defs/ArrayOrFilePath",
-          "default" : [
-            0.0000000000000000E+000
-          ],
           "$dssLength" : "Seasons",
           "description" : "An array of ratings to be used when the seasonal ratings flag is True. It can be used to insert\nmultiple ratings to change during a QSTS simulation to evaluate different ratings in lines.Defaults to first conductor if not specified.",
           "title" : "Ratings",
@@ -14649,7 +14635,6 @@
         },
         "NormAmps" : {
           "type" : "number",
-          "default" : 0.0000000000000000E+000,
           "description" : "Normal rated current.",
           "title" : "NormAmps",
           "$dssPropertyIndex" : 16,
@@ -14657,7 +14642,6 @@
         },
         "EmergAmps" : {
           "type" : "number",
-          "default" : 0.0000000000000000E+000,
           "description" : "Maximum or emerg current.",
           "title" : "EmergAmps",
           "$dssPropertyIndex" : 17,

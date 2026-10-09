@@ -107,8 +107,11 @@ impl Transformer {
             },
             Connection::Series => 1.0,
         };
-        self.norm_amps = self.norm_max_hkva / np as f64 / vfactor;
-        self.emerg_amps = self.emerg_max_hkva / np as f64 / vfactor;
+        // The kVA ratings have no not-set state, so every current rating derived
+        // from them is set, `-1` A included: a negative one loads by its
+        // magnitude (`a_transformer_rating_derived_as_minus_one_ampere_loads_by_its_magnitude`).
+        self.norm_amps = crate::obj::Rating::Set(self.norm_max_hkva / np as f64 / vfactor);
+        self.emerg_amps = crate::obj::Rating::Set(self.emerg_max_hkva / np as f64 / vfactor);
         // dss_capi 0.15.x (`Transformer.pas:1058`, commit 4ed59416 / SVN r4033):
         // the spurious `1.1 *` factor was DROPPED from the seasonal AmpRatings —
         // `AmpRatings[i] := kVARatings[i] / Fnphases / Vfactor` (the seasonal
@@ -119,7 +122,7 @@ impl Transformer {
         self.amp_ratings = self
             .kva_ratings
             .iter()
-            .map(|r| r / np as f64 / vfactor)
+            .map(|r| crate::obj::Rating::Set(r / np as f64 / vfactor))
             .collect();
 
         self.calc_y_terminal(1.0, self.live_frequency);

@@ -27,6 +27,7 @@ pub mod cn_data;
 pub mod ts_data;
 pub mod wire_data;
 
+use crate::obj::Rating;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 
@@ -82,17 +83,17 @@ struct ConductorDataCore {
     fgmr_units: i32,
     fresistance_units: i32,
     fradius_units: i32,
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: Rating,
+    emerg_amps: Rating,
     num_amp_ratings: i32,
-    amp_ratings: Vec<f64>,
+    amp_ratings: Vec<Rating>,
 }
 
 impl ConductorDataCore {
     fn new() -> Self {
         // Pascal `TConductorDataObj.Create`: every numeric "spec" field starts
-        // at the -1.0 "not defined" sentinel; AmpRatings holds one entry equal
-        // to the (still -1) NormAmps.
+        // at the -1.0 "not defined" sentinel. The ratings start not set, with one
+        // seasonal entry.
         Self {
             frdc: -1.0,
             fr60: -1.0,
@@ -102,16 +103,16 @@ impl ConductorDataCore {
             fgmr_units: 0,
             fresistance_units: 0,
             fradius_units: 0,
-            norm_amps: -1.0,
-            emerg_amps: -1.0,
+            norm_amps: Rating::NotSet,
+            emerg_amps: Rating::NotSet,
             num_amp_ratings: 1,
-            amp_ratings: vec![-1.0],
+            amp_ratings: vec![Rating::NotSet],
         }
     }
 
     /// The current-rating fields a `LineGeometry` defaults from its first
     /// conductor (`NormAmps`/`EmergAmps`/`NumAmpRatings`/`AmpRatings`).
-    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+    fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         (
             self.norm_amps,
             self.emerg_amps,
@@ -128,8 +129,6 @@ impl ConductorDataCore {
             // `Radius` and `Diam` share the FRadius field; the engine applies
             // the diameter prop's 0.5 scale (Diam dumps FRadius / 0.5).
             cd::RADIUS | cd::DIAM => self.fradius,
-            cd::NORMAMPS => self.norm_amps,
-            cd::EMERGAMPS => self.emerg_amps,
             cd::CAPRADIUS => self.fcapradius60,
             _ => unreachable!("ConductorData has no double at rel {rel}"),
         }
@@ -141,10 +140,24 @@ impl ConductorDataCore {
             cd::RAC => self.fr60 = value,
             cd::GMRAC => self.fgmr60 = value,
             cd::RADIUS | cd::DIAM => self.fradius = value,
-            cd::NORMAMPS => self.norm_amps = value,
-            cd::EMERGAMPS => self.emerg_amps = value,
             cd::CAPRADIUS => self.fcapradius60 = value,
             _ => unreachable!("ConductorData has no double at rel {rel}"),
+        }
+    }
+
+    fn get_rating(&self, rel: usize) -> Rating {
+        match rel {
+            cd::NORMAMPS => self.norm_amps,
+            cd::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("ConductorData has no rating at rel {rel}"),
+        }
+    }
+
+    fn set_rating(&mut self, rel: usize, value: Rating) {
+        match rel {
+            cd::NORMAMPS => self.norm_amps = value,
+            cd::EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("ConductorData has no rating at rel {rel}"),
         }
     }
 
@@ -210,19 +223,26 @@ impl ConductorDataCore {
                     self.fgmr_units = self.fradius_units;
                 }
             }
+            // A set rating fills its partner when that one is not set or
+            // negative. A rating that is not set derives nothing, and a
+            // derived `-1` is not set.
             cd::NORMAMPS => {
-                if self.emerg_amps < 0.0 {
-                    self.emerg_amps = 1.5 * self.norm_amps;
+                if let Rating::Set(norm) = self.norm_amps
+                    && !matches!(self.emerg_amps, Rating::Set(e) if e >= 0.0)
+                {
+                    self.emerg_amps = Rating::from_number(1.5 * norm);
                 }
             }
             cd::EMERGAMPS => {
-                if self.norm_amps < 0.0 {
-                    self.norm_amps = self.emerg_amps / 1.5;
+                if let Rating::Set(emerg) = self.emerg_amps
+                    && !matches!(self.norm_amps, Rating::Set(n) if n >= 0.0)
+                {
+                    self.norm_amps = Rating::from_number(emerg / 1.5);
                 }
             }
             cd::SEASONS => self
                 .amp_ratings
-                .resize(self.num_amp_ratings.max(0) as usize, 0.0),
+                .resize(self.num_amp_ratings.max(0) as usize, Rating::NotSet),
             _ => {}
         }
     }
@@ -402,7 +422,7 @@ pub trait ConductorData {
     fn geom(&self) -> ConductorGeom;
     /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` — the current ratings
     /// a `LineGeometry`/`Line` defaults from its first conductor.
-    fn amps(&self) -> (f64, f64, i32, &[f64]);
+    fn amps(&self) -> (Rating, Rating, i32, &[Rating]);
     /// The concrete catalog class.
     fn conductor_kind(&self) -> ConductorKind;
 }
@@ -415,7 +435,7 @@ impl ConductorData for WireDataObj {
     fn geom(&self) -> ConductorGeom {
         WireDataObj::geom(self)
     }
-    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+    fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         WireDataObj::amps(self)
     }
     fn conductor_kind(&self) -> ConductorKind {
@@ -427,7 +447,7 @@ impl ConductorData for CnDataObj {
     fn geom(&self) -> ConductorGeom {
         CnDataObj::geom(self)
     }
-    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+    fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         CnDataObj::amps(self)
     }
     fn conductor_kind(&self) -> ConductorKind {
@@ -439,7 +459,7 @@ impl ConductorData for TsDataObj {
     fn geom(&self) -> ConductorGeom {
         TsDataObj::geom(self)
     }
-    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+    fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         TsDataObj::amps(self)
     }
     fn conductor_kind(&self) -> ConductorKind {
@@ -492,7 +512,7 @@ impl ConductorObj {
     /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` with the ratings
     /// copied out — the owned form the `LineGeometry`/`Line` rating defaults
     /// need while `self` is borrowed from the array they write into.
-    pub fn amps_owned(&self) -> (f64, f64, i32, Vec<f64>) {
+    pub fn amps_owned(&self) -> (Rating, Rating, i32, Vec<Rating>) {
         let (n, e, k, r) = self.amps();
         (n, e, k, r.to_vec())
     }
@@ -506,7 +526,7 @@ impl ConductorData for ConductorObj {
             ConductorObj::Ts(t) => t.geom(),
         }
     }
-    fn amps(&self) -> (f64, f64, i32, &[f64]) {
+    fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         match self {
             ConductorObj::Wire(w) => w.amps(),
             ConductorObj::Cn(c) => c.amps(),

@@ -99,11 +99,15 @@ pub struct SaveCtx<'a> {
 /// The Pascal `SaveWrite` loop **body** — one ` <Name>=<CheckForBlanks(value)>`
 /// token for property `iprop`, skipping an empty value and the `----`
 /// conditional-value sentinel (`CompareText = 0`, so case-insensitive —
-/// faithfully mirrored though the sentinel is emitted literally).
+/// faithfully mirrored though the sentinel is emitted literally). A rating that
+/// holds no set value ([`ClassProps::holds_no_rating`]) is omitted as well.
 ///
 /// Shared with the class overrides that re-order the walk but keep this body
 /// ([`crate::elements::general::xy_curve`], [`crate::elements::control::reg_control`]).
 pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject, iprop: usize) {
+    if cx.cls.holds_no_rating(obj, iprop) {
+        return;
+    }
     // Pascal `str := trim(PropertyValue[iProp])`.
     let val = cx.cls.get_value(obj, iprop, cx.enums);
     let mut s = val.trim();
@@ -253,7 +257,7 @@ pub fn save_write(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject) {
 /// the order of a symmetric matrix, the struct count of a per-winding value.
 /// 1-based, like every property ordinal.
 ///
-/// * a counted array or matrix (`DoubleArray`, `IntegerArray`, the three
+/// * a counted array or matrix (`DoubleArray`, `RatingArray`, `IntegerArray`, the three
 ///   symmetric-matrix kinds, the `…OnStruct` arrays, a `DoubleVArray` that is
 ///   not `ARRAY_MAX_SIZE`) and a `GLOBAL_COUNT` shape file property → its
 ///   `size_prop`; a `StringList` sizer counts its entries (`get_i32` of a list
@@ -279,6 +283,7 @@ pub(crate) fn parse_sizer(cls: &ClassProps, p: usize) -> Option<usize> {
 fn own_sizer(cls: &ClassProps, pd: &PropDef) -> usize {
     match pd.ptype {
         PropType::DoubleArray
+        | PropType::RatingArray
         | PropType::IntegerArray
         | PropType::DoubleSymMatrix
         | PropType::SymMatrixReal

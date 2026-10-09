@@ -90,8 +90,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%R2").flags(PropFlags::NO_DEFAULT),
         PropDef::double("K"),
         // TPDClass tail:
-        PropDef::double("NormAmps"),
-        PropDef::double("EmergAmps"),
+        PropDef::rating("NormAmps"),
+        PropDef::rating("EmergAmps"),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -144,8 +144,8 @@ pub struct GicTransformer {
     /// Pascal `IsShunt` (always true for this element).
     is_shunt: bool,
     // PD-element common fields (TPDElement).
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
     fault_rate: f64,
     pct_perm: f64,
     hrs_to_repair: f64,
@@ -181,8 +181,8 @@ impl GicTransformer {
             kv1: 500.0,
             kv2: 138.0,
             is_shunt: true,
-            norm_amps: 0.0,
-            emerg_amps: 0.0,
+            norm_amps: crate::obj::Rating::NotSet,
+            emerg_amps: crate::obj::Rating::NotSet,
             fault_rate: 0.0,
             pct_perm: 100.0,
             hrs_to_repair: 0.0,

@@ -69,10 +69,10 @@ impl Capacitor {
 
         let kvar_per_phase = self.ftotalkvar / nphases;
         if !self.norm_amps_specified {
-            self.norm_amps = kvar_per_phase / phase_kv * 1.35;
+            self.norm_amps = crate::obj::Rating::from_number(kvar_per_phase / phase_kv * 1.35);
         }
         if !self.emerg_amps_specified {
-            self.emerg_amps = kvar_per_phase / phase_kv * 1.8;
+            self.emerg_amps = crate::obj::Rating::from_number(kvar_per_phase / phase_kv * 1.8);
         }
     }
 
@@ -205,10 +205,10 @@ impl CktElement for Capacitor {
         &mut self.cd
     }
 
-    fn norm_amps(&self) -> f64 {
+    fn norm_amps(&self) -> crate::obj::Rating {
         self.norm_amps
     }
-    fn emerg_amps(&self) -> f64 {
+    fn emerg_amps(&self) -> crate::obj::Rating {
         self.emerg_amps
     }
 

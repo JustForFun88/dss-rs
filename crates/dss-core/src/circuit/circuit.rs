@@ -439,6 +439,9 @@ pub struct Circuit {
     pub normal_max_volts: f64,
     pub emerg_min_volts: f64,
     pub emerg_max_volts: f64,
+    /// `Set %Normal=`: the percentage of its emergency rating every Line's
+    /// normal rating was last set to. `0` until the option is set.
+    pub pct_normal_factor: f64,
 
     /// `LegalVoltageBases` in kV (no 0.0 terminator; the Vec length rules).
     pub legal_voltage_bases: Vec<f64>,
@@ -588,6 +591,7 @@ impl Circuit {
             normal_max_volts: 1.05,
             emerg_min_volts: 0.90,
             emerg_max_volts: 1.08,
+            pct_normal_factor: 0.0,
             legal_voltage_bases: vec![0.208, 0.480, 12.47, 24.9, 34.5, 115.0, 230.0],
             // Pascal `Circuit.Create`: AutoAddObj.Init + the loss/UE defaults.
             auto_add_obj: AutoAdd::new(),

@@ -101,8 +101,8 @@ fn wiredata_gmr_seeds_radius_and_emergamps() {
 
 #[test]
 fn wiredata_makelike_does_not_copy_ratings() {
-    // Pascal `TConductorDataObj.MakeLike` copies neither NumAmpRatings nor
-    // AmpRatings, so a `like=` wire keeps its own default `[ -1]` / Seasons 1.
+    // `MakeLike` copies neither NumAmpRatings nor AmpRatings, so a `like=` wire
+    // keeps its own default: one seasonal rating that is not set.
     let enums = EnumRegistry::new();
     let cls = wire_data::class_props(&enums);
     let mut src = WireDataObj::new("w1");
@@ -122,7 +122,36 @@ fn wiredata_makelike_does_not_copy_ratings() {
     dst.make_like(&src);
     assert!((getf(&cls, &dst, "rdc") - 0.0526).abs() < 1e-12); // conductor data copied
     assert_eq!(get(&cls, &dst, "seasons"), "1"); // ratings NOT copied
-    assert_eq!(get(&cls, &dst, "ratings"), "[ -1]");
+    assert_eq!(get(&cls, &dst, "ratings"), "[ none]");
+}
+
+#[test]
+fn a_json_null_rating_entry_keeps_its_season() {
+    // `[null, 600]` loaded into a two-season wire: the null is the first
+    // season's rating that is not set, the 600 stays the second.
+    use crate::report::export::json::Json;
+    let enums = EnumRegistry::new();
+    let cls = wire_data::class_props(&enums);
+    let mut obj = WireDataObj::new("w");
+    apply(&cls, &mut obj, &[("seasons", "2")]);
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = crate::diag::ErrorLog::new();
+    let mut eng = PropEngine {
+        parser: &mut parser,
+        vars: &vars,
+        enums: &enums,
+        errors: &mut errors,
+        foreign: None,
+        was_quoted: false,
+    };
+    let members = vec![(
+        "Ratings".to_string(),
+        Json::Arr(vec![Json::Null, Json::Float(600.0)]),
+    )];
+    cls.fill_from_json(&mut obj, &members, &mut eng);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(get(&cls, &obj, "ratings"), "[ none 600]");
 }
 
 // ----- CNData -----------------------------------------------------------

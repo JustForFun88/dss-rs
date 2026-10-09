@@ -29,6 +29,7 @@ use crate::elements::general::line_code::{LineCodeObj, LineType};
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::elements::traits::Idx;
+use crate::obj::Rating;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
@@ -190,7 +191,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             PropFlags::SCALED_BY_FUNCTION | PropFlags::REDUNDANT | PropFlags::CONDITIONAL_VALUE,
         ),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double_array("Ratings", SEASONS),
+        PropDef::rating_array("Ratings", SEASONS),
         PropDef::mapped_string_enum("LineType", enums.line_type),
         // dss_capi 0.15.x (Line.pas:375-431): plain-double EpsRMedium/HeightOffset
         // + a MappedStringEnum HeightUnit (the same `UnitsEnum` as `Units`). They
@@ -234,8 +235,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
                 | PropFlags::HIDE_015X,
         ),
         // TPDClass tail:
-        PropDef::double("NormAmps"),
-        PropDef::double("EmergAmps"),
+        PropDef::rating("NormAmps"),
+        PropDef::rating("EmergAmps"),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -415,14 +416,14 @@ pub struct Line {
     /// Per-unit-length shunt susceptance at base frequency.
     pub yc: Option<CMatrix>,
     // PD-element common:
-    pub norm_amps: f64,
-    pub emerg_amps: f64,
+    pub norm_amps: Rating,
+    pub emerg_amps: Rating,
     pub fault_rate: f64,
     pub pct_perm: f64,
     pub hrs_to_repair: f64,
     pub miles_this_line: f64,
     pub num_amp_ratings: i32,
-    pub amp_ratings: Vec<f64>,
+    pub amp_ratings: Vec<Rating>,
 }
 
 impl std::fmt::Debug for Line {
@@ -498,14 +499,14 @@ impl Line {
             got_ratings_after_spacing_conds: false,
             z: None,
             yc: None,
-            norm_amps: 400.0,
-            emerg_amps: 600.0,
+            norm_amps: Rating::Set(400.0),
+            emerg_amps: Rating::Set(600.0),
             fault_rate: 0.1,
             pct_perm: 20.0,
             hrs_to_repair: 3.0,
             miles_this_line: 0.0,
             num_amp_ratings: 1,
-            amp_ratings: vec![400.0],
+            amp_ratings: vec![Rating::Set(400.0)],
         };
         for p in [prop::R1, prop::X1, prop::R0, prop::X0, prop::C1, prop::C0] {
             line.cd.obj.set_as_next_seq(p);

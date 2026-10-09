@@ -77,7 +77,11 @@ impl ClassProps {
                 continue;
             }
             // Pascal: a `null` value is skipped unless the property allows NONE.
-            if matches!(jval, Json::Null) && !pd.flags.contains(PropFlags::ALLOW_NONE) {
+            // A rating reads `null` as a rating that is not set.
+            if matches!(jval, Json::Null)
+                && !pd.flags.contains(PropFlags::ALLOW_NONE)
+                && pd.ptype != PropType::Rating
+            {
                 continue;
             }
             self.set_json_value(obj, idx, jval, eng);
@@ -185,7 +189,18 @@ fn json_to_value_string(pd: &PropDef, jval: &Json) -> Option<String> {
     let join_scalars =
         |a: &[Json]| -> String { a.iter().map(json_scalar_str).collect::<Vec<_>>().join(" ") };
 
+    // A rating's `null` (and a `null` entry of a rating array) is the `none`
+    // token its parse reads as not set.
+    let rating_token = |v: &Json| match v {
+        Json::Null => crate::obj::Rating::NONE_TOKEN.to_string(),
+        other => json_scalar_str(other),
+    };
     let s = match pd.ptype {
+        PropType::Rating => rating_token(jval),
+        PropType::RatingArray => match jval {
+            Json::Arr(a) => a.iter().map(rating_token).collect::<Vec<_>>().join(" "),
+            scalar => rating_token(scalar),
+        },
         // Real matrices render as the lower triangle, `row0 | row1 | …`, which
         // `parse_as_sym_matrix` reads (the stored matrix is symmetric, so the
         // triangle is loss-free). Each cell is scalar-formatted.

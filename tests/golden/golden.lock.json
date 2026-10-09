@@ -1087,7 +1087,7 @@
     },
     {
       "path": "tests/golden/json/schema_divergences.json",
-      "sha256": "c223b4eaae5e25baeb049e60506cf4b8a3ef0a311a7d2a4a7acdc2fa00d5782b",
+      "sha256": "bde18d2eed71d9c6a6d0a59151f21c74e7ec46201f72aa4bced707445d144e22",
       "anchor": "capi_v0145",
       "reason": "hand-authored inventory of the port's documented schema divergences from the pinned 0.14.5 oracle (r4133 / 0.15.x adoptions, each with its upstream cause), applied by golden_schema.rs between the port's render and json/schema_full_oracle.json and edited by hand whenever a divergence is adopted; no engine writes it (tools/golden/gen_schema.py writes only the oracle half). The capi_v0145 anchor is the residue, not a provenance claim; it is not `self` because no lane (re)produces it, so snapshot_* must never write it.",
       "produced_by": null
@@ -1100,7 +1100,7 @@
     },
     {
       "path": "tests/golden/json/schema_full_port.json",
-      "sha256": "ba273db6d10e9ebb6faf6bec8f65bf48a18085988afb764954b53bdf168caf1b",
+      "sha256": "510837c57c8ddcc1e528bd1f062600b7e6c68c0d1780ea5d01778bf4c380c58f",
       "anchor": "self",
       "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half is json/schema_full_oracle.json (capi_v0145, written by tools/golden/gen_schema.py on the pinned oracle); the divergence inventory json/schema_divergences.json between the two is hand-authored and engine-less (NON_ENGINE_RESIDUE). Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
       "produced_by": "parity"

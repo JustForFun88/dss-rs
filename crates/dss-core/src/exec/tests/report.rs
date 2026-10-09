@@ -2819,7 +2819,7 @@ fn save_writes_every_sizing_property_ahead_of_its_arrays() {
     let array_value = |ptype: T, n: usize| -> Option<String> {
         let list = |f: &dyn Fn(usize) -> String| (0..n).map(f).collect::<Vec<_>>().join(" ");
         Some(match ptype {
-            T::DoubleArray | T::DoubleVArray | T::DoubleArrayOnStruct => {
+            T::DoubleArray | T::RatingArray | T::DoubleVArray | T::DoubleArrayOnStruct => {
                 format!("[{}]", list(&|i| format!("{}", 1.25 * (i + 1) as f64)))
             }
             T::IntegerArray => format!("[{}]", list(&|i| ((i + 1) % 2).to_string())),

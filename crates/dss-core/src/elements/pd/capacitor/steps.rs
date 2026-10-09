@@ -47,12 +47,12 @@ impl Capacitor {
 
     /// Pascal `TDSSCktElement.NormAmps`. Read-only accessor for the CIM export
     /// (`WriteTerminals` operational limits).
-    pub fn norm_amps(&self) -> f64 {
+    pub fn norm_amps(&self) -> crate::obj::Rating {
         self.norm_amps
     }
 
     /// Pascal `TDSSCktElement.EmergAmps`. Read-only accessor for the CIM export.
-    pub fn emerg_amps(&self) -> f64 {
+    pub fn emerg_amps(&self) -> crate::obj::Rating {
         self.emerg_amps
     }
 

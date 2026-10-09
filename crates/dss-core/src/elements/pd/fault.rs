@@ -90,8 +90,8 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         // TPDClass tail: Pascal sets `SuppressJSON` AFTER `inherited DefineProperties`
         // (`Fault.pas:215-216`), so these stay in `AltPropertyOrder` (occupy
         // `$dssPropertyOrder` slots) but are excluded from JSON/schema output.
-        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
-        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
+        PropDef::rating("NormAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
+        PropDef::rating("EmergAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -155,8 +155,8 @@ pub struct Fault {
     // PD-element common (Fault's own defaults — all reliability fields zeroed,
     // pctperm 100). Fault computes no default Norm/Emerg amps (Pascal leaves them
     // 0), so there is no `*_specified` tracking.
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
     fault_rate: f64,
     pct_perm: f64,
     hrs_to_repair: f64,
@@ -190,8 +190,8 @@ impl Fault {
             on_time: 0.0,
             random_mult: 1.0,
             is_shunt: true,
-            norm_amps: 0.0,
-            emerg_amps: 0.0,
+            norm_amps: crate::obj::Rating::NotSet,
+            emerg_amps: crate::obj::Rating::NotSet,
             fault_rate: 0.0,
             pct_perm: 100.0,
             hrs_to_repair: 0.0,
@@ -324,10 +324,10 @@ impl CktElement for Fault {
         }
     }
 
-    fn norm_amps(&self) -> f64 {
+    fn norm_amps(&self) -> crate::obj::Rating {
         self.norm_amps
     }
-    fn emerg_amps(&self) -> f64 {
+    fn emerg_amps(&self) -> crate::obj::Rating {
         self.emerg_amps
     }
 
@@ -483,13 +483,25 @@ impl DssObject for Fault {
             PCTSTDDEV => self.stddev,
             ONTIME => self.on_time,
             MINAMPS => self.min_amps,
-            NORMAMPS => self.norm_amps,
-            EMERGAMPS => self.emerg_amps,
             FAULTRATE => self.fault_rate,
             PCTPERM => self.pct_perm,
             REPAIR => self.hrs_to_repair,
             BASE_FREQ => self.cd.base_frequency,
             _ => unreachable!("Fault has no double property {idx}"),
+        }
+    }
+    fn get_rating(&self, idx: usize) -> crate::obj::Rating {
+        match idx {
+            prop::NORMAMPS => self.norm_amps,
+            prop::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("no rating property {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: crate::obj::Rating) {
+        match idx {
+            prop::NORMAMPS => self.norm_amps = value,
+            prop::EMERGAMPS => self.emerg_amps = value,
+            _ => unreachable!("no rating property {idx}"),
         }
     }
     fn set_f64(&mut self, idx: usize, value: f64) {
@@ -499,8 +511,6 @@ impl DssObject for Fault {
             PCTSTDDEV => self.stddev = value,
             ONTIME => self.on_time = value,
             MINAMPS => self.min_amps = value,
-            NORMAMPS => self.norm_amps = value,
-            EMERGAMPS => self.emerg_amps = value,
             FAULTRATE => self.fault_rate = value,
             PCTPERM => self.pct_perm = value,
             REPAIR => self.hrs_to_repair = value,

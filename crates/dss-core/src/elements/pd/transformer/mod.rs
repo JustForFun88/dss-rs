@@ -187,8 +187,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `inherited DefineProperties` (`Transformer.pas:605-606`), so they stay in
         // `AltPropertyOrder` (occupy `$dssPropertyOrder` slots) but are excluded
         // from the JSON/schema output — `SUPPRESS_JSON_LATE`.
-        PropDef::double("NormAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
-        PropDef::double("EmergAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
+        PropDef::rating("NormAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
+        PropDef::rating("EmergAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -343,14 +343,14 @@ pub struct Transformer {
     vabase: f64,
     zbase: f64,
     // PD-element common:
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
     fault_rate: f64,
     pct_perm: f64,
     hrs_to_repair: f64,
     num_amp_ratings: i32,
     kva_ratings: Vec<f64>,
-    amp_ratings: Vec<f64>,
+    amp_ratings: Vec<crate::obj::Rating>,
     // GICharm BH-curve data (Unused; r4064). `bh_current`/`bh_flux` are kept at
     // length `bh_points` by the BHpoints side effect.
     bh_points: i32,
@@ -412,14 +412,14 @@ impl Transformer {
             pct_imag: 0.0,
             vabase: 0.0,
             zbase: 0.0,
-            norm_amps: 0.0,
-            emerg_amps: 0.0,
+            norm_amps: crate::obj::Rating::NotSet,
+            emerg_amps: crate::obj::Rating::NotSet,
             fault_rate: 0.007,
             pct_perm: 0.0,
             hrs_to_repair: 0.0,
             num_amp_ratings: 1,
             kva_ratings: vec![0.0],
-            amp_ratings: vec![0.0],
+            amp_ratings: vec![crate::obj::Rating::NotSet],
             bh_points: 0,
             bh_current: Vec::new(),
             bh_flux: Vec::new(),

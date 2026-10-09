@@ -140,8 +140,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::SUPPRESS_JSON),
         PropDef::int_array("States", NUMSTEPS),
         // TPDClass tail:
-        PropDef::double("NormAmps"),
-        PropDef::double("EmergAmps"),
+        PropDef::rating("NormAmps"),
+        PropDef::rating("EmergAmps"),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -186,8 +186,8 @@ pub struct Capacitor {
     is_shunt: bool,
     connection: i32,
     // PD-element common:
-    norm_amps: f64,
-    emerg_amps: f64,
+    norm_amps: crate::obj::Rating,
+    emerg_amps: crate::obj::Rating,
     norm_amps_specified: bool,
     emerg_amps_specified: bool,
     fault_rate: f64,
@@ -238,16 +238,16 @@ impl Capacitor {
             spec_type: CapacitorSpecType::Kvar,
             num_term: 1,
             is_shunt: true,
-            connection: 0,                                // wye
-            norm_amps: fkvar * sqrt3() / kvrating * 1.35, // 135%
-            emerg_amps: 0.0,
+            connection: 0, // wye
+            norm_amps: crate::obj::Rating::from_number(fkvar * sqrt3() / kvrating * 1.35), // 135%
+            emerg_amps: crate::obj::Rating::NotSet,
             norm_amps_specified: false,
             emerg_amps_specified: false,
             fault_rate: 0.0005,
             pct_perm: 100.0,
             hrs_to_repair: 3.0,
         };
-        c.emerg_amps = c.norm_amps * 1.8 / 1.35; // 180%
+        c.emerg_amps = c.norm_amps.map(|n| n * 1.8 / 1.35); // 180%
         c.cd.yorder = c.cd.nterms * c.cd.nconds;
         c.recalc();
         c

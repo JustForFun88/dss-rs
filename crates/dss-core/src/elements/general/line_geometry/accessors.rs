@@ -2,6 +2,7 @@
 //! accessors, object-reference plumbing and the `PropertySideEffects` state
 //! machine.
 
+use crate::obj::Rating;
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 
@@ -100,8 +101,6 @@ impl DssObject for LineGeometryObj {
         match idx {
             prop::X => self.active_index().map_or(0.0, |a| self.fx[a]),
             prop::H => self.active_index().map_or(0.0, |a| self.fy[a]),
-            prop::NORMAMPS => self.norm_amps,
-            prop::EMERGAMPS => self.emerg_amps,
             _ => unreachable!("LineGeometry has no double at {idx}"),
         }
     }
@@ -117,9 +116,22 @@ impl DssObject for LineGeometryObj {
                     self.fy[a] = value;
                 }
             }
+            _ => unreachable!("LineGeometry has no double at {idx}"),
+        }
+    }
+
+    fn get_rating(&self, idx: usize) -> Rating {
+        match idx {
+            prop::NORMAMPS => self.norm_amps,
+            prop::EMERGAMPS => self.emerg_amps,
+            _ => unreachable!("LineGeometry has no rating at {idx}"),
+        }
+    }
+    fn set_rating(&mut self, idx: usize, value: Rating) {
+        match idx {
             prop::NORMAMPS => self.norm_amps = value,
             prop::EMERGAMPS => self.emerg_amps = value,
-            _ => unreachable!("LineGeometry has no double at {idx}"),
+            _ => unreachable!("LineGeometry has no rating at {idx}"),
         }
     }
 
@@ -201,11 +213,11 @@ impl DssObject for LineGeometryObj {
         self.fnconds.max(0) as usize
     }
 
-    fn get_f64_array(&self, idx: usize) -> Option<&[f64]> {
+    fn get_rating_array(&self, idx: usize) -> Option<&[Rating]> {
         debug_assert_eq!(idx, prop::RATINGS);
         (!self.amp_ratings.is_empty()).then_some(self.amp_ratings.as_slice())
     }
-    fn set_f64_array(&mut self, idx: usize, value: Vec<f64>) {
+    fn set_rating_array(&mut self, idx: usize, value: Vec<Rating>) {
         debug_assert_eq!(idx, prop::RATINGS);
         self.amp_ratings = value;
     }
@@ -283,7 +295,7 @@ impl DssObject for LineGeometryObj {
             }
             prop::SEASONS => {
                 let n = self.num_amp_ratings.max(0) as usize;
-                self.amp_ratings.resize(n, 0.0);
+                self.amp_ratings.resize(n, Rating::NotSet);
             }
             // Pascal LineGeometry.pas:497-539: the 0.15.x `Conductors=` list. On an
             // all-NIL list `apply_conductors` logs #10103 and Pascal `Exit`s before

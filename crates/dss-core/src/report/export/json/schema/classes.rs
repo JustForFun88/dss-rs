@@ -32,13 +32,13 @@ use super::{Json, b, i, obj, s};
 /// the scalar `jtype` (`'number'`/`'integer'`) is returned unchanged.
 fn pascal_jtype(pd: &PropDef) -> (&'static str, bool) {
     match pd.ptype {
-        PropType::Double => ("number", false),
+        PropType::Double | PropType::Rating => ("number", false),
         PropType::Integer => ("integer", false),
         PropType::Boolean | PropType::Enabled => ("boolean", false),
         PropType::String => ("string", false),
         PropType::MakeLike => ("string", false),
         PropType::Action => ("-", false), // StringEnumActionProperty
-        PropType::DoubleArray => ("#/$defs/ArrayOrFilePath", true),
+        PropType::DoubleArray | PropType::RatingArray => ("#/$defs/ArrayOrFilePath", true),
         PropType::DoublePoints => ("#/$defs/ArrayOrFilePath", true), // DoubleDArrayProperty
         PropType::DoubleVArray => ("numberArray", true),
         PropType::DoubleFArray => ("numberArray", true),
@@ -469,8 +469,10 @@ pub(crate) fn class_schema(
             match jtype {
                 "number" => {
                     if !elide_scalar {
-                        let d = scalar_double(pd, sample, prop_index);
-                        if d.is_finite() {
+                        // A rating that is not set has no default.
+                        if let Some(d) = scalar_double(pd, sample, prop_index)
+                            && d.is_finite()
+                        {
                             prop.push(("default", Json::Float(d)));
                         }
                     }
@@ -848,6 +850,7 @@ fn jtype_orig_is_matrix(pd: &PropDef) -> bool {
 fn sizing_property_index(props: &ClassProps, pd: &PropDef) -> usize {
     match pd.ptype {
         PropType::DoubleArray
+        | PropType::RatingArray
         | PropType::IntegerArray
         | PropType::DoubleSymMatrix
         | PropType::SymMatrixReal
@@ -937,19 +940,23 @@ fn iterator_property_index(props: &ClassProps, prop_index: usize) -> usize {
 }
 
 /// Pascal `obj.GetDouble(propIndex)` (`GetObjDouble`): the scalar value scaled
-/// out (and inverted under `InverseValue`).
-fn scalar_double(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> f64 {
+/// out (and inverted under `InverseValue`). A rating reads its set value, and
+/// `None` when it is not set.
+fn scalar_double(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> Option<f64> {
+    if pd.ptype == PropType::Rating {
+        return obj.get_rating(idx).if_set();
+    }
     let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
         obj.prop_scale(idx, true)
     } else {
         pd.scale
     };
     let raw = obj.get_f64(idx);
-    if pd.flags.contains(PropFlags::INVERSE_VALUE) {
+    Some(if pd.flags.contains(PropFlags::INVERSE_VALUE) {
         1.0 / (raw / scale)
     } else {
         raw / scale
-    }
+    })
 }
 
 /// Pascal `obj.GetInteger(propIndex)`: the integer value less `PropertyValueOffset`
@@ -1019,6 +1026,18 @@ fn array_default(pd: &PropDef, obj: &dyn DssObject, idx: usize, is_matrix: bool)
                 })
                 .collect(),
         ));
+    }
+
+    // A seasonal rating array: a default only when every entry is set.
+    if pd.ptype == PropType::RatingArray {
+        let n = obj.get_i32(pd.size_prop).max(0) as usize;
+        let vals: Option<Vec<f64>> = obj
+            .get_rating_array(idx)?
+            .iter()
+            .take(n)
+            .map(|r| r.if_set())
+            .collect();
+        return finite_array(vals?, scale);
     }
 
     // Plain number array — the element count per the property's sizing rule.
