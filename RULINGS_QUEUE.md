@@ -191,6 +191,53 @@ stages 7 to 10.
         sources of the row. The Exclusion paragraph of the row says no golden holds the
         rp reactor where tests/golden/props/reactor.json reads back one without a solve,
         so the first plan step that touches the row writes "reads the loss of".
+    23. (coordinator, 2026-10-10, same delegation, from the fresh audit of LineGeometry
+        settle 2) A Line's own `spacing=` reads the LineSpacing's unit the way the
+        geometry path does: a unit word the documentation gives for LineSpacing is
+        honoured and converted, and a spacing the geometry path refuses (no unit, a word
+        outside the documentation) is refused by the Line too, with a message naming the
+        Line, the spacing and the unit. Reading feet or no unit as metres without a
+        message is an upstream bug (r4133 shares it) and is fixed in step 4 itself, since
+        the module is this step's and rule 8 is this step's rule. Every corpus deck the
+        fix moves is excluded field by field and pinned, and report 83 gains the case.
+    24. (coordinator, 2026-10-10, same delegation) `nphases` of a LineGeometry defaults to
+        the documented 3, so `nconds=4` with three cable entries and no `nphases=` builds
+        the geometry. The refusal "the geometry has no phases" stays for an explicit
+        `nphases=0` and is pinned and stated in the row. A `cond=` value that is not a
+        whole number (`cond=1.5`) or lies outside 1 to `nconds` (`cond=1e10`) is refused
+        with a message naming the written value, since the documentation gives `cond` as
+        an integer index. A bare `cond=N` changes no unit: the conductor takes the
+        geometry's default unit at its first selection, unless `units=` is written for it
+        (corrected 2026-10-10 after settle 3 measured the tree and both oracles doing
+        this, X21 0.5831588 against 0.8185604 for a default read when the coordinates
+        are written). The pin goes into queue step 17 with the unit words, and the Line
+        refusal naming `units=none` for a written `feet` is fixed there too, since a
+        LineSpacing stores only the unit code today.
+    25. (coordinator, 2026-10-10, same delegation) A `like=` copy onto a geometry that
+        already holds conductors takes the source's default unit as well (r4133 gives
+        m m m there and so does the port) and gets its own pin. The decided sentence on
+        unit words says only what the tree does: `feet`, `Meters`, `inches` and
+        `kilometer` are refused and pinned, `metre`, `meter` and `miles` are still read
+        and go to the exact-word step (step 17). The `TODO(compat)` comments at the
+        Kxg sites no longer call 658.8530451057239 the corrected value (16.19).
+    26. (coordinator, 2026-10-10, same delegation, from settle 3) The documentation gives
+        `nconds` of a LineGeometry the default 3 where the tree and r4133 hold 0. The
+        documentation is the language spec, so the default becomes 3 in its own queue step
+        (step 21) with the Save, `like=` and readback consequences measured on both
+        oracles, not in step 4. The port clamps only the phase count the calculation
+        uses to the conductor count while r4133 clamps the stored `nphases`. No oracle
+        surface compares the stored value, so the port's choice stands and is recorded.
+    27. (coordinator, 2026-10-10, same delegation, from the fresh audit of settle 3) The
+        audit's minors do not stop the landing of step 4. A wrong dss_capi figure in the
+        row (case 17 reads 0.8054776 on the deck named, not 0.7944461) is corrected at
+        the landing, since a false measurement is never committed knowingly. The pin
+        `a_broken_geometry_beside_a_refused_stamp_names_both` asserting the system Y
+        where the voltage-base pass builds the series Y, the doc comment that moved from
+        `set_object_ref` to `refuse_object_ref`, the out-of-range `cond=` message naming
+        the text as written with one code for both paths, and the dss_capi readings of
+        report 98 are recorded in the record as left for queue step 17. An explicit
+        `nphases` above `nconds` keeps the clamp of 16.26 until step 21 decides the
+        refusal together with the `nconds` default.
 17. **One procedure for every MakePosSequence matrix question** (2026-10-04, two
     research runs: literature, derivation, DSS representation, a skeptic each. The
     choices in items 6, 12 and 13 and in 16.4, 16.6, 16.7 were taken by the coordinator
@@ -287,7 +334,7 @@ stages 7 to 10.
 | 1 | `NVariables` default 20 | 2 | landed |
 | 2 | rating "not set" | 3, 14.9 | landed 2026-10-10 as 66839773 on update (squash of lane-c 2389d1f4 rebased onto cc76b42e, full gate green 3433 per lane), Q12 decided by 14.9, the test audit's minor T-1 and five notes recorded in the record as left for step 10 |
 | 3 | MakePosSequence matrices | 1, 16.21, 16.22 | landed 2026-10-10 as b6517a73 on update (squash of lane-m d9eaeb29, gate reused, record bullet decided by 16.21), fresh audit of settle 4: no major, A-1 wording and three notes handled by 16.22 |
-| 4 | LineGeometry rules | 4, 16.13, 16.19, 16.20 | settle 2 finished 2026-10-10 at 399fd316 (record counts, the `like=` unit pin of 16.13, the decided questions written out), full gate green 3402 per lane, one fresh audit running with a re-measurement of the `like=` unit on both oracles, then the landing after step 2 with a rebase onto update and the full gate. Open questions of the step decided: Q8 and Q9 by 16.13 and 16.14, Q4 by 16.12, the earth constant and the tape lap by 16.19 and 16.20 |
+| 4 | LineGeometry rules | 4, 16.13, 16.19, 16.20, 16.23 to 16.27 | landed 2026-10-10 as 4212d57f on update (squash of lane-b c9bd413d, gate reused after the full gate of settle 3, 3501 per lane), the audit minors left for steps 17 and 21 recorded in the record |
 | 5 | elements without dynamic state: disabled, joining, NaN never converges, VCCS without curves refuses | 5, 6 | queued |
 | 6 | monitors and meters: mode 3 accepts WindGen, VSConverter and GICLine, no added node, failed binding, a mode-3 monitor on a WindGen and a `like=` Storage make the dynamics Y singular | 8, 9 | queued |
 | 7 | Storage dynamics model | 7 | queued |
@@ -304,6 +351,7 @@ stages 7 to 10.
 | 18 | overhead wire height above its radius, the finite full-Carson limit at zero height | - | queued, after step 14 |
 | 19 | TSData tape-lap correction by physics: derive the resistance factor of a lapped tape from its geometry, check against Kersting 3rd ed. section 4.2 (tape-shield example) and manufacturer data, measure both oracles, pin, upstream report if the engine's factor is wrong | 16.20 | queued, after step 14 |
 | 20 | Capacitor delta and cmatrix filter stamp by the exact form Y_d (I + zl Y_d)^-1 in place of the 1.000001 diagonal scaling, pinned against the wye equivalent, both oracles diverge by 6.7e-7 | 16.22 | queued, after step 14, disjoint from the MakePosSequence plan steps unless one touches the Capacitor stamp |
+| 21 | LineGeometry `nconds` defaults to the documented 3 (tree and r4133 hold 0), with the Save, `like=` and readback consequences measured on both oracles and pinned | 16.26 | queued, after step 17 |
 
 ## Open items that need no ruling now
 
