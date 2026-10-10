@@ -911,6 +911,52 @@ pub trait DssObject: Send {
         let _ = (idx, prev_int);
     }
 
+    /// Run when the value given to property `idx` cannot be read, a number
+    /// that does not parse for instance: nothing is written and no side effect
+    /// runs. No-op by default.
+    fn value_unreadable(&mut self, idx: usize) {
+        let _ = idx;
+    }
+
+    /// The message refusing `text`, written to the mapped-enum property `idx`
+    /// and mapped to `ordinal`, or `None` to accept it. A refused text writes
+    /// nothing. Accepts every text by default.
+    fn refuse_enum_text(&self, idx: usize, text: &str, ordinal: i32) -> Option<String> {
+        let _ = (idx, text, ordinal);
+        None
+    }
+
+    /// The message refusing `value`, the number the text `text` written to
+    /// the integer property `idx` reads as, or `None` to accept it with the
+    /// usual rounding. Asked only for a property flagged
+    /// [`PropFlags::WHOLE_NUMBER`](crate::obj::props::PropFlags::WHOLE_NUMBER).
+    /// A refused value writes nothing and runs no side effect:
+    /// [`DssObject::value_unreadable`] runs instead. Accepts every value by
+    /// default.
+    fn refuse_integer(&self, idx: usize, text: &str, value: f64) -> Option<String> {
+        let _ = (idx, text, value);
+        None
+    }
+
+    /// The message refusing `resolved`, the object named for the object
+    /// reference property `idx`, or `None` to accept it. A refused reference
+    /// writes nothing and runs no side effect. Accepts every object by default.
+    fn refuse_object_ref(
+        &self,
+        idx: usize,
+        resolved: &crate::obj::arena::ResolvedObj<'_>,
+    ) -> Option<String> {
+        let _ = (idx, resolved);
+        None
+    }
+
+    /// Whether the JSON export leaves property `idx` out because its present
+    /// value is one the import would refuse. Never by default.
+    fn json_omits(&self, idx: usize) -> bool {
+        let _ = idx;
+        false
+    }
+
     /// Pascal `StringEnumActionProperty`: run the action whose enum ordinal is
     /// `ordinal` (e.g. a LoadShape `Action=normalize` → `Normalize`). The action
     /// runs immediately during the property parse; `errors` collects any

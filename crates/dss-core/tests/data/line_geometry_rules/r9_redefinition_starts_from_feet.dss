@@ -1,0 +1,43 @@
+! A redefinition with nconds= reads its unit-less numbers in feet, whatever unit
+! the definition it replaces was written in.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+! g: a second New with nconds=.
+New LineGeometry.g nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-1.2192 h=8.5344 units=m
+~ cond=2 wire=ACSR_556_5 x=0 h=8.5344
+~ cond=3 wire=ACSR_556_5 x=1.2192 h=8.5344
+New LineGeometry.g nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+! e: an Edit with nconds=.
+New LineGeometry.e nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-1.2192 h=8.5344 units=m
+~ cond=2 wire=ACSR_556_5 x=0 h=8.5344
+~ cond=3 wire=ACSR_556_5 x=1.2192 h=8.5344
+Edit LineGeometry.e nconds=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+! f: a second New with units=m before its nconds=.
+New LineGeometry.f nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-1.2192 h=8.5344 units=m
+~ cond=2 wire=ACSR_556_5 x=0 h=8.5344
+~ cond=3 wire=ACSR_556_5 x=1.2192 h=8.5344
+New LineGeometry.f units=m nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+New Line.Lg bus1=src.1.2.3 bus2=bg.1.2.3 geometry=g length=1 units=mi
+New Load.lg bus1=bg phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Le bus1=src.1.2.3 bus2=be.1.2.3 geometry=e length=1 units=mi
+New Load.le bus1=be phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Lf bus1=src.1.2.3 bus2=bf.1.2.3 geometry=f length=1 units=mi
+New Load.lf bus1=bf phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

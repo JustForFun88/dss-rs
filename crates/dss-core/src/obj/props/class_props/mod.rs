@@ -174,7 +174,8 @@ impl ClassProps {
     /// One iteration of the Pascal `Edit` loop body: parse + write, record the
     /// set order (`SetAsNextSeq`), then run `PropertySideEffects`. A
     /// number-conversion failure aborts before any of the bookkeeping, exactly
-    /// as the Pascal exception would unwind past `SetAsNextSeq`.
+    /// as the Pascal exception would unwind past `SetAsNextSeq`. A value that
+    /// cannot be read is passed on to [`DssObject::value_unreadable`].
     pub fn edit_property(
         &self,
         obj: &mut dyn DssObject,
@@ -182,7 +183,13 @@ impl ClassProps {
         value: &str,
         eng: &mut PropEngine,
     ) -> Result<(), ParserError> {
-        let prev_int = self.parse_into(obj, idx, value, eng)?;
+        let prev_int = match self.parse_into(obj, idx, value, eng) {
+            Ok(prev_int) => prev_int,
+            Err(e) => {
+                obj.value_unreadable(idx);
+                return Err(e);
+            }
+        };
         obj.data_mut().set_as_next_seq(idx);
         obj.side_effects(idx, prev_int);
         Ok(())

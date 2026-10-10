@@ -1,0 +1,42 @@
+! Cable geometries: cncable= in feet, tscable= in inches, a mixed CN/TS geometry with
+! a bare neutral, and the same tscable and mixed geometries written by hand in metres.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.cn nconds=3 nphases=3 units=ft
+~ cond=1 cncable=250_1/3 x=-0.5 h=-4
+~ cond=2 cncable=250_1/3 x=0 h=-4
+~ cond=3 cncable=250_1/3 x=0.5 h=-4
+New LineGeometry.ts nconds=3 nphases=3 units=in
+~ cond=1 tscable=1/0TS x=-6 h=-48
+~ cond=2 tscable=1/0TS x=0 h=-48
+~ cond=3 tscable=1/0TS x=6 h=-48
+New LineGeometry.ts_m nconds=3 nphases=3
+~ cond=1 tscable=1/0TS x=-0.1524 h=-1.2192 units=m
+~ cond=2 tscable=1/0TS x=0 h=-1.2192 units=m
+~ cond=3 tscable=1/0TS x=0.1524 h=-1.2192 units=m
+New LineGeometry.mixed nconds=4 nphases=3 reduce=y units=in
+~ cond=1 cncable=250_1/3 x=-6 h=-48
+~ cond=2 tscable=1/0TS x=0 h=-48
+~ cond=3 cncable=250_1/3 x=6 h=-48
+~ cond=4 wire=ACSR_4/0 x=1 h=-4 units=ft
+New LineGeometry.mixed_m nconds=4 nphases=3 reduce=y
+~ cond=1 cncable=250_1/3 x=-0.1524 h=-1.2192 units=m
+~ cond=2 tscable=1/0TS x=0 h=-1.2192 units=m
+~ cond=3 cncable=250_1/3 x=0.1524 h=-1.2192 units=m
+~ cond=4 wire=ACSR_4/0 x=0.3048 h=-1.2192 units=m
+New Line.cn bus1=src.1.2.3 bus2=b_cn.1.2.3 geometry=cn length=1 units=mi
+New Load.cn bus1=b_cn phases=3 kv=12.47 kw=500 pf=0.95
+New Line.ts bus1=src.1.2.3 bus2=b_ts.1.2.3 geometry=ts length=1 units=mi
+New Load.ts bus1=b_ts phases=3 kv=12.47 kw=500 pf=0.95
+New Line.ts_m bus1=src.1.2.3 bus2=b_ts_m.1.2.3 geometry=ts_m length=1 units=mi
+New Load.ts_m bus1=b_ts_m phases=3 kv=12.47 kw=500 pf=0.95
+New Line.mixed bus1=src.1.2.3 bus2=b_mixed.1.2.3 geometry=mixed length=1 units=mi
+New Load.mixed bus1=b_mixed phases=3 kv=12.47 kw=500 pf=0.95
+New Line.mixed_m bus1=src.1.2.3 bus2=b_mixed_m.1.2.3 geometry=mixed_m length=1 units=mi
+New Load.mixed_m bus1=b_mixed_m phases=3 kv=12.47 kw=500 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

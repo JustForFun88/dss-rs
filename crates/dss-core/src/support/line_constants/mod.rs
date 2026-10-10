@@ -652,15 +652,9 @@ impl LineConstants {
         };
 
         match earth_model {
-            // dss_capi 0.15.x `TLineConstants.GetZearth`/`SIMPLECARSON`
-            // (LineConstants.pas:474, port of the r3913-era line/conductor work):
-            // the earth-return De constant was corrected `658.5 →
-            // 658.8530451057239` (the precise `De = 658.87·√(ρ/f)` reference
-            // value). UPGRADE_PLAN.md WP-U1.2 row B2/D1; ledger
-            // docs/upgrade/DIVERGENCES.md §B2/D1. NB — this is DELIBERATELY
-            // inconsistent with `Line`'s `Kxg`, which upstream KEEPS 658.5
-            // (Line.pas:531/741/1077); see the compat markers at the `kxg`
-            // sites in elements/pd/line/{accessors,code,mod}.rs.
+            // Earth-return depth of the simple Carson model, 658.8530451057239
+            // √(ρ/f) m, kept for the committed goldens, 2.8e-5 below Carson's
+            // series value.
             SIMPLE_CARSON => cmplx(
                 self.fw * MU0 / 8.0,
                 (self.fw * MU0 / TWOPI)

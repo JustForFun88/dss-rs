@@ -1,0 +1,36 @@
+! A redefinition with nconds= keeps nothing of the equivalent spacing of the
+! definition it replaces. With spacing= applied again it reads the spacing's
+! distances in their own unit, with positions of its own it reads those, and
+! with neither it has no conductor heights, so its Line cannot be built.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.eq nconds=4 nphases=3 detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 AvgPhaseHeight=8.5 AvgNeutralHeight=7.3 units=m
+! ga: the equivalent spacing in metres.
+New LineGeometry.ga nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+! gs: redefined with spacing= again.
+New LineGeometry.gs nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New LineGeometry.gs nconds=4 nphases=3 wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0] spacing=eq
+! gd: redefined with positions of its own.
+New LineGeometry.gd nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New LineGeometry.gd nconds=4 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-1.2 h=8.5 units=m
+~ cond=2 wire=ACSR_556_5 x=0 h=8.5
+~ cond=3 wire=ACSR_556_5 x=1.2 h=8.5
+~ cond=4 wire=ACSR_4/0 x=0 h=7.3
+! gr: redefined with neither.
+New LineGeometry.gr nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New LineGeometry.gr nconds=4 nphases=3 wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New Line.La bus1=src.1.2.3.0 bus2=ba.1.2.3.0 geometry=ga length=1 units=mi
+New Load.la bus1=ba phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Ls bus1=src.1.2.3.0 bus2=bs.1.2.3.0 geometry=gs length=1 units=mi
+New Load.ls bus1=bs phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Ld bus1=src.1.2.3.0 bus2=bd.1.2.3.0 geometry=gd length=1 units=mi
+New Load.ld bus1=bd phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Lr bus1=src.1.2.3.0 bus2=br.1.2.3.0 geometry=gr length=1 units=mi
+New Load.lr bus1=br phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

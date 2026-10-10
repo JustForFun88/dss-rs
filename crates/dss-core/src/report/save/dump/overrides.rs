@@ -49,9 +49,9 @@ use super::DumpCtx;
 /// a ported Pascal `DumpProperties` override; `false` to fall through to the
 /// generic base.
 ///
-/// `arena` is `&mut` because `TLineGeometryObj.DumpProperties` mutates
-/// `ActiveCond` as it walks conductors (Pascal `LineGeometry.pas:669`); the
-/// read-only overrides take a shared typed view.
+/// `arena` is `&mut` because the LineGeometry dump walks its conductors by
+/// selecting each in turn and puts the selection back. The read-only overrides
+/// take a shared typed view.
 pub(super) fn dump_override(
     out: &mut String,
     cx: &DumpCtx,
@@ -132,7 +132,7 @@ pub(super) fn dump_override(
         s.dump_body(out, cx, complete);
         return true;
     }
-    // LineGeometry mutates `ActiveCond` per conductor → needs `&mut` (the
+    // The LineGeometry walk selects each conductor in turn → needs `&mut` (the
     // shared borrows above end at their last use, NLL).
     if let Some(g) = arena.get_mut::<LineGeometryObj>(idx) {
         g.dump_body(out, cx, complete);

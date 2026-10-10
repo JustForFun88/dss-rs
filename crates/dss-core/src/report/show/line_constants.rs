@@ -77,10 +77,9 @@ pub(crate) fn show_line_constants(
             geom.yc_matrix(freq, 1.0, units, earth_model),
         ) {
             (Ok(z), Ok(yc)) => (z, yc),
-            // Pascal `ShowResults.pas:3295-3298`: on a compute exception, log #9934
-            // and continue (Pascal then faults on the NIL `Z` — a crash we do NOT
-            // reproduce; the safe skip keeps the diagnostic without the AV). This is
-            // unreachable for a validly-parsed geometry (those errors fire at parse).
+            // A geometry whose matrices cannot be computed (a conductor without
+            // data, two conductors in one place) logs 9934 with its calculation
+            // error and is skipped.
             (z, y) => {
                 let msg = z.err().or_else(|| y.err()).unwrap_or_default();
                 errors.push(crate::diag::DssDiagnostic::msg(

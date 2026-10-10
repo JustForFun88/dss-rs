@@ -860,11 +860,12 @@ fn save_roundtrip_protection() {
 /// `Save circuit` closes a LineGeometry line on its active conductor — the one
 /// `?` reads `Wire`/`X`/`H`/`Units` from — when the conductor block would leave
 /// the reload on another: a `like=` clone and a geometry that a closing `cond=1`
-/// leaves on conductor 1, and a geometry with no wire on any conductor, whose
-/// block writes no row, left on conductor 2. The clone sets `cond=1` itself, so
-/// the pin holds wherever `like=` leaves the cursor. A geometry whose cursor is
-/// on its last conductor gets no extra token, and a Save of the reload writes
-/// the same `LineGeometry.dss`.
+/// leaves on conductor 1, and two geometries with no wire on any conductor,
+/// whose block writes no row and whose reload would select none: one left on
+/// conductor 2, one on conductor 1. The clone sets `cond=1` itself, so the pin
+/// holds wherever `like=` leaves the cursor. A geometry whose cursor is on its
+/// last conductor gets no extra token, and a Save of the reload writes the same
+/// `LineGeometry.dss`.
 #[test]
 fn save_restores_the_active_linegeometry_conductor() {
     let tag = "lgcursor";
@@ -881,6 +882,7 @@ fn save_restores_the_active_linegeometry_conductor() {
         "new linegeometry.back nconds=2 nphases=2 cond=1 wire=w x=-1 h=30 units=ft \
          cond=2 wire=w x=1 h=32 units=ft cond=1",
         "new linegeometry.bare nconds=3 nphases=3 cond=2",
+        "new linegeometry.one nconds=3 nphases=3 cond=1",
         "set voltagebases=[12.47]",
         "calcvoltagebases",
         "solve",
@@ -910,6 +912,7 @@ fn save_restores_the_active_linegeometry_conductor() {
     assert_eq!(active(&pre, "linegeometry.cloned"), ["1", "-4", "28"]);
     assert_eq!(active(&pre, "linegeometry.back"), ["1", "-1", "30"]);
     assert_eq!(active(&pre, "linegeometry.bare"), ["2", "0", "0"]);
+    assert_eq!(active(&pre, "linegeometry.one"), ["1", "0", "0"]);
 
     let save = |dss: &mut Dss, dir: &std::path::Path| {
         std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("mkdir {}: {e}", dir.display()));
@@ -936,6 +939,11 @@ fn save_restores_the_active_linegeometry_conductor() {
     assert_eq!(conds("linegeometry.cloned"), ["1", "2", "3", "1"]);
     assert_eq!(conds("linegeometry.back"), ["1", "2", "1"]);
     assert_eq!(conds("linegeometry.bare"), ["2"]);
+    assert_eq!(conds("linegeometry.one"), ["1"]);
+    assert!(
+        emitted_line(&first, tag, "linegeometry.one").ends_with(" cond=1"),
+        "{tag}: a geometry on conductor 1 with no row closes on cond=1"
+    );
 
     dss.command("clear");
     dss.command(&format!(
@@ -955,6 +963,7 @@ fn save_restores_the_active_linegeometry_conductor() {
     assert_eq!(active(&post, "linegeometry.cloned"), ["1", "-4", "28"]);
     assert_eq!(active(&post, "linegeometry.back"), ["1", "-1", "30"]);
     assert_eq!(active(&post, "linegeometry.bare"), ["2", "0", "0"]);
+    assert_eq!(active(&post, "linegeometry.one"), ["1", "0", "0"]);
     assert_properties_round_trip(tag, &pre, &post);
 
     let second = out.join("second");
@@ -968,6 +977,113 @@ fn save_restores_the_active_linegeometry_conductor() {
         geometries(&second),
         "{tag}: a Save of the reload writes another LineGeometry.dss"
     );
+    std::fs::remove_dir_all(&out).ok();
+}
+
+/// A geometry with no conductor selected reloads from `Save circuit` with its
+/// last written conductor selected: the language has no way to select none
+/// without an error (only `cond=N` selects a conductor, user decision
+/// 2026-10-04). `LineGeometry.604` of `Test/IEEE13_LineGeometry.dss` is a
+/// `like=` copy, so it has none selected: before the Save `Cond` reads 0,
+/// `X` and `H` 0, the conductor names empty and `Units` the default ft. Its
+/// conductor table comes back row for row and its Lines' impedance with it.
+/// After the reload it reads conductor 3, so `Cond`, `Wire`, `H`, `CNCable`
+/// and `TSCable` differ (`X` 0 and `Units` ft agree). The pin of the five
+/// `ie13geom` rows of [`PROPERTY_EXCLUSIONS`]: they are keyed by class, so this
+/// test also holds the deck's other geometries, which have a selection, to an
+/// exact round trip of those five properties.
+#[test]
+fn save_reloads_a_geometry_with_no_selection_on_its_last_row() {
+    let tag = "lgnone";
+    let out = scratch_dir(tag);
+    let mut dss = Dss::new();
+    dss.command(&format!(
+        "compile \"{}\"",
+        corpus("Test/IEEE13_LineGeometry.dss")
+            .to_string_lossy()
+            .replace('\\', "/")
+    ));
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{tag}: {:?}", dss.errors());
+    let (nodes, _) = snapshot(&dss);
+    let pre_y = y_checkpoint(&mut dss);
+    let pre = property_snapshot(&mut dss, tag);
+    dss.command(&format!(
+        "save circuit dir=\"{}\"",
+        out.to_string_lossy().replace('\\', "/")
+    ));
+    assert!(dss.errors().is_empty(), "{tag}: save: {:?}", dss.errors());
+    let line_604 = emitted_line(&out, tag, "linegeometry.604");
+    let saved_604 = &line_604[line_604.find(" cond=").unwrap_or(line_604.len())..];
+    assert_eq!(
+        saved_604,
+        " cond=1 wire=acsr_1/0 x=-4 h=28 units=ft cond=2 wire=acsr_1/0 x=3 h=28 units=ft \
+         cond=3 wire=acsr_1/0 x=0 h=24 units=ft",
+        "{tag}: 604 saves its table and no selection token"
+    );
+
+    dss.command("clear");
+    dss.command(&format!(
+        "compile \"{}\"",
+        out.join("Master.dss").to_string_lossy().replace('\\', "/")
+    ));
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{tag}: reload: {:?}", dss.errors());
+    let post_y = y_checkpoint(&mut dss);
+    assert_eq!(pre_y.len(), post_y.len(), "{tag}: Y entry count");
+    for (key, (re, im)) in &pre_y {
+        let (re2, im2) = post_y[key];
+        assert!(
+            (re - re2).abs() <= Y_TOL * re.abs().max(1.0)
+                && (im - im2).abs() <= Y_TOL * im.abs().max(1.0),
+            "{tag}: Y{key:?} {re}+j{im} -> {re2}+j{im2}"
+        );
+    }
+    let post = property_snapshot_at(&mut dss, tag, &nodes);
+    let read = |snap: &PropSnapshot, object: &str, name: &str| -> String {
+        snap[object]
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| panic!("{tag}: {object}.{name}: no such property"))
+    };
+    let five = ["Cond", "Wire", "H", "CNCable", "TSCable"];
+    let moved: Vec<(String, String)> = ["Cond", "Wire", "X", "H", "Units", "CNCable", "TSCable"]
+        .iter()
+        .map(|p| {
+            (
+                read(&pre, "linegeometry.604", p),
+                read(&post, "linegeometry.604", p),
+            )
+        })
+        .collect();
+    assert_eq!(
+        moved,
+        [
+            ("0", "3"),
+            ("", "acsr_1/0"),
+            ("0", "0"),
+            ("0", "24"),
+            ("ft", "ft"),
+            ("", "acsr_1/0"),
+            ("", "acsr_1/0"),
+        ]
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+    );
+    for geom in ["601", "602", "603", "604", "605"] {
+        let object = format!("linegeometry.{geom}");
+        for (name, value) in &pre[&object] {
+            let after = read(&post, &object, name);
+            if geom == "604" && five.iter().any(|f| f.eq_ignore_ascii_case(name)) {
+                assert_ne!(value, &after, "{tag}: {object}.{name}");
+            } else {
+                assert!(
+                    prop_token_diff(value, &after).is_ok(),
+                    "{tag}: {object}.{name}: {value:?} -> {after:?}"
+                );
+            }
+        }
+    }
     std::fs::remove_dir_all(&out).ok();
 }
 
@@ -1362,7 +1478,43 @@ type PropertyExclusion = (&'static str, &'static str, &'static str, &'static str
 /// The property compare's exclusions, matched case-blind on class and property
 /// ([`excuse_reds`]). An entry its deck does not hit reds that deck
 /// ([`assert_properties_round_trip`]).
-const PROPERTY_EXCLUSIONS: &[PropertyExclusion] = &[];
+const PROPERTY_EXCLUSIONS: &[PropertyExclusion] = &[
+    (
+        "ie13geom",
+        "LineGeometry",
+        "Cond",
+        "a geometry with no conductor selected reloads on its last written row",
+        save_reloads_a_geometry_with_no_selection_on_its_last_row,
+    ),
+    (
+        "ie13geom",
+        "LineGeometry",
+        "Wire",
+        "reads the conductor the reload selects",
+        save_reloads_a_geometry_with_no_selection_on_its_last_row,
+    ),
+    (
+        "ie13geom",
+        "LineGeometry",
+        "H",
+        "reads the conductor the reload selects",
+        save_reloads_a_geometry_with_no_selection_on_its_last_row,
+    ),
+    (
+        "ie13geom",
+        "LineGeometry",
+        "CNCable",
+        "reads the conductor the reload selects",
+        save_reloads_a_geometry_with_no_selection_on_its_last_row,
+    ),
+    (
+        "ie13geom",
+        "LineGeometry",
+        "TSCable",
+        "reads the conductor the reload selects",
+        save_reloads_a_geometry_with_no_selection_on_its_last_row,
+    ),
+];
 
 /// An object `Save circuit` writes no line for, so the reload holds none: a
 /// circuit element whose `Enabled` reads `No` (`Save <class>` writes it, with

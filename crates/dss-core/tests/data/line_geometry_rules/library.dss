@@ -1,0 +1,9 @@
+! Conductor data shared by every deck of this folder.
+New WireData.ACSR_556_5 NormAmps=730 DIAM=0.927 GMRac=0.37320 Rdc=0.035227273 Runits=kft Radunits=in gmrunits=in
+New WireData.ACSR_4/0 NormAmps=340 DIAM=0.563 GMRac=0.09768 Rdc=0.112121212 Runits=kft Radunits=in gmrunits=in
+New CNData.250_1/3 k=13 DiaStrand=0.064 Rstrand=2.816666667 epsR=2.3
+~ InsLayer=0.220 DiaIns=1.06 DiaCable=1.16 Rac=0.076705 GMRac=0.20568 diam=0.573
+~ Runits=kft Radunits=in GMRunits=in
+New TSData.1/0TS diashield=0.85 tapelayer=0.005 epsR=2.3
+~ inslayer=0.22 DiaIns=0.78 Rdc=0.184204546 GMRac=0.13320 diam=0.368
+~ Runits=kft Radunits=in GMRunits=in

@@ -1,0 +1,41 @@
+! nphases defaults to 3, as documented. cn writes no nphases=, so its three
+! cncables= fill the three phase positions and it reads like cn_twin, which
+! writes nphases=3. pair has two conductors and no nphases=: both are phases,
+! as in pair_twin with nphases=2. An explicit nphases=0 leaves no phase
+! position, so the cable list of cn0 is refused.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.cn nconds=4 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ wires=[ACSR_4/0]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+New LineGeometry.cn_twin nconds=4 nphases=3 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ wires=[ACSR_4/0]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+New LineGeometry.pair nconds=2 reduce=y
+~ cond=1 cncable=250_1/3 x=-0.5 h=-4
+~ cond=2 cncable=250_1/3 x=0.5 h=-4
+New LineGeometry.pair_twin nconds=2 nphases=2 reduce=y
+~ cond=1 cncable=250_1/3 x=-0.5 h=-4
+~ cond=2 cncable=250_1/3 x=0.5 h=-4
+New LineGeometry.cn0 nconds=4 nphases=0
+~ cncables=[250_1/3 250_1/3 250_1/3]
+New Line.cn bus1=src.1.2.3 bus2=b_cn.1.2.3 geometry=cn length=1 units=mi
+New Load.cn bus1=b_cn phases=3 kv=12.47 kw=500 pf=0.95
+New Line.cn_twin bus1=src.1.2.3 bus2=b_cn_twin.1.2.3 geometry=cn_twin length=1 units=mi
+New Load.cn_twin bus1=b_cn_twin phases=3 kv=12.47 kw=500 pf=0.95
+New Line.pair bus1=src.1.2 bus2=b_pair.1.2 geometry=pair length=1 units=mi
+New Line.pair_twin bus1=src.1.2 bus2=b_pair_twin.1.2 geometry=pair_twin length=1 units=mi
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

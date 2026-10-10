@@ -1,0 +1,15 @@
+! Script D: a default on the New line, then units=m on the first conductor selected.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.g nconds=3 nphases=3 units=ft
+~ cond=3 wire=ACSR_556_5 x=4 h=28 units=m
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+New Line.L bus1=src.1.2.3 bus2=b.1.2.3 geometry=g length=1 units=mi
+New Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

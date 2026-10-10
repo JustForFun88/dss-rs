@@ -172,6 +172,14 @@ impl PropFlags {
     /// Holders: StorageController `kWhTotal`/`kWTotal`/`kWhActual`/`kWActual`
     /// (RP3.8 P1a) and IndMach012 `PF` (RP3.8 P1b) -- nothing else.
     pub const RENDERS_LIVE_RESULT: Self = Self(1 << 19);
+    /// Not a Pascal flag: an Integer property whose value is read as a number
+    /// first and handed to [`DssObject::refuse_integer`], so the object can
+    /// refuse a fraction or a number past the integer range, naming the
+    /// written text, instead of the rounding every other integer gets. Carried
+    /// by LineGeometry `Cond`.
+    ///
+    /// [`DssObject::refuse_integer`]: crate::obj::base::DssObject::refuse_integer
+    pub const WHOLE_NUMBER: Self = Self(1 << 20);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

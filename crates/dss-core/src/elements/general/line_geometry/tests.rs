@@ -103,14 +103,15 @@ fn get(cls: &ClassProps, obj: &dyn DssObject, name: &str) -> String {
 
 #[test]
 fn defaults() {
-    // Create: nconds=0, nphases=0, cond=1, reduce=No, linetype=oh, empty
-    // object-ref arrays render `[]`, and the ratings are not set.
+    // A new geometry: nconds=0, nphases=3, no conductor selected (cond reads
+    // 0), reduce=No, linetype=oh, empty object-ref arrays render `[]`, and the
+    // ratings are not set.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let obj = LineGeometryObj::new("g1");
     assert_eq!(get(&cls, &obj, "nconds"), "0");
-    assert_eq!(get(&cls, &obj, "nphases"), "0");
-    assert_eq!(get(&cls, &obj, "cond"), "1");
+    assert_eq!(get(&cls, &obj, "nphases"), "3");
+    assert_eq!(get(&cls, &obj, "cond"), "0");
     assert_eq!(get(&cls, &obj, "reduce"), "No");
     assert_eq!(get(&cls, &obj, "wires"), "[]");
     assert_eq!(get(&cls, &obj, "cncables"), "[]");
@@ -157,24 +158,24 @@ fn cond_wire_state_machine() {
 }
 
 #[test]
-fn wires_array_sets_active_to_last() {
-    // The plural `wires=` form fills every slot and leaves ActiveCond at the
-    // last conductor (Pascal `SetWires`).
+fn wires_array_leaves_the_selection_alone() {
+    // The plural `wires=` form fills every slot and selects no conductor: none
+    // stays selected after `New`, and an explicit `cond=2` stays on 2.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let acsr = build_wire("acsr", &[("normamps", "530")]);
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
-    set_ref_array(
-        &cls,
-        &mut g,
-        "wires",
-        &[arena_of(&acsr), arena_of(&acsr), arena_of(&acsr)],
-    );
-    assert_eq!(get(&cls, &g, "cond"), "3");
+    let three = [arena_of(&acsr), arena_of(&acsr), arena_of(&acsr)];
+    set_ref_array(&cls, &mut g, "wires", &three);
+    assert_eq!(get(&cls, &g, "cond"), "0");
     assert_eq!(get(&cls, &g, "wires"), "[acsr, acsr, acsr]");
     assert_eq!(get(&cls, &g, "normamps"), "530");
+    scalar(&cls, &mut g, "cond", "2");
+    set_ref_array(&cls, &mut g, "wires", &three);
+    assert_eq!(get(&cls, &g, "cond"), "2");
+    assert!(g.data_mut().take_errors().is_empty());
 }
 
 #[test]
@@ -221,7 +222,9 @@ fn spacing_copies_coordinates() {
     );
     assert!(g.data_mut().take_errors().is_empty());
     assert_eq!(get(&cls, &g, "spacing"), "sp");
-    assert_eq!(get(&cls, &g, "cond"), "3");
+    assert_eq!(get(&cls, &g, "cond"), "0"); // neither form selects a conductor
+    let errs = scalar(&cls, &mut g, "cond", "3");
+    assert!(errs.is_empty(), "{errs:?}");
     assert_eq!(get(&cls, &g, "x"), "1.2909"); // cond 3 from spacing
     assert_eq!(get(&cls, &g, "h"), "28.6");
     assert_eq!(get(&cls, &g, "units"), "ft");
@@ -317,7 +320,7 @@ fn spacing_wrong_wire_count_errors() {
 }
 
 #[test]
-fn make_like_copies_geometry_and_resets_active() {
+fn make_like_copies_geometry_and_selects_nothing() {
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let acsr = build_wire("acsr", &[("normamps", "530")]);
@@ -342,7 +345,11 @@ fn make_like_copies_geometry_and_resets_active() {
     let mut dst = LineGeometryObj::new("g1");
     dst.make_like(&src);
     assert_eq!(get(&cls, &dst, "nconds"), "3");
-    assert_eq!(get(&cls, &dst, "cond"), "1"); // reset by the nconds side effect
+    assert_eq!(get(&cls, &dst, "cond"), "0"); // `like=` selects no conductor
+    assert_eq!(get(&cls, &dst, "x"), "0");
+    // The source's default unit comes with the copy.
+    assert_eq!(get(&cls, &dst, "units"), "m");
+    scalar(&cls, &mut dst, "cond", "1");
     assert_eq!(get(&cls, &dst, "x"), "-1.29"); // cond 1
     assert_eq!(get(&cls, &dst, "units"), "m");
     assert_eq!(get(&cls, &dst, "reduce"), "Yes");
@@ -938,7 +945,7 @@ fn conductors_array_matches_mixed_capi015() {
     // `set_object_ref_array(CONDUCTORS)` + the `CONDUCTORS` side effect — the path
     // the (now r4133-parity, case-insensitive) text parser AND JSON import call.
     // This drives that entry point directly (the `wires=` test precedent), gating
-    // `apply_conductors` / per-conductor `change_line_constants_type` /
+    // `apply_conductors` / per-conductor `change_line_constants_type_at` /
     // `default_amps_from` / `conductor_choice_of`.
     //
     // The identical MIXED geometry as `matrices_mixed_cn_ts_wire_match_capi015`
@@ -1032,9 +1039,9 @@ fn conductors_array_defaults_ratings_from_first_valid() {
 }
 
 #[test]
-fn update_uninitialized_conductor_errors() {
-    // A conductor slot left NIL is the Pascal "WireData is not correctly
-    // initialized" hard error.
+fn a_conductor_without_data_is_named_at_calculation() {
+    // Conductors without a conductor object are one error at calculation that
+    // names every one of them.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let w = build_si_wire();
@@ -1044,7 +1051,17 @@ fn update_uninitialized_conductor_errors() {
     scalar(&cls, &mut g, "cond", "1");
     set_ref(&cls, &mut g, "wire", &arena_of(&w)); // only conductor 1 set
     let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
-    assert!(err.contains("not correctly initialized"), "{err}");
+    assert_eq!(
+        err,
+        "LineGeometry.g1: conductors 2 and 3 have no wire, cncable or tscable."
+    );
+    scalar(&cls, &mut g, "cond", "3");
+    set_ref(&cls, &mut g, "wire", &arena_of(&w));
+    let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
+    assert_eq!(
+        err,
+        "LineGeometry.g1: conductor 2 has no wire, cncable or tscable."
+    );
 }
 
 #[test]
@@ -1154,18 +1171,179 @@ fn z_matrix_recomputes_on_frequency_change() {
 }
 
 #[test]
-fn cond_out_of_range_is_ignored() {
-    // Pascal `set_ActiveCond` ignores values outside `1..=NConds`; the value
-    // stays at the last valid conductor (the generic struct-index "Invalid
-    // value" diagnostic is not reproduced — transformer wdg precedent).
+fn cond_out_of_range_is_refused_and_selects_nothing() {
+    // A `cond=` outside `1..=NConds` is an error (code 10102) that leaves no
+    // conductor selected.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
     scalar(&cls, &mut g, "cond", "2");
-    scalar(&cls, &mut g, "cond", "99"); // above NConds -> ignored
-    assert_eq!(get(&cls, &g, "cond"), "2");
-    scalar(&cls, &mut g, "cond", "0"); // below 1 -> ignored
-    assert_eq!(get(&cls, &g, "cond"), "2");
+    let errs = scalar(&cls, &mut g, "cond", "99");
+    assert_eq!(
+        errs.texts(),
+        [
+            "LineGeometry.g1.Cond: cond=99 is out of range, the geometry has 3 conductors. \
+          No conductor is selected."
+        ]
+    );
+    assert_eq!(errs[0].code, Some(10102));
+    assert_eq!(get(&cls, &g, "cond"), "0");
+    scalar(&cls, &mut g, "cond", "2");
+    let errs = scalar(&cls, &mut g, "cond", "0");
+    assert_eq!(
+        errs.texts(),
+        [
+            "LineGeometry.g1.Cond: cond=0 is out of range, the geometry has 3 conductors. \
+          No conductor is selected."
+        ]
+    );
+    assert_eq!(get(&cls, &g, "cond"), "0");
+}
+
+#[test]
+fn cond_that_is_not_a_number_selects_nothing() {
+    // A `cond=` whose value is not a number is a conversion error that leaves
+    // no conductor selected, so the `x=` after it is refused.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "3");
+    scalar(&cls, &mut g, "nphases", "3");
+    scalar(&cls, &mut g, "cond", "2");
+    scalar(&cls, &mut g, "x", "1.5");
+    let mut parser = Parser::new();
+    let vars = ParserVars::new();
+    let mut errors = crate::diag::ErrorLog::new();
+    let mut eng = PropEngine {
+        parser: &mut parser,
+        vars: &vars,
+        enums: &enums,
+        errors: &mut errors,
+        foreign: None,
+        was_quoted: false,
+    };
+    let idx = cls.property_index("cond").expect("known property");
+    let err = cls
+        .edit_property(&mut g, idx, "abc", &mut eng)
+        .expect_err("abc is not a number");
+    assert_eq!(err.message(), "Invalid inline math entry: \"abc\"");
+    assert!(errors.is_empty(), "{:?}", errors.texts());
+    assert_eq!(get(&cls, &g, "cond"), "0");
+    let errs = scalar(&cls, &mut g, "x", "9");
+    assert_eq!(
+        errs.texts(),
+        [
+            "LineGeometry.g1.X: conductor data without cond=. No conductor is selected, so the \
+          value is not applied. Select one with cond=N first."
+        ]
+    );
+    assert_eq!(g.fx(), [0.0, 1.5, 0.0]);
+}
+
+#[test]
+fn like_side_effect_selects_nothing_without_a_copy() {
+    // The edit loop runs the `like=` side effect after a source that was not
+    // found too: no copy, but no conductor selected, so the `x=` is refused.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "3");
+    scalar(&cls, &mut g, "nphases", "3");
+    scalar(&cls, &mut g, "cond", "2");
+    scalar(&cls, &mut g, "x", "1.5");
+    let like = cls.property_index("like").expect("known property");
+    g.side_effects(like, 0);
+    assert_eq!(get(&cls, &g, "cond"), "0");
+    let errs = scalar(&cls, &mut g, "x", "9");
+    assert_eq!(
+        errs.texts(),
+        [
+            "LineGeometry.g1.X: conductor data without cond=. No conductor is selected, so the \
+          value is not applied. Select one with cond=N first."
+        ]
+    );
+    assert_eq!(g.fx(), [0.0, 1.5, 0.0]);
+}
+
+#[test]
+fn units_refusal_names_the_written_word() {
+    // `units=` refuses a word that maps to no length unit, naming it as
+    // written, and keeps the conductor's unit and the default. Unit code 0 or
+    // a code outside 1 to 8 set directly is refused too.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "3");
+    scalar(&cls, &mut g, "nphases", "3");
+    scalar(&cls, &mut g, "cond", "1");
+    scalar(&cls, &mut g, "units", "m");
+    for word in ["none", "feet", "Meters", "inches", "kilometer"] {
+        let errs = scalar(&cls, &mut g, "units", word);
+        assert_eq!(
+            errs.texts(),
+            [format!(
+                "LineGeometry.g1.Units: \"{word}\" is not one of the length units mi, kft, km, \
+                 m, ft, in, cm, mm."
+            )]
+        );
+        assert_eq!(get(&cls, &g, "units"), "m", "{word}");
+        assert_eq!(g.conductor_units(), [4, 4, 4], "{word}");
+    }
+    for code in [0, 9, 99, -1] {
+        g.set_i32(prop::UNITS, code);
+        let mut errs = crate::diag::ErrorLog::new();
+        errs.extend(g.data_mut().take_errors());
+        assert_eq!(
+            errs.texts(),
+            [format!(
+                "LineGeometry.g1.Units: unit code {code} is not one of the length units mi, kft, \
+                 km, m, ft, in, cm, mm."
+            )]
+        );
+        assert_eq!(get(&cls, &g, "units"), "m", "{code}");
+        assert_eq!(g.conductor_units(), [4, 4, 4], "{code}");
+    }
+}
+
+#[test]
+fn a_spacing_whose_unit_code_names_no_length_is_refused() {
+    // A spacing whose unit code is 0 or outside 1 to 8 (set directly, which
+    // the text path cannot do) is refused like `units=none`: one error naming
+    // it, no coordinate copied and no spacing kept.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let units = crate::elements::general::line_spacing::class_props(&enums)
+        .property_index("units")
+        .expect("known property");
+    for code in [0, 9, 99, -1] {
+        let mut sp = build_spacing(&[
+            ("nconds", "3"),
+            ("nphases", "3"),
+            ("x", "-4 0 4"),
+            ("h", "28 28 28"),
+            ("units", "ft"),
+        ]);
+        sp.set_i32(units, code);
+        let mut g = LineGeometryObj::new("g1");
+        scalar(&cls, &mut g, "nconds", "3");
+        scalar(&cls, &mut g, "nphases", "3");
+        set_ref(&cls, &mut g, "spacing", &arena_of(&sp));
+        let mut errs = crate::diag::ErrorLog::new();
+        errs.extend(g.data_mut().take_errors());
+        assert_eq!(
+            errs.texts(),
+            [
+                "LineGeometry.g1.Spacing: LineSpacing.sp has no length unit, so nothing is \
+                 copied. Give the spacing one of mi, kft, km, m, ft, in, cm, mm."
+            ],
+            "{code}"
+        );
+        assert_eq!(g.fx(), [0.0; 3], "{code}");
+        assert_eq!(g.fy(), [0.0; 3], "{code}");
+        assert_eq!(get(&cls, &g, "spacing"), "", "{code}");
+        assert_eq!(get(&cls, &g, "units"), "ft", "{code}");
+        assert_eq!(g.conductor_units(), [5, 5, 5], "{code}");
+    }
 }

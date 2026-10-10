@@ -447,12 +447,14 @@ impl Dss {
             vars,
             errors,
         };
-        let _ = crate::solution::build_y_matrix(
+        if let Err(e) = crate::solution::build_y_matrix(
             ckt,
             &mut env,
             crate::solution::BuildOption::WholeMatrix,
             false,
-        );
+        ) {
+            env.errors.push(e);
+        }
     }
 
     /// Pascal `DoBusCoordsCmd` (`ExecHelper.pas` l.2955): read a `bus, x, y`

@@ -1,7 +1,7 @@
 //! The `DssObject` property trait for `LineGeometryObj`: the typed get/set
-//! accessors, object-reference plumbing and the `PropertySideEffects` state
-//! machine.
+//! accessors, object-reference plumbing and the property side effects.
 
+use crate::diag::DssDiagnostic;
 use crate::obj::Rating;
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
@@ -9,16 +9,70 @@ use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
 use crate::elements::general::conductor_data::ConductorObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
+use crate::support::line_units::LineUnits;
+
+/// The number of the out-of-range `cond=` diagnostic.
+const COND_OUT_OF_RANGE: u32 = 10102;
+
+/// The length units `units=` accepts, as its refusal lists them.
+pub(crate) const LENGTH_UNITS: &str = "mi, kft, km, m, ft, in, cm, mm";
+
+/// The `like=` row the class table appends after the class's own properties.
+const LIKE: usize = prop::NUM_PROPS;
 
 impl LineGeometryObj {
+    /// Refuse conductor data written with no conductor selected (`prop_name` as
+    /// the class table spells it). Returns the selected conductor otherwise.
+    fn selected_for(&mut self, prop_name: &str) -> Option<usize> {
+        let a = self.active_index();
+        if a.is_none() {
+            let name = self.data.name().to_string();
+            self.data.push_error(format!(
+                "LineGeometry.{name}.{prop_name}: conductor data without cond=. No conductor \
+                 is selected, so the value is not applied. Select one with cond=N first."
+            ));
+        }
+        a
+    }
+
+    /// Select conductor `value` (1-based), or refuse an out-of-range value and
+    /// select none.
+    fn select_conductor(&mut self, value: i32) {
+        let n = self.fnconds.max(0);
+        if value >= 1 && value <= n {
+            self.selected = Some((value - 1) as usize);
+            return;
+        }
+        self.selected = None;
+        let msg = self.cond_refusal(&value.to_string(), "is out of range");
+        self.data
+            .push_error(DssDiagnostic::msg(msg, Some(COND_OUT_OF_RANGE)));
+    }
+
+    /// The message refusing `cond=<text>`: `what` the value is, the
+    /// geometry's conductor count and the selection it leaves.
+    fn cond_refusal(&self, text: &str, what: &str) -> String {
+        let has = match self.fnconds.max(0) {
+            0 => "has no conductors yet, set NConds first".to_string(),
+            1 => "has 1 conductor".to_string(),
+            n => format!("has {n} conductors"),
+        };
+        format!(
+            "LineGeometry.{}.Cond: cond={text} {what}, the geometry {has}. No conductor is \
+             selected.",
+            self.data.name()
+        )
+    }
+
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.data.copy_prp_sequence_from(other.data());
         let o = other;
         {
-            // Pascal `MakeLike`: `NConds := Other.NWires` runs the nconds side
-            // effect (full reset), then every per-conductor array is copied.
+            // Size like the source (which selects no conductor), then copy
+            // the source's default unit and every per-conductor array.
             self.fnconds = o.fnconds;
             self.realloc_conductors();
+            self.flast_unit = o.flast_unit;
             self.fnphases = o.fnphases;
             self.line_spacing_obj = o.line_spacing_obj.clone();
             // dss_capi 0.15.x `MakeLike` copies the equivalent-spacing fields.
@@ -60,13 +114,12 @@ impl DssObject for LineGeometryObj {
         match idx {
             prop::NCONDS => self.fnconds,
             prop::NPHASES => self.fnphases,
-            prop::COND => self.factive_cond,
-            // Per-conductor unit (active conductor); falls back to FLastUnit when
-            // there is no active conductor (NConds=0 — the oracle raises here, so
-            // this value is never compared).
+            // 1-based, 0 when no conductor is selected.
+            prop::COND => self.active_index().map_or(0, |a| a as i32 + 1),
+            // The selected conductor's unit, or the default with none selected.
             prop::UNITS => self
                 .active_index()
-                .map_or(self.flast_unit, |a| self.funits[a]),
+                .map_or(self.flast_unit, |a| self.conductor_unit(a)),
             prop::SEASONS => self.num_amp_ratings,
             prop::LINETYPE => self.fline_type.ordinal(),
             _ => unreachable!("LineGeometry has no integer at {idx}"),
@@ -74,20 +127,31 @@ impl DssObject for LineGeometryObj {
     }
     fn set_i32(&mut self, idx: usize, value: i32) {
         match idx {
-            prop::NCONDS => self.fnconds = value,
-            prop::NPHASES => self.fnphases = value,
-            // Pascal `set_ActiveCond`: only move within `1..=FNConds`
-            // (out-of-range is silently ignored). The sticky-unit default is in
-            // the `cond` side effect.
-            prop::COND => {
-                if value > 0 && value <= self.fnconds {
-                    self.factive_cond = value;
-                }
+            prop::NCONDS => {
+                self.fnconds = value;
+                self.nconds_stored = true;
             }
+            prop::NPHASES => self.fnphases = value,
+            // The unit default of a newly selected conductor is in the `cond`
+            // side effect.
+            prop::COND => self.select_conductor(value),
+            // A unit belongs to the selected conductor (if any) and becomes the
+            // default. Code 0 and a code outside 1 to 8 name no length unit and
+            // are refused (a text that maps to 0 is refused before, by
+            // `refuse_enum_text`).
             prop::UNITS => {
+                if LineUnits::from_code(value) == LineUnits::None {
+                    let name = self.data.name().to_string();
+                    self.data.push_error(format!(
+                        "LineGeometry.{name}.Units: unit code {value} is not one of the length \
+                         units {LENGTH_UNITS}."
+                    ));
+                    return;
+                }
                 if let Some(a) = self.active_index() {
                     self.funits[a] = value;
                 }
+                self.flast_unit = value;
             }
             prop::SEASONS => self.num_amp_ratings = value,
             prop::LINETYPE => {
@@ -107,12 +171,12 @@ impl DssObject for LineGeometryObj {
     fn set_f64(&mut self, idx: usize, value: f64) {
         match idx {
             prop::X => {
-                if let Some(a) = self.active_index() {
+                if let Some(a) = self.selected_for("X") {
                     self.fx[a] = value;
                 }
             }
             prop::H => {
-                if let Some(a) = self.active_index() {
+                if let Some(a) = self.selected_for("H") {
                     self.fy[a] = value;
                 }
             }
@@ -165,7 +229,12 @@ impl DssObject for LineGeometryObj {
     fn set_object_ref(&mut self, idx: usize, _name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             prop::WIRE | prop::CNCABLE | prop::TSCABLE => {
-                if let Some(a) = self.active_index() {
+                let prop_name = match idx {
+                    prop::WIRE => "Wire",
+                    prop::CNCABLE => "CNCable",
+                    _ => "TSCable",
+                };
+                if let Some(a) = self.selected_for(prop_name) {
                     self.fwiredata[a] = resolved.and_then(ConductorObj::from_resolved);
                 }
             }
@@ -178,7 +247,8 @@ impl DssObject for LineGeometryObj {
 
     fn set_object_ref_array(&mut self, idx: usize, refs: &[ObjectRefArrayItem<'_>]) {
         match idx {
-            prop::WIRES | prop::CNCABLES | prop::TSCABLES => self.set_wires(refs),
+            prop::WIRES => self.set_wires(refs),
+            prop::CNCABLES | prop::TSCABLES => self.set_cables(refs),
             // Pascal generic fill (no WriteByFunction): write each resolved
             // conductor / NIL straight into `conductors` from slot 0; the side
             // effect sets the engine kind + ratings (`Conductors` handling).
@@ -222,66 +292,139 @@ impl DssObject for LineGeometryObj {
         self.amp_ratings = value;
     }
 
+    /// `cond=` takes a conductor number: a fraction is refused, and so is a
+    /// whole number past the integer range, each naming the value as written.
+    /// A whole number in the integer range goes on to the range check of the
+    /// selection. Pinned by
+    /// `exec::tests::line_geometry_rules::cond_that_is_not_a_whole_number_selects_nothing`.
+    fn refuse_integer(&self, idx: usize, text: &str, value: f64) -> Option<String> {
+        if idx != prop::COND {
+            return None;
+        }
+        let what = if !value.is_finite() || value.fract() != 0.0 {
+            "is not a conductor number"
+        } else if value < f64::from(i32::MIN) || value > f64::from(i32::MAX) {
+            "is out of range"
+        } else {
+            return None;
+        };
+        Some(self.cond_refusal(text, what))
+    }
+
+    /// A `cond=` whose value is not a number, or one `refuse_integer` refuses,
+    /// selects no conductor, like an out-of-range one, so the conductor data
+    /// after it is refused.
+    fn value_unreadable(&mut self, idx: usize) {
+        if idx == prop::COND {
+            self.selected = None;
+        }
+    }
+
+    /// With no conductor selected, the JSON export leaves out the selected
+    /// conductor's values (`Cond` 0, no conductor object, zero coordinates):
+    /// the import refuses each of them by the selection rules. A geometry
+    /// without conductors leaves out `NConds`, whose 0 the import refuses.
+    fn json_omits(&self, idx: usize) -> bool {
+        (idx == prop::NCONDS && self.fnconds == 0)
+            || (self.selected.is_none()
+                && matches!(
+                    idx,
+                    prop::COND | prop::WIRE | prop::X | prop::H | prop::CNCABLE | prop::TSCABLE
+                ))
+    }
+
+    /// `units=` refuses a word that maps to no length unit (`none`, or one
+    /// outside the list), naming the word.
+    fn refuse_enum_text(&self, idx: usize, text: &str, ordinal: i32) -> Option<String> {
+        (idx == prop::UNITS && ordinal == LineUnits::None.code()).then(|| {
+            format!(
+                "LineGeometry.{}.Units: \"{text}\" is not one of the length units {LENGTH_UNITS}.",
+                self.data.name()
+            )
+        })
+    }
+
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
-        // Pascal `TLineGeometryObj.PropertySideEffects`, in the same three case
-        // blocks.
+        // Three blocks: the engine and selection state, the ratings default,
+        // then the staleness flag.
+        let selected = self.active_index();
         match idx {
             prop::NPHASES => {
-                // Mirror `FLineData.Nphases := FNphases`, clamped to `FNConds`.
-                // (UpdateLineGeometryData later re-sets it unclamped before Calc.)
+                // The engine's phase count, the number of phase positions.
+                let np = self.phase_positions();
                 if let Some(ld) = self.fline_data.as_mut() {
-                    let np = self.fnphases.min(self.fnconds).max(0);
-                    ld.set_nphases(np as usize);
+                    ld.set_nphases(np);
                 }
             }
             prop::COND => {
-                // sticky unit: a fresh conductor inherits the last-used unit
-                if let Some(a) = self.active_index()
-                    && self.funits[a] == -1
+                // A conductor without a unit of its own takes the default.
+                if let Some(a) = selected
+                    && self.funits[a] == super::UNIT_UNSET
                 {
                     self.funits[a] = self.flast_unit;
                 }
             }
+            // The singular conductor arms act on the selected conductor only:
+            // with none selected the setter already refused the value.
             prop::WIRE => {
-                if self
-                    .active_index()
-                    .is_some_and(|a| self.fphase_choice[a] == ConductorChoice::Unknown)
+                if let Some(a) = selected
+                    && self.fphase_choice[a] == ConductorChoice::Unknown
                 {
-                    self.change_line_constants_type(ConductorChoice::Overhead);
+                    self.change_line_constants_type_at(Some(a), ConductorChoice::Overhead);
                 }
             }
-            prop::UNITS => {
-                if let Some(a) = self.active_index() {
-                    self.flast_unit = self.funits[a];
+            prop::CNCABLE if selected.is_some() => {
+                self.change_line_constants_type_at(selected, ConductorChoice::ConcentricNeutral);
+            }
+            prop::TSCABLE if selected.is_some() => {
+                self.change_line_constants_type_at(selected, ConductorChoice::TapeShield);
+            }
+            // The plural cable arms set the model of the last slot the fill
+            // wrote (nothing when the fill was refused).
+            prop::CNCABLES => {
+                if let Some(last) = self.last_filled.take() {
+                    self.change_line_constants_type_at(
+                        Some(last),
+                        ConductorChoice::ConcentricNeutral,
+                    );
                 }
             }
-            prop::CNCABLE | prop::CNCABLES => {
-                self.change_line_constants_type(ConductorChoice::ConcentricNeutral);
+            prop::TSCABLES => {
+                if let Some(last) = self.last_filled.take() {
+                    self.change_line_constants_type_at(Some(last), ConductorChoice::TapeShield);
+                }
             }
-            prop::TSCABLE | prop::TSCABLES => {
-                self.change_line_constants_type(ConductorChoice::TapeShield);
+            // A refused `nconds=` (0 or negative) leaves the conductors as
+            // they were.
+            prop::NCONDS => {
+                if std::mem::take(&mut self.nconds_stored) {
+                    self.realloc_conductors();
+                }
             }
-            prop::NCONDS => self.realloc_conductors(),
             prop::SPACING => self.apply_spacing(),
+            // `like=` selects no conductor, whether its source was found or not.
+            LIKE => self.selected = None,
             _ => {}
+        }
+        if idx == prop::WIRES {
+            self.last_filled = None;
         }
 
         // Second block: default this geometry's ratings from its conductors.
         match idx {
             prop::WIRES | prop::CNCABLES | prop::TSCABLES => {
-                // "Traditional" branch reads the first conductor (overhead
-                // istart=1); the buried-neutral istart shift only changes which
-                // slots were filled, not the conductor that seeds the ratings.
+                // The plural forms seed the ratings from the first conductor,
+                // whichever slots the fill wrote.
                 self.default_amps_from(0);
             }
             prop::WIRE | prop::CNCABLE | prop::TSCABLE => {
-                // Pascal: `conductorObj := FWireData[ActiveCond]`; if assigned,
-                // the first conductor defaults the geometry ratings; if NIL (the
-                // name did not resolve — the generic ObjectRef parse already
-                // logged its 401), log the conductor-not-defined 10103.
-                if let Some(a) = self.active_index() {
+                // A conductor object on conductor 1 seeds the geometry ratings.
+                // A name that did not resolve (the parse already logged its
+                // "not found") leaves the slot unset and logs that the object
+                // was not defined. Nothing happens with no conductor selected.
+                if let Some(a) = selected {
                     if self.fwiredata[a].is_some() {
-                        if self.factive_cond == 1 {
+                        if a == 0 {
                             self.default_amps_from(0);
                         }
                     } else {

@@ -294,6 +294,45 @@ fn harmonics_disabled_aborts_loudly() {
     );
 }
 
+/// The harmonics refusal drained by the Y build is logged in its plain text,
+/// more than once in the harmonics solve and again in a snap solve after it,
+/// and never as a solve's wrapped error (482): only a Line whose impedance
+/// cannot be built becomes the solve's one wrapped error.
+#[test]
+fn windgen_harmonics_refusal_keeps_its_flow() {
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.wh basekv=12.47 phases=3 bus1=src",
+        "new line.l1 bus1=src bus2=b phases=3 r1=0.1 x1=0.3 length=1",
+        "new load.ld bus1=b phases=3 kv=12.47 kw=500 pf=0.95",
+        "new windgen.wg bus1=b phases=3 kv=12.47 kW=200 kva=300 conn=wye model=1 vss=1 pss=1 \
+         qss=0 vwind=12",
+        "set voltagebases=[12.47]",
+        "calcvoltagebases",
+        "solve",
+        "set mode=harmonics",
+        "solve",
+    ] {
+        dss.command(c);
+    }
+    let plain = "WindGen.wg: WindGen harmonics model is not fully implemented. Please use the \
+                 Generator model instead.";
+    let logged: Vec<String> = dss.errors().iter().map(|e| e.message.clone()).collect();
+    assert!(logged.len() > 1, "{logged:?}");
+    assert!(logged.iter().all(|m| m == plain), "{logged:?}");
+    assert!(dss.errors().iter().all(|e| e.code != Some(482)));
+    let before = dss.errors().len();
+    dss.command("set mode=snap");
+    dss.command("solve");
+    let snap = &dss.errors()[before..];
+    assert!(!snap.is_empty(), "the snap solve logged nothing");
+    assert!(
+        snap.iter().all(|e| e.message == plain && e.code.is_none()),
+        "{snap:?}"
+    );
+}
+
 /// The WTG3 model is a pure deterministic f64 pipeline: two identical
 /// init+step sequences produce bit-identical state, and the injection current
 /// stays finite through the sub-cycle integrator.

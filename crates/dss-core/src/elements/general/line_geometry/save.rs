@@ -5,9 +5,9 @@
 //! the LAST conductor, since `Cond`/`Wire`/`X`/`H`/`Units` each carry a single
 //! property-sequence slot re-set once per conductor). The override instead
 //! rewrites the whole conductor table (`Cond=i wire=.. X=.. h=.. units=..`,
-//! once, when `cond=`/`spacing=`/`wires=` was ever set), skipping the scalar
-//! per-conductor props, and lets every other set property fall through to the
-//! generic `name=value` rule.
+//! once, when `cond=`/`spacing=`/`wires=`/`conductors=` was ever set), skipping
+//! the scalar per-conductor props, and lets every other set property fall
+//! through to the generic `name=value` rule.
 //!
 //! Co-located with the element (like [`super::dump`]) so it reads the conductor
 //! fields directly, exactly as the Pascal method does; dispatched from
@@ -29,16 +29,40 @@ use super::{LineGeometryObj, prop};
 impl LineGeometryObj {
     /// Pascal `TLineGeometryObj.SaveWrite` body (the caller already emitted
     /// `New "LineGeometry.name"`). Appends ` name=value` tokens to `out`.
+    /// `NConds=` comes first whenever the geometry has conductors: it
+    /// re-allocates every conductor, so a conductor table ahead of it would
+    /// reload into nothing. A geometry with none writes no `NConds=`, whose
+    /// only value would be the 0 a reload refuses. Pinned by
+    /// `exec::tests::line_geometry_rules::save_writes_nconds_first` and
+    /// `::a_refused_nconds_is_not_saved`.
     pub(crate) fn save_write_body(&self, out: &mut String, cx: &SaveCtx) {
         use prop::*;
 
-        // Pascal `wroteConds` — the array block is written at most once, at the
-        // first of `cond`/`spacing`/`wires` in the set-order walk.
+        let generic = |out: &mut String, ip: usize| {
+            let val = cx.cls.get_value(self, ip, cx.enums);
+            let s = val.trim();
+            if !s.is_empty() {
+                out.push_str(&format!(
+                    " {}={}",
+                    cx.cls.property_name(ip),
+                    check_for_blanks(s)
+                ));
+            }
+        };
+        if self.fnconds > 0 {
+            generic(out, NCONDS);
+        }
+
+        // The conductor table is written at most once, at the first of
+        // `cond`/`spacing`/`wires`/`conductors` in the set-order walk. Its rows
+        // name each conductor's class, so `Conductors=` is never written on its
+        // own (its items would reload without their class).
         let mut wrote_conds = false;
         let mut iprop = self.data().next_property_set(None);
         while let Some(ip) = iprop {
             match ip {
-                COND | SPACING | WIRES => {
+                NCONDS => {}
+                COND | SPACING | WIRES | CONDUCTORS => {
                     if !wrote_conds {
                         self.write_conductor_block(out);
                         wrote_conds = true;
@@ -69,26 +93,16 @@ impl LineGeometryObj {
                 // since the real per-conductor props are emitted explicitly).
                 // A rating that is not set is omitted.
                 _ if cx.cls.holds_no_rating(self, ip) => {}
-                _ => {
-                    let val = cx.cls.get_value(self, ip, cx.enums);
-                    let s = val.trim();
-                    if !s.is_empty() {
-                        out.push_str(&format!(
-                            " {}={}",
-                            cx.cls.property_name(ip),
-                            check_for_blanks(s)
-                        ));
-                    }
-                }
+                _ => generic(out, ip),
             }
             iprop = self.data().next_property_set(Some(ip));
         }
     }
 
-    /// Pascal conductor loop (`:813-825`): one `Cond=i <kind>=<name> X=%.7g
-    /// h=%.7g units=<str>` token per conductor, `<kind>` = `tscable`/`cncable`/
-    /// `wire` by the stored conductor's catalog type, skipping unset (NIL)
-    /// conductors.
+    /// One `Cond=i <kind>=<name> X=%.7g h=%.7g units=<str>` token group per
+    /// conductor, `<kind>` = `tscable`/`cncable`/`wire` by the stored
+    /// conductor's catalog type, skipping conductors without one. `units=` is
+    /// the conductor's unit, its own or the default, never `none`.
     fn write_conductor_block(&self, out: &mut String) {
         for i in 0..self.fnconds.max(0) as usize {
             let Some(w) = self.fwiredata[i].as_ref() else {
@@ -106,7 +120,7 @@ impl LineGeometryObj {
                 w.name(),
                 g(self.fx[i], 7),
                 g(self.fy[i], 7),
-                LineUnits::from_code(self.funits[i]).as_str(),
+                LineUnits::from_code(self.conductor_unit(i)).as_str(),
             ));
         }
     }

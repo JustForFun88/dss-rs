@@ -266,10 +266,10 @@ fn p1_metric_no_i32_constant_families_in_elements() {
 // The "ceiling" metrics — audited populations that may only shrink
 // ---------------------------------------------------------------------------
 
-/// **P14** — `for … in 1..=` in `elements/`: 106, every one audited
+/// **P14** — `for … in 1..=` in `elements/`: 105, every one audited
 /// STAYS-by-design (report text, the 1-based user API, Pascal
 /// state arrays that are 1-based on the wire).
-const CEILING_ONE_BASED_LOOPS: usize = 106;
+const CEILING_ONE_BASED_LOOPS: usize = 105;
 
 /// **P8/P10/P11** — the flat-offset multiplication forms (`* nconds`,
 /// `* ncond`) that survive in `dss-core/src`.

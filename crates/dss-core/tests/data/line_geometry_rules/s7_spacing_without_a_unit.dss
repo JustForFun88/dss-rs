@@ -1,0 +1,17 @@
+! A spacing= whose LineSpacing has no length unit is refused and not kept.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.sp_none nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=none
+New LineSpacing.sp_feet nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=feet
+New LineSpacing.sp_ft nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft
+New LineGeometry.gnone nconds=3 nphases=3 spacing=sp_none wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New LineGeometry.gfeet nconds=3 nphases=3 spacing=sp_feet wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New LineGeometry.gft nconds=3 nphases=3 spacing=sp_ft wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New Line.L bus1=src.1.2.3 bus2=b.1.2.3 geometry=gft length=1 units=mi
+New Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

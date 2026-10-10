@@ -1,0 +1,31 @@
+! nconds= re-allocates the conductors and selects none, on a ~ line (g) and in
+! an Edit (e): the x=5 after it is refused, and conductor 2, selected before it,
+! keeps the x 0 of the re-allocation. Both geometries are then written again,
+! conductor 2 without x=, and each is solved on a Line of its own.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.g nconds=4 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=1 h=28
+~ nconds=4
+~ x=5
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+~ cond=4 wire=ACSR_4/0 x=0 h=24
+New LineGeometry.e nconds=4 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=1 h=28
+Edit LineGeometry.e nconds=4
+Edit LineGeometry.e x=5
+Edit LineGeometry.e cond=1 wire=ACSR_556_5 x=-4 h=28 cond=2 wire=ACSR_556_5 h=28 cond=3 wire=ACSR_556_5 x=4 h=28 cond=4 wire=ACSR_4/0 x=0 h=24
+New Line.L bus1=src.1.2.3.0 bus2=b.1.2.3.0 geometry=g length=1 units=mi
+New Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Le bus1=src.1.2.3.0 bus2=be.1.2.3.0 geometry=e length=1 units=mi
+New Load.le bus1=be phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

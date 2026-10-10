@@ -184,6 +184,7 @@ pub fn build_y_matrix(
     }
     let mut yprim_errors = crate::diag::ErrorLog::new();
     let mut refused = false;
+    let mut unbuilt: Vec<String> = Vec::new();
     for &r in &ckt.ckt_elements {
         let elem = env.store.ckt_elem_mut(r);
         // Pascal `ReCalcAllYPrims`/`ReCalcInvalidYPrims` (Ymatrix.pas @ 0.15.0b4):
@@ -195,20 +196,34 @@ pub fn build_y_matrix(
         }
         elem.calc_yprim(&sys);
         elem.cd_mut().yprim_invalid = false;
-        // A `CalcYPrim` that aborts (e.g. a `LineGeometry` Zmatrix error) queues a
-        // deferred message instead of building YPrim; collect it below.
-        yprim_errors.extend(elem.cd_mut().obj.take_errors());
+        // A `CalcYPrim` that fails (e.g. a `LineGeometry` impedance error)
+        // queues a deferred message instead of building YPrim. Several Lines on
+        // one broken geometry raise the same unbuilt-YPrim text: it is kept
+        // once, in build order. Every other message is kept as queued.
+        for d in elem.cd_mut().obj.take_errors() {
+            if !d.yprim_unbuilt {
+                yprim_errors.push(d);
+            } else if !unbuilt.contains(&d.message) {
+                unbuilt.push(d.message);
+            }
+        }
         refused |= std::mem::take(&mut elem.cd_mut().yprim_refused);
     }
-    if !yprim_errors.is_empty() {
-        // Pascal: the geometry getter raised `ELineGeometryProblem` and set
-        // `SolutionAbort`, and `CalcYPrim` exited. The trait has no direct abort
-        // channel, so surface the queued message(s) and abort the solution here
-        // (the parse path already drained every other deferred error, so anything
-        // collected above came from `CalcYPrim`).
-        env.errors.extend(yprim_errors);
+    // The unbuilt-YPrim messages (Lines whose impedance cannot be built), in
+    // build order and joined, are the build's one error, returned once the
+    // arrays are allocated: the caller wraps and reports it, nothing is solved
+    // on the incomplete matrix, and the matrix stays marked as changed so the
+    // next solve rebuilds it. Any other message is logged and the build goes
+    // on. Pinned by
+    // `exec::tests::line_geometry_rules::two_broken_geometries_are_one_error_in_build_order`
+    // and `elements::pc::windgen::tests::windgen_harmonics_refusal_keeps_its_flow`.
+    if !yprim_errors.is_empty() || !unbuilt.is_empty() {
+        // The parse path already drained every other deferred error, so
+        // anything collected above came from `CalcYPrim`. The solution aborts.
         ckt.solution.solution_abort = true;
+        env.errors.extend(yprim_errors);
     }
+    let abort = (!unbuilt.is_empty()).then(|| unbuilt.join(" "));
     ckt.solution.frequency_changed = false;
 
     // A refused build logs no build event (pinned by
@@ -317,7 +332,18 @@ pub fn build_y_matrix(
         if ckt.solution.preserve_node_voltages {
             restore_node_v_from_vbus(ckt);
         }
-        return Err("an element has no defined primitive admittance".to_string());
+        // A Line whose impedance cannot be built names itself in the error, the
+        // refusing element's own message is already in the log.
+        return Err(
+            abort.unwrap_or_else(|| "an element has no defined primitive admittance".to_string())
+        );
+    }
+
+    if let Some(msg) = abort {
+        if ckt.solution.preserve_node_voltages {
+            restore_node_v_from_vbus(ckt);
+        }
+        return Err(msg);
     }
 
     match option {

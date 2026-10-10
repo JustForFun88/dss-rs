@@ -306,6 +306,11 @@ path, never a wide `git clean`.
 | **unified corpus gate** | full assembled model (Y / V / currents / powers / losses / YPrims / injection / discrete state / monitors / meters / probes / eventlog / …), per step, live, on the channel(s) each case's `engines` field names, partitioned by the divergence ledger | `corpus_gate.rs` + `tests/corpus_gate/` submodules + `tools/oracle/oracle_server.py` + `crates/dss-epri` | pinned dss-python (`capi_v0145`) **and** EPRI r4133 DLL (`r4133`) — both gating |
 | **corpus hygiene** | no silent omission: every `.dss` classified, every family a dir↔manifest bijection; no silent **shrink** of the gated population; the ledger structurally valid | `corpus_manifest.rs`, `population_lock.rs`, `*_manifest_is_complete`, `ledger_is_structurally_valid` | none (structural) |
 
+The unit-test layer also reads tracked decks: `exec::tests::line_geometry_rules` (dss-core
+lib tests) compiles the decks of `crates/dss-core/tests/data/line_geometry_rules/` in place, one
+per LineGeometry case, and writes every Save, dump and report of theirs into its own scratch
+directory.
+
 **Where the harness lives** (RETRO_FIXES RF-I00-04). The comparators, the tier
 floors, the lane policy, the scratch copies and the write rails are one test-only
 workspace crate, `dss-test-harness` (`publish = false`, `#![forbid(unsafe_code)]`,

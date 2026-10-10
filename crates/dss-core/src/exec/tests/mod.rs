@@ -35,6 +35,7 @@ mod inc_matrix;
 mod late_created_element;
 mod lifecycle;
 mod line_fetch;
+mod line_geometry_rules;
 mod live_ctx;
 mod make_pos_seq;
 mod monitors;

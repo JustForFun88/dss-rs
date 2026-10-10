@@ -4,24 +4,43 @@
 //!
 //! A `DSS_OBJECT` catalog class (no terminals, no YPrim). It holds per-conductor
 //! coordinate (`X`/`H`) and unit arrays plus a reference to each conductor's
-//! catalog object (`WireData`/`CNData`/`TSData`), sized by `NConds`. Editing is a
-//! small **state machine** keyed by the active conductor `Cond=`: `wire=`/
-//! `cncable=`/`tscable=`/`x=`/`h=`/`units=` all write the slot selected by the
-//! last `cond=`. The plural `wires=`/`cncables=`/`tscables=` forms write every
-//! slot at once. `spacing=` copies an entire `LineSpacing`'s coordinates in.
+//! catalog object (`WireData`/`CNData`/`TSData`), sized by `NConds`.
+//!
+//! Editing follows a conductor selection. Only `cond=N` with `N` in
+//! `1..=NConds` selects a conductor, in any order. `New`, `like=` (whether its
+//! source is found or not) and `nconds=` leave none selected, and a `cond=` out
+//! of range or whose value is not a number is an error that leaves none
+//! selected. `wire=`/`cncable=`/
+//! `tscable=`/`x=`/`h=` write the selected conductor and are refused with an
+//! error when none is selected. `units=` writes the selected conductor (if any)
+//! and the geometry's default unit, which starts as feet, survives the first
+//! `nconds=`, starts from feet again when `nconds=` re-allocates a geometry that
+//! has conductors, and is copied by `like=`. A word that is not one of the unit
+//! names is refused. A conductor selected
+//! without a unit of its own takes the default. Line breaks, `~` and separate
+//! `Edit` commands do not touch the selection. The plural forms leave the
+//! selection alone and refuse a list of the wrong length. `cncables=` and
+//! `tscables=` list one cable per phase, written into the phase positions. A
+//! `wires=` lists every conductor, or only the bare neutrals after the phases
+//! when the selected conductor is a cable or, with none selected, a phase
+//! conductor is one.
+//! `spacing=` copies an entire `LineSpacing`'s coordinates in, and a spacing
+//! with no length unit is refused and not kept. A conductor
+//! without a conductor object is one error at calculation, naming it. Pinned by
+//! `exec::tests::line_geometry_rules`.
 //!
 //! Referenced conductor/spacing objects are resolved and **snapshot-cloned** at
 //! edit time (the WP4.2 `FetchLineCode` pattern), so the geometry owns the data
 //! it needs. The held [`LineConstants`] engine (`FLineData`) is allocated/swapped
-//! by [`LineGeometryObj::change_line_constants_type`] to track the active
-//! conductor model; [`LineGeometryObj::update_line_geometry_data`] pushes every
+//! by [`LineGeometryObj::change_line_constants_type_at`] to track the conductor
+//! model; [`LineGeometryObj::update_line_geometry_data`] pushes every
 //! conductor's geometry into it and runs the Carson `Calc` (plus a Kron `Reduce`
 //! when `FReduce`), caching `Zmatrix`/`YCmatrix`. The [`LineGeometryObj::z_matrix`]
 //! / [`LineGeometryObj::yc_matrix`] accessors recompute on demand when the
 //! geometry is stale (`data_changed`); a `Line` consumes them in WP7.1 step 3.
 //!
 //! Split into submodules (no behavioral change): the struct, its constructor and
-//! the read-only accessors live here; the `Cond=`-keyed edit state machine is in
+//! the read-only accessors live here; the conductor-selection edit helpers are in
 //! [`edit`], the Carson `UpdateLineGeometryData`/matrix path in [`matrix`], and
 //! the `DssObject` property trait (including `PropertySideEffects`) in
 //! [`accessors`].
@@ -35,6 +54,8 @@ mod edit;
 mod matrix;
 mod save;
 
+pub(crate) use accessors::LENGTH_UNITS;
+
 use crate::elements::general::conductor_data::{
     CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME, ConductorObj,
 };
@@ -45,16 +66,18 @@ use crate::obj::base::DssObjData;
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::line_constants::LineConstants;
 
-/// Pascal `LineUnits.UNITS_FT` — the `ft` ordinal; the value `FLastUnit` resets
-/// to and the default coordinate unit.
+/// The `ft` code of `LineUnits`: the default unit a geometry starts with.
 const UNITS_FT: i32 = 5;
+
+/// A conductor slot whose unit was never written (it reads the default).
+const UNIT_UNSET: i32 = -1;
 
 define_properties! {
     class "LineGeometry", abbrev true, enums enums;
     1  NCONDS    => PropDef::integer("NConds")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
     2  NPHASES   => PropDef::integer("NPhases").flags(PropFlags::NON_NEGATIVE);
-    3  COND      => PropDef::integer("Cond");
+    3  COND      => PropDef::integer("Cond").flags(PropFlags::WHOLE_NUMBER);
     4  WIRE      => PropDef::object_ref_class("WireData", "Wire");
     5  X         => PropDef::double("X");
     6  H         => PropDef::double("H");
@@ -93,7 +116,7 @@ define_properties! {
 
 /// Pascal `ConductorChoice`: the per-conductor model a conductor uses. Selects
 /// the [`LineConstants`] engine kind allocated by
-/// [`LineGeometryObj::change_line_constants_type`] and routes the
+/// [`LineGeometryObj::change_line_constants_type_at`] and routes the
 /// `wires=`/`wire=` side effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConductorChoice {
@@ -103,26 +126,40 @@ enum ConductorChoice {
     TapeShield,
 }
 
-/// `TLineGeometryObj`. Pascal stores the per-conductor data as 1-based
-/// `pXxxArray`s of length `FNConds`; here they are plain 0-based `Vec`s (slot
-/// `i` is conductor `i+1`). `FActiveCond` stays 1-based (the property value).
+/// `TLineGeometryObj`. The per-conductor data are 0-based `Vec`s of length
+/// `NConds` (slot `i` is conductor `i+1`).
 #[derive(Clone)]
 pub struct LineGeometryObj {
     data: DssObjData,
     fnconds: i32,
     fnphases: i32,
-    factive_cond: i32,
+    /// The selected conductor (0-based), `None` when no conductor is selected.
+    selected: Option<usize>,
+    /// The last slot the plural `wires=`/`cncables=`/`tscables=` fill wrote in
+    /// this edit, taken by its side effect (`None` when the fill failed).
+    last_filled: Option<usize>,
+    /// What the calculation errors name when it is not this geometry: the
+    /// Line and the spacing a Line's own spacing and wires were built into.
+    subject: Option<String>,
     fphase_choice: Vec<ConductorChoice>,
     /// Snapshot-cloned conductor objects (`WireData`/`CNData`/`TSData`), one per
-    /// conductor (`None` = not yet set, Pascal NIL).
+    /// conductor (`None` = not set).
     fwiredata: Vec<Option<ConductorObj>>,
     fx: Vec<f64>,
     fy: Vec<f64>,
+    /// Each conductor's own `LineUnits` code, [`UNIT_UNSET`] when it has none.
     funits: Vec<i32>,
+    /// The default unit: feet for a new geometry, written by `units=` and
+    /// `spacing=`, copied by `like=`, feet again when `nconds=` re-allocates a
+    /// geometry that has conductors. The equivalent-spacing distances are read
+    /// in it.
     flast_unit: i32,
+    /// Set when `nconds=` stored its value, taken by its side effect: a
+    /// refused value re-allocates nothing.
+    nconds_stored: bool,
     freduce: bool,
     /// Pascal `FLineData`: the Carson engine, allocated/swapped by
-    /// [`Self::change_line_constants_type`] to match the active conductor model
+    /// [`Self::change_line_constants_type_at`] to match the conductor model
     /// and filled by [`Self::update_line_geometry_data`]. `None` until the first
     /// conductor exists (Pascal NIL when `FNConds = 0`).
     fline_data: Option<LineConstants>,
@@ -137,11 +174,11 @@ pub struct LineGeometryObj {
     fline_type: LineType,
     /// Snapshot-cloned `LineSpacing` (`spacing=`), or `None`.
     line_spacing_obj: Option<LineSpacingObj>,
-    // dss_capi 0.15.x equivalent-spacing state, copied from the referenced
-    // `LineSpacing` when it is not detailed. Default `equivalent_spacing=false`
-    // (the detailed per-conductor-coordinate model) preserves 0.14.5 numerics.
-    // The distances are stored in `flast_unit` and converted to meters in
-    // `update_line_geometry_data`.
+    // The equivalent-spacing state, copied from the referenced `LineSpacing`
+    // when it is not detailed and cleared when `nconds=` re-allocates the
+    // conductors. `equivalent_spacing=false` is the per-conductor-coordinate
+    // model. The distances are stored in `flast_unit` and converted to meters
+    // in `update_line_geometry_data`.
     equivalent_spacing: bool,
     eq_dist_ph_ph: f64,
     eq_dist_ph_n: f64,
@@ -157,7 +194,7 @@ impl std::fmt::Debug for LineGeometryObj {
             .field("name", &self.data.name())
             .field("nconds", &self.fnconds)
             .field("nphases", &self.fnphases)
-            .field("active_cond", &self.factive_cond)
+            .field("selected", &self.selected)
             .field("reduce", &self.freduce)
             .field("line_type", &self.fline_type)
             .finish_non_exhaustive()
@@ -166,20 +203,23 @@ impl std::fmt::Debug for LineGeometryObj {
 
 impl LineGeometryObj {
     pub fn new(name: impl Into<String>) -> Self {
-        // Pascal `TLineGeometryObj.Create`: zero conductors/phases (no
-        // allocation), ActiveCond=1, LastUnit=ft, LineType=oh, 1 amp rating
-        // equal to NormAmps (0).
+        // Zero conductors, three phases (the documented default, pinned by
+        // `exec::tests::line_geometry_rules::nphases_defaults_to_three`), no
+        // conductor selected, default unit ft, LineType=oh, one rating, not set.
         Self {
             data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             fnconds: 0,
-            fnphases: 0,
-            factive_cond: 1,
+            fnphases: 3,
+            selected: None,
+            last_filled: None,
+            subject: None,
             fphase_choice: Vec::new(),
             fwiredata: Vec::new(),
             fx: Vec::new(),
             fy: Vec::new(),
             funits: Vec::new(),
             flast_unit: UNITS_FT,
+            nconds_stored: false,
             freduce: false,
             fline_data: None,
             data_changed: true,
@@ -197,23 +237,51 @@ impl LineGeometryObj {
         }
     }
 
-    /// 0-based index of the active conductor, or `None` when `FActiveCond` is out
-    /// of `1..=FNConds` (e.g. `NConds=0`).
+    /// The selected conductor (0-based) while it is below `NConds`, else `None`.
     pub(super) fn active_index(&self) -> Option<usize> {
-        if self.factive_cond >= 1 && self.factive_cond <= self.fnconds {
-            Some((self.factive_cond - 1) as usize)
-        } else {
-            None
+        self.selected
+            .filter(|&a| a < self.fnconds.max(0) as usize && a < self.funits.len())
+    }
+
+    /// Name Line `line` and its spacing `spacing` in the calculation errors of
+    /// this geometry, built from that Line's spacing and wires.
+    pub fn name_errors_after_line(&mut self, line: &str, spacing: &str) {
+        self.subject = Some(format!("Line.{line} (spacing={spacing})"));
+    }
+
+    /// The object the calculation errors name.
+    fn error_subject(&self) -> String {
+        self.subject
+            .clone()
+            .unwrap_or_else(|| format!("LineGeometry.{}", self.data.name()))
+    }
+
+    /// Select no conductor: what a `New` of an existing geometry starts from.
+    pub(crate) fn deselect(&mut self) {
+        self.selected = None;
+    }
+
+    /// The unit of conductor `i` (0-based): its own, else the default.
+    pub fn conductor_unit(&self, i: usize) -> i32 {
+        match self.funits.get(i) {
+            Some(&u) if u != UNIT_UNSET => u,
+            _ => self.flast_unit,
         }
     }
 
-    /// Pascal `LineGeometryObj.Get_Nconds` (LineGeometry.pas:754): the
-    /// *effective* conductor count a consuming `Line` adopts as its phase count
-    /// — `FNPhases` when the geometry is Kron-reduced (the reduced matrices are
-    /// `FNPhases × FNPhases`), otherwise the full `FNConds`.
+    /// [`Self::conductor_unit`] of every conductor, in order.
+    pub fn conductor_units(&self) -> Vec<i32> {
+        (0..self.funits.len())
+            .map(|i| self.conductor_unit(i))
+            .collect()
+    }
+
+    /// The effective conductor count a consuming `Line` adopts as its phase
+    /// count: the phase positions when the geometry is Kron-reduced (the
+    /// reduced matrices have that order), otherwise the full `NConds`.
     pub fn nconds(&self) -> i32 {
         if self.freduce {
-            self.fnphases
+            self.phase_positions() as i32
         } else {
             self.fnconds
         }
@@ -259,24 +327,15 @@ impl LineGeometryObj {
         self.fnconds
     }
 
-    /// Pascal `Xcoord[i]` (`Get_FX`, LineGeometry.pas:161): per-conductor
-    /// horizontal coordinate (in each conductor's own `Units[i]`). 0-based slot
-    /// `i` is conductor `i+1`. Read-only accessor for WPG.18 Stage C.
+    /// Per-conductor horizontal coordinate, in [`Self::conductor_unit`]. 0-based
+    /// slot `i` is conductor `i+1`.
     pub fn fx(&self) -> &[f64] {
         &self.fx
     }
 
-    /// Pascal `Ycoord[i]` (`Get_FY`, LineGeometry.pas:162): per-conductor
-    /// vertical coordinate. Read-only accessor for WPG.18 Stage C.
+    /// Per-conductor vertical coordinate, in [`Self::conductor_unit`].
     pub fn fy(&self) -> &[f64] {
         &self.fy
-    }
-
-    /// Pascal `Units[i]` (`Get_FUnits`, LineGeometry.pas:163): per-conductor
-    /// `LineUnits` code for the `fx`/`fy` coordinate. Read-only accessor for
-    /// WPG.18 Stage C.
-    pub fn funits(&self) -> &[i32] {
-        &self.funits
     }
 
     /// Pascal `PhaseChoice[i] = Overhead` (`Get_PhaseChoice`,

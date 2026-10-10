@@ -41,11 +41,9 @@ impl LineGeometryObj {
         // count (`actualNConds`), and only the non-NIL wires are copied — into
         // CONTIGUOUS positions but with their ORIGINAL spacing coordinates
         // (`FX^[j] := Spc.Xcoord[i]`). `actualNPhases` counts the non-NIL wires
-        // whose ORIGINAL index is a phase position. (The pre-fix code sized to
-        // `Spc.NWires` and copied index-aligned, so a NIL slot reached the Carson
-        // calc and aborted "WireData is not correctly initialized".) For a list
-        // with no NIL this is byte-identical to the old path (`actualNConds ==
-        // NWires`, `j == i`).
+        // whose ORIGINAL index is a phase position, so no NIL slot reaches the
+        // Carson calc. For a list with no NIL, `actualNConds == NWires` and
+        // `j == i`.
         let nwires = spc.nwires().max(0) as usize;
         let spc_nphases = spc.nphases();
         let mut actual_nconds = 0i32;
@@ -79,7 +77,7 @@ impl LineGeometryObj {
                 ConductorKind::Wire => {}
             }
         }
-        self.change_line_constants_type(new_choice);
+        self.change_line_constants_type_at(Some(0), new_choice);
 
         // dss_capi 0.15.x: adopt the spacing's equivalent-spacing model. When
         // equivalent, the per-conductor coordinates are not read.
@@ -139,30 +137,29 @@ impl LineGeometryObj {
     /// the Carson `Calc` (and a Kron `Reduce` when `FReduce`). `earth_model` is
     /// Pascal's `DSS.ActiveEarthModel`, supplied by the solution.
     ///
-    /// Returns `Err` for the two Pascal abort paths: a NIL conductor slot
-    /// (`raise Exception`, "WireData is not correctly initialized") and a failed
-    /// geometry check (`ELineGeometryProblem` + `SolutionAbort`).
+    /// Returns `Err` for the two abort paths: conductors without a conductor
+    /// object (one message naming every one of them) and a failed geometry
+    /// check (conductors in the same place).
     pub fn update_line_geometry_data(&mut self, f: f64, earth_model: i32) -> Result<(), String> {
         let n = self.fnconds.max(0) as usize;
 
-        // Pascal reads each `FWireData[i]`'s fields directly; gather them first
-        // (immutable borrows) so the engine fill below can borrow `FLineData`.
-        let mut geoms: Vec<ConductorGeom> = Vec::with_capacity(n);
-        for i in 0..n {
-            let g = self
-                .fwiredata
-                .get(i)
-                .and_then(|o| o.as_ref())
-                .map(|o| o.geom())
-                .ok_or_else(|| {
-                    format!(
-                        "LineGeometry.{}: WireData is not correctly initialized. \
-                         Check the object definition.",
-                        self.data.name()
-                    )
-                })?;
-            geoms.push(g);
+        // Gather every conductor's data first (immutable borrows) so the engine
+        // fill below can borrow `FLineData`.
+        let geoms: Vec<Option<ConductorGeom>> = (0..n)
+            .map(|i| {
+                self.fwiredata
+                    .get(i)
+                    .and_then(|o| o.as_ref())
+                    .map(|o| o.geom())
+            })
+            .collect();
+        let missing: Vec<usize> = (0..n).filter(|&i| geoms[i].is_none()).collect();
+        if !missing.is_empty() {
+            return Err(missing_conductors_message(&self.error_subject(), &missing));
         }
+        let geoms: Vec<ConductorGeom> = geoms.into_iter().flatten().collect();
+        let units = self.conductor_units();
+        let phases = self.phase_positions();
 
         // `FNConds = 0` ⇒ no engine (Pascal's loop never runs, `FLineData` NIL).
         let Some(eng) = self.fline_data.as_mut() else {
@@ -186,10 +183,10 @@ impl LineGeometryObj {
         }
 
         for (i, g) in geoms.iter().enumerate() {
-            // Pascal skips SetX/SetY under equivalent spacing (coordinates unused).
+            // Equivalent spacing reads no coordinates.
             if !self.equivalent_spacing {
-                eng.set_x(i, self.funits[i], self.fx[i]);
-                eng.set_y(i, self.funits[i], self.fy[i]);
+                eng.set_x(i, units[i], self.fx[i]);
+                eng.set_y(i, units[i], self.fy[i]);
             }
             eng.set_radius(i, g.radius_units, g.radius);
             eng.set_capradius(i, g.radius_units, g.cap_radius);
@@ -245,9 +242,10 @@ impl LineGeometryObj {
             }
         }
 
-        // Pascal sets `FLineData.Nphases := FNphases` here, unclamped (the
-        // `nphases` side effect's `> FNConds` clamp is transient).
-        eng.set_nphases(self.fnphases.max(0) as usize);
+        // The engine's phase count is the number of phase positions, so a
+        // geometry with fewer conductors than phases computes them all as
+        // phases (pinned by `exec::tests::line_geometry_rules::nphases_defaults_to_three`).
+        eng.set_nphases(phases);
 
         // Before the calc, reject bad conductor definitions (Pascal raises
         // `ELineGeometryProblem` and sets `SolutionAbort`). Leave `data_changed`
@@ -256,7 +254,7 @@ impl LineGeometryObj {
         // port returns instead, so we must keep the geometry "dirty" or a later
         // rebuild would read the never-computed matrices and silently succeed).
         if let Some(msg) = eng.conductors_in_same_space() {
-            return Err(format!("Error in LineGeometry.{}: {msg}", self.data.name()));
+            return Err(format!("Error in {}: {msg}", self.error_subject()));
         }
         eng.calc(f, earth_model);
         if self.freduce {
@@ -279,10 +277,11 @@ impl LineGeometryObj {
         if self.data_changed {
             self.update_line_geometry_data(f, earth_model)?;
         }
+        let subject = self.error_subject();
         let eng = self
             .fline_data
             .as_mut()
-            .ok_or_else(|| format!("LineGeometry.{}: no conductors defined.", self.data.name()))?;
+            .ok_or_else(|| format!("{subject}: no conductors defined."))?;
         Ok(eng.z_matrix(f, length, units, earth_model))
     }
 
@@ -301,7 +300,7 @@ impl LineGeometryObj {
         let eng = self
             .fline_data
             .as_ref()
-            .ok_or_else(|| format!("LineGeometry.{}: no conductors defined.", self.data.name()))?;
+            .ok_or_else(|| format!("{}: no conductors defined.", self.error_subject()))?;
         Ok(eng.yc_matrix(length, units))
     }
 
@@ -346,6 +345,22 @@ impl LineGeometryObj {
             ld.set_rho_earth(value);
         }
     }
+}
+
+/// The one error for conductors without a conductor object: `missing` holds
+/// their 0-based slots, the message names them 1-based after `subject`.
+fn missing_conductors_message(subject: &str, missing: &[usize]) -> String {
+    let numbers: Vec<String> = missing.iter().map(|i| (i + 1).to_string()).collect();
+    let (noun, verb, list) = match numbers.split_last() {
+        Some((last, [])) => ("conductor", "has", last.clone()),
+        Some((last, rest)) => (
+            "conductors",
+            "have",
+            format!("{} and {last}", rest.join(", ")),
+        ),
+        None => ("conductor", "has", String::new()),
+    };
+    format!("{subject}: {noun} {list} {verb} no wire, cncable or tscable.")
 }
 
 /// `(NormAmps, EmergAmps)` of a conductor (Pascal `Wires[1].NormAmps/EmergAmps`),

@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_checkpoints import check_pin  # noqa: E402
+from port_help import PORT_HELP  # noqa: E402
 from r4133_help import R4133_HELP  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -141,6 +142,9 @@ def main() -> None:
     # instead of silently reverting it.
     catalog = dict(pairs)
     catalog.update(R4133_HELP)
+    # The engine's own help where the wheel's text contradicts a rule the
+    # engine enforces (`port_help.py`), replaced in place.
+    catalog.update(PORT_HELP)
     pairs = list(catalog.items())
 
     for k, v in pairs:
@@ -153,7 +157,7 @@ def main() -> None:
     for k, v in pairs:
         lines.append(f"    ({rust_str(k)}, {rust_str(v)}),\n")
     lines.append(FOOTER)
-    OUT_RS.write_text("".join(lines), newline="\n")
+    OUT_RS.write_text("".join(lines), encoding="utf-8", newline="\n")
     print(f"wrote {OUT_RS} ({OUT_RS.stat().st_size} bytes, {len(pairs)} entries)")
 
 

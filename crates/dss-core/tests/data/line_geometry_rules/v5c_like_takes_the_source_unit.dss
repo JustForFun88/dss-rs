@@ -1,0 +1,37 @@
+! A like= copy takes its source's default unit: conductor 3, which neither
+! source wrote, reads its x= and h= in metres in the copy of a source whose
+! units=m is the default (gm), and in feet in the copy of a source that wrote
+! no unit (gf). g, a geometry that already holds three conductors in feet,
+! takes base_m's default by like= too, so its conductor 3 written again reads
+! in metres. The oracles apply a ~ after like= to the source, so the decks fed
+! to them write conductor 3 of gm and gf by an Edit of its own.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.base_m nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28 units=m
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+New LineGeometry.base_ft nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+New LineGeometry.gm like=base_m
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+New LineGeometry.gf like=base_ft
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+New LineGeometry.g nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+Edit LineGeometry.g like=base_m
+Edit LineGeometry.g cond=3 wire=ACSR_556_5 x=4 h=28
+New Line.Lm bus1=src.1.2.3 bus2=bm.1.2.3 geometry=gm length=1 units=mi
+New Load.ldm bus1=bm phases=3 kv=12.47 kw=500 pf=0.95
+New Line.Lf bus1=src.1.2.3 bus2=bf.1.2.3 geometry=gf length=1 units=mi
+New Load.ldf bus1=bf phases=3 kv=12.47 kw=500 pf=0.95
+New Line.Lg bus1=src.1.2.3 bus2=bg.1.2.3 geometry=g length=1 units=mi
+New Load.ldg bus1=bg phases=3 kv=12.47 kw=500 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

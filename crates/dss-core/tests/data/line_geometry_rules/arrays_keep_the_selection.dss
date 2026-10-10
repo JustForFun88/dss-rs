@@ -1,0 +1,39 @@
+! spacing=, wires=, the buried-neutral wires= and conductors= leave the selection
+! as it was. The two Edit lines then place the conductors those forms leave
+! unplaced, and every geometry is solved on a Line of its own.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.sp nconds=4 nphases=3 x=[-4 0 4 0] h=[28 28 28 24] units=ft
+New LineGeometry.g nconds=4 nphases=3 spacing=sp wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+~ x=5
+New LineGeometry.buried nconds=3 nphases=2
+~ cond=1 cncable=250_1/3 x=-0.5 h=-4 units=ft
+~ cond=2 cncable=250_1/3 x=0.5 h=-4
+~ wires=[ACSR_4/0]
+~ x=0.6
+Edit LineGeometry.buried cond=3 x=1.5 h=-4
+New LineGeometry.gc nconds=4 nphases=3
+~ cond=1 x=-4 h=28
+~ cond=2 x=0 h=28
+~ cond=3 x=4 h=28
+~ cond=4 x=0 h=24
+~ cond=2
+~ conductors=[wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_4/0]
+~ x=-2
+New LineGeometry.gn nconds=4 nphases=3 conductors=[wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_4/0]
+~ x=1
+Edit LineGeometry.gn cond=1 x=-4 h=28 cond=2 x=0 h=28 cond=3 x=4 h=28 cond=4 x=0 h=24
+New Line.L bus1=src.1.2.3.0 bus2=b.1.2.3.0 geometry=g length=1 units=mi
+New Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Lb bus1=src.1.2.0 bus2=bb.1.2.0 geometry=buried length=1 units=mi
+New Load.lb bus1=bb.1.2 phases=1 kv=12.47 kw=100 pf=0.95
+New Line.Lc bus1=src.1.2.3.0 bus2=bc.1.2.3.0 geometry=gc length=1 units=mi
+New Load.lc bus1=bc phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Ln bus1=src.1.2.3.0 bus2=bn.1.2.3.0 geometry=gn length=1 units=mi
+New Load.ln bus1=bn phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve
