@@ -79,7 +79,9 @@
 //!   and the all-classes `save_writes_every_sizing_property_ahead_of_its_arrays`.
 //!   A LineGeometry or transformer line also closes on its active conductor or
 //!   winding when the override's table would leave the reload on another one
-//!   ([`restore_cursor`]).
+//!   ([`restore_cursor`]). A geometry with no conductor selected reloads with its
+//!   last written conductor selected, since the language has no way to select
+//!   none without an error.
 //!
 //! [`DssObjData::next_property_set`]: crate::obj::base::DssObjData::next_property_set
 //! [`ClassProps::get_value`]: crate::obj::props::ClassProps::get_value
@@ -473,8 +475,10 @@ fn save_order(cls: &ClassProps, obj: &dyn DssObject) -> Hoist {
 /// live cursor `k` is not where the reload leaves it: on the last
 /// ` <cursor>=` the class override wrote, or on `unwritten` when it wrote none
 /// (`None`: nothing to restore). `written` is where the override's tokens
-/// start in `out`. Pinned by
-/// `crates/dss-core/tests/save_roundtrip.rs::save_restores_the_active_linegeometry_conductor`
+/// start in `out`. A live cursor below 1 (a geometry with no conductor
+/// selected) writes nothing: ` Cond=0` would be an error on reload. Pinned by
+/// `crates/dss-core/tests/save_roundtrip.rs::save_restores_the_active_linegeometry_conductor`,
+/// `::save_reloads_a_geometry_with_no_selection_on_its_last_row`
 /// and `::save_restores_the_active_transformer_winding`.
 fn restore_cursor(
     out: &mut String,
@@ -502,7 +506,11 @@ fn restore_cursor(
         return;
     };
     let live = cx.cls.get_value(obj, prop, cx.enums);
-    if live.trim().parse::<i64>().is_ok_and(|k| k != reloaded) {
+    if live
+        .trim()
+        .parse::<i64>()
+        .is_ok_and(|k| k >= 1 && k != reloaded)
+    {
         out.push_str(&token);
         out.push_str(live.trim());
     }
@@ -585,7 +593,7 @@ pub fn write_dss_object(
         arena.get::<crate::elements::general::line_geometry::LineGeometryObj>(idx)
     {
         lg.save_write_body(out, cx);
-        restore_cursor(out, written, cx, lg, "Cond", Some(1));
+        restore_cursor(out, written, cx, lg, "Cond", Some(0));
     } else if let Some(ln) = arena.get::<crate::elements::pd::line::Line>(idx) {
         ln.save_write_body(out, cx);
     } else if let Some(xy) = arena.get::<crate::elements::general::xy_curve::XyCurveObj>(idx) {

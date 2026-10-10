@@ -1028,8 +1028,22 @@ impl Dss {
                 );
                 return false;
             }
-            // DSS_OBJECT path: duplicates become edits.
-            if !self.classes[ci].set_active(name) {
+            // DSS_OBJECT path: duplicates become edits. A LineGeometry edited
+            // that way (a second `New`, or a JSON record of an existing name)
+            // starts with no conductor selected. Pinned by
+            // `exec::tests::line_geometry_rules::variant_new_again_selects_nothing`
+            // and `json_record_of_an_existing_geometry_selects_nothing`.
+            if self.classes[ci].set_active(name) {
+                if let Some(idx) = self.classes[ci].active
+                    && let Some(g) = self.classes[ci]
+                        .arena
+                        .get_mut::<crate::elements::general::line_geometry::LineGeometryObj>(
+                        idx,
+                    )
+                {
+                    g.deselect();
+                }
+            } else {
                 let idx = self.classes[ci].arena.push_new(name);
                 let obj_name = self.classes[ci].arena.obj(idx).data().name().to_string();
                 self.classes[ci].name_to_idx.insert(obj_name, idx);
@@ -1641,6 +1655,15 @@ impl Dss {
                         props.edit_property(&mut active_arena[oi], idx, &param, &mut eng)
                     {
                         errors.push(e);
+                    }
+                    // A LineGeometry refusal concerns this value token: it is
+                    // logged here, in token order, rather than after the edit.
+                    // Pinned by `exec::tests::line_geometry_rules::refusals_are_logged_at_their_token`.
+                    if active_arena
+                        .get::<crate::elements::general::line_geometry::LineGeometryObj>(oi)
+                        .is_some()
+                    {
+                        errors.extend(active_arena[oi].data_mut().take_errors());
                     }
                     // P5b: every diagnostic this property edit produced — the
                     // bubbled conversion `Err` and any `DoSimpleMsg`-and-continue

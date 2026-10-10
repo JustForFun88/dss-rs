@@ -1,0 +1,68 @@
+! cncables= or tscables= lists one cable per phase, as their help says. With no
+! conductor selected, the wires= after it is the bare neutral, since the phases
+! hold cables, and so is a wires= after a conductors= list with cable phases
+! and after a like= copy of a cable fill (cn_like). Each twin writes the same
+! geometry one conductor at a time. With bare phases the wires= list is every
+! conductor, a cable outside the phases included (bare_all).
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.cn nconds=4 nphases=3 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ wires=[ACSR_4/0]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+New LineGeometry.cn_twin nconds=4 nphases=3 reduce=y
+~ cond=1 cncable=250_1/3 x=-0.5 h=-4
+~ cond=2 cncable=250_1/3 x=0 h=-4
+~ cond=3 cncable=250_1/3 x=0.5 h=-4
+~ cond=4 wire=ACSR_4/0 x=1 h=-4
+New LineGeometry.cw nconds=4 nphases=3 reduce=y
+~ conductors=[cndata.250_1/3 cndata.250_1/3 cndata.250_1/3 wiredata.ACSR_556_5]
+~ wires=[ACSR_4/0]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+New LineGeometry.ts nconds=4 nphases=3 reduce=y
+~ tscables=[1/0TS 1/0TS 1/0TS]
+~ wires=[ACSR_4/0]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+New LineGeometry.ts_twin nconds=4 nphases=3 reduce=y
+~ cond=1 tscable=1/0TS x=-0.5 h=-4
+~ cond=2 tscable=1/0TS x=0 h=-4
+~ cond=3 tscable=1/0TS x=0.5 h=-4
+~ cond=4 wire=ACSR_4/0 x=1 h=-4
+New LineGeometry.cn_src nconds=4 nphases=3 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+New LineGeometry.cn_like like=cn_src
+~ wires=[ACSR_4/0]
+New LineGeometry.bare_all nconds=4 nphases=3
+~ conductors=[wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_556_5 cndata.250_1/3]
+~ wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New Line.cn bus1=src.1.2.3 bus2=b_cn.1.2.3 geometry=cn length=1 units=mi
+New Load.cn bus1=b_cn phases=3 kv=12.47 kw=500 pf=0.95
+New Line.cn_twin bus1=src.1.2.3 bus2=b_cn_twin.1.2.3 geometry=cn_twin length=1 units=mi
+New Load.cn_twin bus1=b_cn_twin phases=3 kv=12.47 kw=500 pf=0.95
+New Line.cw bus1=src.1.2.3 bus2=b_cw.1.2.3 geometry=cw length=1 units=mi
+New Load.cw bus1=b_cw phases=3 kv=12.47 kw=500 pf=0.95
+New Line.ts bus1=src.1.2.3 bus2=b_ts.1.2.3 geometry=ts length=1 units=mi
+New Load.ts bus1=b_ts phases=3 kv=12.47 kw=500 pf=0.95
+New Line.ts_twin bus1=src.1.2.3 bus2=b_ts_twin.1.2.3 geometry=ts_twin length=1 units=mi
+New Load.ts_twin bus1=b_ts_twin phases=3 kv=12.47 kw=500 pf=0.95
+New Line.cn_like bus1=src.1.2.3 bus2=b_cn_like.1.2.3 geometry=cn_like length=1 units=mi
+New Load.cn_like bus1=b_cn_like phases=3 kv=12.47 kw=500 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

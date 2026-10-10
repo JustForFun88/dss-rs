@@ -1,0 +1,23 @@
+! Two geometries, each with a conductor never given a wire, on three Lines in
+! series: L1 on g2, L2 and L3 on g1, so the build order names g2 first and the
+! reverse order g1 first.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.g1 nconds=4 nphases=3 units=ft
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+~ cond=4 wire=ACSR_4/0 x=0 h=24
+New LineGeometry.g2 nconds=4 nphases=3 units=ft
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+~ cond=4 wire=ACSR_4/0 x=0 h=24
+New Line.L1 bus1=src.1.2.3.0 bus2=b.1.2.3.0 geometry=g2 length=1 units=mi
+New Line.L2 bus1=b.1.2.3.0 bus2=c.1.2.3.0 geometry=g1 length=1 units=mi
+New Line.L3 bus1=c.1.2.3.0 bus2=d.1.2.3.0 geometry=g1 length=1 units=mi
+New Load.ld bus1=d phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

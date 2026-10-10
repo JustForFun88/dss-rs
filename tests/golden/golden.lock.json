@@ -1100,7 +1100,7 @@
     },
     {
       "path": "tests/golden/json/schema_full_port.json",
-      "sha256": "510837c57c8ddcc1e528bd1f062600b7e6c68c0d1780ea5d01778bf4c380c58f",
+      "sha256": "51529bcd47a586df0ebb6e0d68327c88f2406df32e904bf24268ec2109417ec4",
       "anchor": "self",
       "reason": "born-self: the port's own DSS_ExtractSchema document, spelled in the fpjson/CRLF rendering the parity lane produces. Its external half is json/schema_full_oracle.json (capi_v0145, written by tools/golden/gen_schema.py on the pinned oracle); the divergence inventory json/schema_divergences.json between the two is hand-authored and engine-less (NON_ENGINE_RESIDUE). Regen today bypasses the rails via REGEN_SCHEMA_PORT (golden_schema.rs::full_document_matches_port_golden); G3.6 routes it through harness::snapshot_*.",
       "produced_by": "parity"

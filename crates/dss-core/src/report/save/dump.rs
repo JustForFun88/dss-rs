@@ -366,10 +366,10 @@ pub(crate) fn dump_generic(
 /// the class's leaf override if it has a Pascal one, else the generic base.
 /// `is_pc` selects the PCElement ordering for the generic path.
 ///
-/// Takes the object's `ClassArena` mutably because one override —
-/// `TLineGeometryObj` — walks its conductors by mutating `ActiveCond` (Pascal
-/// `ActiveCond := j; GetPropertyValue(3..7)`, `LineGeometry.pas:669`); the other
-/// overrides and the generic base read through a shared reborrow.
+/// Takes the object's `ClassArena` mutably because one override — the
+/// LineGeometry — walks its conductors by selecting each in turn and puts the
+/// selection back. The other overrides and the generic base read through a
+/// shared reborrow.
 pub(crate) fn dump_object(
     out: &mut String,
     cx: &DumpCtx,

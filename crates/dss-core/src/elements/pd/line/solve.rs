@@ -10,6 +10,7 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
+use crate::obj::base::DssObject;
 use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::support::line_constants::csqrt_fpc;
 use crate::support::line_units::{LineUnits, convert_line_units};
@@ -136,6 +137,7 @@ impl Line {
                 .line_spacing_obj
                 .as_ref()
                 .expect("make_z_from_spacing called without a spacing");
+            pgeo.name_errors_after_line(self.cd.obj.name(), spc.data().name());
             pgeo.load_spacing_and_wires(
                 spc,
                 &self.line_wire_data,
@@ -339,13 +341,13 @@ impl CktElement for Line {
                 self.make_z_from_spacing(sys.frequency)
             };
             if let Err(msg) = res {
-                // Pascal: the geometry getter raised `ELineGeometryProblem` and
-                // set `SolutionAbort`, so `CalcYPrim` exits without building YPrim.
-                // Record the message as a deferred error; the Y-build loop
-                // (`build_y_matrix`) drains it, surfaces it, and sets
-                // `solution_abort` — the faithful equivalent of the upstream
-                // `SolutionAbort` + `Exit`.
-                self.cd.obj.push_error(msg);
+                // The impedance cannot be built: no YPrim, and a message that
+                // the Y build (`build_y_matrix`) reports in the solve's one
+                // error. Pinned by
+                // `exec::tests::line_geometry_rules::a_y_build_abort_is_the_only_error_of_the_solve`.
+                self.cd
+                    .obj
+                    .push_error(crate::diag::DssDiagnostic::yprim_unbuilt(msg));
                 return;
             }
             // Pascal leaves `FYprimFreq` untouched in these branches (it is set

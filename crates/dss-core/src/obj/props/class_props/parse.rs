@@ -10,7 +10,7 @@ use crate::obj::props::setters::{
 };
 use crate::obj::props::{PropEngine, PropFlags, PropType};
 use crate::util::interpret_dbl_array;
-use dss_parser::ParserError;
+use dss_parser::{ParserError, val_i32};
 
 use super::ClassProps;
 
@@ -295,6 +295,13 @@ impl ClassProps {
                                 pd.name
                             ));
                         }
+                        // An object the element refuses is an error at this
+                        // token, and the element stays as it was.
+                        if let Some(o) = resolved.as_ref()
+                            && let Some(msg) = obj.refuse_object_ref(idx, o)
+                        {
+                            return Err(ParserError::new(msg));
+                        }
                         // The dump renders the resolved object's name (NIL → "").
                         let name = resolved.map(|o| o.name().to_string()).unwrap_or_default();
                         obj.set_object_ref(idx, name, resolved);
@@ -372,6 +379,16 @@ impl ClassProps {
                             return Ok(obj.get_i32(idx));
                         }
                     }
+                } else if pd.flags.contains(PropFlags::WHOLE_NUMBER) {
+                    // The number the text reads as, which the object may refuse.
+                    let number = match val_i32(value) {
+                        Some(v) => f64::from(v),
+                        None => get_double(eng, value)?,
+                    };
+                    if let Some(msg) = obj.refuse_integer(idx, value, number) {
+                        return Err(ParserError::new(msg));
+                    }
+                    get_integer(eng, value)?
                 } else {
                     get_integer(eng, value)?
                 };
@@ -386,9 +403,15 @@ impl ClassProps {
             PropType::MappedStringEnum | PropType::MappedIntEnum => {
                 let enum_id = pd.enum_id.expect("mapped enum property needs an enum");
                 let ord = if pd.ptype == PropType::MappedStringEnum {
-                    eng.enums
+                    let ord = eng
+                        .enums
                         .get(enum_id)
-                        .string_to_ordinal(&value.to_ascii_lowercase())?
+                        .string_to_ordinal(&value.to_ascii_lowercase())?;
+                    if let Some(msg) = obj.refuse_enum_text(idx, value, ord) {
+                        obj.data_mut().push_error(msg);
+                        return Ok(obj.get_i32(idx));
+                    }
+                    ord
                 } else {
                     let v = get_integer(eng, value)?;
                     if !eng.enums.get(enum_id).is_ordinal_valid(v) {

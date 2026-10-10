@@ -90,12 +90,13 @@ pub fn obj_to_json_data(
             }
 
             // Skip Like, substructure index, suppressed, or 0.15.x/r4133-deferred
-            // props.
+            // props, and a value the object's own import would refuse.
             if pd.ptype == PropType::MakeLike
                 || (pd.flags.suppresses_json_output() && !pd.flags.contains(PropFlags::REDUNDANT))
                 || pd.flags.hidden_from_full_enum()
                 || pd.flags.contains(PropFlags::ALT_INDEX)
                 || pd.flags.contains(PropFlags::INTEGER_STRUCT_INDEX)
+                || obj.json_omits(i_prop)
             {
                 continue;
             }
@@ -115,6 +116,7 @@ pub fn obj_to_json_data(
                 || pd.flags.hidden_from_full_enum()
                 || pd.flags.contains(PropFlags::ALT_INDEX)
                 || pd.flags.contains(PropFlags::INTEGER_STRUCT_INDEX)
+                || obj.json_omits(i_prop)
             {
                 continue;
             }

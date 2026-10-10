@@ -1,0 +1,36 @@
+! cncables= and tscables= list one cable per phase, whichever conductor is
+! selected, and a list of another length is refused. So is a wires= list of
+! another length than its positions: every conductor when the phases are bare,
+! a cable outside them included (bare), the neutral after cable phases
+! (two_wires), and none after cables on every conductor and on a geometry with
+! no conductors.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.four nconds=4 nphases=3 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3 250_1/3]
+New LineGeometry.four_ts nconds=4 nphases=3 reduce=y
+~ tscables=[1/0TS 1/0TS 1/0TS 1/0TS]
+New LineGeometry.two nconds=4 nphases=3
+~ cncables=[250_1/3 250_1/3]
+New LineGeometry.sel nconds=4 nphases=3
+~ cond=2
+~ cncables=[250_1/3 250_1/3 250_1/3]
+New LineGeometry.full nconds=3 nphases=3
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ wires=[ACSR_4/0]
+~ wires=[ACSR_4/0 ACSR_4/0]
+New LineGeometry.over nconds=2 nphases=5
+~ cncables=[250_1/3 250_1/3]
+~ wires=[ACSR_4/0]
+New LineGeometry.bare nconds=4 nphases=3
+~ conductors=[wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_556_5 cndata.250_1/3]
+~ wires=[ACSR_4/0]
+New LineGeometry.two_wires nconds=4 nphases=3
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ wires=[ACSR_4/0 ACSR_4/0]
+New LineGeometry.empty
+~ cncables=[250_1/3]
+~ wires=[ACSR_4/0]

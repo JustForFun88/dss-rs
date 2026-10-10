@@ -713,28 +713,26 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
         "replace with `f64::atan2`",
         Escape::UpgradeRung,
     ),
-    // Carson's earth-return depth. The pinned 0.14.5 oracle is *self-consistent*
-    // at 658.5 — `LineConstants.pas:424` and `Line.pas:520/704/959` both — so the
-    // port's "one engine, two values" state is not an upstream inconsistency we
-    // inherited: it is WP-U1.2 B2/D1 adopting r4133's corrected
-    // 658.8530451057239 for `LineConstants` alone. Finishing that job in `Line`
-    // is therefore the *next step of that rung*, not a lane flip, which is what
-    // the measurement says too: the flip fails `harmonics_doall` on
-    // `Line.l1 Yprim[0,0]` at 1.732e-6 against an allowed 1.002e-6 — an oracle
-    // golden gated in *both* lanes.
+    // Carson's earth-return depth. `Line`'s `kxg` takes 658.5 √(ρ/f) and the
+    // simple Carson model of `LineConstants` 658.8530451057239 √(ρ/f), both
+    // kept for the committed goldens, where Carson's series gives
+    // 658.8716 √(ρ/f). Setting `kxg` to the simple Carson value fails
+    // `harmonics_doall` on `Line.l1 Yprim[0,0]` at 1.732e-6 against an allowed
+    // 1.002e-6, an oracle golden gated in both lanes, so both move to the
+    // series value in an upgrade step of their own, not in a lane flip.
     (
         "crates/dss-core/src/elements/pd/line/mod.rs",
-        "658.5 (not 658.8530451057239)",
+        "the earth-return depth 658.5",
         Escape::UpgradeRung,
     ),
     (
         "crates/dss-core/src/elements/pd/line/code.rs",
-        "658.5 (not 658.8530451057239)",
+        "the earth-return depth 658.5",
         Escape::UpgradeRung,
     ),
     (
         "crates/dss-core/src/elements/pd/line/accessors.rs",
-        "658.5, NOT the 658.8530451057239",
+        "`kxg` takes the earth-return depth",
         Escape::UpgradeRung,
     ),
     // `2.3026` as ln(10). Not a slip at all: r4133 states it in the user-facing

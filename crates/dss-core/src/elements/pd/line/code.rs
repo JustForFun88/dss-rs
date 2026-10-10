@@ -99,12 +99,9 @@ impl Line {
         self.rg = code.rg();
         self.xg = code.xg();
         self.rho = code.rho();
-        // TODO(compat): 658.5 (not 658.8530451057239) — upstream `Line.pas`
-        // keeps 658.5 while `LineConstants` moved to the corrected De
-        // (UPGRADE_PLAN WP-U1.2 B2/D1). See the Kxg note in `accessors.rs` for
-        // the full argument and for the F.3x measurement that keeps this row
-        // out of the lane split (harmonics YPrim, 1.732e-6 vs an allowed
-        // 1.002e-6).
+        // TODO(compat): the earth-return depth 658.5 √(ρ/f), kept for the
+        // committed goldens, 5.6e-4 below Carson's series value 658.8716. See
+        // the `XG | RHO` arm of `Line::side_effects`.
         self.kxg = self.xg / (658.5 * (self.rho / self.cd.base_frequency).sqrt()).ln();
 
         self.line_code_units = LineUnits::from_code(code.units());
@@ -421,10 +418,10 @@ impl Line {
     /// `wires=` appends bare neutrals after the cable phases. `prop` is the display
     /// name for the no-spacing error (`CNCables`/`TSCables`).
     ///
-    /// A missing/too-short wire array is left partly NIL — the solve-time
-    /// `LoadSpacingAndWires` reports the "not correctly initialized" abort exactly
-    /// as upstream (probe-confirmed); but with *no* spacing at all (`FWireDataSize <
-    /// 1`) the generic fill raises Pascal error 402 up front, so reproduce that.
+    /// A missing/too-short wire array is left partly NIL: the solve-time
+    /// `load_spacing_and_wires` compacts the NIL slots out, and a NIL phase slot
+    /// then fails the Line's phase-count check. With *no* spacing at all
+    /// (`FWireDataSize < 1`) the generic fill raises error 402 up front.
     pub(super) fn set_cables(&mut self, prop: &str, refs: &[ObjectRefArrayItem<'_>]) {
         if self.line_wire_data.is_empty() {
             self.cd.obj.push_error(format!(

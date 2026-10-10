@@ -302,8 +302,10 @@ impl Dss {
     }
 
     /// Rebuild `self`'s whole Y (Pascal `BuildYMatrix(WHOLEMATRIX, TRUE)`, V
-    /// realloc): used for a child in `IndexBuses`.
-    fn rebuild_child_y(&mut self) {
+    /// realloc): used for a child in `IndexBuses`. The build's error goes to the
+    /// error log, pinned by
+    /// `exec::tests::line_geometry_rules::a_diakoptics_y_rebuild_logs_its_error`.
+    pub(in crate::exec) fn rebuild_child_y(&mut self) {
         let Dss {
             classes,
             circuit,
@@ -322,7 +324,9 @@ impl Dss {
             vars,
             errors,
         };
-        let _ = build_y_matrix(ckt, &mut env, BuildOption::WholeMatrix, true);
+        if let Err(e) = build_y_matrix(ckt, &mut env, BuildOption::WholeMatrix, true) {
+            env.errors.push(e);
+        }
     }
 
     /// One child A-Diakoptics stage (`SolveAD`, Solution.pas:1263), run in the

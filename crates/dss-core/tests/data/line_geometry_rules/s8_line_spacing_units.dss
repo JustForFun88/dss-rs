@@ -1,0 +1,26 @@
+! A Line's own spacing= reads its LineSpacing's unit: feet, metres and inches
+! are converted. A spacing with no length unit (units=none, or a word outside
+! the list such as feet) is refused and leaves the Line as it was: Ln and Lfe
+! stay default Lines like Ldef, and Lkeep keeps the spacing in feet it had.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.sp_ft nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft
+New LineSpacing.sp_m nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=m
+New LineSpacing.sp_in nconds=3 nphases=3 x=[-48 0 48] h=[336 336 336] units=in
+New LineSpacing.sp_none nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=none
+New LineSpacing.sp_feet nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=feet
+New Line.Lft bus1=src.1.2.3 bus2=bft.1.2.3 spacing=sp_ft wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Line.Lm bus1=src.1.2.3 bus2=bm.1.2.3 spacing=sp_m wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Line.Lin bus1=src.1.2.3 bus2=bin.1.2.3 spacing=sp_in wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Line.Ln bus1=src.1.2.3 bus2=bn.1.2.3 spacing=sp_none wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Line.Lfe bus1=src.1.2.3 bus2=bfe.1.2.3 spacing=sp_feet wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Line.Ldef bus1=src.1.2.3 bus2=bdef.1.2.3 length=1 units=mi
+New Line.Lkeep bus1=src.1.2.3 bus2=bkeep.1.2.3 spacing=sp_ft wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+Edit Line.Lkeep spacing=sp_feet
+New Load.ld bus1=bft phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

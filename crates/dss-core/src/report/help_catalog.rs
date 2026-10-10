@@ -3337,7 +3337,7 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "LineGeometry.cond",
-        "Set this = number of the conductor you wish to define. Default is 1.",
+        "Number of the conductor that the following wire, cncable, tscable, x, h and units apply to, 1 to NConds. No conductor is selected after New, like= or nconds=, so conductor data needs cond=N first.",
     ),
     (
         "LineGeometry.emergamps",

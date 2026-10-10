@@ -42,6 +42,9 @@ pub struct DssDiagnostic {
     pub src: Option<NamedSource<String>>,
     /// Optional "valid range is …"-style hint.
     pub help: Option<String>,
+    /// Set only by [`Self::yprim_unbuilt`]: the Y build returns this message as
+    /// its error instead of logging it.
+    pub(crate) yprim_unbuilt: bool,
 }
 
 impl DssDiagnostic {
@@ -55,6 +58,7 @@ impl DssDiagnostic {
             span: None,
             src: None,
             help: None,
+            yprim_unbuilt: false,
         }
     }
 
@@ -63,6 +67,16 @@ impl DssDiagnostic {
         Self {
             abort: true,
             ..Self::msg(message, code)
+        }
+    }
+
+    /// A Line whose impedance cannot be built from its geometry or spacing:
+    /// an abort that the Y build (`build_y_matrix`) returns in the solve's one
+    /// error, once per text and in build order.
+    pub(crate) fn yprim_unbuilt(message: impl Into<String>) -> Self {
+        Self {
+            yprim_unbuilt: true,
+            ..Self::abort(message, None)
         }
     }
 

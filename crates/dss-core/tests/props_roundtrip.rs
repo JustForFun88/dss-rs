@@ -194,7 +194,8 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 /// lane compares against the capture, because the engine's fix intentionally
 /// reports a different one. Both lanes still compare every *other* property of
 /// these scenarios — the exclusion is value-only and per-property, never
-/// per-scenario.
+/// per-scenario. Each excluded cell must still read a value other than the
+/// capture's: one that matches the capture again fails the gate as a stale row.
 ///
 /// * `isource_bus2_clobbered_by_bus1` / `Bus2` — the scenario exists to pin the
 ///   upstream quirk that `TIsourceObj.PropertySideEffects`
@@ -264,6 +265,26 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   property of the two scenarios still compares. Pinned by
 ///   `exec::tests::dynamic_eq_memory::an_omitted_nvariables_reads_back_twenty`,
 ///   which replays both scenarios.
+/// * the **20 LineGeometry selection cells** — `linegeometry_default` /
+///   `Cond`; `linegeometry_spacing` / `Cond`, `Wire`, `X`, `H`, `CNCable`,
+///   `TSCable`; `linegeometry_makelike` / the same six;
+///   `linegeometry_buried` / those six and `Units`. User decision 2026-10-04: only an
+///   explicit `cond=N` selects a conductor, so a new geometry, a `spacing=` +
+///   `wires=` geometry and a `like=` copy have none selected (`Cond` reads 0,
+///   `X` and `H` 0, the conductor names empty, `Units` the default, the
+///   source's for a `like=` copy), and the buried-neutral `wires=` leaves conductor 2, the
+///   one its `cond=2` selected. The capture reads the conductor the upstream
+///   cursor is left on (conductor 1 after `New` and `like=`, the last after
+///   `wires=`). No golden byte moves. Pinned by
+///   `dss_core::exec::tests::line_geometry_rules::readback_shows_no_conductor_after_new_like_and_arrays`,
+///   which writes the four scenarios and every value they read.
+/// * `linegeometry_default` / `NPhases` — a geometry that writes no `nphases`
+///   holds the documented default of 3 in both lanes (coordinator ruling
+///   2026-10-10). The pinned 0.14.5 oracle prints `0`, and so does r4133
+///   (epri-worker on the r4133 DLL, 2026-10-10), which then refuses a neutral
+///   `wires=` after three `cncables=` and fails the solve. Pinned by
+///   `dss_core::exec::tests::line_geometry_rules::nphases_defaults_to_three`
+///   and by the readback pin above.
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     ("isource_bus2_clobbered_by_bus1", "Bus2"),
     ("gictransformer_auto", "R2"),
@@ -293,6 +314,30 @@ const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     // The `NVariables` default of 20, where the 0.14.5 capture prints 0.
     ("dynamicexp_default", "NVariables"),
     ("dynamicexp_makelike", "NVariables"),
+    // User decision 2026-10-04: only `cond=N` selects a LineGeometry conductor
+    // (see the register above).
+    ("linegeometry_default", "Cond"),
+    // The documented `nphases` default of 3 (see the register above).
+    ("linegeometry_default", "NPhases"),
+    ("linegeometry_spacing", "Cond"),
+    ("linegeometry_spacing", "Wire"),
+    ("linegeometry_spacing", "X"),
+    ("linegeometry_spacing", "H"),
+    ("linegeometry_spacing", "CNCable"),
+    ("linegeometry_spacing", "TSCable"),
+    ("linegeometry_makelike", "Cond"),
+    ("linegeometry_makelike", "Wire"),
+    ("linegeometry_makelike", "X"),
+    ("linegeometry_makelike", "H"),
+    ("linegeometry_makelike", "CNCable"),
+    ("linegeometry_makelike", "TSCable"),
+    ("linegeometry_buried", "Cond"),
+    ("linegeometry_buried", "Wire"),
+    ("linegeometry_buried", "X"),
+    ("linegeometry_buried", "H"),
+    ("linegeometry_buried", "Units"),
+    ("linegeometry_buried", "CNCable"),
+    ("linegeometry_buried", "TSCable"),
 ];
 
 /// An **oracle-bug** exclusion, as `(class, property)` pairs, applied in **both
@@ -395,6 +440,18 @@ fn assert_shape_matches(actual: &str, expected: &str, ctx: &str) {
     );
 }
 
+/// Whether `actual` passes [`assert_value_matches`] against `expected`.
+fn value_matches(actual: &str, expected: &str) -> bool {
+    let (askel, anums) = numeric_skeleton(actual);
+    let (eskel, enums) = numeric_skeleton(expected);
+    askel == eskel
+        && anums.len() == enums.len()
+        && anums
+            .iter()
+            .zip(&enums)
+            .all(|(a, e)| (a - e).abs() <= 1e-12 + 1e-9 * e.abs())
+}
+
 fn assert_value_matches(actual: &str, expected: &str, ctx: &str) {
     assert_shape_matches(actual, expected, ctx);
     let (_, anums) = numeric_skeleton(actual);
@@ -491,18 +548,27 @@ fn props_roundtrip_matches_oracle() {
             // the five properties r4133 computes live (IndMach012 `PF`, the four
             // StorageController fleet aggregates), which the pinned 0.14.5 oracle
             // short-circuits to `""`, so both drop the compare on those 21 cells.
-            // Both lanes also default `DynamicExp.NVariables` to 20 where the
-            // capture prints 0. See the register above for every row.
+            // Both lanes also default `DynamicExp.NVariables` to 20 and
+            // `LineGeometry.NPhases` to 3 where the capture prints 0, and read
+            // the LineGeometry conductor selection the user decision of
+            // 2026-10-04 sets, which the capture reads off the upstream cursor
+            // (20 more cells). See the register above for every row.
+            dss.command(&format!("? {}.{}", sc.target, prop));
+            let actual = dss.result().to_string();
+            let ctx = format!("scenario {} property {prop}", sc.name);
             if LANE_SKIP_SCENARIO_PROPS
                 .iter()
                 .any(|(s, p)| *s == sc.name && p.eq_ignore_ascii_case(prop))
             {
+                // An excluded cell that reads the captured value again has
+                // lost its divergence, and its row is stale.
+                assert!(
+                    !value_matches(&actual, expected),
+                    "stale lane exclusion: {ctx} reads {actual:?}, the captured value"
+                );
                 lane_skips += 1;
                 continue;
             }
-            dss.command(&format!("? {}.{}", sc.target, prop));
-            let actual = dss.result().to_string();
-            let ctx = format!("scenario {} property {prop}", sc.name);
             let target_class = sc.target.split('.').next().unwrap_or(&sc.target);
             if LANE_SKIP_PROP_VALUES
                 .iter()

@@ -652,7 +652,16 @@ fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
 /// is removed as a contiguous `[WindGen]`→next-`[` block. WindGen's command
 /// surface is gated against `capi015` live + the props round-trip, not this
 /// 0.14.5 golden.
-fn run_deck_dump_exact_block_masked(stem: &str, block_headers: &[&str]) {
+///
+/// `line_exclusions` are `(section, line prefix)` pairs: the one line of that
+/// `[section]` starting with the prefix is dropped from both the golden and the
+/// Rust dump (each side must hold it exactly once), for a help line the engine
+/// words differently and pins in its own test.
+fn run_deck_dump_exact_block_masked(
+    stem: &str,
+    block_headers: &[&str],
+    line_exclusions: &[(&str, &str)],
+) {
     let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
@@ -720,6 +729,32 @@ fn run_deck_dump_exact_block_masked(stem: &str, block_headers: &[&str]) {
             out.push('\n');
         }
     }
+
+    let drop_excluded = |text: &str, side: &str| {
+        let mut section = "";
+        let mut kept = String::with_capacity(text.len());
+        let mut dropped = vec![0usize; line_exclusions.len()];
+        for ln in text.split_inclusive('\n') {
+            let bare = ln.trim_end();
+            if bare.starts_with('[') {
+                section = bare;
+            }
+            match line_exclusions
+                .iter()
+                .position(|(s, p)| section == *s && bare.starts_with(p))
+            {
+                Some(k) => dropped[k] += 1,
+                None => kept.push_str(ln),
+            }
+        }
+        assert!(
+            dropped.iter().all(|&d| d == 1),
+            "{stem} {side}: each excluded line once, dropped {dropped:?} of {line_exclusions:?}"
+        );
+        kept
+    };
+    let oracle = drop_excluded(&oracle, "golden");
+    let out = drop_excluded(&out, "rust");
     lane::compare_report(&oracle, &out, &dump_script_policy(), stem);
     std::fs::remove_dir_all(&scratch).ok();
 }
@@ -6584,7 +6619,65 @@ fn dump3_commands_matches_oracle() {
     // stated in the golden lock's reason for this file —
     // `golden_lock.rs::CAPI_V0145_OVERLAYS` (the row stays `capi_v0145`: every
     // other block is the pinned-oracle capture).
-    run_deck_dump_exact_block_masked("dump3_commands", &["[WindGen]"]);
+    //
+    // The `[LineGeometry]` `Cond` help line states the engine's conductor
+    // selection rule instead of the golden's "Default is 1.", pinned by
+    // `cond_help_states_rule_2`.
+    run_deck_dump_exact_block_masked(
+        "dump3_commands",
+        &["[WindGen]"],
+        &[("[LineGeometry]", LINEGEOMETRY_COND_HELP_PREFIX)],
+    );
+}
+
+/// The start of the `[LineGeometry]` `Cond` line of `Dump commands`.
+const LINEGEOMETRY_COND_HELP_PREFIX: &str = "3, \"Cond\", ";
+
+/// The `[LineGeometry]` `Cond` line of `Dump commands` states the rule the
+/// engine enforces: only `cond=N` selects a conductor, and none is selected
+/// after `New`, `like=` or `nconds=`. It never says "Default is 1".
+#[test]
+fn cond_help_states_rule_2() {
+    let dir = reports_dir();
+    let meta: DeckMeta = {
+        let p = dir.join("dump3_commands.meta.json");
+        let text =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
+    };
+    let scratch = scratch_dir("dump3_commands_cond_help");
+    let mut dss = Dss::new();
+    dss.command("clear");
+    for c in &meta.deck {
+        dss.command(c);
+    }
+    dss.command(&format!("set datapath=\"{}\"", scratch.display()));
+    dss.command(&format!("dump {}", meta.report));
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let produced = dss.last_result_file();
+    let rust = std::fs::read_to_string(produced)
+        .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
+    std::fs::remove_dir_all(&scratch).ok();
+
+    let mut section = "";
+    let lines: Vec<&str> = rust
+        .lines()
+        .filter(|ln| {
+            if ln.starts_with('[') {
+                section = ln.trim();
+            }
+            section == "[LineGeometry]" && ln.starts_with(LINEGEOMETRY_COND_HELP_PREFIX)
+        })
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "3, \"Cond\", \"Number of the conductor that the following wire, cncable, tscable, \
+             x, h and units apply to, 1 to NConds. No conductor is selected after New, like= or \
+             nconds=, so conductor data needs cond=N first.\""
+        ]
+    );
+    assert!(!lines[0].contains("Default is 1"));
 }
 
 /// `Dump alloc` — `DumpAllocationFactors`: `ConnectedkVA`-spec loads render

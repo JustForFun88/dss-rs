@@ -53,8 +53,10 @@ impl Dss {
     }
 
     /// Rebuild the active circuit's whole Y matrix (Pascal
-    /// `Ymatrix.BuildYMatrix(WHOLEMATRIX, FALSE, ActorID)`), no V realloc.
-    fn ad_build_y(&mut self) {
+    /// `Ymatrix.BuildYMatrix(WHOLEMATRIX, FALSE, ActorID)`), no V realloc. The
+    /// build's error goes to the error log, pinned by
+    /// `exec::tests::line_geometry_rules::a_diakoptics_y_rebuild_logs_its_error`.
+    pub(in crate::exec) fn ad_build_y(&mut self) {
         let Dss {
             classes,
             circuit,
@@ -73,7 +75,9 @@ impl Dss {
             vars,
             errors,
         };
-        let _ = build_y_matrix(ckt, &mut env, BuildOption::WholeMatrix, false);
+        if let Err(e) = build_y_matrix(ckt, &mut env, BuildOption::WholeMatrix, false) {
+            env.errors.push(e);
+        }
     }
 
     /// Enable/disable a circuit element by `Class.Name` on `self` (direct field

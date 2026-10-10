@@ -1952,7 +1952,8 @@ fn write_cn_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
 
 /// Pascal LineGeometry catalog sweep (`ExportCIMXML.pas:4575-4599`): one
 /// `WireSpacingInfo` + a `WirePosition` per conductor. `isCable` reads the first
-/// conductor's `PhaseChoice`. Coordinates are per-conductor `Units[i]`.
+/// conductor's `PhaseChoice`. Each coordinate is converted from its conductor's
+/// unit, its own or the geometry's default.
 fn write_line_geometry_catalog(
     buf: &mut writer::Writer,
     classes: &mut [DssClass],
@@ -1973,7 +1974,7 @@ fn write_line_geometry_catalog(
                 g.conductor_is_overhead(1),
                 g.fx().to_vec(),
                 g.fy().to_vec(),
-                g.funits().to_vec(),
+                g.conductor_units(),
             )
         };
         writer::start_instance(buf, ProfileChoice::Cat, "WireSpacingInfo", uuid, &name);

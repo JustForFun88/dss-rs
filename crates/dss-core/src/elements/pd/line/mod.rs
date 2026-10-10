@@ -476,12 +476,9 @@ impl Line {
             cap_specified: false,
             rg: 0.01805, // ohms per 1000 ft
             xg,
-            // TODO(compat): 658.5 (not 658.8530451057239) — upstream `Line.pas`
-            // keeps 658.5 for Kxg while `LineConstants` moved to the corrected
-            // De (UPGRADE_PLAN WP-U1.2 B2/D1). See `accessors.rs` for the full
-            // argument and for the F.3x measurement that keeps this row out of
-            // the lane split (harmonics YPrim, 1.732e-6 vs an allowed
-            // 1.002e-6).
+            // TODO(compat): the earth-return depth 658.5 √(ρ/f), kept for the
+            // committed goldens, 5.6e-4 below Carson's series value 658.8716.
+            // See the `XG | RHO` arm of `Line::side_effects`.
             kxg: xg / (658.5 * (rho / base_freq).sqrt()).ln(),
             rho,
             earth_model: 3, // DSS.DefaultEarthModel = DERI

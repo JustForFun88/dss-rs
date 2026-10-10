@@ -4109,3 +4109,451 @@ over its normal rating. Off the path, still stamped as
 a tiny conductance in silence: a
 Z1 Reactor with a zero sequence impedance, and a series matrix reactor in a GIC
 solve, which stamps `rmatrix` alone, when that matrix does not invert.
+
+## LineGeometry: only `cond=` selects a conductor, conductor data without one is refused, no unit is read as metres — user decision 2026-10-04
+
+**Observable.** A LineGeometry reads its property stream by eight rules. Only
+`cond=N` with `N` in `1..=NConds` selects a conductor, in any order. `New` (a
+second `New` of an existing geometry included), `like=` (one whose source does
+not exist included) and `nconds=` leave none selected, and `wires=`, `cncables=`, `tscables=`, `conductors=` and `spacing=`
+leave the selection as it was. `cncables=` and `tscables=` list one cable per
+phase, written into the phase positions whichever conductor is selected, as
+their help says: "All must be previously defined, and match "nphases" for this
+geometry. You can later define "nconds-nphases" wires for bare neutral
+conductors." With no conductor selected, a `wires=` after cables in the phase
+positions lists the `nconds - nphases` bare neutrals. A cable or wire list of
+another length is refused and fills nothing, `LineGeometry.four: Unexpected
+number (4) of objects; expected 3 objects.`, and a list with no position to
+fill says why, `expected 0 objects: the phases hold cables and no conductor is
+a neutral.` or `expected 0 objects: the geometry has no conductors. Set NConds
+first.` `wire=`, `cncable=`, `tscable=`, `x=` and `h=`
+with no conductor selected are refused one by one, `LineGeometry.g.X: conductor
+data without cond=. No conductor is selected, so the value is not applied.
+Select one with cond=N first.`, and store nothing. An out-of-range `cond=` is
+error 10102, `LineGeometry.g.Cond: cond=11 is out of range, the geometry has 4
+conductors. No conductor is selected.` A `cond=` whose value is a fraction or
+a whole number past the integer range is refused the same way, naming the
+value as written, `LineGeometry.g.Cond: cond=1.5 is not a conductor number, the
+geometry has 4 conductors. No conductor is selected.` (`cond=1e10 is out of
+range`), and a `cond=2.0` selects conductor 2. A `cond=` whose value is not a
+number is the parser's conversion error, `Invalid inline math entry: "abc"`,
+and leaves no conductor selected either, so the data after it is refused until
+the next `cond=`. `nphases` defaults to 3, as the documentation says, so
+`nconds=4` with three `cncables=` and no `nphases=` fills the three phase
+positions, and a geometry with fewer conductors than phases computes all of
+them as phases. An explicit `nphases=0` leaves no phase position, so a cable
+list there is refused, `LineGeometry.cn0: Unexpected number (3) of objects;
+expected 0 objects: the geometry has no phases.` `units=` writes the selected conductor, if any, and the default unit,
+which starts as feet, survives the first `nconds=` of a new geometry, starts
+from feet again when `nconds=` re-allocates a geometry that has conductors, and
+is copied by `like=`. A conductor selected without a
+unit of its own takes the default. `units=` reads `mi`, `kft`, `km`, `m`, `ft`,
+`in`, `cm`, `mm`, `meter` and `miles`, in any case, and a word no longer than
+one of these whose first letters single it out (`metre` reads as m).
+`units=none` and every other word, `feet`, `meters` and `inches` among them,
+are refused, naming the word as written,
+`LineGeometry.g.Units: "feet" is not one of the length units mi, kft, km, m,
+ft, in, cm, mm.` A `spacing=` whose LineSpacing has no length unit is refused
+and not kept, `LineGeometry.g.Spacing: LineSpacing.sp has no length unit, so
+nothing is copied. Give the spacing one of mi, kft, km, m, ft, in, cm, mm.` A
+Line's own `spacing=` reads the spacing's unit the same way: a spacing in a
+length unit is converted, and one with no length unit is one error naming the
+Line, the spacing and the unit, `Line.ln.Spacing: LineSpacing.sp_none has no
+length unit (units=none), so the Line is left as it was. Give the spacing one
+of mi, kft, km, m, ft, in, cm, mm.`, after which the Line keeps what it had
+and its `wires=` has no spacing to fill. A
+refused `nconds=` (0 or negative) leaves the conductors and the selection as
+they were. An accepted `nconds=` also drops the equivalent spacing a
+`spacing=` copied, so a redefinition places its conductors only by what is
+written after it, and one left with no conductor positions fails at
+calculation, `Error in LineGeometry.gr: Conductor 1 height must be  > 0.`
+The refusals are logged at their token, in token order. A conductor without a wire, cncable or
+tscable is one error at the first calculation, `LineGeometry.g: conductor 2 has
+no wire, cncable or tscable.`, reported once however many Lines use the
+geometry and wrapped by the command (`Error Encountered in CalcVoltageBases:`,
+482 `Error Encountered in Solve:`), with no singular-matrix error after it.
+Several broken geometries are named in that one message, in the order of
+their Lines. A Line built from its own `spacing=` and wires names itself and
+the spacing, `Error in Line.l1 (spacing=bad): Conductors 1 and 2 occupy the
+same space.`, where both oracles name a `LineGeometry.l1` the deck never
+defines (measured 2026-10-10).
+With no conductor selected `? Cond` reads 0, `X` and `H` 0, `Wire`, `CNCable`
+and `TSCable` empty and `Units` the default. Save, the dump and the CIM export
+read every conductor's own unit or the default, never `none`. `Dump` leaves the
+selection where it was. Save writes `NConds=` ahead of the conductor table, and
+neither Save nor the JSON export writes `NConds` for a geometry that has no
+conductors, so a refused `nconds=` leaves no trace. The
+JSON export of a geometry with no conductor selected writes no `Cond`, `Wire`,
+`X`, `H`, `CNCable` or `TSCable`, the values its own import would refuse.
+The `cond` help reads `Number of the conductor that the following wire,
+cncable, tscable, x, h and units apply to, 1 to NConds. No conductor is selected
+after New, like= or nconds=, so conductor data needs cond=N first.`
+
+**Measured 2026-10-04** with the epri-worker on the r4133 DLL and the pinned
+dss-python 0.15.7, on the committed decks of
+`crates/dss-core/tests/data/line_geometry_rules/` fed line by line, the stored
+conductors read from each oracle's `Save circuit`:
+
+- B2 `units=m cond=2 … units=ft cond=4`: r4133 stores m m ft mm (the New line's
+  mm lands on conductor 4), dss_capi m m ft ft. The port: m m ft ft.
+- V3b, B2 written as separate `Edit` commands with `units=m` and `units=ft`
+  each a command of its own (measured 2026-10-09): each engine stores what it
+  stores for B2, r4133 m m ft mm (X43 0.5575003 Ω/mi), dss_capi m m ft ft
+  (X43 0.7523922), the port m m ft ft (X43 0.7524573).
+- D `units=ft`, then `cond=3 … units=m`, then `cond=1`, `cond=2`: dss_capi
+  stores ft m m (X21 0.458037 Ω/mi), r4133 m m m. The port: m m m, X21 0.6503451.
+- J08 `units=m` on the New line, then `cond=1 … units=ft`: r4133 stores ft ft m,
+  dss_capi ft ft ft. The port: ft ft ft.
+- J, conductor 1 selected again by `cond=1 x=-5` after conductor 2's `units=m`
+  became the default (measured 2026-10-05): both oracles keep conductor 1 in
+  feet, ft m m (X21 r4133 0.4579688 Ω/mi, dss_capi 0.4579038). The port: ft m
+  m, X21 0.4579689.
+- E `cond=11` on four conductors, followed by `wire= x=99 h=77`: both oracles
+  move conductor 1 to (99, 77) (X21 0.3918529), and dss_capi alone reports
+  `(#2020031) LineGeometry.g.Cond: Invalid value (11).` The port refuses the
+  four properties and keeps conductor 1 at (-4, 28).
+- F, conductor 2 never given a wire: r4133 raises 303 `Access violation` on
+  `CalcVoltageBases` and 482 `Access violation` on `Solve`, and its Save writes
+  conductor 2 with `units=none`. dss_capi raises 303 and 482 `WireData is not
+  correctly initialized`, and its process dies when the LineGeometries
+  interface reads that geometry's matrix.
+- F3, two geometries each with a conductor never given a wire, `g2` on Line
+  L1 and `g1` on L2 and L3 (measured 2026-10-10): r4133 raises 303 `Access
+  violation` on `CalcVoltageBases` and 482 on `Solve`, naming neither geometry.
+  dss_capi names `g2` alone, 303 and 482 `LineGeometry.g2: WireData is not
+  correctly initialized.` The port reports one message per solve, `g2`'s
+  conductor 1 and then `g1`'s conductor 2, in the order of the Lines.
+- G and G2, conductor data on the New line before any `cond=`: r4133 stores it
+  on conductor 4, the cursor `nconds=` left there, overwritten by `cond=4`, so
+  conductor 1 has no wire, and raises 303 and 482 `Access violation`. dss_capi
+  stores it on conductor 1 and solves, in feet for G and with `units=none`,
+  read as metres, for G2 (X21 0.4557653).
+- H, one conductor written without `cond=`: both oracles solve, and both Saves
+  write no conductor row, so the saved deck does not reload the geometry. Its
+  unit reads `none` on r4133 and the height is read as 28 m: C11 10.5736 nF/mi
+  on both oracles, as with `units=m`, where `units=ft` gives 12.29941
+  (measured 2026-10-05).
+- V5 `like=base` followed by `~ x=-6`: both oracles apply `x=-6` to `base`'s
+  conductor 4, since the `like=` lookup leaves `base` the active object. With a
+  `? LineGeometry.g.cond` between the two lines, dss_capi moves conductor 1 of
+  `g` and r4133 its neutral (conductor 4).
+- V5b `cond=2`, then `like=nosuchgeom`, then `~ x=9`: both oracles report the
+  missing source (r4133 102, dss_capi 383), keep conductor 2 selected and move
+  it to x=9 (X21 r4133 0.6514911 Ω/mi, dss_capi 0.6514261). The port refuses
+  `x=9` and keeps X21 0.7945111.
+- V5c, `like=` copies whose conductor 3 neither source wrote, each written by
+  an `Edit` of its own, since both oracles apply a `~` after `like=` to the
+  source (measured 2026-10-10 with the epri-worker on the r4133 DLL and the
+  pinned dss-python): r4133 stores `gm` (source default m) as m m m (X32
+  0.6503451 Ω/mi) and `gf` as ft ft ft (0.7945111), as the port does.
+  dss_capi stores `gm` as m m ft (X32 0.458037). A source whose default went
+  back to ft by `units=ft` on conductor 2 gives m ft ft on r4133 and the port
+  (X21 0.4558303). `Edit LineGeometry.g like=base_m` on a geometry `g` that
+  holds three conductors in feet, then conductor 3 written again: r4133 and
+  the port store m m m (X32 0.6503451), dss_capi m m ft (X32 0.458037). r4133
+  also raises 303 on the `like=` line when the source has a conductor without
+  data, and dss_capi raises 303 `WireData is not correctly initialized`. The
+  port raises nothing there.
+- N1, a second `New LineGeometry.g x=5`: both oracles move conductor 4 to x=5.
+- N2, `cond=2`, then `nconds=4` on a `~` line and as an `Edit`, then `x=5`
+  (measured 2026-10-09): neither oracle raises an error. r4133 leaves the
+  cursor on conductor 4 and dss_capi on conductor 1, each moves that conductor
+  to x=5, and the deck writes it again, so both solve as the port does (X21
+  r4133 0.7945111 Ω/mi, dss_capi 0.7944461). The port refuses `x=5`.
+- The arrays deck's `gc`, `cond=2`, then `conductors=[…]`, then `x=-2`
+  (measured 2026-10-05): r4133 moves conductor 2, as the port does (X21
+  0.8786187 Ω/mi). dss_capi has no `conductors=` (#110 unknown parameter) and
+  raises 303 and 482 `WireData is not correctly initialized`.
+- R6 `cond=1` before `nconds=`: r4133 raises 10102, dss_capi an access
+  violation (303) that breaks every later edit of the geometry. R8 `units=m`
+  before `nconds=`: both raise 303 `Access violation`.
+- R6b, `cond=1` ahead of `nconds=3` on a line that then sets `spacing=` and
+  `wires=` (measured 2026-10-09): r4133 raises 10102, reads the rest of the
+  line and solves as the port does (ft ft ft, X21 0.7945111 Ω/mi), and its
+  Save writes the conductor rows ahead of `nconds=3`. Compiling that Save
+  raises 303 `Access violation` on its first row and stops: the geometry
+  reloads with `NConds` 0 and no wires, and the Line is gone (245 `Object "L"
+  not found`, measured 2026-10-10). dss_capi raises 303
+  `Access violation` on that line, refuses the Line on the geometry (749
+  `Invalid number of terminals (0)`) and raises 303 and 482 at the solve.
+- V8, three cables by `cncables=` or `tscables=` on `nconds=4 nphases=3`, then
+  `wires=[ACSR_4/0]` with no conductor selected (measured 2026-10-10, the form
+  the help describes): r4133 reads the wire as the bare neutral, so `cn` and
+  `ts` read like their twins written one conductor at a time (`cn` X11
+  0.4645189, X21 0.05176044, X31 -0.01129069, X33 0.4130122 Ω/mi, `ts` X11
+  0.8668886), as in the port. dss_capi sets `NPhases` to 4 on the cable list,
+  refuses the `wires=` (18102 `Unexpected number (1) of objects; expected 0
+  objects.`), raises 303 `Access violation` on a readback of the geometry and
+  stops `CalcVoltageBases` with `WireData is not correctly initialized`. `cw`,
+  the same cables through `conductors=[cndata.… wiredata.…]`: r4133 raises 303
+  `Access violation` on that line, 10103 on the `wires=` after it and 303 and
+  482 at the solve, and dss_capi has no `conductors=` (#110). The port reads
+  `cw` like `cn`. `cn_like`, a `like=` copy of the three cables and their
+  positions, then `wires=[ACSR_4/0]`: r4133 raises 303 on the `like=` line,
+  applies the `wires=` to the source and fails `CalcVoltageBases` and `Solve`
+  with 303 and 482 `Invalid class typecast`. dss_capi raises 303 `Invalid type
+  cast` on the `like=` line and refuses the `wires=` on the source (18102
+  `expected 4 objects`). The port reads `cn_like` like `cn_twin`. `bare_all`,
+  bare phases and a CN cable last through `conductors=`, then four wires: r4133
+  stores the four wires with no message, as the port does, and dss_capi has no
+  `conductors=` and stores them too.
+- V8b, cable and wire lists of another length (measured 2026-10-10). Four
+  cables on three phases: r4133 drops the fourth name with no message, and
+  dss_capi stores all four and sets `NPhases` to 4 (measured 2026-10-09 with
+  `wires=[ACSR_4/0]` after it: r4133 reads the wire as the neutral, dss_capi
+  refuses it with 18102 and solves four cables). Two cables on three phases:
+  r4133 raises 10103 `CNData Object "" not defined.` and keeps the two, dss_capi
+  raises nothing and answers a readback of the geometry with 303. A `wires=`
+  after cables on every conductor (`nconds=3 nphases=3`, and `nconds=2
+  nphases=5`): r4133 stores the wire nowhere with no message, dss_capi refuses
+  it with 18102 `expected 0 objects`. `cncables=` and `wires=` before any
+  `nconds=`: r4133 raises 303 `Access violation` on each, dss_capi 402 `No
+  objects are expected!` and 303. Three cables with conductor 2 selected:
+  r4133 fills the phases and keeps conductor 2 selected, dss_capi keeps
+  conductor 2 selected and answers a readback of the conductors with 303. One
+  wire where bare phases and a CN cable last leave four positions (`bare`):
+  r4133 counts four, raises 10103 `WireData Object "" not defined.`, stores the
+  wire on conductor 1 and empties conductors 2 to 4, the cable included.
+  dss_capi has no `conductors=` and raises 303 `Access violation` on the
+  `wires=`. Two wires for the one neutral after three cables (`two_wires`):
+  r4133 stores the first on conductor 4 and drops the second with no message,
+  dss_capi refuses the list with 18102 `expected 0 objects`. The port refuses
+  every list of another length, the count by the help, and the selection does
+  not change a cable list.
+- R6N `cond=abc x=9` after `cond=1`, then `cond=3`, `cond=abc` and `x=9` on
+  the next line: both oracles raise 303 (r4133 `Integer number conversion error
+  for string: "abc"`, dss_capi `Invalid inline math entry: "abc"`), drop the
+  rest of that command line and keep the conductor selected before it, so the
+  `x=9` of the next line moves conductor 3 (r4133 X32 0.6961115 Ω/mi, 0.7945111
+  with conductor 3 at x=4). dss_capi also answers the next edit after each 303
+  with 37737 `Object already being edited!` and applies it. `cond= x=1` reads
+  `x` as the value on all three engines, and both oracles drop the `1` with the
+  rest of the line. The port refuses both `x=9` and the `1`, which it reads as
+  `wire=1`, and keeps script C in order.
+- R9, a metre definition replaced by feet numbers without a unit, through a
+  second `New … nconds=3`, an `Edit … nconds=3` and a second `New … units=m
+  nconds=3`: both oracles read ft ft ft (X21 r4133 0.7945111 Ω/mi, dss_capi
+  0.794446 on its own constants). The port: ft ft ft, X21 0.7945111.
+- R10, geometries on an equivalent spacing in metres (`detailed=no`, phases
+  1.2 m apart and 1.5 m from the neutral) redefined by a second `New …
+  nconds=4` (measured 2026-10-10): r4133 keeps a redefined geometry in the
+  equivalent-spacing mode with its distances zeroed. `gr`, given no
+  `spacing=` again, and `gd`, given positions of its own (x = -1.2, 0, 1.2 m at
+  h = 8.5 m, the neutral at (0, 7.3) m), both raise 303 `Conductor average
+  heights (overhead equivalent spacing) must be > 0.` and read X as INF, where
+  `gd`'s positions under a new name read X21 0.7964372, X31 0.7123296 and X41
+  0.7543834 Ω/mi. `gs`, given `spacing=eq` again, reads like `ga`, X21
+  0.7964372. dss_capi has no equivalent spacing (`detailed` is #110). The
+  port: `gs` and `gd` as above, and `gr` is the one error of the solve
+  (`Conductor 1 height must be  > 0.`), where the build before the change
+  solved `gr` and `gd` on the replaced distances, `gr` reading them in feet.
+- S7, `spacing=` on a LineSpacing with `units=none` or `units=feet`: both
+  oracles copy it with no message, store `units=none` (read as metres) and keep
+  the reference. The port refuses both and keeps neither. The spacing in feet
+  reads X21 0.7945111 on all three.
+- S8, a Line's own `spacing=` on LineSpacings in `ft`, `m`, `in`, `none` and
+  `feet`, each with `wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]`, and a Line
+  moved from the spacing in feet to `sp_feet` by `Edit` (measured
+  2026-10-10): r4133 reads `none` and `feet` as metres with no message (X21
+  0.6503451 Ω/mi, 0.7945111 in feet and in inches), keeps the reference, and
+  reads the moved Line as metres too. dss_capi reads them as metres as well
+  (X21 0.6502801, 0.8054776 in feet), and its `Edit` empties the moved Line's
+  wires and stops `CalcVoltageBases` with 303 `Access violation`. The port
+  converts `ft`, `m` and `in` (X21 0.7945111, 0.6503451, 0.7945111), refuses
+  the two spacings and the `Edit`, and the three Lines keep what they had.
+- R6c, `cond=1.5 x=9`, `cond=2.9 x=8`, `cond=1e10 x=7` and `cond=2147483648
+  x=6` after script C (measured 2026-10-10): both oracles round `1.5` to
+  conductor 2 and `2.9` to 3 with no message and ignore the other two values,
+  so their `x=` lands on conductor 3 (X21 r4133 0.6514911 Ω/mi, X32 0.8294189,
+  dss_capi 0.6514261). dss_capi reports the last two as `(#2020031)
+  LineGeometry.g.Cond: Invalid value (1410065408).` and `(-2147483648)`,
+  values the deck does not write. The port refuses the four values by name
+  and the four `x=`, and keeps script C (X21 0.7945111).
+- N3, `nconds=4 reduce=y` with no `nphases=`, then
+  `cncables=[250_1/3 250_1/3 250_1/3]` and `wires=[ACSR_4/0]` (measured
+  2026-10-10): r4133 reads `nphases` 0, refuses the `wires=` (10103 `WireData
+  Object "" not defined.`) and fails `CalcVoltageBases` and `Solve` with 303
+  and 482 access violations. dss_capi sets `NPhases` 4 from the cable list,
+  refuses the `wires=` (18102 `expected 0 objects`) and stops with `WireData
+  is not correctly initialized`. Two CN cables on `nconds=2 reduce=y` with no
+  `nphases=` (`pair`): r4133 builds a Line of three phases with an
+  uninitialized entry (X32 8.697622E-312), and its `nphases=2` twin reads X11
+  0.5018593, X21 0.04507474 Ω/mi. dss_capi refuses the Line (749 `Invalid
+  number of terminals (0)`). The port reads `cn` like its `nphases=3` twin and
+  `pair` like its `nphases=2` twin, and refuses the cable list of `nphases=0`.
+- `Edit LineGeometry.g nconds=0` on script C with conductor 2 selected:
+  dss_capi refuses the value (#2020031) and keeps `NConds` 4, but wipes the
+  conductors (`Cond` 1, then 303 `WireData is not correctly initialized` at
+  `CalcVoltageBases`). r4133 stores `NConds` 0 and raises 303 `Access
+  violation`. The port refuses the value and keeps script C with conductor 2
+  selected.
+- `units=feet` or `units=none` on conductor 1 of a three-conductor geometry:
+  both oracles report nothing, read `units=none` and place the conductors in
+  metres (X21 r4133 0.6503451 Ω/mi, dss_capi 0.6502801, 0.7945111 in feet). The
+  port refuses the word, so the conductor keeps the default feet. `foot` and
+  `kilometer` read the same on both oracles. r4133 reads `meters`, `Meters` and
+  `metre` as m and `inches` and `inch` as in (X21 1.0960340). dss_capi reads
+  `metre` as m and the other four as `none`, in metres. The port reads `metre`
+  as m and refuses `meters`, `inches` and `inch` too, keeping the default feet.
+  The documented list, `mi, kft, km, m, ft, in, cm, mm`, names none of the
+  three.
+- Script C, `cond=2`, `Dump LineGeometry.g`, `Edit LineGeometry.g x=7`: both
+  oracles read `Cond` 4 after the dump and move conductor 4 (r4133 X41 0.664227,
+  0.7524573 with the neutral at (0, 24) ft). The port moves conductor 2.
+
+r4133 source: `Version8/Source/General/LineGeometry.pas:207` (help of `nconds`,
+"Triggers memory allocations. Define first!"), `:209` (help "Default is
+1"), `:215` ("defaults to last unit defined"), `:302` (`cond=` read by
+`Parser.IntValue`, whose conversion error raises out of the command,
+`Version8/Source/Parser/ParserDel.pas:878`), `:304-313` (conductor data and
+units written to the cursor slot), `:561` (the 10102 check, which fires only
+while `NConds` is 0), `:627` (`MakeLike` copies `FLastUnit`), `:638` (a
+missing `MakeLike` source is message 102 and leaves the cursor), `:1008-1014`
+(`set_ActiveCond` ignores an out-of-range value), `:1064-1068` (the allocation
+loop leaves the cursor on the last conductor), `:1077` (`FUnits^[i] := -1;  //
+default to ft`, which `To_Meters` reads as 1.0), `:1082-1085` (`set_Nconds`
+zeroes the four equivalent distances and leaves `FEquivalentSpacing` set),
+`:1087` (`set_Nconds` resets
+the default unit to feet), `:300` (`NConds` takes any integer, 0 included),
+`:962-983` (`SaveWrite` writes the whole conductor table at each of `cond`,
+`spacing` and `wires`, in the order they were set),
+`:768-769` (`DumpProperties` walks the conductors with `ActiveCond := j` and
+leaves the cursor on the last one), `Version8/Source/Shared/LineUnits.pas:44-55`
+(`GetUnitsCode` returns 0 for `none` and for a word outside its two-letter
+list) and `:89-90` (`To_Meters` turns 0 into 1.0). r4133 documents: the
+manual's LineGeometry table (`Distrib/Doc/OpenDSSManual.pdf`) gives `Nconds`
+"Triggers memory allocations. So, define this first!", and the LineSpacing
+note (`Distrib/Doc/XfmrCode_LineSpacing.pdf`) says of a geometry built from
+`spacing=` and `wires=` "You still specify nconds first".
+
+**Decision.** The eight rules of the user decision of 2026-10-04. Conductor data
+written where no conductor is named has no conductor to belong to: the cursor
+the oracles leave on the last (r4133) or first (dss_capi) conductor, the unit
+that sticks to whichever conductor the cursor holds, and `-1` read as metres
+place data silently, and the access violations and the lost Save rows follow
+from that. A `cond=` whose value is not a number selects no conductor, as one
+out of range does (rule 6), and so does a `like=` whose source does not exist
+(rule 2), where both oracles keep the conductor selected before it. A redefinition
+with `nconds=` keeps no conductor data of the definition it replaces, its
+equivalent spacing included: r4133 keeps that spacing's mode with its distances zeroed,
+so the redefinition's own positions are never read. A refused `nconds=` changes
+nothing, `units=none` is refused, and so is a spacing with no length unit
+(rule 8), on a geometry's `spacing=` and on a Line's own `spacing=` alike. A `like=` copy takes the source's default unit, also onto a geometry
+that already holds conductors, as r4133 does and dss_capi does not (V5c in the
+list above).
+
+The user decided the questions the rules leave on 2026-10-04 for a follow-up
+change. Until it lands the tree keeps these paths, each different from that
+decision: with no conductor selected `X` and `H` read 0 (decided: empty, with
+`Cond` 0 as now); `units=` reads a shortened word that singles out a unit,
+such as `metre`, `mil`, `kf`, `c`, `i` or `f` (decided: one exact documented
+word, `mm` included); a property before the first `nconds=` is accepted, and a `units=`
+there survives the first allocation of a new geometry while a re-allocation of
+one that has conductors resets the default to feet, as both oracles do at every
+`nconds=` (decided: such a property is an error, and every `nconds=` returns the
+default to feet); a conductor with a wire but no `x=`/`h=` is not "without
+data", and Save writes its `X=0 h=0` (decided: it is the rule 7 error, on one
+conductor too, and Save writes `X=` and `h=` only when given); the selected
+conductor's model sets the count of a `wires=` list (decided: the data sets it,
+never the selection); the equivalent distances are read in the default unit,
+so a `units=` on such a geometry re-reads them, as on r4133 (decided: they keep
+their own unit).
+
+Decided by the coordinator on 2026-10-10: `nphases` defaults to the documented
+3, and a `cond=` value that is not a whole number, or lies outside 1 to
+`NConds` as `cond=1e10` does, is refused naming the value as written, since the
+documentation gives `cond` as a conductor number. One error per refused property stays,
+and so does the reload from Save of a geometry with no selection, which comes
+back with its last written conductor selected. A `like=` copy takes the source's
+default unit, also onto a geometry that already holds conductors. A
+redefinition by `nconds=` of a geometry that has conductors returns the default
+unit to feet, as both oracles do. Of the unit words outside `mi`, `kft`, `km`,
+`m`, `ft`, `in`, `cm` and `mm`, `feet`, `Meters`, `inches` and `kilometer` are
+refused (pinned by `units_refusal_names_the_written_word`), and `metre`,
+`meter` and `miles` are still read, as m, m and mi, until the follow-up above
+reads one exact documented word. The simple Carson model keeps its earth-return depth
+`658.8530451057239 √(ρ/f)`, 2.8e-5 below Carson's series value
+`658.8716 √(ρ/f)`, because the change would move every Line golden in both
+lanes, so it is a precision item of the parity teardown. The TSData lap
+correction `√((100 − lap)/50)` stays, and its physics is derived in a step of
+its own: it gives zero resistance at `lap = 100`, and the textbook `ρ/(π d T)`
+has no lap factor.
+
+**Pins** (`crates/dss-core/src/exec/tests/line_geometry_rules.rs`, both lanes):
+one per script, `script_a_…` to `script_i_…` (A, B1, B2, C, C0, D, E, F, G, G2,
+H, H2, I), one per variant (`variant_one_line_reads_like_many_lines`,
+`variant_one_property_per_line`, `variant_separate_edit_commands`,
+`variant_b2_as_separate_edit_commands`,
+`variant_descending_cond_carries_the_first_unit`,
+`variant_like_then_data_without_cond_is_refused`,
+`variant_like_not_found_selects_nothing` (with its unit twin
+`like_side_effect_selects_nothing_without_a_copy`),
+`variant_like_copy_takes_the_source_unit`,
+`variant_units_between_two_data_of_one_conductor`, `variant_cable_geometries`,
+`variant_a_unit_before_cond_does_not_stick_to_the_last_conductor`,
+`variant_a_conductor_selected_again_keeps_its_own_unit`,
+`variant_two_lines_on_one_broken_geometry_give_one_error`,
+`two_broken_geometries_are_one_error_in_build_order`,
+`variant_new_again_selects_nothing`, `variant_nconds_selects_nothing`,
+`variant_plural_cables_then_neutral_wires`,
+`a_cable_or_wire_list_of_the_wrong_length_is_refused`,
+`variant_a_redefinition_starts_from_feet`,
+`a_redefinition_drops_the_equivalent_spacing`), one per rule
+(`cond_may_come_in_any_order`, `conductor_data_without_cond_is_refused`,
+`units_before_the_first_cond_set_the_default_only`,
+`units_after_cond_belong_to_that_conductor_and_carry_forward`,
+`line_breaks_and_continuations_mean_nothing`,
+`cond_out_of_range_is_refused_and_selects_nothing`,
+`cond_that_is_not_a_whole_number_selects_nothing`, `nphases_defaults_to_three`,
+`a_conductor_without_data_is_one_error_naming_it`,
+`a_unit_is_never_read_as_metres`, with its unit twin
+`units_refusal_names_the_written_word`), `cond_that_is_not_a_number_selects_nothing`
+(with its unit twin in `elements::general::line_geometry::tests`), and
+`wires_spacing_and_conductors_leave_the_selection_alone`,
+`dump_leaves_the_selection_where_it_was`,
+`a_y_build_abort_is_the_only_error_of_the_solve`,
+`a_y_rebuild_outside_the_solve_logs_its_error`,
+`a_diakoptics_y_rebuild_logs_its_error`,
+`a_spacing_without_a_unit_is_refused` (with its unit twin
+`a_spacing_whose_unit_code_names_no_length_is_refused`),
+`a_line_refuses_a_spacing_without_a_unit`,
+`a_broken_geometry_beside_a_refused_stamp_names_both`,
+`a_refused_nconds_leaves_the_geometry_as_it_was`,
+`a_refused_nconds_is_not_saved`,
+`refusals_are_logged_at_their_token`,
+`json_record_of_an_existing_geometry_selects_nothing`,
+`json_export_with_no_selection_writes_no_conductor_values`,
+`cim_places_each_conductor_in_its_own_unit`,
+`readback_shows_no_conductor_after_new_like_and_arrays`,
+`save_writes_nconds_first`, `save_round_trips_every_case`,
+`crates/dss-core/tests/golden_reports.rs::cond_help_states_rule_2`, and
+`elements::pc::windgen::tests::windgen_harmonics_refusal_keeps_its_flow` (only
+the Line's unbuilt YPrim becomes the solve's one error). Each solvable case's
+impedance is compared with physics at the positions the rules give: the simple
+Carson reactance of bare wires, and the textbook concentric-neutral and
+tape-shield cable model for the cable geometries.
+
+**Exclusions.** No corpus case and no ledger entry moves: no corpus deck writes
+conductor data without `cond=`, a `cond=` whose value is not a number or a
+LineGeometry `like=` whose source does not exist, and none gives a
+LineGeometry `nconds=` after its `spacing=` or a `nconds=` that is refused (the
+two equivalent-spacing decks set `nconds=` first), and every corpus LineSpacing
+is in `m`, `ft` or `in`, so no Line's own `spacing=` is refused. The
+props gate excludes 21 value cells in both lanes
+(`crates/dss-core/tests/props_roundtrip.rs::LANE_SKIP_SCENARIO_PROPS`): 20
+selection cells of the `linegeometry_default`, `_spacing`, `_makelike` and
+`_buried` scenarios, pinned by
+`readback_shows_no_conductor_after_new_like_and_arrays`, and
+`linegeometry_default` / `NPhases`, which the capture reads as 0, pinned by
+`nphases_defaults_to_three`. It fails on an excluded cell that reads the
+captured value again. The Save
+round trip of `Test/IEEE13_LineGeometry.dss` excludes `Cond`, `Wire`, `H`,
+`CNCable` and `TSCable` of its `like=` copy
+(`crates/dss-core/tests/save_roundtrip.rs::PROPERTY_EXCLUSIONS`, pinned by
+`save_reloads_a_geometry_with_no_selection_on_its_last_row`). The `Dump
+commands` golden keeps the pinned oracle's "Default is 1." line, which
+`crates/dss-core/tests/golden_reports.rs::dump3_commands_matches_oracle`
+excludes (pinned by `cond_help_states_rule_2`). The port's own schema golden
+reads the `Cond` default 0, the `NPhases` default 3 and the new help. No corpus
+deck writes a `cond=` that is not a whole number, and every corpus LineGeometry
+writes `nphases=` or copies it by `like=`.

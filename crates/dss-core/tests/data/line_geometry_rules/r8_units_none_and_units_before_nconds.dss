@@ -1,0 +1,16 @@
+! units=m before nconds=, conductors in metres without their own unit, then units=none.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.g units=m nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-1.2192 h=8.5344
+~ cond=2 wire=ACSR_556_5 x=0 h=8.5344
+~ cond=3 wire=ACSR_556_5 x=1.2192 h=8.5344
+~ cond=1 units=none
+New Line.L bus1=src.1.2.3 bus2=b.1.2.3 geometry=g length=1 units=mi
+New Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve
