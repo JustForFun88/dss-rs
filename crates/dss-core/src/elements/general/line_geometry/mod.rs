@@ -6,28 +6,32 @@
 //! coordinate (`X`/`H`) and unit arrays plus a reference to each conductor's
 //! catalog object (`WireData`/`CNData`/`TSData`), sized by `NConds`.
 //!
-//! Editing follows a conductor selection. Only `cond=N` with `N` in
-//! `1..=NConds` selects a conductor, in any order. `New`, `like=` (whether its
-//! source is found or not) and `nconds=` leave none selected, and a `cond=` out
-//! of range or whose value is not a number is an error that leaves none
-//! selected. `wire=`/`cncable=`/
+//! A property written before the first `nconds=` is refused: the geometry has
+//! no conductors until `nconds=`, or a `like=` of a source that has them,
+//! builds the table. Editing follows a conductor selection. Only `cond=N` with
+//! `N` in `1..=NConds` selects a conductor, in any order. `New`, `like=`
+//! (whether its source is found or not) and `nconds=` leave none selected, and
+//! a `cond=` out of range or whose value is not a number is an error that
+//! leaves none selected. `wire=`/`cncable=`/
 //! `tscable=`/`x=`/`h=` write the selected conductor and are refused with an
 //! error when none is selected. `units=` writes the selected conductor (if any)
-//! and the geometry's default unit, which starts as feet, survives the first
-//! `nconds=`, starts from feet again when `nconds=` re-allocates a geometry that
-//! has conductors, and is copied by `like=`. A word that is not one of the unit
-//! names is refused. A conductor selected
+//! and the geometry's default unit, which is feet for a new geometry and after
+//! every `nconds=`, and is copied by `like=`. A word that is not exactly one of
+//! the unit names, in any case, is refused. A conductor selected
 //! without a unit of its own takes the default. Line breaks, `~` and separate
 //! `Edit` commands do not touch the selection. The plural forms leave the
 //! selection alone and refuse a list of the wrong length. `cncables=` and
 //! `tscables=` list one cable per phase, written into the phase positions. A
 //! `wires=` lists every conductor, or only the bare neutrals after the phases
-//! when the selected conductor is a cable or, with none selected, a phase
-//! conductor is one.
+//! when a phase conductor holds a cable, whichever conductor is selected.
 //! `spacing=` copies an entire `LineSpacing`'s coordinates in, and a spacing
-//! with no length unit is refused and not kept. A conductor
-//! without a conductor object is one error at calculation, naming it. Pinned by
-//! `exec::tests::line_geometry_rules`.
+//! with no length unit is refused and not kept. An equivalent spacing copies
+//! its four distances, which keep the spacing's unit whatever `units=` says
+//! later. Every conductor needs a conductor object, and an `x` and an `h`
+//! unless the geometry is built on an equivalent spacing: what any conductor
+//! lacks is one error at calculation, naming each conductor and what it lacks.
+//! With no conductor selected `cond` reads 0, and `x` and `h` read empty, as
+//! they do for a value never given. Pinned by `exec::tests::line_geometry_rules`.
 //!
 //! Referenced conductor/spacing objects are resolved and **snapshot-cloned** at
 //! edit time (the WP4.2 `FetchLineCode` pattern), so the geometry owns the data
@@ -75,9 +79,11 @@ const UNIT_UNSET: i32 = -1;
 define_properties! {
     class "LineGeometry", abbrev true, enums enums;
     1  NCONDS    => PropDef::integer("NConds")
-        .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO);
+        .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::WHOLE_NUMBER);
     2  NPHASES   => PropDef::integer("NPhases").flags(PropFlags::NON_NEGATIVE);
-    3  COND      => PropDef::integer("Cond").flags(PropFlags::WHOLE_NUMBER);
+    // No conductor is selected until `cond=N`, so the schema gives no default.
+    3  COND      => PropDef::integer("Cond")
+        .flags(PropFlags::WHOLE_NUMBER | PropFlags::NO_DEFAULT);
     4  WIRE      => PropDef::object_ref_class("WireData", "Wire");
     5  X         => PropDef::double("X");
     6  H         => PropDef::double("H");
@@ -145,14 +151,14 @@ pub struct LineGeometryObj {
     /// Snapshot-cloned conductor objects (`WireData`/`CNData`/`TSData`), one per
     /// conductor (`None` = not set).
     fwiredata: Vec<Option<ConductorObj>>,
-    fx: Vec<f64>,
-    fy: Vec<f64>,
+    /// Each conductor's horizontal coordinate, `None` when it was never given.
+    fx: Vec<Option<f64>>,
+    /// Each conductor's height, `None` when it was never given.
+    fy: Vec<Option<f64>>,
     /// Each conductor's own `LineUnits` code, [`UNIT_UNSET`] when it has none.
     funits: Vec<i32>,
-    /// The default unit: feet for a new geometry, written by `units=` and
-    /// `spacing=`, copied by `like=`, feet again when `nconds=` re-allocates a
-    /// geometry that has conductors. The equivalent-spacing distances are read
-    /// in it.
+    /// The default unit: feet for a new geometry and after every `nconds=`,
+    /// written by `units=` and `spacing=`, copied by `like=`.
     flast_unit: i32,
     /// Set when `nconds=` stored its value, taken by its side effect: a
     /// refused value re-allocates nothing.
@@ -177,9 +183,10 @@ pub struct LineGeometryObj {
     // The equivalent-spacing state, copied from the referenced `LineSpacing`
     // when it is not detailed and cleared when `nconds=` re-allocates the
     // conductors. `equivalent_spacing=false` is the per-conductor-coordinate
-    // model. The distances are stored in `flast_unit` and converted to meters
-    // in `update_line_geometry_data`.
+    // model. The distances are stored in `eq_unit`, the unit of the spacing
+    // they came from, and converted to meters in `update_line_geometry_data`.
     equivalent_spacing: bool,
+    eq_unit: i32,
     eq_dist_ph_ph: f64,
     eq_dist_ph_n: f64,
     avg_phase_height: f64,
@@ -230,6 +237,7 @@ impl LineGeometryObj {
             fline_type: LineType::Oh,
             line_spacing_obj: None,
             equivalent_spacing: false,
+            eq_unit: UNITS_FT,
             eq_dist_ph_ph: 0.0,
             eq_dist_ph_n: 0.0,
             avg_phase_height: 0.0,
@@ -327,14 +335,16 @@ impl LineGeometryObj {
         self.fnconds
     }
 
-    /// Per-conductor horizontal coordinate, in [`Self::conductor_unit`]. 0-based
-    /// slot `i` is conductor `i+1`.
-    pub fn fx(&self) -> &[f64] {
+    /// Per-conductor horizontal coordinate, in [`Self::conductor_unit`], `None`
+    /// for a conductor whose `x` was never given. 0-based slot `i` is
+    /// conductor `i+1`.
+    pub fn fx(&self) -> &[Option<f64>] {
         &self.fx
     }
 
-    /// Per-conductor vertical coordinate, in [`Self::conductor_unit`].
-    pub fn fy(&self) -> &[f64] {
+    /// Per-conductor height, in [`Self::conductor_unit`], `None` for a
+    /// conductor whose `h` was never given.
+    pub fn fy(&self) -> &[Option<f64>] {
         &self.fy
     }
 

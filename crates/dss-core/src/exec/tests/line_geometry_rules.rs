@@ -15,7 +15,12 @@
 //! 8. A unit is never "not set": without a default it is feet.
 //!
 //! The rules do not name a `cond=` whose value is not a number. It is read like
-//! one out of range (rule 6): an error that leaves no conductor selected.
+//! one out of range (rule 6): an error that leaves no conductor selected. A
+//! property before the first `nconds=` of a new geometry is refused, `units=`
+//! takes one exact unit word, and a `wires=` list takes its count from the
+//! data, never from the selection. A conductor without an `x` or an `h` is
+//! rule 7's error too, unless the geometry is built on an equivalent spacing,
+//! whose distances keep the unit of their spacing.
 //!
 //! Every script and variant is a tracked deck under
 //! `crates/dss-core/tests/data/line_geometry_rules/` (`library.dss` holds the
@@ -25,10 +30,11 @@
 //! compares the impedance with physics evaluated at the positions the rules
 //! give: the simple Carson reactance of bare wires ([`carson_x`]), the
 //! textbook cable model ([`cable_z`]) and the shunt capacitance of one
-//! conductor ([`shunt_c11`]). These formulas take two models of the engine,
-//! the earth-return depth of its simple Carson model ([`carson_x`]) and its
-//! tape-shield resistance with the TSData lap correction ([`cable_z`]), so
-//! the pins hold the unit placement under those models. A deck that cannot be
+//! conductor ([`shunt_c11`]) or several ([`shunt_c`]). These formulas take two
+//! models of the engine, the earth-return depth of its simple Carson model
+//! ([`carson_x`]) and its tape-shield resistance with the TSData lap
+//! correction ([`cable_z`]), so the pins hold the unit placement under those
+//! models. A deck that cannot be
 //! solved is pinned on its messages. Anything a pin writes (a Save, a dump, a
 //! line-constants report) goes to its own scratch directory, never next to the
 //! decks.
@@ -103,12 +109,13 @@ fn solved(dss: &Dss) -> bool {
     dss.circuit().is_some_and(|c| c.is_solved)
 }
 
-/// One conductor of a geometry as the arena holds it.
+/// One conductor of a geometry as the arena holds it, `None` for a value never
+/// given.
 #[derive(Debug, Clone, PartialEq)]
 struct Conductor {
     object: Option<String>,
-    x: f64,
-    h: f64,
+    x: Option<f64>,
+    h: Option<f64>,
     unit: &'static str,
 }
 
@@ -222,8 +229,16 @@ fn no_cond(geom: &str, prop: &str) -> String {
     )
 }
 
-/// Rule 6: `cond=value` out of range. `has` is "has 4 conductors" or the
-/// no-conductors wording.
+/// A property written before the first `nconds=` of a new geometry.
+fn before_nconds(geom: &str, prop: &str) -> String {
+    format!(
+        "LineGeometry.{geom}.{prop}: the geometry has no conductors yet, so the value is not \
+         applied. Give nconds= first."
+    )
+}
+
+/// Rule 6: `cond=value` out of range. `has` is "has 4 conductors" or "has 1
+/// conductor".
 fn out_of_range(geom: &str, value: i32, has: &str) -> String {
     format!(
         "LineGeometry.{geom}.Cond: cond={value} is out of range, the geometry {has}. No \
@@ -231,11 +246,15 @@ fn out_of_range(geom: &str, value: i32, has: &str) -> String {
     )
 }
 
-/// Rule 7 for one conductor, as the Y build reports it from `CalcVoltageBases`.
+/// What rule 7 names for a conductor that holds nothing.
+const NOTHING: &str = "no wire, cncable or tscable, no x and no h";
+
+/// Rule 7 for one conductor that holds nothing, as the Y build reports it from
+/// `CalcVoltageBases`.
 fn missing_at_calc(geom: &str, conductor: usize) -> String {
     format!(
         "Error Encountered in CalcVoltageBases: LineGeometry.{geom}: conductor {conductor} has \
-         no wire, cncable or tscable."
+         {NOTHING}."
     )
 }
 
@@ -579,9 +598,66 @@ fn shunt_c11(h: f64, r: f64) -> f64 {
     2.0 * std::f64::consts::PI * eps0 / (2.0 * h / r).ln() * 1609.344 * 1e9
 }
 
-/// The relative band between the engine's shunt capacitance and [`shunt_c11`].
-/// The engine's `ε0 = 8.854e-12` F/m sits 2.1e-5 relative below the CODATA
-/// value. A height of 28 read in metres instead of feet moves C11 by 16 %.
+/// The shunt capacitance of overhead conductors of radius `r` at the
+/// positions `(x, h)` (metres, `h` over the earth's surface), in nF per mile.
+/// The Maxwell potential coefficients `P_ii = ln(2 h_i / r) / (2π ε0)` and
+/// `P_ij = ln(D'_ij / D_ij) / (2π ε0)`, with `D_ij` the distance of conductors
+/// `i` and `j` and `D'_ij` the distance of conductor `i` from the image of
+/// conductor `j` below the surface, give `C = P⁻¹`, inverted here by
+/// Gauss-Jordan elimination with partial pivoting. `ε0 = 8.8541878128e-12`
+/// F/m. No engine code.
+fn shunt_c(positions: &[(f64, f64)], r: f64) -> Vec<Vec<f64>> {
+    let n = positions.len();
+    let eps0 = 8.854_187_812_8e-12;
+    let k = 1.0 / (2.0 * std::f64::consts::PI * eps0);
+    // [P | I], reduced to [I | P⁻¹].
+    let mut m: Vec<Vec<f64>> = (0..n)
+        .map(|i| {
+            let (xi, hi) = positions[i];
+            let mut row: Vec<f64> = (0..n)
+                .map(|j| {
+                    let (xj, hj) = positions[j];
+                    if i == j {
+                        k * (2.0 * hi / r).ln()
+                    } else {
+                        k * ((xi - xj).hypot(hi + hj) / (xi - xj).hypot(hi - hj)).ln()
+                    }
+                })
+                .collect();
+            row.extend((0..n).map(|j| if i == j { 1.0 } else { 0.0 }));
+            row
+        })
+        .collect();
+    for col in 0..n {
+        let pivot = (col..n)
+            .max_by(|&a, &b| m[a][col].abs().total_cmp(&m[b][col].abs()))
+            .expect("a pivot row");
+        m.swap(col, pivot);
+        let d = m[col][col];
+        assert!(d != 0.0, "singular potential coefficients");
+        for v in m[col].iter_mut() {
+            *v /= d;
+        }
+        let pivot_row = m[col].clone();
+        for (row, values) in m.iter_mut().enumerate() {
+            if row != col {
+                let f = values[col];
+                for (v, p) in values.iter_mut().zip(&pivot_row) {
+                    *v -= f * p;
+                }
+            }
+        }
+    }
+    let scale = 1609.344 * 1e9;
+    m.iter()
+        .map(|row| row[n..].iter().map(|v| v * scale).collect())
+        .collect()
+}
+
+/// The relative band between the engine's shunt capacitance and [`shunt_c11`]
+/// or [`shunt_c`]. The engine's `ε0 = 8.854e-12` F/m sits 2.1e-5 relative
+/// below the CODATA value, which scales every entry alike. A height of 28 read
+/// in metres instead of feet moves C11 by 16 %.
 const C_BAND: f64 = 3e-5;
 
 /// Line `line`'s shunt capacitance, `[row][col]`, in nF/mi for the 1-mile Lines
@@ -640,6 +716,11 @@ fn save(dss: &mut Dss, dir: &Path, geom: &str) -> String {
         "save: {:?}",
         &errors(dss)[before..]
     );
+    saved_line(dir, geom)
+}
+
+/// The line the Save in `dir` writes for geometry `geom`, lowercased.
+fn saved_line(dir: &Path, geom: &str) -> String {
     let text = read(dir, "LineGeometry.dss");
     assert!(!text.to_ascii_lowercase().contains("units=none"), "{text}");
     assert!(!text.to_ascii_lowercase().contains(" cond=0"), "{text}");
@@ -650,25 +731,39 @@ fn save(dss: &mut Dss, dir: &Path, geom: &str) -> String {
         .unwrap_or_else(|| panic!("no {head} line in {text}"))
 }
 
-/// The conductor rows of a saved geometry line as `(cond, kind=name, x, h,
-/// units)` tokens, and the closing ` cond=k` that restores the selection, if any.
+/// The conductor rows of a saved geometry line as `(cond, kind=name, x=.., h=..,
+/// units=..)` tokens, `""` for a token the row does not write, and the closing
+/// ` cond=k` that restores the selection, if any. A row is `cond=c`, an
+/// optional `wire=`/`cncable=`/`tscable=`, an optional `x=`, an optional `h=`
+/// and `units=`.
 fn saved_rows(line: &str) -> (Vec<[String; 5]>, Option<String>) {
     let tokens: Vec<&str> = line.split(' ').collect();
+    let optional: [(usize, &[&str]); 3] = [
+        (1, &["wire=", "cncable=", "tscable="]),
+        (2, &["x="]),
+        (3, &["h="]),
+    ];
     let mut rows = Vec::new();
     let mut restore = None;
     let mut i = 0;
     while i < tokens.len() {
         if let Some(c) = tokens[i].strip_prefix("cond=") {
-            let rest = &tokens[i + 1..];
-            if rest.len() >= 4 && !rest[0].starts_with("cond=") && rest[3].starts_with("units=") {
-                rows.push([
-                    c.to_string(),
-                    rest[0].to_string(),
-                    rest[1].to_string(),
-                    rest[2].to_string(),
-                    rest[3].to_string(),
-                ]);
-                i += 5;
+            let mut row: [String; 5] = Default::default();
+            row[0] = c.to_string();
+            let mut k = i + 1;
+            for (slot, prefixes) in optional {
+                if let Some(t) = tokens
+                    .get(k)
+                    .filter(|t| prefixes.iter().any(|p| t.starts_with(p)))
+                {
+                    row[slot] = t.to_string();
+                    k += 1;
+                }
+            }
+            if let Some(t) = tokens.get(k).filter(|t| t.starts_with("units=")) {
+                row[4] = t.to_string();
+                rows.push(row);
+                i = k + 1;
                 continue;
             }
             restore = Some(c.to_string());
@@ -680,10 +775,17 @@ fn saved_rows(line: &str) -> (Vec<[String; 5]>, Option<String>) {
 
 /// A fresh engine with the Save in `dir` compiled and solved.
 fn reload(dir: &Path) -> Dss {
+    let back = reload_unsolved(dir);
+    assert!(back.errors().is_empty(), "reload: {:?}", errors(&back));
+    back
+}
+
+/// [`reload`] of a Save whose circuit does not solve: the errors are the
+/// caller's to read.
+fn reload_unsolved(dir: &Path) -> Dss {
     let mut back = Dss::new();
     back.command(&format!("compile \"{}\"", slash(&dir.join("Master.dss"))));
     back.command("solve");
-    assert!(back.errors().is_empty(), "reload: {:?}", errors(&back));
     back
 }
 
@@ -703,6 +805,67 @@ fn script_a_units_on_line_2_belong_to_conductor_2_and_carry_on() {
         ],
         &[(2, 1, 0.458_102_1), (3, 2, 0.650_345_1)],
     );
+}
+
+/// Script A's full shunt capacitance equals [`shunt_c`] at the positions the
+/// rules give: conductor 1 at (-4, 28) ft, conductors 2 and 3 at (0, 28) and
+/// (4, 28) m, radius 0.4635 in (ACSR_556_5, DIAM 0.927 in). The derivation
+/// gives, in nF/mi, C11 12.4165035, C21 -0.7139112, C31 -0.6644440, C22
+/// 11.7549853, C32 -3.6162713 and C33 11.7494940. The coupling terms carry
+/// the units: the three conductors all in feet give C21 -4.4398746, all in
+/// metres -3.1830860. Every entry is compared within [`C_BAND`] of its
+/// magnitude, the off-diagonal ones being negative.
+#[test]
+fn capacitance_follows_each_conductors_unit() {
+    let dss = compile("a_units_on_line_2_only.dss");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    assert!(solved(&dss), "script A did not solve");
+    let ft = 0.3048;
+    let want = shunt_c(
+        &[(-4.0 * ft, 28.0 * ft), (0.0, 28.0), (4.0, 28.0)],
+        RADIUS_P,
+    );
+    for (i, j, value) in [
+        (1, 1, 12.416_503_5),
+        (2, 1, -0.713_911_2),
+        (3, 1, -0.664_444_0),
+        (2, 2, 11.754_985_3),
+        (3, 2, -3.616_271_3),
+        (3, 3, 11.749_494_0),
+    ] {
+        assert!(
+            (want[i - 1][j - 1] - value).abs() < 1e-6 && (want[j - 1][i - 1] - value).abs() < 1e-6,
+            "derivation C{i}{j} = {}, expected {value}",
+            want[i - 1][j - 1]
+        );
+    }
+    let all_ft = shunt_c(
+        &[
+            (-4.0 * ft, 28.0 * ft),
+            (0.0, 28.0 * ft),
+            (4.0 * ft, 28.0 * ft),
+        ],
+        RADIUS_P,
+    );
+    let all_m = shunt_c(&[(-4.0, 28.0), (0.0, 28.0), (4.0, 28.0)], RADIUS_P);
+    assert!(
+        (all_ft[1][0] + 4.439_874_6).abs() < 1e-6,
+        "{}",
+        all_ft[1][0]
+    );
+    assert!((all_m[1][0] + 3.183_086_0).abs() < 1e-6, "{}", all_m[1][0]);
+    let c = cmatrix(&dss, "L");
+    assert_eq!(c.len(), 3, "Line.L order");
+    for (i, (row, want_row)) in c.iter().zip(&want).enumerate() {
+        for (j, (got, w)) in row.iter().zip(want_row).enumerate() {
+            assert!(
+                (got - w).abs() <= C_BAND * w.abs(),
+                "Line.L C{}{} = {got} nF/mi, the rules' positions give {w}",
+                i + 1,
+                j + 1
+            );
+        }
+    }
 }
 
 /// Script B1: the `units=mm` of the New line is the default only and lands on
@@ -811,7 +974,7 @@ fn script_e_cond_out_of_range_is_refused() {
     assert_eq!(dss.errors()[0].code, Some(10102));
     assert!(solved(&dss));
     let g = conductors(&dss, "g");
-    assert_eq!((g[0].x, g[0].h), (-4.0, 28.0));
+    assert_eq!((g[0].x, g[0].h), (Some(-4.0), Some(28.0)));
     assert_eq!(units(&dss, "g"), ["ft"; 4]);
     assert_x(&dss, "L", &c0_in(["ft"; 4]), &[(2, 1, 0.794_511_1)], "E");
     assert_eq!(cond(&mut dss, "g"), "2");
@@ -866,8 +1029,8 @@ fn script_g_data_on_the_new_line_is_refused() {
         g[0],
         Conductor {
             object: None,
-            x: 0.0,
-            h: 0.0,
+            x: None,
+            h: None,
             unit: "ft"
         }
     );
@@ -962,7 +1125,7 @@ fn script_i_a_conductor_selected_again_takes_its_new_unit() {
         &[(2, 1, 0.452_833_0)],
     );
     let g = conductors(&dss, "g");
-    assert_eq!((g[0].x, g[0].h), (-6.0, 28.0));
+    assert_eq!((g[0].x, g[0].h), (Some(-6.0), Some(28.0)));
 }
 
 // ----- the further variants -----------------------------------------------------
@@ -1045,7 +1208,7 @@ fn variant_like_then_data_without_cond_is_refused() {
     assert_eq!(errors(&dss), [no_cond("g", "X")]);
     assert!(solved(&dss));
     assert_eq!(conductors(&dss, "g"), conductors(&dss, "base"));
-    assert_eq!(conductors(&dss, "g")[0].x, -4.0);
+    assert_eq!(conductors(&dss, "g")[0].x, Some(-4.0));
     assert_x(&dss, "L", &c0_in(["ft"; 4]), &[(2, 1, 0.794_511_1)], "V5");
     assert_eq!(
         cond_trace("v5_like_then_data_without_cond.dss", "g"),
@@ -1071,7 +1234,7 @@ fn variant_like_not_found_selects_nothing() {
     assert!(solved(&dss));
     let c0 = compile("c0_cond_in_order.dss");
     assert_eq!(conductors(&dss, "g"), conductors(&c0, "g"));
-    assert_eq!(conductors(&dss, "g")[1].x, 0.0);
+    assert_eq!(conductors(&dss, "g")[1].x, Some(0.0));
     assert_x(&dss, "L", &c0_in(["ft"; 4]), &[(2, 1, 0.794_511_1)], "V5b");
     assert_eq!(
         cond_trace(name, "g"),
@@ -1392,7 +1555,8 @@ fn nphases_defaults_to_three() {
 /// and a cable last make four positions (`bare`), two for the one neutral after
 /// cable phases (`two_wires`). A `wires=` with no position to fill is refused
 /// with the reason: after cables on every conductor, also when `nphases`
-/// exceeds `nconds`, and on a geometry with no conductors.
+/// exceeds `nconds`. On a geometry with no conductors both lists are refused
+/// as every property before `nconds=` is.
 #[test]
 fn a_cable_or_wire_list_of_the_wrong_length_is_refused() {
     let mut dss = compile("v8b_cable_and_wire_counts.dss");
@@ -1402,7 +1566,6 @@ fn a_cable_or_wire_list_of_the_wrong_length_is_refused() {
         )
     };
     let no_neutral = ": the phases hold cables and no conductor is a neutral";
-    let no_conductor = ": the geometry has no conductors. Set NConds first";
     assert_eq!(
         errors(&dss),
         [
@@ -1414,8 +1577,8 @@ fn a_cable_or_wire_list_of_the_wrong_length_is_refused() {
             count("over", 1, 0, no_neutral),
             count("bare", 1, 4, ""),
             count("two_wires", 2, 1, ""),
-            count("empty", 1, 0, no_conductor),
-            count("empty", 1, 0, no_conductor),
+            before_nconds("empty", "CNCables"),
+            before_nconds("empty", "Wires"),
         ]
     );
     let held = |dss: &Dss, geom: &str| -> Vec<Option<String>> {
@@ -1436,6 +1599,86 @@ fn a_cable_or_wire_list_of_the_wrong_length_is_refused() {
     assert_eq!(held(&dss, "bare"), [wire(), wire(), wire(), cn()]);
     assert_eq!(held(&dss, "two_wires"), [cn(), cn(), cn(), None]);
     assert!(held(&dss, "empty").is_empty());
+}
+
+/// `wires=` takes its count from the data, never from the selection. After
+/// `cncables=` in the phase positions the list is the bare neutral whichever
+/// conductor is selected: conductor 1, a cable phase (`sel1`), conductor 4
+/// (`sel4`) or none (`none`). Each holds ACSR_4/0 on conductor 4, reads like
+/// `cn_twin`, written one conductor at a time, and its Line equals
+/// [`cable_z`] (the V8 values). With bare phases and a cable last the list is
+/// every conductor, so one name with conductor 4 selected is refused
+/// (`bare4`) and conductor 4 keeps its cable. One cable phase is enough (the
+/// any-phase reading of the help): with a cable on phase 1 and bare wires on
+/// phases 2 and 3 the list is the bare neutral, so one name fills conductor
+/// 4, written by `conductors=` (`part`) or one conductor at a time with a
+/// bare conductor selected (`partc`), and a name for every conductor is
+/// refused (`part4`), the cable staying. The cable may sit on any phase: on
+/// phase 3 (`part3`, `part3_4`) the lists read the same. Counting the
+/// neutrals only when every phase holds a cable would refuse `part`, `partc`
+/// and `part3` and write `part4` and `part3_4` over the cable.
+#[test]
+fn wires_count_follows_the_data_not_the_selection() {
+    use Holds::{Bare, Cn};
+    let dss = compile("w1_wires_count_follows_the_data.dss");
+    assert_eq!(
+        errors(&dss),
+        [
+            "LineGeometry.bare4: Unexpected number (1) of objects; expected 4 objects.",
+            "LineGeometry.part4: Unexpected number (4) of objects; expected 1 objects.",
+            "LineGeometry.part3_4: Unexpected number (4) of objects; expected 1 objects.",
+        ]
+    );
+    assert!(solved(&dss));
+    let mut laid_cn = [-0.5, 0.0, 0.5, 1.0].map(|x| laid(Cn, x, -4.0, "ft"));
+    laid_cn[3].holds = Bare;
+    for geom in ["sel1", "sel4", "none"] {
+        assert_eq!(
+            conductors(&dss, geom),
+            conductors(&dss, "cn_twin"),
+            "{geom}"
+        );
+        assert_eq!(
+            conductors(&dss, geom)[3].object.as_deref(),
+            Some("acsr_4/0"),
+            "{geom}"
+        );
+        assert_cable(
+            &dss,
+            geom,
+            (&laid_cn, true),
+            X_BAND,
+            &[
+                (1, 1, 0.738_155_6, 0.464_518_9),
+                (2, 1, 0.251_504_6, 0.051_760_4),
+                (3, 1, 0.199_562_0, -0.011_290_7),
+                (3, 3, 0.694_716_0, 0.413_012_2),
+            ],
+            geom,
+        );
+    }
+    let objects = |geom: &str| -> Vec<Option<String>> {
+        conductors(&dss, geom)
+            .into_iter()
+            .map(|c| c.object)
+            .collect()
+    };
+    let wire = || Some("acsr_556_5".to_string());
+    let cn = || Some("250_1/3".to_string());
+    assert_eq!(objects("bare4"), [wire(), wire(), wire(), cn()]);
+    for geom in ["part", "partc"] {
+        assert_eq!(
+            objects(geom),
+            [cn(), wire(), wire(), Some("acsr_4/0".to_string())],
+            "{geom}"
+        );
+    }
+    assert_eq!(objects("part4"), [cn(), wire(), wire(), wire()]);
+    assert_eq!(
+        objects("part3"),
+        [wire(), wire(), cn(), Some("acsr_4/0".to_string())]
+    );
+    assert_eq!(objects("part3_4"), [wire(), wire(), cn(), wire()]);
 }
 
 /// A default on the New line followed by conductor 1's own unit: the own unit
@@ -1476,7 +1719,7 @@ fn variant_a_conductor_selected_again_keeps_its_own_unit() {
         ],
     );
     let g = conductors(&dss, "g");
-    assert_eq!((g[0].x, g[0].h), (-5.0, 28.0));
+    assert_eq!((g[0].x, g[0].h), (Some(-5.0), Some(28.0)));
 }
 
 /// Two Lines on script F's geometry report the missing conductor once.
@@ -1494,8 +1737,9 @@ fn variant_two_lines_on_one_broken_geometry_give_one_error() {
 #[test]
 fn two_broken_geometries_are_one_error_in_build_order() {
     let mut dss = compile("f3_two_broken_geometries.dss");
-    let both = "LineGeometry.g2: conductor 1 has no wire, cncable or tscable. LineGeometry.g1: \
-                conductor 2 has no wire, cncable or tscable.";
+    let both = format!(
+        "LineGeometry.g2: conductor 1 has {NOTHING}. LineGeometry.g1: conductor 2 has {NOTHING}."
+    );
     assert_eq!(
         errors(&dss),
         [format!("Error Encountered in CalcVoltageBases: {both}")]
@@ -1522,7 +1766,7 @@ fn variant_new_again_selects_nothing() {
     assert_eq!(errors(&dss), [no_cond("g", "X")]);
     assert!(solved(&dss));
     let g = conductors(&dss, "g");
-    assert_eq!((g[3].x, g[3].h), (0.0, 24.0));
+    assert_eq!((g[3].x, g[3].h), (Some(0.0), Some(24.0)));
     assert_eq!(units(&dss, "g"), ["ft"; 4]);
     assert_x(&dss, "L", &c0_in(["ft"; 4]), &[(2, 1, 0.794_511_1)], "N1");
     assert_eq!(units(&dss, "h"), ["m"]);
@@ -1535,30 +1779,55 @@ fn variant_new_again_selects_nothing() {
 
 /// `nconds=` re-allocates the conductors and selects none, on a `~` line (`g`)
 /// and as an `Edit` (`e`): the `x=5` after it is refused, and conductor 2,
-/// selected before it, keeps the x 0 of the re-allocation. Written again with
-/// conductor 2 given no `x=`, both geometries are script C in feet, so the
-/// `x=5` placed on conductor 2 would move X21 from 0.7945111 Ω/mi.
+/// selected before it, has no `x` after the re-allocation. Written again with
+/// conductor 2 given no `x=`, both geometries lack conductor 2's `x`, which is
+/// rule 7's one error of the solve, `g` then `e` in build order (the `x=5`
+/// placed on conductor 2 would let them solve). Their Save reloads to the same
+/// conductors and the same error.
 #[test]
 fn variant_nconds_selects_nothing() {
+    let scratch = Scratch::new("n2");
     let name = "n2_nconds_selects_nothing.dss";
     let mut edited = replay_until(name, "Edit LineGeometry.e cond=1");
     assert_eq!(cond(&mut edited, "e"), "0");
     let e = conductors(&edited, "e");
-    assert_eq!((e[1].object.as_deref(), e[1].x, e[1].h), (None, 0.0, 0.0));
+    assert_eq!((e[1].object.as_deref(), e[1].x, e[1].h), (None, None, None));
     assert_eq!(
         cond_trace(name, "g"),
         ["0", "1", "2", "0", "0", "1", "2", "3", "4"]
     );
 
-    let dss = compile(name);
-    assert_eq!(errors(&dss), [no_cond("g", "X"), no_cond("e", "X")]);
-    assert!(solved(&dss));
-    for (geom, line) in [("g", "L"), ("e", "Le")] {
+    let mut dss = compile(name);
+    let both = "LineGeometry.g: conductor 2 has no x. LineGeometry.e: conductor 2 has no x.";
+    assert_eq!(
+        errors(&dss),
+        [
+            no_cond("g", "X"),
+            no_cond("e", "X"),
+            format!("Error Encountered in CalcVoltageBases: {both}"),
+        ]
+    );
+    assert!(!solved(&dss));
+    for geom in ["g", "e"] {
         assert_eq!(units(&dss, geom), ["ft"; 4], "{geom}");
-        let xs: Vec<f64> = conductors(&dss, geom).iter().map(|c| c.x).collect();
-        assert_eq!(xs, [-4.0, 0.0, 4.0, 0.0], "{geom}");
-        assert_x(&dss, line, &c0_in(["ft"; 4]), &[(2, 1, 0.794_511_1)], "N2");
+        let xs: Vec<Option<f64>> = conductors(&dss, geom).iter().map(|c| c.x).collect();
+        assert_eq!(xs, [Some(-4.0), None, Some(4.0), Some(0.0)], "{geom}");
     }
+
+    let dir = scratch.dir("save");
+    save(&mut dss, &dir, "g");
+    let back = reload_unsolved(&dir);
+    for geom in ["g", "e"] {
+        assert_eq!(conductors(&back, geom), conductors(&dss, geom), "{geom}");
+    }
+    assert_eq!(
+        errors(&back),
+        [
+            format!("Error Encountered in CalcVoltageBases: {both}"),
+            format!("Error Encountered in Solve: {both}"),
+        ]
+    );
+    assert!(!solved(&back));
 }
 
 // ----- one pin per rule ---------------------------------------------------------
@@ -1623,8 +1892,8 @@ fn conductor_data_without_cond_is_refused() {
         conductors(&dss, "k"),
         [Conductor {
             object: None,
-            x: 0.0,
-            h: 0.0,
+            x: None,
+            h: None,
             unit: "ft"
         }]
     );
@@ -1699,21 +1968,21 @@ fn line_breaks_and_continuations_mean_nothing() {
 }
 
 /// Rule 6: `cond=` out of range is an error (code 10102) and leaves no
-/// conductor selected: `cond=11` on four conductors, `cond=1` before
-/// `nconds=`, `cond=0`, and `cond=2` and `cond=-1` on one conductor. The `x=`
-/// after them is refused.
+/// conductor selected: `cond=11` on four conductors, `cond=0`, and `cond=2`
+/// and `cond=-1` on one conductor. The `x=` after them is refused. A `cond=1`
+/// before `nconds=` is refused as every property there is, with no code.
 #[test]
 fn cond_out_of_range_is_refused_and_selects_nothing() {
     let dss = compile("r6_cond_zero_and_cond_before_nconds.dss");
     assert_eq!(
         errors(&dss),
         [
-            out_of_range("g", 1, "has no conductors yet, set NConds first"),
+            before_nconds("g", "Cond"),
             out_of_range("g", 0, "has 3 conductors"),
             no_cond("g", "X"),
         ]
     );
-    assert_eq!(dss.errors()[0].code, Some(10102));
+    assert_eq!(dss.errors()[0].code, None);
     assert_eq!(dss.errors()[1].code, Some(10102));
     assert_eq!(dss.errors()[2].code, None);
     assert!(solved(&dss));
@@ -1746,6 +2015,55 @@ fn cond_out_of_range_is_refused_and_selects_nothing() {
         assert_eq!(one.errors()[before].code, Some(10102));
         assert_eq!(cond(&mut one, "g"), "0", "cond={value}");
     }
+}
+
+/// A property before the first `nconds=` of a new geometry is refused, naming
+/// it, in token order, with no code, and writes nothing: `g`'s New line writes
+/// `units=m`, `nphases=2`, `normamps=500`, `reduce=y` and `cond=1` ahead of
+/// `nconds=3`. So `NPhases` stays 3, `NormAmps` comes from the wire (730),
+/// `Reduce` stays No and the conductors are in feet: X21 0.7945111 Ω/mi, where
+/// metres would give 0.6503452. A `like=` copy of `g` holds conductors, so
+/// `h`'s `units=m` is accepted (the conductors keep their own feet). A `like=`
+/// whose source is not found leaves `k` without conductors, so its `x=` is
+/// refused as before `nconds=`. A second `New` of `g` holds conductors too:
+/// its `units=m` ahead of `nconds=3` is accepted and `nconds=` returns the
+/// default to feet.
+#[test]
+fn a_property_before_the_first_nconds_is_refused() {
+    let mut dss = compile("p1_property_before_nconds.dss");
+    let mut want: Vec<String> = ["Units", "NPhases", "NormAmps", "Reduce", "Cond"]
+        .iter()
+        .map(|p| before_nconds("g", p))
+        .collect();
+    want.push("Error in LineGeometry MakeLike: \"nosuch\" not found.".to_string());
+    want.push(before_nconds("k", "X"));
+    assert_eq!(errors(&dss), want);
+    for (i, e) in dss.errors().iter().enumerate() {
+        assert_eq!(e.code, None, "{i}: {}", e.message);
+    }
+    assert!(solved(&dss));
+    assert_eq!(query(&mut dss, "LineGeometry.g.NPhases"), "3");
+    assert_eq!(query(&mut dss, "LineGeometry.g.NormAmps"), "730");
+    assert_eq!(query(&mut dss, "LineGeometry.g.Reduce"), "No");
+    assert_eq!(units(&dss, "g"), ["ft"; 3]);
+    assert_x(
+        &dss,
+        "L",
+        &[
+            phase(-4.0, 28.0, "ft"),
+            phase(0.0, 28.0, "ft"),
+            phase(4.0, 28.0, "ft"),
+        ],
+        &[(2, 1, 0.794_511_1)],
+        "P1",
+    );
+    assert_eq!(query(&mut dss, "LineGeometry.h.Units"), "m");
+    assert_eq!(units(&dss, "h"), ["ft"; 3]);
+    assert!(conductors(&dss, "k").is_empty());
+    let before = dss.errors().len();
+    dss.command("New LineGeometry.g units=m nconds=3");
+    assert_eq!(errors(&dss)[before..], [] as [String; 0]);
+    assert_eq!(query(&mut dss, "LineGeometry.g.Units"), "ft");
 }
 
 /// A `cond=` whose value is not a number selects no conductor, as one out of
@@ -1832,9 +2150,9 @@ fn cond_that_is_not_a_whole_number_selects_nothing() {
 }
 
 /// Rule 7: a conductor without a wire, cncable or tscable is one error at
-/// calculation, naming it: in the solve (F, and F's geometry on two Lines), in
-/// `Show LineConstants`, and for two and for three missing conductors in one
-/// message.
+/// calculation, naming it and what it lacks: in the solve (F, and F's geometry
+/// on two Lines), in `Show LineConstants`, and for two and for three missing
+/// conductors in one message.
 #[test]
 fn a_conductor_without_data_is_one_error_naming_it() {
     let scratch = Scratch::new("rule7");
@@ -1848,10 +2166,10 @@ fn a_conductor_without_data_is_one_error_naming_it() {
     dss.command("Show LineConstants freq=60 units=mi rho=100");
     assert_eq!(
         errors(&dss)[1..],
-        [
-            "Error computing line constants for LineGeometry.g; Error message: LineGeometry.g: \
-          conductor 2 has no wire, cncable or tscable."
-        ]
+        [format!(
+            "Error computing line constants for LineGeometry.g; Error message: \
+                 LineGeometry.g: conductor 2 has {NOTHING}."
+        )]
     );
     assert_eq!(dss.errors()[1].code, Some(9934));
 
@@ -1862,10 +2180,10 @@ fn a_conductor_without_data_is_one_error_naming_it() {
     two.command("Show LineConstants freq=60 units=mi rho=100");
     assert_eq!(
         errors(&two),
-        [
-            "Error computing line constants for LineGeometry.two; Error message: LineGeometry.two: \
-          conductors 2 and 3 have no wire, cncable or tscable."
-        ]
+        [format!(
+            "Error computing line constants for LineGeometry.two; Error message: \
+                 LineGeometry.two: conductors 2 and 3 have {NOTHING}."
+        )]
     );
 
     let mut four = compile("h2_one_conductor_with_cond.dss");
@@ -1875,24 +2193,86 @@ fn a_conductor_without_data_is_one_error_naming_it() {
     four.command("Show LineConstants freq=60 units=mi rho=100");
     assert_eq!(
         errors(&four),
-        [
+        [format!(
             "Error computing line constants for LineGeometry.four; Error message: \
-             LineGeometry.four: conductors 2, 3 and 4 have no wire, cncable or tscable."
-        ]
+                 LineGeometry.four: conductors 2, 3 and 4 have {NOTHING}."
+        )]
     );
+}
+
+/// Rule 7 names a conductor without an `x` or an `h` too, unless the geometry
+/// is built on an equivalent spacing: `nox` (one conductor without `x`), `noh`
+/// (conductor 3 without `h`), `mixed` (conductor 1 without `x`, conductor 3
+/// without `h`), the bare neutral `buried` takes from `wires=` with no
+/// position, and `ge`, on the equivalent spacing with no wire, named for its
+/// wires only. They are one error at `CalcVoltageBases` and at `Solve`, each
+/// geometry once in build order, with no singular-matrix error after. `ga` on
+/// the equivalent spacing and `gd` on a detailed spacing are not named. Given
+/// what they lack, all seven solve: the equivalent ones at X21 0.7964372 Ω/mi,
+/// `gd` and the three overhead phases at script C's 0.7945111.
+#[test]
+fn a_conductor_without_a_position_is_the_rule_7_error() {
+    let mut dss = compile("x1_conductor_without_a_position.dss");
+    let all = "LineGeometry.nox: conductor 1 has no x. LineGeometry.noh: conductor 3 has no h. \
+               LineGeometry.mixed: conductor 1 has no x. Conductor 3 has no h. \
+               LineGeometry.buried: conductor 3 has no x and no h. LineGeometry.ge: conductors \
+               1, 2, 3 and 4 have no wire, cncable or tscable.";
+    assert_eq!(
+        errors(&dss),
+        [format!("Error Encountered in CalcVoltageBases: {all}")]
+    );
+    assert!(!solved(&dss));
+    dss.command("Solve");
+    assert_eq!(
+        errors(&dss)[1..],
+        [format!("Error Encountered in Solve: {all}")]
+    );
+    assert!(!solved(&dss));
+
+    for (geom, line, given) in [
+        ("nox", "Lnox", "cond=1 x=0"),
+        ("noh", "Lnoh", "cond=3 h=28"),
+        ("mixed", "Lmixed", "cond=1 x=-4 cond=3 h=28"),
+        ("buried", "Lb", "cond=3 x=1.5 h=-4"),
+        (
+            "ge",
+            "Le",
+            "wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]",
+        ),
+    ] {
+        dss.command(&format!("Edit LineGeometry.{geom} {given}"));
+        dss.command(&format!("Edit Line.{line} geometry={geom}"));
+    }
+    dss.command("Solve");
+    assert_eq!(dss.errors().len(), 2, "{:?}", errors(&dss));
+    assert!(solved(&dss));
+    let eq = carson_x_equivalent(&[GMR_P, GMR_P, GMR_P, GMR_N], 3, 1.2, 1.5);
+    for l in ["La", "Le"] {
+        assert_x_is(&dss, l, &eq, &[(2, 1, 0.796_437_2)], l);
+    }
+    assert_x(&dss, "Ld", &c0_in(["ft"; 4]), &[(2, 1, 0.794_511_1)], "gd");
+    let three = [
+        phase(-4.0, 28.0, "ft"),
+        phase(0.0, 28.0, "ft"),
+        phase(4.0, 28.0, "ft"),
+    ];
+    for l in ["Lnoh", "Lmixed"] {
+        assert_x(&dss, l, &three, &[(2, 1, 0.794_511_1)], l);
+    }
+    assert_c11(&dss, "Lnox", 28.0 * 0.3048, "nox");
 }
 
 /// Rule 8: a unit is never read as metres silently. Script C, with no `units=`
 /// at all, is in feet. A `units=m` before the first `nconds=` of a new
-/// geometry stays the default, so R8's conductors are in metres (the metre
-/// numbers of script C, the same reactance), and `units=none` is refused with
-/// conductor 1 keeping metres, and so is `units=feet`, a word outside the
-/// unit names. A redefinition reads its unit-less numbers in
-/// feet (R9). A spacing with no length unit is refused
+/// geometry is refused, so R8's conductors read their metre numbers in feet
+/// (X21 0.9386771 Ω/mi, where metres give script C's 0.7945111), and
+/// `units=none` is refused with conductor 1 keeping feet, and so is
+/// `units=feet`, a word outside the unit names. A redefinition reads its
+/// unit-less numbers in feet (R9). A spacing with no length unit is refused
 /// ([`a_spacing_without_a_unit_is_refused`]). The buried neutral that `wires=`
-/// fills saves in feet while no `cond=` has selected it, read by a replay up
-/// to the `Edit` that places it, and follows the default to metres when a
-/// `units=m` after `cond=1` makes metres the default (rule 4).
+/// fills saves in feet, with no position, while no `cond=` has selected it,
+/// read by a replay up to the `Edit` that places it, and follows the default
+/// to metres when a `units=m` after `cond=1` makes metres the default (rule 4).
 #[test]
 fn a_unit_is_never_read_as_metres() {
     let scratch = Scratch::new("rule8");
@@ -1907,43 +2287,74 @@ fn a_unit_is_never_read_as_metres() {
     assert_eq!(
         errors(&r8),
         [
+            before_nconds("g", "Units"),
             "LineGeometry.g.Units: \"none\" is not one of the length units mi, kft, km, m, ft, \
              in, cm, mm."
+                .to_string(),
         ]
     );
-    assert_eq!(units(&r8, "g"), ["m"; 3]);
+    assert_eq!(units(&r8, "g"), ["ft"; 3]);
     assert_x(
         &r8,
         "L",
         &[
-            phase(-1.2192, 8.5344, "m"),
-            phase(0.0, 8.5344, "m"),
-            phase(1.2192, 8.5344, "m"),
+            phase(-1.2192, 8.5344, "ft"),
+            phase(0.0, 8.5344, "ft"),
+            phase(1.2192, 8.5344, "ft"),
         ],
-        &[(2, 1, 0.794_511_1)],
+        &[(2, 1, 0.938_677_1)],
         "R8",
     );
     r8.command("Edit LineGeometry.g cond=1 units=feet");
     assert_eq!(
-        errors(&r8)[1..],
+        errors(&r8)[2..],
         [
             "LineGeometry.g.Units: \"feet\" is not one of the length units mi, kft, km, m, ft, \
              in, cm, mm."
         ]
     );
-    assert_eq!(units(&r8, "g"), ["m"; 3]);
+    assert_eq!(units(&r8, "g"), ["ft"; 3]);
 
     let arrays = compile("arrays_keep_the_selection.dss");
     assert_eq!(units(&arrays, "buried"), ["ft"; 3]);
     let mut unplaced = replay_until("arrays_keep_the_selection.dss", "Edit LineGeometry.buried");
     let (rows, restore) = saved_rows(&save(&mut unplaced, &scratch.dir("save"), "buried"));
-    assert_eq!(rows[2], ["3", "wire=acsr_4/0", "x=0", "h=0", "units=ft"]);
+    assert_eq!(rows[2], ["3", "wire=acsr_4/0", "", "", "units=ft"]);
     assert_eq!(restore.as_deref(), Some("2"));
     unplaced.command("Edit LineGeometry.buried cond=1 units=m");
     assert_eq!(units(&unplaced, "buried"), ["m", "ft", "m"]);
     let (rows, restore) = saved_rows(&save(&mut unplaced, &scratch.dir("metres"), "buried"));
-    assert_eq!(rows[2], ["3", "wire=acsr_4/0", "x=0", "h=0", "units=m"]);
+    assert_eq!(rows[2], ["3", "wire=acsr_4/0", "", "", "units=m"]);
     assert_eq!(restore.as_deref(), Some("1"));
+}
+
+/// A unit word is read whole: `units=mils` on conductor 2's line is neither
+/// `mi` nor anything else, so it is refused naming the word and conductor 2
+/// takes the default feet (X21 0.7945111 Ω/mi, where miles would put it 28
+/// miles up).
+#[test]
+fn a_unit_word_is_read_whole() {
+    let dss = compile("u1_a_unit_word_is_read_whole.dss");
+    assert_eq!(
+        errors(&dss),
+        [
+            "LineGeometry.g.Units: \"mils\" is not one of the length units mi, kft, km, m, ft, \
+             in, cm, mm."
+        ]
+    );
+    assert!(solved(&dss));
+    assert_eq!(units(&dss, "g"), ["ft"; 3]);
+    assert_x(
+        &dss,
+        "L",
+        &[
+            phase(-4.0, 28.0, "ft"),
+            phase(0.0, 28.0, "ft"),
+            phase(4.0, 28.0, "ft"),
+        ],
+        &[(2, 1, 0.794_511_1)],
+        "U1",
+    );
 }
 
 /// A CIM export places each conductor of script A in its own unit: conductor 1
@@ -1985,6 +2396,49 @@ fn cim_places_each_conductor_in_its_own_unit() {
     assert!(close(position(3), (4.0, 28.0)), "{:?}", position(3));
 }
 
+/// The CIM export writes a coordinate only where it was given: conductor 2 of
+/// `p`, given `h=28` and no `x=`, has a `yCoord` (8.5344 m) and no `xCoord`,
+/// and conductor 3, given `x=1` and no `h=`, an `xCoord` (0.3048 m) and no
+/// `yCoord`.
+#[test]
+fn cim_writes_no_coordinate_never_given() {
+    let scratch = Scratch::new("cim_none");
+    let mut dss = compile("h2_one_conductor_with_cond.dss");
+    dss.command(
+        "New LineGeometry.p nconds=3 nphases=3 cond=1 wire=ACSR_556_5 x=-1 h=28 cond=2 \
+         wire=ACSR_556_5 h=28 cond=3 wire=ACSR_556_5 x=1",
+    );
+    dss.command(&format!("Set DataPath=\"{}\"", slash(&scratch.dir("cim"))));
+    dss.command("Export CIM100");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    let xml = read(&scratch.0.join("cim"), "lgrules_CIM100x.xml");
+    let position = |i: usize| -> String {
+        xml.split("<cim:WirePosition ")
+            .find(|b| b.contains(&format!(">WP_p_{i}<")))
+            .and_then(|b| b.split("</cim:WirePosition>").next())
+            .unwrap_or_else(|| panic!("no WirePosition WP_p_{i}"))
+            .to_string()
+    };
+    let (x, y) = ("<cim:WirePosition.xCoord>", "<cim:WirePosition.yCoord>");
+    assert!(
+        position(1).contains(x) && position(1).contains(y),
+        "{}",
+        position(1)
+    );
+    assert!(!position(2).contains(x), "{}", position(2));
+    assert!(
+        position(2).contains(&format!("{y}8.5344<")),
+        "{}",
+        position(2)
+    );
+    assert!(
+        position(3).contains(&format!("{x}0.3048<")),
+        "{}",
+        position(3)
+    );
+    assert!(!position(3).contains(y), "{}", position(3));
+}
+
 // ----- the selection under the other forms ----------------------------------------
 
 /// `spacing=`, `wires=`, the buried-neutral `wires=` and `conductors=` leave
@@ -2002,22 +2456,22 @@ fn wires_spacing_and_conductors_leave_the_selection_alone() {
     let name = "arrays_keep_the_selection.dss";
     let unplaced = replay_until(name, "Edit LineGeometry.buried");
     let buried = conductors(&unplaced, "buried");
-    assert_eq!((buried[1].x, buried[1].h), (0.6, -4.0));
+    assert_eq!((buried[1].x, buried[1].h), (Some(0.6), Some(-4.0)));
     assert_eq!(buried[2].object.as_deref(), Some("acsr_4/0"));
-    assert_eq!((buried[2].x, buried[2].h), (0.0, 0.0));
+    assert_eq!((buried[2].x, buried[2].h), (None, None));
     let unplaced = replay_until(name, "Edit LineGeometry.gn");
     assert!(
         conductors(&unplaced, "gn")
             .iter()
-            .all(|c| c.x == 0.0 && c.h == 0.0 && c.object.is_some())
+            .all(|c| c.x.is_none() && c.h.is_none() && c.object.is_some())
     );
 
     let dss = compile(name);
     assert_eq!(errors(&dss), [no_cond("g", "X"), no_cond("gn", "X")]);
     assert!(solved(&dss));
     let g = conductors(&dss, "g");
-    let xs: Vec<f64> = g.iter().map(|c| c.x).collect();
-    assert_eq!(xs, [-4.0, 0.0, 4.0, 0.0]);
+    let xs: Vec<Option<f64>> = g.iter().map(|c| c.x).collect();
+    assert_eq!(xs, [Some(-4.0), Some(0.0), Some(4.0), Some(0.0)]);
     for geom in ["g", "gc", "gn"] {
         assert_eq!(units(&dss, geom), ["ft"; 4], "{geom}");
     }
@@ -2035,8 +2489,8 @@ fn wires_spacing_and_conductors_leave_the_selection_alone() {
         &[(2, 1, 0.794_511_1)],
         "arrays gn",
     );
-    let gc: Vec<f64> = conductors(&dss, "gc").iter().map(|c| c.x).collect();
-    assert_eq!(gc, [-4.0, -2.0, 4.0, 0.0]);
+    let gc: Vec<Option<f64>> = conductors(&dss, "gc").iter().map(|c| c.x).collect();
+    assert_eq!(gc, [Some(-4.0), Some(-2.0), Some(4.0), Some(0.0)]);
     let mut gc_placed = c0_in(["ft"; 4]);
     gc_placed[1].x = -2.0;
     assert_x(
@@ -2054,7 +2508,10 @@ fn wires_spacing_and_conductors_leave_the_selection_alone() {
 
     let buried = conductors(&dss, "buried");
     assert_eq!(units(&dss, "buried"), ["ft"; 3]);
-    assert_eq!((buried[1].x, buried[2].x, buried[2].h), (0.6, 1.5, -4.0));
+    assert_eq!(
+        (buried[1].x, buried[2].x, buried[2].h),
+        (Some(0.6), Some(1.5), Some(-4.0))
+    );
     let cables = [
         laid(Holds::Cn, -0.5, -4.0, "ft"),
         laid(Holds::Cn, 0.6, -4.0, "ft"),
@@ -2089,8 +2546,8 @@ fn dump_leaves_the_selection_where_it_was() {
     dss.command("Edit LineGeometry.g x=7");
     assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
     assert_eq!(cond(&mut dss, "g"), "2");
-    let xs: Vec<f64> = conductors(&dss, "g").iter().map(|c| c.x).collect();
-    assert_eq!(xs, [-4.0, 7.0, 4.0, 0.0]);
+    let xs: Vec<Option<f64>> = conductors(&dss, "g").iter().map(|c| c.x).collect();
+    assert_eq!(xs, [Some(-4.0), Some(7.0), Some(4.0), Some(0.0)]);
     let text = read(&scratch.0.join("dump"), "lgrules_PropertyDump.txt");
     let rows: Vec<&str> = text.lines().filter(|l| l.starts_with("~ ")).collect();
     let want = [
@@ -2220,7 +2677,7 @@ fn a_y_rebuild_outside_the_solve_logs_its_error() {
     dss.rebuild_system_y();
     assert_eq!(
         errors(&dss)[before..],
-        ["LineGeometry.g: conductor 2 has no wire, cncable or tscable."]
+        [format!("LineGeometry.g: conductor 2 has {NOTHING}.")]
     );
 }
 
@@ -2235,8 +2692,8 @@ fn a_diakoptics_y_rebuild_logs_its_error() {
         rebuild(&mut dss);
         errors(&dss).split_off(before)
     });
-    let rule_7 = ["LineGeometry.g: conductor 2 has no wire, cncable or tscable."];
-    assert_eq!(logged, [rule_7, rule_7]);
+    let rule_7 = [format!("LineGeometry.g: conductor 2 has {NOTHING}.")];
+    assert_eq!(logged, [rule_7.clone(), rule_7]);
 }
 
 /// R9: a redefinition with `nconds=` reads its unit-less numbers in feet,
@@ -2273,12 +2730,12 @@ fn variant_a_redefinition_starts_from_feet() {
 /// distances in metres like `ga`: X21 0.7964372 Ω/mi, where feet would give
 /// 0.9406. `gd`, given positions of its own, reads those: X31 0.7123296 Ω/mi
 /// for its 2.4 m, where the replaced spacing gives 0.7964372. `gr`, given
-/// neither, has no conductor heights, and its Line is the one error of the
-/// solve. On `gs` that Line solves to `ga`'s voltages.
+/// neither, has no conductor positions, rule 7's one error of the solve. On
+/// `gs` that Line solves to `ga`'s voltages.
 #[test]
 fn a_redefinition_drops_the_equivalent_spacing() {
     let mut dss = compile("r10_redefinition_drops_the_equivalent_spacing.dss");
-    let gr = "Error in LineGeometry.gr: Conductor 1 height must be  > 0. ";
+    let gr = "LineGeometry.gr: conductors 1, 2, 3 and 4 have no x and no h.";
     assert_eq!(
         errors(&dss),
         [format!("Error Encountered in CalcVoltageBases: {gr}")]
@@ -2337,6 +2794,32 @@ fn a_redefinition_drops_the_equivalent_spacing() {
             );
         }
     }
+}
+
+/// Equivalent distances keep the unit of the spacing they came from (spacing
+/// `eq` in metres: phases 1.2 m apart and 1.5 m from the neutral). `gu`, given
+/// `units=ft` after the spacing with no conductor selected, and `gl`, a
+/// `like=` copy of `ga`, read the distances in metres like `ga`: X21 0.7964372
+/// Ω/mi and X41 0.7693606, where feet would give X21 0.9406032. The `units=ft`
+/// moves `gu`'s default unit only. Line `Lq`, with its own `spacing=` and
+/// `wires=` on the three-wire spacing `eq3` in metres, reads X21 0.7964372 too.
+#[test]
+fn equivalent_distances_keep_their_own_unit() {
+    let mut dss = compile("q1_equivalent_distances_keep_their_unit.dss");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    assert!(solved(&dss));
+    let wires = [GMR_P, GMR_P, GMR_P, GMR_N];
+    let eq = carson_x_equivalent(&wires, 3, 1.2, 1.5);
+    for l in ["La", "Lu", "Ll"] {
+        assert_x_is(&dss, l, &eq, &[(2, 1, 0.796_437_2), (4, 1, 0.769_360_6)], l);
+    }
+    let feet = carson_x_equivalent(&wires, 3, 1.2 * 0.3048, 1.5 * 0.3048);
+    assert!((feet[1][0] - 0.940_603_2).abs() <= X_BAND, "{}", feet[1][0]);
+    assert_eq!(query(&mut dss, "LineGeometry.ga.Units"), "m");
+    assert_eq!(query(&mut dss, "LineGeometry.gu.Units"), "ft");
+    assert_eq!(query(&mut dss, "LineGeometry.gl.Units"), "m");
+    let eq3 = carson_x_equivalent(&[GMR_P; 3], 3, 1.2, 1.5);
+    assert_x_is(&dss, "Lq", &eq3, &[(2, 1, 0.796_437_2)], "Lq");
 }
 
 /// A refused `nconds=` (0 or negative) leaves the geometry as it was: its
@@ -2435,7 +2918,7 @@ fn a_spacing_without_a_unit_is_refused() {
         assert!(
             conductors(&dss, g)
                 .iter()
-                .all(|c| c.x == 0.0 && c.h == 0.0 && c.object.is_some()),
+                .all(|c| c.x.is_none() && c.h.is_none() && c.object.is_some()),
             "{g}"
         );
         assert_eq!(query(&mut dss, &format!("LineGeometry.{g}.Spacing")), "");
@@ -2549,17 +3032,69 @@ fn json_record_of_an_existing_geometry_selects_nothing() {
         "LineGeometry":[{"Name":"g","X":5}]}"#;
     assert_eq!(dss.circuit_from_json(json), Ok(()));
     assert_eq!(errors(&dss), [no_cond("g", "X")]);
-    let xs: Vec<f64> = conductors(&dss, "g").iter().map(|c| c.x).collect();
-    assert_eq!(xs, [-4.0, 0.0, 4.0, 0.0]);
+    let xs: Vec<Option<f64>> = conductors(&dss, "g").iter().map(|c| c.x).collect();
+    assert_eq!(xs, [Some(-4.0), Some(0.0), Some(4.0), Some(0.0)]);
+}
+
+/// The JSON import refuses what the text refuses: it reaches the same
+/// property edit and applies `NConds` first, so the rule on properties before
+/// `nconds=` shows for a record without `NConds`. A new geometry's record
+/// `{"Name":"j","NPhases":2}` is refused naming `NPhases`, and the exported
+/// record of a complete geometry with `"Units":"metre"` added is refused
+/// naming the word, its conductors keeping feet. The import returns `Ok` and
+/// the refusals are in the error log, as the text path logs them.
+#[test]
+fn json_import_refuses_what_the_text_refuses() {
+    use crate::report::export::json::JsonOpts;
+    let wire = "New WireData.w Rdc=0.1 Runits=km GMRac=0.01 GMRunits=m radius=0.02 radunits=m \
+                normamps=400";
+    let import = |records: &str| {
+        let json =
+            format!(r#"{{"Name":"lgjson","PreCommands":["{wire}"],"LineGeometry":[{records}]}}"#);
+        let mut dss = Dss::new();
+        assert_eq!(dss.circuit_from_json(&json), Ok(()), "{records}");
+        dss
+    };
+    let mut fresh = import(r#"{"Name":"j","NPhases":2}"#);
+    assert_eq!(errors(&fresh), [before_nconds("j", "NPhases")]);
+    assert_eq!(query(&mut fresh, "LineGeometry.j.NPhases"), "3");
+    assert_eq!(query(&mut fresh, "LineGeometry.j.NConds"), "0");
+
+    let mut src = Dss::new();
+    src.command("new circuit.lgjson");
+    src.command(wire);
+    src.command(
+        "New LineGeometry.g nconds=3 nphases=3 cond=1 wire=w x=-4 h=28 cond=2 wire=w x=0 h=28 \
+         cond=3 wire=w x=4 h=28",
+    );
+    assert!(src.errors().is_empty(), "{:?}", errors(&src));
+    let record = src
+        .obj_to_json("LineGeometry.g", JsonOpts::NONE)
+        .expect("g");
+    // The record writes no `Units` while it is the default, so the key is added.
+    assert!(!record.contains("\"Units\""), "{record}");
+    let metre = format!(
+        "{},\"Units\":\"metre\"}}",
+        record.strip_suffix('}').expect("a JSON object")
+    );
+    let back = import(&metre);
+    assert_eq!(
+        errors(&back),
+        [
+            "LineGeometry.g.Units: \"metre\" is not one of the length units mi, kft, km, m, ft, \
+             in, cm, mm."
+        ]
+    );
+    assert_eq!(units(&back, "g"), ["ft"; 3]);
 }
 
 /// The JSON export of a geometry with no conductor selected (after a second
 /// `New`, after `nconds=`, or a `like=` copy) writes none of the selected
-/// conductor's values, in the default and the full form: `Cond` 0, the
-/// missing conductor object and the zero `X` and `H` would each be refused by
-/// the import (rules 6 and 2). The default record, and V5's whole circuit,
-/// import with no error. With a conductor selected the record still carries
-/// it and its values.
+/// conductor's values, in the default and the full form: `Cond` 0 and the
+/// missing conductor object would each be refused by the import (rules 6 and
+/// 2), and `X` and `H` hold no value. The default record, and V5's whole
+/// circuit, import with no error. With a conductor selected the record still
+/// carries it and its values.
 #[test]
 fn json_export_with_no_selection_writes_no_conductor_values() {
     use crate::report::export::json::JsonOpts;
@@ -2634,7 +3169,114 @@ fn json_export_with_no_selection_writes_no_conductor_values() {
     assert_eq!(cond(&mut back, "g"), "0");
     assert_eq!(cond(&mut back, "base"), cond(&mut v5, "base"));
 }
-/// With no conductor selected `Cond` reads 0, `X` and `H` read 0, the
+/// A geometry without conductors writes its name only, in the default and
+/// the full form: the import refuses every property before `NConds`, and
+/// `NConds` 0 itself. The record imports with no error into a geometry that
+/// still has no conductors.
+#[test]
+fn json_export_of_a_geometry_without_conductors_writes_its_name_only() {
+    use crate::report::export::json::JsonOpts;
+    let mut dss = Dss::new();
+    dss.command("new circuit.lgjson");
+    dss.command("New LineGeometry.g");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    for opts in [JsonOpts::NONE, JsonOpts::FULL] {
+        let record = dss.obj_to_json("LineGeometry.g", opts).expect("g");
+        assert_eq!(record, r#"{"Name":"g"}"#, "{opts:?}");
+        let json = format!(r#"{{"Name":"lgjson","LineGeometry":[{record}]}}"#);
+        let mut back = Dss::new();
+        assert_eq!(back.circuit_from_json(&json), Ok(()), "{opts:?}");
+        assert!(
+            back.errors().is_empty(),
+            "{opts:?}: {record} imports with {:?}",
+            errors(&back)
+        );
+        assert_eq!(query(&mut back, "LineGeometry.g.NConds"), "0", "{opts:?}");
+    }
+}
+
+/// An `x` or `h` reads empty where it holds no value: with no conductor
+/// selected (after `New`, a `like=` copy and `nconds=`), where `Cond` reads 0,
+/// and for a selected conductor whose value was never given. `Dump` prints
+/// `~ X=` for that conductor. Its JSON record carries `Cond`, the conductor
+/// and `H` but no `X`, and imports with no error, the `x` still never given.
+#[test]
+fn x_and_h_read_empty_when_never_given() {
+    use crate::report::export::json::JsonOpts;
+    let wire = "New WireData.w Rdc=0.1 Runits=km GMRac=0.01 GMRunits=m radius=0.02 radunits=m \
+                normamps=400";
+    let scratch = Scratch::new("empty");
+    let mut dss = Dss::new();
+    dss.command("new circuit.lgempty");
+    dss.command(wire);
+    for c in [
+        "New LineGeometry.src nconds=3 nphases=3 cond=1 wire=w x=-4 h=28 cond=2 wire=w x=0 h=28 \
+         cond=3 wire=w x=4 h=28",
+        "New LineGeometry.fresh",
+        "New LineGeometry.copy like=src",
+        "New LineGeometry.re like=src",
+        "Edit LineGeometry.re nconds=3",
+        "New LineGeometry.part nconds=3 nphases=3 cond=1 wire=w x=-4 h=28 cond=3 wire=w x=4 \
+         h=28 cond=2 wire=w h=28",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    for g in ["fresh", "copy", "re"] {
+        assert_eq!(cond(&mut dss, g), "0", "{g}");
+        for p in ["X", "H"] {
+            assert_eq!(
+                query(&mut dss, &format!("LineGeometry.{g}.{p}")),
+                "",
+                "{g} {p}"
+            );
+        }
+    }
+    assert_eq!(cond(&mut dss, "part"), "2");
+    assert_eq!(query(&mut dss, "LineGeometry.part.X"), "");
+    assert_eq!(query(&mut dss, "LineGeometry.part.H"), "28");
+
+    dss.command(&format!("Set DataPath=\"{}\"", slash(&scratch.dir("dump"))));
+    dss.command("Dump LineGeometry.part");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    let text = read(&scratch.0.join("dump"), "lgempty_PropertyDump.txt");
+    let rows: Vec<&str> = text.lines().filter(|l| l.starts_with("~ ")).collect();
+    let want = ["~ Cond=2", "~ Wire=w", "~ X=", "~ H=28", "~ Units=ft"];
+    assert_eq!(rows[7..12], want, "{rows:?}");
+    assert_eq!(cond(&mut dss, "part"), "2");
+
+    let record = dss
+        .obj_to_json("LineGeometry.part", JsonOpts::NONE)
+        .expect("part");
+    // The lanes spell the float differently, so `H` is read back after the import.
+    for member in ["\"Cond\":2", "\"Wire\":\"w\"", "\"H\":"] {
+        assert!(record.contains(member), "{member} not in {record}");
+    }
+    assert!(!record.contains("\"X\""), "{record}");
+    let json =
+        format!(r#"{{"Name":"lgempty","PreCommands":["{wire}"],"LineGeometry":[{record}]}}"#);
+    let mut back = Dss::new();
+    assert_eq!(back.circuit_from_json(&json), Ok(()));
+    assert!(
+        back.errors().is_empty(),
+        "{record} imports with {:?}",
+        errors(&back)
+    );
+    assert_eq!(cond(&mut back, "part"), "2");
+    assert_eq!(query(&mut back, "LineGeometry.part.X"), "");
+    assert_eq!(query(&mut back, "LineGeometry.part.H"), "28");
+    assert_eq!(
+        conductors(&back, "part")[1],
+        Conductor {
+            object: Some("w".into()),
+            x: None,
+            h: Some(28.0),
+            unit: "ft"
+        }
+    );
+}
+
+/// With no conductor selected `Cond` reads 0, `X` and `H` read empty, the
 /// conductor names read empty and `Units` reads the default. The four
 /// LineGeometry scenarios of the property readback gate, with every property
 /// they read: a new geometry, a `spacing=` + `wires=` geometry, a `like=` copy
@@ -2657,6 +3299,8 @@ fn readback_shows_no_conductor_after_new_like_and_arrays() {
                 ("NPhases", "3"),
                 ("Cond", "0"),
                 ("Wire", ""),
+                ("X", ""),
+                ("H", ""),
                 ("NormAmps", "none"),
                 ("EmergAmps", "none"),
                 ("Reduce", "No"),
@@ -2685,8 +3329,8 @@ fn readback_shows_no_conductor_after_new_like_and_arrays() {
                 ("NPhases", "3"),
                 ("Cond", "0"),
                 ("Wire", ""),
-                ("X", "0"),
-                ("H", "0"),
+                ("X", ""),
+                ("H", ""),
                 ("Units", "ft"),
                 ("NormAmps", "530"),
                 ("EmergAmps", "795"),
@@ -2716,8 +3360,8 @@ fn readback_shows_no_conductor_after_new_like_and_arrays() {
                 ("NPhases", "3"),
                 ("Cond", "0"),
                 ("Wire", ""),
-                ("X", "0"),
-                ("H", "0"),
+                ("X", ""),
+                ("H", ""),
                 // The source's default unit comes with the copy.
                 ("Units", "m"),
                 ("NormAmps", "530"),
@@ -2785,25 +3429,17 @@ fn readback_shows_no_conductor_after_new_like_and_arrays() {
     }
 }
 
-/// A `cond=` before `nconds=` is refused (rule 6), and the spacing and
-/// `wires=` after it fill all three conductors, so the conductor table comes
-/// ahead of `NConds=` in the order the properties were set. The Save writes
-/// `NConds=` first, and the reload gives the same conductors and reactance
-/// with no error.
+/// A `cond=` before `nconds=` is refused and enters no set order, and the
+/// spacing and `wires=` after `nconds=` fill all three conductors. The Save
+/// writes `NConds=` first, then `NPhases=` and the conductor table, and the
+/// reload gives the same conductors and reactance with no error.
 #[test]
 fn save_writes_nconds_first() {
     let scratch = Scratch::new("nconds_first");
     let name = "r6b_cond_before_nconds_with_spacing.dss";
     let mut dss = compile(name);
-    assert_eq!(
-        errors(&dss),
-        [out_of_range(
-            "g",
-            1,
-            "has no conductors yet, set NConds first"
-        )]
-    );
-    assert_eq!(dss.errors()[0].code, Some(10102));
+    assert_eq!(errors(&dss), [before_nconds("g", "Cond")]);
+    assert_eq!(dss.errors()[0].code, None);
     assert!(solved(&dss));
     assert_eq!(units(&dss, "g"), ["ft"; 3]);
     let placed = [
@@ -2817,10 +3453,92 @@ fn save_writes_nconds_first() {
     let body = line
         .strip_prefix("new \"linegeometry.g\"")
         .expect("the New line");
-    assert!(body.starts_with(" nconds=3 cond=1 "), "{line}");
+    assert!(body.starts_with(" nconds=3 nphases=3 cond=1 "), "{line}");
     let back = reload(&dir);
     assert_eq!(conductors(&back, "g"), conductors(&dss, "g"));
     assert_x(&back, "L", &placed, &[(2, 1, 0.794_511_1)], "R6b reloaded");
+}
+
+/// Save writes `X=` and `h=` only where they were given, and a row for a
+/// conductor that holds a position and no conductor object: conductor 1
+/// complete, conductor 2 with `x=1 h=28` and no wire, conductor 3 with a wire
+/// and `h=28` only. The reload holds the same conductors and gives the same
+/// rule 7 error, at the `CalcVoltageBases` of its `Master.dss` and at `Solve`.
+/// A conductor with one coordinate and no conductor object gets its row too:
+/// `q`, on no Line, holds `h=28` alone on conductor 1 and `x=2` alone on
+/// conductor 2, and reloads with each position as typed.
+#[test]
+fn save_writes_each_given_position_and_no_other() {
+    let scratch = Scratch::new("positions");
+    let mut dss = compile("h2_one_conductor_with_cond.dss");
+    dss.command("New LineGeometry.p nconds=3 nphases=3");
+    dss.command("~ cond=1 wire=ACSR_556_5 x=-1 h=28 cond=2 x=1 h=28 cond=3 wire=ACSR_556_5 h=28");
+    dss.command("New LineGeometry.q nconds=2 nphases=2");
+    dss.command("~ cond=1 h=28 cond=2 x=2");
+    dss.command("New Line.Lp bus1=src.1.2.3 bus2=bp.1.2.3 geometry=p length=1 units=mi");
+    dss.command("Solve");
+    let rule_7 =
+        "LineGeometry.p: conductor 2 has no wire, cncable or tscable. Conductor 3 has no x.";
+    assert_eq!(
+        errors(&dss),
+        [format!("Error Encountered in Solve: {rule_7}")]
+    );
+    let dir = scratch.dir("save");
+    let (rows, restore) = saved_rows(&save(&mut dss, &dir, "p"));
+    assert_eq!(
+        rows,
+        [
+            ["1", "wire=acsr_556_5", "x=-1", "h=28", "units=ft"],
+            ["2", "", "x=1", "h=28", "units=ft"],
+            ["3", "wire=acsr_556_5", "", "h=28", "units=ft"],
+        ]
+    );
+    assert_eq!(restore, None);
+    let (rows, restore) = saved_rows(&saved_line(&dir, "q"));
+    assert_eq!(
+        rows,
+        [
+            ["1", "", "", "h=28", "units=ft"],
+            ["2", "", "x=2", "", "units=ft"],
+        ]
+    );
+    assert_eq!(restore, None);
+    let back = reload_unsolved(&dir);
+    assert_eq!(conductors(&back, "p"), conductors(&dss, "p"));
+    assert_eq!(
+        conductors(&back, "p")[1],
+        Conductor {
+            object: None,
+            x: Some(1.0),
+            h: Some(28.0),
+            unit: "ft"
+        }
+    );
+    assert_eq!(conductors(&back, "q"), conductors(&dss, "q"));
+    assert_eq!(
+        conductors(&back, "q"),
+        [
+            Conductor {
+                object: None,
+                x: None,
+                h: Some(28.0),
+                unit: "ft"
+            },
+            Conductor {
+                object: None,
+                x: Some(2.0),
+                h: None,
+                unit: "ft"
+            },
+        ]
+    );
+    assert_eq!(
+        errors(&back),
+        [
+            format!("Error Encountered in CalcVoltageBases: {rule_7}"),
+            format!("Error Encountered in Solve: {rule_7}"),
+        ]
+    );
 }
 
 /// The Save of every deck that solves recompiles to the same conductors
@@ -2829,7 +3547,7 @@ fn save_writes_nconds_first() {
 #[test]
 fn save_round_trips_every_case() {
     let scratch = Scratch::new("save_all");
-    let cases: [(&str, &[&str], &[&str]); 31] = [
+    let cases: [(&str, &[&str], &[&str]); 30] = [
         ("a_units_on_line_2_only.dss", &["g"], &["L"]),
         ("b1_units_after_cond.dss", &["g"], &["L"]),
         ("b2_units_before_cond.dss", &["g"], &["L"]),
@@ -2846,7 +3564,6 @@ fn save_round_trips_every_case() {
             &["g", "h"],
             &["L", "Lh"],
         ),
-        ("n2_nconds_selects_nothing.dss", &["g", "e"], &["L", "Le"]),
         ("r6_cond_zero_and_cond_before_nconds.dss", &["g"], &["L"]),
         ("r6_cond_not_a_number.dss", &["g"], &["L"]),
         ("r6b_cond_before_nconds_with_spacing.dss", &["g"], &["L"]),
@@ -2918,4 +3635,248 @@ fn save_round_trips_every_case() {
             }
         }
     }
+}
+
+/// The Deri series impedance between conductors 1 and 2 of script C (4 ft
+/// apart, both at 28 ft) at 60 Hz over 100 Ω·m earth, in Ω/mi:
+/// `Z12 = (j ω μ0 / 2π) ln(D' / D)`, where `D' = √(dx² + (2h + 2p)²)` reaches
+/// the image of conductor 2 below the complex depth `p = √(ρ / (j ω μ0))`. It
+/// gives R21 0.0937284 and X21 0.8054776 Ω/mi, where the simple Carson model
+/// gives R21 0.0953015 and X21 0.7945111.
+fn deri_z21_c0() -> num_complex::Complex64 {
+    use num_complex::Complex64;
+    let (f, rho) = (60.0_f64, 100.0_f64);
+    let w_mu0 = 2.0 * std::f64::consts::PI * f * 4.0e-7 * std::f64::consts::PI;
+    let (dx, h) = (4.0 * 0.3048, 28.0 * 0.3048);
+    let p = (Complex64::new(rho, 0.0) / Complex64::new(0.0, w_mu0)).sqrt();
+    let image = (Complex64::new(dx * dx, 0.0) + (2.0 * h + 2.0 * p).powi(2)).sqrt();
+    let per_metre = Complex64::new(0.0, w_mu0 / (2.0 * std::f64::consts::PI)) * (image / dx).ln();
+    per_metre * 1609.344
+}
+
+/// `Show LineConstants` computes each geometry on a copy at the report's
+/// frequency, resistivity and earth model, so a Line built on the geometry
+/// after the report keeps its own. After a report at 50 Hz over 10 Ω·m, `Lx`
+/// reads `rho` 100 and the simple Carson reactance at 100 Ω·m ([`carson_x`],
+/// X21 0.7945111 Ω/mi, where 10 Ω·m gives 0.6548113). After a report under
+/// the circuit's Carson model, `Lx` with `earthmodel=deri` keeps the Deri
+/// impedance ([`deri_z21_c0`]). Each reads, entry by entry, what the same Line
+/// reads without the report. Both oracles hand the report's resistivity and
+/// earth model to the Line.
+#[test]
+fn a_line_constants_report_changes_no_line() {
+    let scratch = Scratch::new("report_copy");
+    let build = |report: Option<&str>, earth: &str, tag: &str| {
+        let mut dss = compile("c0_cond_in_order.dss");
+        dss.command(&format!("Set DataPath=\"{}\"", slash(&scratch.dir(tag))));
+        if let Some(report) = report {
+            dss.command(report);
+        }
+        dss.command(&format!(
+            "New Line.Lx bus1=src.1.2.3.0 bus2=bx.1.2.3.0 geometry=g length=1 units=mi{earth}"
+        ));
+        dss.command("CalcVoltageBases");
+        assert!(dss.errors().is_empty(), "{tag}: {:?}", errors(&dss));
+        dss
+    };
+
+    let mut rho = build(
+        Some("Show LineConstants freq=50 units=mi rho=10"),
+        "",
+        "rho",
+    );
+    let plain = build(None, "", "plain");
+    assert_eq!(query(&mut rho, "Line.Lx.rho"), "100");
+    assert_x(
+        &rho,
+        "Lx",
+        &c0_in(["ft"; 4]),
+        &[(2, 1, 0.794_511_1)],
+        "after a report over 10 ohm-m",
+    );
+    assert_eq!(xmatrix(&rho, "Lx"), xmatrix(&plain, "Lx"));
+    assert_eq!(zpart(&rho, "Lx", true), zpart(&plain, "Lx", true));
+
+    let deri = build(
+        Some("Show LineConstants freq=60 units=mi rho=100"),
+        " earthmodel=deri",
+        "deri",
+    );
+    let deri_plain = build(None, " earthmodel=deri", "deri_plain");
+    let z21 = deri_z21_c0();
+    let (r21, x21) = (zpart(&deri, "Lx", true)[1][0], xmatrix(&deri, "Lx")[1][0]);
+    assert!(
+        (r21 - z21.re).abs() <= X_BAND,
+        "R21 {r21}, Deri gives {}",
+        z21.re
+    );
+    assert!(
+        (x21 - z21.im).abs() <= X_BAND,
+        "X21 {x21}, Deri gives {}",
+        z21.im
+    );
+    assert!((r21 - 0.093_728_36).abs() <= X_BAND, "R21 {r21}");
+    assert_eq!(xmatrix(&deri, "Lx"), xmatrix(&deri_plain, "Lx"));
+    assert_eq!(zpart(&deri, "Lx", true), zpart(&deri_plain, "Lx", true));
+}
+
+/// `Show LineConstants` prints the matrices of the earth model it names. Two
+/// reports at 60 Hz over 100 Ω·m, the first under Deri and the second under
+/// the simple Carson model, and a Carson report after a Line built with
+/// `earthmodel=deri` each write R21 and X21 of their own model into
+/// `LineConstantsCode.dss`: Deri by [`deri_z21_c0`], simple Carson by
+/// R21 = π² f 10⁻⁷ Ω/m (0.0953015 Ω/mi) and X21 by [`carson_x`] (0.7945111
+/// Ω/mi). The file prints six significant digits, so each value holds within
+/// half a unit of its sixth digit beside [`X_BAND`]. Both oracles print the
+/// Deri values of the first report or of the Line under the Carson header.
+#[test]
+fn a_line_constants_report_prints_the_model_it_names() {
+    let scratch = Scratch::new("report_model");
+    let report = |dss: &mut Dss, tag: &str| {
+        let dir = scratch.dir(tag);
+        dss.command(&format!("Set DataPath=\"{}\"", slash(&dir)));
+        dss.command("Show LineConstants freq=60 units=mi rho=100");
+        assert!(dss.errors().is_empty(), "{tag}: {:?}", errors(dss));
+        let text = read(&dir, "LineConstantsCode.dss");
+        let entry_21 = |key: &str| -> f64 {
+            let line = text
+                .lines()
+                .find(|l| l.contains(key))
+                .unwrap_or_else(|| panic!("{tag}: no {key} in {text}"));
+            line.split('|')
+                .nth(1)
+                .and_then(|row| row.split_whitespace().next())
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(|| panic!("{tag}: no entry 21 in {line}"))
+        };
+        let model = text
+            .lines()
+            .find(|l| l.starts_with("!--- Earth Model"))
+            .unwrap_or_default()
+            .to_string();
+        (model, entry_21("Rmatrix="), entry_21("Xmatrix="))
+    };
+
+    let mut two = compile("c0_cond_in_order.dss");
+    two.command("Set EarthModel=Deri");
+    let first = report(&mut two, "deri");
+    two.command("Set EarthModel=Carson");
+    let second = report(&mut two, "carson");
+    let mut line = compile("c0_cond_in_order.dss");
+    line.command("Set EarthModel=Carson");
+    line.command(
+        "New Line.Lx bus1=src.1.2.3.0 bus2=bx.1.2.3.0 geometry=g length=1 units=mi \
+         earthmodel=deri",
+    );
+    line.command("CalcVoltageBases");
+    let after_line = report(&mut line, "after_line");
+
+    let deri = deri_z21_c0();
+    let carson_r21 = std::f64::consts::PI.powi(2) * 60.0e-7 * 1609.344;
+    let carson_x21 = carson_x(&c0_in(["ft"; 4]))[1][0];
+    let near = |printed: f64, want: f64| {
+        let digit = 10f64.powf(want.abs().log10().floor() - 5.0);
+        (printed - want).abs() <= 0.5 * digit + X_BAND
+    };
+    for (tag, (model, r21, x21), (name, want_r, want_x)) in [
+        ("first report", first, ("Deri", deri.re, deri.im)),
+        ("second report", second, ("Carson", carson_r21, carson_x21)),
+        (
+            "report after a Deri Line",
+            after_line,
+            ("Carson", carson_r21, carson_x21),
+        ),
+    ] {
+        assert_eq!(model, format!("!--- Earth Model = {name}"), "{tag}");
+        assert!(near(r21, want_r), "{tag}: R21 {r21}, {name} gives {want_r}");
+        assert!(near(x21, want_x), "{tag}: X21 {x21}, {name} gives {want_x}");
+    }
+}
+
+/// A `nconds=` whose conductor table cannot be allocated is refused, naming
+/// the count, and the process goes on: a new geometry keeps no conductors, so
+/// the property after it is refused, and script C's geometry keeps its four
+/// conductors, their units and the selection, and its Line still solves at
+/// X21 0.7945111 Ω/mi. A count past the integer range is refused before it is
+/// converted, naming it as written, in both lanes, and so is a negative one.
+/// The JSON import refuses such a count the same way, one in the integer range
+/// and one past it. Every count here needs matrices larger than the address
+/// space, so the refusal allocates nothing.
+#[test]
+fn a_count_beyond_the_memory_is_refused() {
+    let refused = |geom: &str, n: &str| {
+        format!(
+            "LineGeometry.{geom}.NConds: nconds={n} needs more memory than is available, so \
+             the value is not applied."
+        )
+    };
+    let mut dss = compile("c0_cond_in_order.dss");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    dss.command("New LineGeometry.h nconds=1000000000");
+    dss.command("~ nphases=3");
+    dss.command("Edit LineGeometry.g cond=2");
+    dss.command("Edit LineGeometry.g nconds=1000000000");
+    assert_eq!(
+        errors(&dss),
+        [
+            refused("h", "1000000000"),
+            before_nconds("h", "NPhases"),
+            refused("g", "1000000000"),
+        ]
+    );
+    assert_eq!(query(&mut dss, "LineGeometry.h.NConds"), "0");
+    assert_eq!(query(&mut dss, "LineGeometry.g.NConds"), "4");
+    assert_eq!(cond(&mut dss, "g"), "2");
+    assert_eq!(units(&dss, "g"), ["ft"; 4]);
+    dss.command("Edit Line.L geometry=g");
+    dss.command("Solve");
+    assert_eq!(dss.errors().len(), 3, "{:?}", errors(&dss));
+    assert_x(
+        &dss,
+        "L",
+        &c0_in(["ft"; 4]),
+        &[(2, 1, 0.794_511_1)],
+        "refused count",
+    );
+    for count in ["1e10", "4294967299", "-4294967293"] {
+        dss.command(&format!("Edit LineGeometry.g nconds={count}"));
+    }
+    assert_eq!(
+        errors(&dss)[3..],
+        [
+            refused("g", "1e10"),
+            refused("g", "4294967299"),
+            "LineGeometry.g.NConds: Value (-4294967293) cannot be negative.".to_string(),
+        ]
+    );
+    assert_eq!(query(&mut dss, "LineGeometry.g.NConds"), "4");
+    assert_eq!(units(&dss, "g"), ["ft"; 4]);
+
+    for (count, written) in [("1e9", "1000000000"), ("1e10", "10000000000")] {
+        let mut json = Dss::new();
+        let record =
+            format!(r#"{{"Name":"lgjson","LineGeometry":[{{"Name":"g","NConds":{count}}}]}}"#);
+        assert_eq!(json.circuit_from_json(&record), Ok(()), "{count}");
+        let errs = errors(&json);
+        assert_eq!(errs.len(), 1, "{count}: {errs:?}");
+        assert_eq!(errs[0], refused("g", written), "{count}");
+        assert_eq!(query(&mut json, "LineGeometry.g.NConds"), "0", "{count}");
+    }
+}
+
+/// The schema gives `Cond` no default, as its help says: no conductor is
+/// selected until `cond=N`, and the import refuses `Cond` 0 (rule 6).
+#[test]
+fn the_schema_gives_cond_no_default() {
+    let schema: serde_json::Value =
+        serde_json::from_str(&Dss::new().extract_schema_json()).expect("the schema is JSON");
+    let cond = &schema["$defs"]["LineGeometry"]["properties"]["Cond"];
+    assert_eq!(cond["type"], "integer", "{cond}");
+    assert!(cond.get("default").is_none(), "{cond}");
+    assert!(
+        cond["description"]
+            .as_str()
+            .is_some_and(|d| d.contains("There is no default")),
+        "{cond}"
+    );
 }

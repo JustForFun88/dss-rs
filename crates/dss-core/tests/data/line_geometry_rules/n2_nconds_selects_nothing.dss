@@ -1,7 +1,8 @@
 ! nconds= re-allocates the conductors and selects none, on a ~ line (g) and in
 ! an Edit (e): the x=5 after it is refused, and conductor 2, selected before it,
-! keeps the x 0 of the re-allocation. Both geometries are then written again,
-! conductor 2 without x=, and each is solved on a Line of its own.
+! has no x after the re-allocation. Both geometries are then written again,
+! conductor 2 without x=, so each lacks conductor 2's x and the solve of their
+! Lines is that one error.
 Clear
 Set DefaultBaseFrequency=60
 New Circuit.lgrules basekv=12.47 phases=3 bus1=src

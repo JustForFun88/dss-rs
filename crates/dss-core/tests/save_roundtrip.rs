@@ -911,8 +911,8 @@ fn save_restores_the_active_linegeometry_conductor() {
     assert_eq!(active(&pre, "linegeometry.g3"), ["3", "3", "24"]);
     assert_eq!(active(&pre, "linegeometry.cloned"), ["1", "-4", "28"]);
     assert_eq!(active(&pre, "linegeometry.back"), ["1", "-1", "30"]);
-    assert_eq!(active(&pre, "linegeometry.bare"), ["2", "0", "0"]);
-    assert_eq!(active(&pre, "linegeometry.one"), ["1", "0", "0"]);
+    assert_eq!(active(&pre, "linegeometry.bare"), ["2", "", ""]);
+    assert_eq!(active(&pre, "linegeometry.one"), ["1", "", ""]);
 
     let save = |dss: &mut Dss, dir: &std::path::Path| {
         std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("mkdir {}: {e}", dir.display()));
@@ -962,8 +962,8 @@ fn save_restores_the_active_linegeometry_conductor() {
     let post = property_snapshot_at(&mut dss, tag, &nodes);
     assert_eq!(active(&post, "linegeometry.cloned"), ["1", "-4", "28"]);
     assert_eq!(active(&post, "linegeometry.back"), ["1", "-1", "30"]);
-    assert_eq!(active(&post, "linegeometry.bare"), ["2", "0", "0"]);
-    assert_eq!(active(&post, "linegeometry.one"), ["1", "0", "0"]);
+    assert_eq!(active(&post, "linegeometry.bare"), ["2", "", ""]);
+    assert_eq!(active(&post, "linegeometry.one"), ["1", "", ""]);
     assert_properties_round_trip(tag, &pre, &post);
 
     let second = out.join("second");
@@ -985,13 +985,13 @@ fn save_restores_the_active_linegeometry_conductor() {
 /// without an error (only `cond=N` selects a conductor, user decision
 /// 2026-10-04). `LineGeometry.604` of `Test/IEEE13_LineGeometry.dss` is a
 /// `like=` copy, so it has none selected: before the Save `Cond` reads 0,
-/// `X` and `H` 0, the conductor names empty and `Units` the default ft. Its
+/// `X` and `H` empty, the conductor names empty and `Units` the default ft. Its
 /// conductor table comes back row for row and its Lines' impedance with it.
-/// After the reload it reads conductor 3, so `Cond`, `Wire`, `H`, `CNCable`
-/// and `TSCable` differ (`X` 0 and `Units` ft agree). The pin of the five
+/// After the reload it reads conductor 3, so `Cond`, `Wire`, `X`, `H`,
+/// `CNCable` and `TSCable` differ (`Units` ft agrees). The pin of the six
 /// `ie13geom` rows of [`PROPERTY_EXCLUSIONS`]: they are keyed by class, so this
 /// test also holds the deck's other geometries, which have a selection, to an
-/// exact round trip of those five properties.
+/// exact round trip of those six properties.
 #[test]
 fn save_reloads_a_geometry_with_no_selection_on_its_last_row() {
     let tag = "lgnone";
@@ -1047,7 +1047,7 @@ fn save_reloads_a_geometry_with_no_selection_on_its_last_row() {
             .map(|(_, v)| v.clone())
             .unwrap_or_else(|| panic!("{tag}: {object}.{name}: no such property"))
     };
-    let five = ["Cond", "Wire", "H", "CNCable", "TSCable"];
+    let six = ["Cond", "Wire", "X", "H", "CNCable", "TSCable"];
     let moved: Vec<(String, String)> = ["Cond", "Wire", "X", "H", "Units", "CNCable", "TSCable"]
         .iter()
         .map(|p| {
@@ -1062,8 +1062,8 @@ fn save_reloads_a_geometry_with_no_selection_on_its_last_row() {
         [
             ("0", "3"),
             ("", "acsr_1/0"),
-            ("0", "0"),
-            ("0", "24"),
+            ("", "0"),
+            ("", "24"),
             ("ft", "ft"),
             ("", "acsr_1/0"),
             ("", "acsr_1/0"),
@@ -1074,7 +1074,7 @@ fn save_reloads_a_geometry_with_no_selection_on_its_last_row() {
         let object = format!("linegeometry.{geom}");
         for (name, value) in &pre[&object] {
             let after = read(&post, &object, name);
-            if geom == "604" && five.iter().any(|f| f.eq_ignore_ascii_case(name)) {
+            if geom == "604" && six.iter().any(|f| f.eq_ignore_ascii_case(name)) {
                 assert_ne!(value, &after, "{tag}: {object}.{name}");
             } else {
                 assert!(
@@ -1490,6 +1490,13 @@ const PROPERTY_EXCLUSIONS: &[PropertyExclusion] = &[
         "ie13geom",
         "LineGeometry",
         "Wire",
+        "reads the conductor the reload selects",
+        save_reloads_a_geometry_with_no_selection_on_its_last_row,
+    ),
+    (
+        "ie13geom",
+        "LineGeometry",
+        "X",
         "reads the conductor the reload selects",
         save_reloads_a_geometry_with_no_selection_on_its_last_row,
     ),

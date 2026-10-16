@@ -2188,7 +2188,7 @@ impl Dss {
                     .get(self.enums.earth_model)
                     .ordinal_to_string(earth_model);
                 let (main, code, errs) = show::show_line_constants(
-                    &mut self.classes,
+                    &self.classes,
                     freq,
                     units,
                     rho,

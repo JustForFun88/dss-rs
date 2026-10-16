@@ -271,7 +271,7 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   `linegeometry_buried` / those six and `Units`. User decision 2026-10-04: only an
 ///   explicit `cond=N` selects a conductor, so a new geometry, a `spacing=` +
 ///   `wires=` geometry and a `like=` copy have none selected (`Cond` reads 0,
-///   `X` and `H` 0, the conductor names empty, `Units` the default, the
+///   `X` and `H` empty, the conductor names empty, `Units` the default, the
 ///   source's for a `like=` copy), and the buried-neutral `wires=` leaves conductor 2, the
 ///   one its `cond=2` selected. The capture reads the conductor the upstream
 ///   cursor is left on (conductor 1 after `New` and `like=`, the last after

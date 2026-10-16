@@ -1,0 +1,72 @@
+! wires= takes its count from the data, never from the selection. After
+! cncables= in the phase positions the list is the bare neutral, with
+! conductor 1 selected (sel1), conductor 4 selected (sel4) or none selected
+! (none), and each reads like cn_twin, written one conductor at a time. With
+! bare phases and a cable last the list is every conductor, so one name is
+! refused with conductor 4 selected (bare4) and the cable stays. One cable
+! phase is enough: with a cable on phase 1 and bare wires on phases 2 and 3
+! the list is the bare neutral, so one name fills conductor 4, written by
+! conductors= (part) or one conductor at a time with a bare conductor
+! selected (partc), and a name for every conductor is refused (part4), the
+! cable staying. The cable may sit on any phase: on phase 3 (part3, part3_4)
+! the lists read the same.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.sel1 nconds=4 nphases=3 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+~ cond=1 wires=[ACSR_4/0]
+New LineGeometry.sel4 nconds=4 nphases=3 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+~ cond=4 wires=[ACSR_4/0]
+New LineGeometry.none nconds=4 nphases=3 reduce=y
+~ cncables=[250_1/3 250_1/3 250_1/3]
+~ wires=[ACSR_4/0]
+~ cond=1 x=-0.5 h=-4
+~ cond=2 x=0 h=-4
+~ cond=3 x=0.5 h=-4
+~ cond=4 x=1 h=-4
+New LineGeometry.cn_twin nconds=4 nphases=3 reduce=y
+~ cond=1 cncable=250_1/3 x=-0.5 h=-4
+~ cond=2 cncable=250_1/3 x=0 h=-4
+~ cond=3 cncable=250_1/3 x=0.5 h=-4
+~ cond=4 wire=ACSR_4/0 x=1 h=-4
+New LineGeometry.bare4 nconds=4 nphases=3
+~ conductors=[wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_556_5 cndata.250_1/3]
+~ cond=4 wires=[ACSR_4/0]
+New LineGeometry.part nconds=4 nphases=3
+~ conductors=[cndata.250_1/3 wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_556_5]
+~ wires=[ACSR_4/0]
+New LineGeometry.part4 nconds=4 nphases=3
+~ conductors=[cndata.250_1/3 wiredata.ACSR_556_5 wiredata.ACSR_556_5 wiredata.ACSR_556_5]
+~ wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New LineGeometry.partc nconds=4 nphases=3
+~ cond=1 cncable=250_1/3 cond=2 wire=ACSR_556_5 cond=3 wire=ACSR_556_5
+~ cond=4 wire=ACSR_556_5 wires=[ACSR_4/0]
+New LineGeometry.part3 nconds=4 nphases=3
+~ conductors=[wiredata.ACSR_556_5 wiredata.ACSR_556_5 cndata.250_1/3 wiredata.ACSR_556_5]
+~ wires=[ACSR_4/0]
+New LineGeometry.part3_4 nconds=4 nphases=3
+~ conductors=[wiredata.ACSR_556_5 wiredata.ACSR_556_5 cndata.250_1/3 wiredata.ACSR_556_5]
+~ wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New Line.sel1 bus1=src.1.2.3 bus2=b_sel1.1.2.3 geometry=sel1 length=1 units=mi
+New Load.sel1 bus1=b_sel1 phases=3 kv=12.47 kw=500 pf=0.95
+New Line.sel4 bus1=src.1.2.3 bus2=b_sel4.1.2.3 geometry=sel4 length=1 units=mi
+New Load.sel4 bus1=b_sel4 phases=3 kv=12.47 kw=500 pf=0.95
+New Line.none bus1=src.1.2.3 bus2=b_none.1.2.3 geometry=none length=1 units=mi
+New Load.none bus1=b_none phases=3 kv=12.47 kw=500 pf=0.95
+New Line.cn_twin bus1=src.1.2.3 bus2=b_cn_twin.1.2.3 geometry=cn_twin length=1 units=mi
+New Load.cn_twin bus1=b_cn_twin phases=3 kv=12.47 kw=500 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

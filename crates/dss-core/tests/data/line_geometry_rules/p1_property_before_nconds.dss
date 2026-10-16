@@ -1,0 +1,24 @@
+! A property before the first nconds= of a new geometry is refused, naming it:
+! units=, nphases=, normamps=, reduce= and cond= on the New line write nothing,
+! so the conductors after nconds= are in feet, nphases stays 3, the ratings
+! come from the wire and reduce stays No. A like= copy of g holds conductors,
+! so its units= is accepted. A like= whose source is not found leaves k without
+! conductors, so its x= is refused as before nconds=.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.g units=m nphases=2 normamps=500 reduce=y cond=1 nconds=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4 h=28
+New LineGeometry.h like=g
+~ units=m
+New LineGeometry.k like=nosuch
+~ x=1
+New Line.L bus1=src.1.2.3 bus2=b.1.2.3 geometry=g length=1 units=mi
+New Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

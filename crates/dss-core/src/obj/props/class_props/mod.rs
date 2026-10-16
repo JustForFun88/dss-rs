@@ -175,7 +175,10 @@ impl ClassProps {
     /// set order (`SetAsNextSeq`), then run `PropertySideEffects`. A
     /// number-conversion failure aborts before any of the bookkeeping, exactly
     /// as the Pascal exception would unwind past `SetAsNextSeq`. A value that
-    /// cannot be read is passed on to [`DssObject::value_unreadable`].
+    /// cannot be read is passed on to [`DssObject::value_unreadable`]. A
+    /// property the object refuses in its present state
+    /// ([`DssObject::refuse_property`]) logs the refusal on the object and
+    /// writes nothing.
     pub fn edit_property(
         &self,
         obj: &mut dyn DssObject,
@@ -183,6 +186,10 @@ impl ClassProps {
         value: &str,
         eng: &mut PropEngine,
     ) -> Result<(), ParserError> {
+        if let Some(msg) = obj.refuse_property(idx, self.props[idx].name) {
+            obj.data_mut().push_error(msg);
+            return Ok(());
+        }
         let prev_int = match self.parse_into(obj, idx, value, eng) {
             Ok(prev_int) => prev_int,
             Err(e) => {

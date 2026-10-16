@@ -86,7 +86,7 @@ fn none_and_minus_one_read_as_a_rating_that_is_not_set() {
     let objects = [
         "line.x bus1=a bus2=b",
         "linecode.x",
-        "linegeometry.x",
+        "linegeometry.x nconds=1",
         "wiredata.x",
         "cndata.x",
         "tsdata.x",
@@ -137,7 +137,7 @@ fn a_rating_that_is_not_a_finite_number_is_refused() {
     let objects = [
         "line.x bus1=a bus2=b",
         "linecode.x",
-        "linegeometry.x",
+        "linegeometry.x nconds=1",
         "wiredata.x",
         "fault.x bus1=a",
         "gictransformer.x bush=a",
@@ -438,7 +438,7 @@ fn seasonal_ratings_not_supplied_are_not_set() {
         "new tsdata.t2 seasons=2",
         "new linecode.lc2 seasons=2",
         "new line.lx bus1=a bus2=b linecode=lc2",
-        "new linegeometry.g2 seasons=2",
+        "new linegeometry.g2 nconds=1 seasons=2",
         from_file.as_str(),
     ]);
     std::fs::remove_dir_all(&dir).ok();

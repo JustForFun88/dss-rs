@@ -24,12 +24,15 @@ fn g6(v: f64) -> String {
 /// `(main_report, linecodes_dss, errors)`. `earth_model` is `DSS.DefaultEarthModel`
 /// (passed as `DSS.ActiveEarthModel` into the Carson recompute); `earth_name` is
 /// `EarthModelEnum.OrdinalToString(earth_model)`. Iterates the `LineGeometry`
-/// objects in creation order, mutating each (`RhoEarth :=`, recompute) exactly like
-/// Pascal pokes the shared catalog object. `errors` carries Pascal's #9934
-/// "Error computing line constants for …" message when a geometry's Carson recompute
-/// fails (the caller extends its error log with it).
+/// objects in creation order and computes each on a copy at the report's
+/// resistivity, so the report leaves every geometry and the Lines built on it
+/// afterwards as they were (pinned by
+/// `exec::tests::line_geometry_rules::a_line_constants_report_changes_no_line`).
+/// `errors` carries the #9934 "Error computing line constants for …" message when
+/// a geometry's matrices cannot be computed (the caller extends its error log
+/// with it).
 pub(crate) fn show_line_constants(
-    classes: &mut [DssClass],
+    classes: &[DssClass],
     freq: f64,
     units: i32,
     rho: f64,
@@ -67,10 +70,10 @@ pub(crate) fn show_line_constants(
 
     for oi in 0..classes[ci].arena.len() {
         let name = classes[ci].arena[oi].data().name().to_string();
-        let Some(geom) = classes[ci].arena.get_mut::<LineGeometryObj>(oi) else {
+        let Some(geom) = classes[ci].arena.get::<LineGeometryObj>(oi) else {
             continue;
         };
-        // Pascal `pelem.RhoEarth := Rho; Z := pelem.Zmatrix[freq,1.0,Units]; YC := …`.
+        let mut geom = geom.clone();
         geom.set_rho_earth(rho);
         let (z, yc) = match (
             geom.z_matrix(freq, 1.0, units, earth_model),

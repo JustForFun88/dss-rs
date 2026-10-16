@@ -21,6 +21,9 @@ impl ClassProps {
         if pd.flags.contains(PropFlags::CONDITIONAL_VALUE) && !obj.prop_conditional(idx) {
             return "----".to_string();
         }
+        if obj.holds_no_value(idx) {
+            return String::new();
+        }
         // A function-only `ReadByFunction` value renders `""`: dss_capi 0.14.5
         // leaves its `PropertyOffset` at `-1`, so `GetObjPropertyValue`'s outer
         // guard short-circuits before the read function runs

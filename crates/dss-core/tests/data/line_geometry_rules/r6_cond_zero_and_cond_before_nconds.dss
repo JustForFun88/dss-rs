@@ -1,4 +1,5 @@
-! cond= before nconds=, cond=0, and data after them; then a complete definition.
+! cond= before nconds= (refused as every property there is), cond=0, and data
+! after them; then a complete definition.
 Clear
 Set DefaultBaseFrequency=60
 New Circuit.lgrules basekv=12.47 phases=3 bus1=src

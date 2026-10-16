@@ -346,7 +346,7 @@ fn make_like_copies_geometry_and_selects_nothing() {
     dst.make_like(&src);
     assert_eq!(get(&cls, &dst, "nconds"), "3");
     assert_eq!(get(&cls, &dst, "cond"), "0"); // `like=` selects no conductor
-    assert_eq!(get(&cls, &dst, "x"), "0");
+    assert_eq!(get(&cls, &dst, "x"), ""); // so `x` holds no value
     // The source's default unit comes with the copy.
     assert_eq!(get(&cls, &dst, "units"), "m");
     scalar(&cls, &mut dst, "cond", "1");
@@ -1040,8 +1040,8 @@ fn conductors_array_defaults_ratings_from_first_valid() {
 
 #[test]
 fn a_conductor_without_data_is_named_at_calculation() {
-    // Conductors without a conductor object are one error at calculation that
-    // names every one of them.
+    // A conductor without a conductor object or a position is one error at
+    // calculation that names each such conductor and what it lacks.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let w = build_si_wire();
@@ -1053,14 +1053,16 @@ fn a_conductor_without_data_is_named_at_calculation() {
     let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
     assert_eq!(
         err,
-        "LineGeometry.g1: conductors 2 and 3 have no wire, cncable or tscable."
+        "LineGeometry.g1: conductor 1 has no x and no h. Conductors 2 and 3 have no wire, \
+         cncable or tscable, no x and no h."
     );
     scalar(&cls, &mut g, "cond", "3");
     set_ref(&cls, &mut g, "wire", &arena_of(&w));
     let err = g.update_line_geometry_data(60.0, DERI).unwrap_err();
     assert_eq!(
         err,
-        "LineGeometry.g1: conductor 2 has no wire, cncable or tscable."
+        "LineGeometry.g1: conductors 1 and 3 have no x and no h. Conductor 2 has no wire, \
+         cncable or tscable, no x and no h."
     );
 }
 
@@ -1239,7 +1241,7 @@ fn cond_that_is_not_a_number_selects_nothing() {
           value is not applied. Select one with cond=N first."
         ]
     );
-    assert_eq!(g.fx(), [0.0, 1.5, 0.0]);
+    assert_eq!(g.fx(), [None, Some(1.5), None]);
 }
 
 #[test]
@@ -1264,14 +1266,15 @@ fn like_side_effect_selects_nothing_without_a_copy() {
           value is not applied. Select one with cond=N first."
         ]
     );
-    assert_eq!(g.fx(), [0.0, 1.5, 0.0]);
+    assert_eq!(g.fx(), [None, Some(1.5), None]);
 }
 
 #[test]
 fn units_refusal_names_the_written_word() {
-    // `units=` refuses a word that maps to no length unit, naming it as
-    // written, and keeps the conductor's unit and the default. Unit code 0 or
-    // a code outside 1 to 8 set directly is refused too.
+    // `units=` refuses a word that is not exactly a unit name, a prefix or a
+    // longer spelling of one included, naming it as written, and keeps the
+    // conductor's unit and the default. Unit code 0 or a code outside 1 to 8
+    // set directly is refused too.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut g = LineGeometryObj::new("g1");
@@ -1279,7 +1282,16 @@ fn units_refusal_names_the_written_word() {
     scalar(&cls, &mut g, "nphases", "3");
     scalar(&cls, &mut g, "cond", "1");
     scalar(&cls, &mut g, "units", "m");
-    for word in ["none", "feet", "Meters", "inches", "kilometer"] {
+    for word in [
+        "none",
+        "feet",
+        "Meters",
+        "inches",
+        "kilometer",
+        "metre",
+        "meter",
+        "miles",
+    ] {
         let errs = scalar(&cls, &mut g, "units", word);
         assert_eq!(
             errs.texts(),
@@ -1305,6 +1317,76 @@ fn units_refusal_names_the_written_word() {
         assert_eq!(get(&cls, &g, "units"), "m", "{code}");
         assert_eq!(g.conductor_units(), [4, 4, 4], "{code}");
     }
+}
+
+#[test]
+fn units_must_be_one_exact_word() {
+    // `units=` takes exactly one of mi, kft, km, m, ft, in, cm and mm, in any
+    // case, for the selected conductor and the default. Every other word is
+    // refused naming it, a prefix or a longer spelling of a unit included, and
+    // the conductor and the default keep their unit. The refusal lists
+    // exactly the words accepted.
+    assert_eq!(LENGTH_UNITS, accessors::UNIT_WORDS.join(", "));
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "3");
+    scalar(&cls, &mut g, "cond", "2");
+    for (code, word) in (1..).zip(accessors::UNIT_WORDS) {
+        let mut mixed = word.to_string();
+        mixed[..1].make_ascii_uppercase();
+        for written in [word.to_string(), word.to_ascii_uppercase(), mixed] {
+            let errs = scalar(&cls, &mut g, "units", &written);
+            assert!(errs.texts().is_empty(), "{written}: {:?}", errs.texts());
+            assert_eq!(g.funits[1], code, "{written}");
+            assert_eq!(g.flast_unit, code, "{written}");
+        }
+    }
+    scalar(&cls, &mut g, "units", "ft");
+    for word in [
+        "metre", "meter", "meters", "miles", "min", "mil", "f", "me", "kf", "c", "i", "k", "feet",
+    ] {
+        let errs = scalar(&cls, &mut g, "units", word);
+        assert_eq!(
+            errs.texts(),
+            [format!(
+                "LineGeometry.g1.Units: \"{word}\" is not one of the length units mi, kft, km, \
+                 m, ft, in, cm, mm."
+            )]
+        );
+        assert_eq!(g.funits[1], 5, "{word}");
+        assert_eq!(g.flast_unit, 5, "{word}");
+    }
+}
+
+#[test]
+fn every_nconds_starts_from_feet() {
+    // Every `nconds=` returns the default unit to feet: after `units=m` on a
+    // geometry with conductors, and right after a `like=` copy of a source
+    // whose default is metres. A geometry without conductors refuses every
+    // property before its first `nconds=`, so these two re-allocations are the
+    // only ones with a default to return. The observable rule for a new
+    // geometry is pinned by
+    // `exec::tests::line_geometry_rules::a_property_before_the_first_nconds_is_refused`.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "3");
+    scalar(&cls, &mut g, "units", "m");
+    assert_eq!(get(&cls, &g, "units"), "m");
+    scalar(&cls, &mut g, "nconds", "3");
+    assert_eq!(get(&cls, &g, "units"), "ft");
+    assert_eq!(g.conductor_units(), [5, 5, 5]);
+
+    let mut src = LineGeometryObj::new("src");
+    scalar(&cls, &mut src, "nconds", "3");
+    scalar(&cls, &mut src, "units", "m");
+    let mut copy = LineGeometryObj::new("copy");
+    copy.make_like(&src);
+    assert_eq!(get(&cls, &copy, "units"), "m");
+    scalar(&cls, &mut copy, "nconds", "3");
+    assert_eq!(get(&cls, &copy, "units"), "ft");
+    assert_eq!(copy.conductor_units(), [5, 5, 5]);
 }
 
 #[test]
@@ -1340,8 +1422,8 @@ fn a_spacing_whose_unit_code_names_no_length_is_refused() {
             ],
             "{code}"
         );
-        assert_eq!(g.fx(), [0.0; 3], "{code}");
-        assert_eq!(g.fy(), [0.0; 3], "{code}");
+        assert_eq!(g.fx(), [None; 3], "{code}");
+        assert_eq!(g.fy(), [None; 3], "{code}");
         assert_eq!(get(&cls, &g, "spacing"), "", "{code}");
         assert_eq!(get(&cls, &g, "units"), "ft", "{code}");
         assert_eq!(g.conductor_units(), [5, 5, 5], "{code}");

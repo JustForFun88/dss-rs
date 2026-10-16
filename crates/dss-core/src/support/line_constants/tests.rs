@@ -376,6 +376,20 @@ fn deri_overhead_z_bit_exact_except_arctan2_floor() {
     );
 }
 
+/// `z_matrix` recomputes when it is asked for another earth model than the
+/// one its matrices hold, at the same frequency and resistivity: asked for
+/// Deri after the simple Carson model, it returns what a fresh engine computes
+/// under Deri, and asked for Carson again it returns the Carson matrix.
+#[test]
+fn z_matrix_recomputes_for_another_earth_model() {
+    let mut lc = build(&COORDS3);
+    let carson = lc.z_matrix(60.0, 1.0, M, SIMPLE_CARSON);
+    let deri = lc.z_matrix(60.0, 1.0, M, DERI);
+    assert_ne!(deri, carson);
+    assert_eq!(deri, build(&COORDS3).z_matrix(60.0, 1.0, M, DERI));
+    assert_eq!(lc.z_matrix(60.0, 1.0, M, SIMPLE_CARSON), carson);
+}
+
 #[test]
 fn simple_carson_full_3cond() {
     let mut lc = build(&COORDS3);

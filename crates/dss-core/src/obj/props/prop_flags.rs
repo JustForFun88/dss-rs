@@ -176,7 +176,7 @@ impl PropFlags {
     /// first and handed to [`DssObject::refuse_integer`], so the object can
     /// refuse a fraction or a number past the integer range, naming the
     /// written text, instead of the rounding every other integer gets. Carried
-    /// by LineGeometry `Cond`.
+    /// by LineGeometry `Cond` and `NConds`.
     ///
     /// [`DssObject::refuse_integer`]: crate::obj::base::DssObject::refuse_integer
     pub const WHOLE_NUMBER: Self = Self(1 << 20);
