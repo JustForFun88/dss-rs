@@ -298,6 +298,21 @@ stages 7 to 10.
         report 98 are recorded in the record as left for queue step 17. An explicit
         `nphases` above `nconds` keeps the clamp of 16.26 until step 21 decides the
         refusal together with the `nconds` default.
+    28. (coordinator, 2026-10-17, same delegation, from the fresh audit of step 14
+        settle 1) A LineSpacing whose `x=` or `h=` list is shorter than `nconds` places
+        the missing conductor at 0 in silence, on both oracles too, and a geometry or a
+        Line on it solves with mutual impedances for a position nobody wrote. The fix
+        belongs to queue step 17 with the LineSpacing `nconds=` rule: the spacing keeps
+        which coordinates were given, a geometry copies the gaps, rule 7 names the
+        conductor, `?` reads empty and Save writes no `X=` or `h=`, pinned in both lanes,
+        with the case added to report 83. Step 14 states the gap in the row and lands.
+    29. (coordinator, 2026-10-17, same delegation, from the same audit) `nconds` gets no
+        numeric bound: the documentation gives none and a bound would be a language
+        extension. The engine refuses a count it cannot allocate at `nconds=`, naming the
+        text as written, and a count that fits once but not for a second engine (a
+        cable, a report copy, a Line) is a stated limit recorded in the row until the
+        engine is built at calculation only.
+
 17. **One procedure for every MakePosSequence matrix question** (user, 2026-10-04, from
     two research runs: literature, derivation, DSS representation, a skeptic each. Refined
     through 2026-10-17 by three opus rounds of plan review and two fable rounds of
@@ -339,15 +354,16 @@ stages 7 to 10.
 | 11 | transformer kVA ratings not set | 14 | queued, after step 10 |
 | 12 | protective-device ratings not set | 14 | queued, after step 10 |
 | 13 | MakePosSequence by physics: the node map, elimination of internal nodes and chains, merge of parallel cores, the projection in its two forms, coupled `phases=M` elements, sources, refusals that stop the command, matrix order, repeated command, ratings | `MAKEPOSSEQ_PLAN.md` | replaced by `MAKEPOSSEQ_PLAN.md` steps MPS-01 to MPS-06, MPS-09 and MPS-10 (plan accepted 2026-10-10, its literature review closed 2026-10-17 by the second fresh check with no major, the plan holds every MakePosSequence rule itself since 2026-10-17, MPS-01 next) |
-| 14 | LineGeometry additions: empty readback, equivalent distances with their own unit, `nconds=` order, conductor without position, `wires=` count rule, help text, capacitance pin, `mm` (the `like=` unit of 16.13 and the `nconds=` reset of 16.14 are done in step 4) | 16.11-16.18 | running since 2026-10-10 on lane-b from 73a364f9 (state folder linegeometry_additions), stopped 2026-10-10 on the user's order inside the gate with all five parts committed, resumed 2026-10-16 |
+| 14 | LineGeometry additions: empty readback, equivalent distances with their own unit, `nconds=` order, conductor without position, `wires=` count rule, help text, capacitance pin, `mm` (the `like=` unit of 16.13 and the `nconds=` reset of 16.14 are done in step 4) | 16.11-16.18, 16.28, 16.29 | landed 2026-10-17 as 6357214f on update (squash of lane-b 6f95633a, seven commits on 73a364f9, the lane gate of 6f95633a reused since update moved by register and plan text only), fresh audits of settle 2 found no major: the two oracle statements they faulted were corrected at the landing and their other minors and notes are recorded for steps 17 and 21, the upstream reports 83, 98 and 100 verified on r4133 with report 83 gaining case 24 |
 | 15 | delta Capacitor and Reactor: conductor count in either order of `conn=` and `phases=`, the delta Reactor matrix stamp | `MAKEPOSSEQ_PLAN.md` | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-07 (wave 2) |
 | 16 | MakePosSequence of PVSystem, Transformer, Storage and the other power conversion classes by the same rule | `MAKEPOSSEQ_PLAN.md` | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-08 (wave 3) |
-| 17 | exact unit words in every class with a unit property, the `nconds=` rule in LineSpacing | 16.12, 16.14 | queued, after step 14 |
+| 17 | exact unit words in every class with a unit property, the `nconds=` rule in LineSpacing, a short `x=` or `h=` list of a LineSpacing kept as not given | 16.12, 16.14, 16.28 | queued, after step 14 |
 | 18 | overhead wire height above its radius, the finite full-Carson limit at zero height | - | queued, after step 14 |
 | 19 | TSData tape-lap correction by physics: derive the resistance factor of a lapped tape from its geometry, check against Kersting 3rd ed. section 4.2 (tape-shield example) and manufacturer data, measure both oracles, pin, upstream report if the engine's factor is wrong | 16.20 | queued, after step 14 |
 | 20 | Capacitor delta and cmatrix filter stamp by the exact form Y_d (I + zl Y_d)^-1 in place of the 1.000001 diagonal scaling, pinned against the wye equivalent, both oracles diverge by 6.7e-7 | 16.22 | queued, after step 14, disjoint from the MakePosSequence plan steps unless one touches the Capacitor stamp |
-| 21 | LineGeometry `nconds` defaults to the documented 3 (tree and r4133 hold 0), with the Save, `like=` and readback consequences measured on both oracles and pinned | 16.26 | queued, after step 17 |
+| 21 | LineGeometry `nconds` defaults to the documented 3 (tree and r4133 hold 0), with the Save, `like=` and readback consequences measured on both oracles and pinned, and the before-`nconds=` refusal restated as an explicit flag, since it keys today on a geometry without conductors, a fractional, non-finite or JSON-rendered `nconds=` and an `nphases=` past the integer range refused naming the text as written | 16.26, 16.29 | queued, after step 17 |
 | 22 | zero bases in classes without a rating refused at the recalc by the rule of 14.9: `Vsource basekv=0`, `AutoTrans kvs=[0 6.9]`, `GICTransformer r1=0 r2=0`, and the other routes a census finds | 14.9, 14.12 | queued, after step 10 |
+| 23 | a Line edited after its first build (`length=`, `rho=`, `earthmodel=`) recomputes its impedance at the next solve, where the tree and r4133 keep the old one until the frequency changes, measured on both oracles, pinned, with an upstream report | - | queued, after step 17 (found by the step 14 settlements) |
 
 ## Open items that need no ruling now
 
