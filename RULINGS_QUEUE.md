@@ -23,10 +23,10 @@ stages 7 to 10.
 
 ## Rulings
 
-1. **MakePosSequence matrices.** A line with more than three conductors reduces its
-   `rmatrix`, `xmatrix` and `cmatrix` with the same formula as a three-conductor line:
-   the mean of the diagonal minus the mean over all pairs. Side finds on the path are
-   fixed in the same step.
+1. **MakePosSequence matrices** (2026-10-04). Landed as queue step 3 (b6517a73). The
+   rule and the procedure that replaced it are stated in `MAKEPOSSEQ_PLAN.md`:
+   section 1.5 and decision D21, with its row in section 1.14.
+
 2. **`NVariables` of a DynamicExp** defaults to 20.
 3. **A rating that is not set** is its own value, not a number. It prints `none`, input
    accepts `none` and `-1`, Save omits it, and Export Capacity shows 0 % for an unrated
@@ -200,33 +200,15 @@ stages 7 to 10.
 16. **Research verdicts taken** (2026-10-04, the user delegated the choice: as close to
     physics as possible). Rating, closing ruling 14: a typed negative other than `-1` is
     stored, read as not set and raises no error.
-    MakePosSequence:
-    1. An element becomes the positive-sequence self term of what it stamps on its real
-       nodes, `Y1 = (1/3) v^H Y v` with `v = (1, a^2, a)` on the phases it touches and 0
-       on ground. Rated power divides by 3 for every phase count.
-    2. A one-phase series element: impedance times 3, capacitance divided by 3. A
-       two-phase Line: `Z1 = (3/4)(Z11 + Z22 - Z12)`, the same balanced-voltage
-       excitation as every other element. A series Reactor or Capacitor takes the
-       impedance form of the Line for every phase count: the form follows the node map
-       of ruling 17, not the class.
-    3. Replaced by ruling 17. A transposition section and a shared neutral are no
-       longer refused. A deck with nine cores on nodes `1.2.3.1.2.3.1.2.3` stays the pin.
-    4. A delta Reactor matrix holds the leg quantities. A delta Capacitor `cmatrix` is
-       the nodal matrix the documentation names, `C1 = (1/3) v^H C v`, for three phases
-       and more. For one and two phases it stays refused.
-    5. A Reactor given one of `rmatrix`, `xmatrix`: the other part is zero, no message.
-    6. A two-phase Vsource has its poles 180 degrees apart and becomes one phase of the
-       pole voltage behind `1.5 (Zs - Zm)`. A one- or two-phase Fault and a non-passive
-       `gmatrix` have no positive-sequence form and stop the command (ruling 17.13).
-    7. `normamps` and `emergamps` of a one- or two-phase Line scale by N/3. Merged
-       parallel cores are rated at the smallest of rating over current share.
-    8. A matrix whose order is not the phase count is refused at the solve. Dump, `?`
-       and Save print it at its stored order.
-    9. On a circuit already reduced the command changes nothing. A `phases=2` coupled
-       element is never read as a two-phase lateral. A one-phase Vsource keeps its kV
-       and its impedance follows item 2.
-    10. A delta Capacitor or Reactor has N + 1 conductors for N = 1 and 2 and N for
-        N >= 3, in either order of `conn=` and `phases=`.
+    MakePosSequence, items 1 to 10 (2026-10-04): moved on 2026-10-17 into
+    `MAKEPOSSEQ_PLAN.md`, which states each in full and names the book or the
+    derivation behind it. The self term and the rated power (item 1) in sections 1.13
+    and 1.14 with decision D17, the one- and two-phase forms (2) in 1.8 and 1.14, the
+    replaced item 3 in 1.7 and 1.14, the delta matrices, the one-matrix Reactor and
+    the delta conductor count (4, 5, 10) in 1.14, decision D4 and step MPS-07, the
+    two-pole Vsource and the Fault refusal (6) in 1.9, 1.12 and decision D2, the
+    ratings (7) in 1.10, the matrix order (8) in 1.12 and 1.14, the repeat rule (9) in
+    1.14 and decision D8. Items 11 to 27 keep their numbers.
     LineGeometry:
     11. Without a selected conductor, and for an `x` or `h` never given, `x` and `h`
         read empty. `cond` reads 0.
@@ -257,21 +239,18 @@ stages 7 to 10.
         MakePosSequence row of DIVERGENCES.md (step 3) are not put to the user. Question
         7 keeps the I²R label of a Parallel=yes matrix Reactor as built, since the
         branch carries the terminal current and its loss is I²R by meaning, no-load only
-        after the reduction writes it as rp. Questions 1 to 6, 8 and 9 are answered by
-        rulings 16 and 17 and by the MakePosSequence plan (MAKEPOSSEQ_PLAN.md), which
-        states each with its candidates and numbers. The choices marked taken in the row
-        stand until that plan lands them.
+        after the reduction writes it as rp. The others are answered, with their
+        candidates and numbers, by decision D19 of `MAKEPOSSEQ_PLAN.md`. The choices
+        marked taken in the row stand until that plan lands them.
     22. (coordinator, 2026-10-10, same delegation, from the fresh audit of settle 4) Three
         items it left are not put to the user. The delta and cmatrix filter stamp of the
         Capacitor scales the leg diagonal by 1.000001 before inverting, which both oracles
         do too, so the bank draws 6.7e-7 more than physics and gains a zero-sequence shunt
         of 1.29e-9 S. The exact form Y_d (I + zl Y_d)^-1 replaces it in its own queue step
         (step 20) with a pin against the wye equivalent, since no corpus deck reaches the
-        arm. The reading of a phase-to-phase reactor after the reduction (total 0 with a
-        negative I²R on both oracles) belongs to the MakePosSequence plan with the other
-        sources of the row. The Exclusion paragraph of the row says no golden holds the
-        rp reactor where tests/golden/props/reactor.json reads back one without a solve,
-        so the first plan step that touches the row writes "reads the loss of".
+        arm. The reading of a phase-to-phase reactor after the reduction and the "reads
+        the loss of" wording of the row's Exclusion paragraph are decision D19 of
+        `MAKEPOSSEQ_PLAN.md`.
     23. (coordinator, 2026-10-10, same delegation, from the fresh audit of LineGeometry
         settle 2) A Line's own `spacing=` reads the LineSpacing's unit the way the
         geometry path does: a unit word the documentation gives for LineSpacing is
@@ -319,158 +298,28 @@ stages 7 to 10.
         report 98 are recorded in the record as left for queue step 17. An explicit
         `nphases` above `nconds` keeps the clamp of 16.26 until step 21 decides the
         refusal together with the `nconds` default.
-17. **One procedure for every MakePosSequence matrix question** (2026-10-04, two
-    research runs: literature, derivation, DSS representation, a skeptic each. The
-    choices in items 6, 12 and 13 and in 16.4, 16.6, 16.7 were taken by the coordinator
-    under the delegation of ruling 16 and are open to the user).
-    1. Principle. The reduced circuit keeps the complex power of every balanced state
-       `V = W U`. `W` holds the true phasor of every port node. No class has a rule of
-       its own.
-    2. Node meaning. Node 0 is earth. Line conductors and transformer windings carry
-       phasors from the source, conductor by conductor, and a winding adds the
-       displacement and polarity of its connection. A source's own angle never enters
-       the map.
-    3. Lumped conductors. A node without a phasor that two-terminal conductors of
-       Reactors, Capacitors, Faults, Loads and Generators reach with one phasor becomes
-       a port node of that phasor. A node they reach with different phasors, and every
-       node left over, is an internal node.
-    4. Ports. Phase nodes bound by one multi-phase terminal are one port. Other phase
-       nodes follow the conductor order of the Line that reaches them, three by three.
-       A port holds each phasor once.
-    5. Internal nodes obey the current law and are eliminated with the passive elements
-       on them. Inside one element: a conductor earthed at both ends is Kron-reduced in
-       `Z` and struck in `C`, a conductor on private nodes is struck in `Z` and
-       Kron-reduced in `C`, a conductor earthed at one end only is struck in `Z` and
-       struck in `C`, a star node is Kron-reduced in the nodal matrix. A star node
-       made of several elements is eliminated jointly.
-    6. Chains. Internal nodes that join the non-phase conductors of several Lines
-       (cable screens, cross-bonding) are eliminated jointly, each Line receiving the
-       share of its own section.
-    7. Parallel conductors between the same two port nodes merge before the projection:
-       `Zb = (A^T Z^-1 A)^-1`, `Cb = A^T C A`.
-    8. Projection. A coupled set whose conductors all join port nodes of equal phasor
-       takes `Z1 = 3 G^-1 (W^H Zb W) G^-1`, `G = W^H W`. Every other set, and every
-       `cmatrix` of a Line, takes `Y1 = (1/3) W^H Y W` on its nodal matrix. Instances:
-       three phases `(1/3) v^H Z v`, two phases at 120 degrees `(3/4)(Z11 + Z22 - Z12)`,
-       two poles `(3/4)(Z11 + Z22 - 2 Z12)`, one phase `3 Z` and `C/3`, a branch between
-       two phases `y`.
-    9. Sources. A Vsource becomes `E1 = (1/N) w^H E` behind its impedance in the
-       impedance form. An Isource becomes `(1/3) W^H I`.
-    10. Element written. One element of the same class with `phases=M` and M x M
-        matrices, M the number of circuits, so the inter-circuit mutual impedance and
-        capacitance stay. M = 1 is the scalar form.
-    11. Buses. Port j of a bus becomes node j. Internal nodes and earth become node 0.
-        An element left with every conductor on node 0 is disabled.
-    12. Refusals, one criterion: the balanced pattern cannot be written, or the result
-        is not one reciprocal passive element of the class. Two different phasors
-        brought to one node by Lines or windings, a multi-phase terminal not on one port
-        in positive order, two elements that partition the phase nodes of a bus
-        differently, a Line conductor from a port node to a node of another phasor, a
-        coupled set that mixes conductors between ports with conductors to earth, a
-        matrix of the wrong order, a non-passive `gmatrix`, a one- or two-phase Fault.
-    13. A refusal stops the command with the element named and changes nothing. A
-        multi-phase element is never left on a reduced circuit.
-    14. Stated limits, pinned and not refused. Only the symmetric part of an
-        inter-circuit term is written. It is exact when the circuits have the same or
-        the mirrored phase order at a displacement of 0 or 180 degrees. Otherwise the
-        reduced element loses reactive power `6 A12 Im(conj(i1) i2)`, with `A12` half
-        the difference of the two directions, and part of the voltage effect: for a
-        displacement other than 0 or 180 degrees, for circuits of different phase count
-        and for circuits on one structure whose phase positions are rolled against each
-        other. The active power is kept. A one- or two-phase element on a three-phase
-        network is off by `|Z2 + Z0| / |3z|`. A two-phase Line that serves a load
-        between its phases is off by
-        `|Z11 + Z22 - 2 Z12 - (3/4)(Z11 + Z22 - Z12)| / |z_load|`. Unbalanced loads
-        have no positive-sequence form. A three-phase fault behind an unsymmetric
-        series element is off by the gap between the impedance form and the admittance
-        form, 1 to 4 per cent on an untransposed line or a flat cable. A fault at the
-        end of a one- or two-phase lateral is off by more than 10 per cent.
-    15. Literature check (2026-10-04, Dommel, Tleis, Kersting, Clarke, Anderson, Hase,
-        Ametani, Дмитриев, Grainger, IEEE Std 551, a skeptic re-opened the quotations).
-        Confirmed by the books: items 4, 5, 7, 10, the three-phase and two-pole
-        instances of item 8, the chain rule of item 6 (Tleis Example 3.5: the book gives
-        0.017 + j0.138 ohm/km, joint elimination 0.0167 + j0.1379, zero volts per
-        section 0.0429 + j0.1284), the Fault refusal. Corrected from the books: the
-        limits of item 14 and the one-end rule of item 5. Without a published source,
-        this project's own derivation: items 2, 3, 9 (Isource), 11, 12, 13, the
-        two-phase instance `(3/4)(Z11 + Z22 - Z12)`, the base factor `3/N`, `C/3`,
-        `Cb = A^T C A`, the static form rule, the ratings of 16.7.
-        User's word (2026-10-04): no objection to the delegated choices of items 6, 12,
-        13 and of 16.4 and 16.6, the non-reciprocal term follows the books, and the
-        planner of the MakePosSequence plan takes the final decision on each. The rating
-        of merged cores (16.7, the smallest of rating over current share) is confirmed
-        by the user.
-        Open to the user: a two-phase Line whose downstream elements all lie between
-        its phases could take the loop form `Z11 + Z22 - 2 Z12` (IEEE Std 551 section
-        3.7, exact there) in place of the stated limit. An inter-circuit term with
-        rolled phase positions could be refused above some share in place of the
-        symmetric part (Kersting Example 4.2: the antisymmetric part is 1.73 times the
-        symmetric part, reactive power off by up to 8.1e-3).
-
-    16. (coordinator, 2026-10-10, under the delegation "вопросы ко мне решай сам", from the
-        MakePosSequence plan, its section 8) The four questions the plan puts to the user
-        are decided with the plan's proposals. Q1: a two-phase Line keeps the ruled
-        `(3/4)(Z11 + Z22 - Z12)` with the stated limit L3 (2.3e-3 of the source power on
-        the 5-mile lateral), since the loop form needs a scan of everything downstream and
-        is wrong once one load to earth is added. Q2: the symmetric part of a non-reciprocal
-        inter-circuit term is always written, no refusal above a share, since a share that
-        refuses Kersting Example 4.2 refuses an ordinary three-phase and two-phase pair
-        too. Q3: the four-conductor line with its neutral on node 0 at both ends is
-        Kron-reduced in Z and struck in C, as 17.5 decides. Q4: the positive-order check of
-        17.12 applies to the elements whose model depends on the order (Vsource, Isource,
-        IndMach012, VSConverter and the other sequence-model machines), while a Load, a
-        passive bank or a winding draws the same balanced power in either order and is not
-        refused for it. 17.12 reads with this narrowing. The plan states each as decided.
-
-    17. (coordinator, 2026-10-10, same delegation, from the third check of the MakePosSequence
-        plan) The plan is accepted with its four open findings folded into the steps that
-        own them, by the acceptance rule of its brief. C3-1: a control on the reduced circuit
-        reads conductor 1 wherever its phase selector (`PTPhase`, `CTPhase`, `PTphase`)
-        names a phase above the reduced count, and the two power-factor guards of CapControl
-        compare the balanced total with `k * TotalKvar` of the reduced bank, so a reduced
-        `ieee9500` or `epri_dpv J1` deck neither panics nor trips at a third of its
-        threshold (into MPS-10, three pins, an upstream report section). C3-2: the pin of
-        the two-phase Load that already passes at the base is named as such in the MPS-08
-        acceptance. C3-3: the bare bus spelling of terminal 1 in the MPS-03 pin. C3-4: an
-        Isource above three phases and a lone group that is no balanced set meet the
-        refusal that case 3 gives a Vsource (into the step that owns case 3). Before any
-        step starts, the plan passes a review against the literature of the brief with the
-        books as the basis, at least two sources per statement (user order 2026-10-10): a
-        ruling item the books contradict is reported, not softened.
-    18. (coordinator, 2026-10-16, same delegation, from the literature review of 17.17:
-        three reviewers, a reviser and a fresh checker, two sources per statement, the
-        checker re-opened every page and recomputed the numbers) Five items move with the
-        books, and the plan states them. 17.14: the symmetric part of an inter-circuit
-        term is exact only for circuits of the same phase order at a displacement of 0
-        or 180 degrees. The mirrored order is not exact (Tleis p. 139, Clarke Vol. II
-        p. 420: the antisymmetric part is `|tan θ|` of the mutual, 0.158 on Tleis
-        Example 3.4, where the same order leaves 3.5e-18), so the mirrored order leaves
-        the exact cases of 17.14 and joins its stated limit. 17.8 with 17.1: a bank of
-        one-phase units between one pair of ports (three units into a delta, an
-        open-delta pair) with every conductor that joins the same two ports is one set,
-        projected jointly with a positive-sequence current at the far port, and a
-        conductor of the set that carries no current is disabled (the `Line.Jumper` of
-        the IEEE 37 regulator bank: dS/S 1.6e-5 jointly against 0.45 unit by unit). 16.1:
-        a unit of an open-delta pair divides its rated power by `2√3`, not 3, since each
-        unit carries a line current and the bank's balanced capacity is `√3 S_u`
-        (Kersting eq. (8.104)), so its loading reads as the real unit's where `kVA/3`
-        would read `√3/2` of it. 17.15: `Cb = A^T C A` is confirmed by Dommel section
-        4.1.2.2 and leaves the own-derivation list. 16.2: the two-phase
-        `(3/4)(Z11 + Z22 - Z12)` is the impedance form of the series rule of 17.8, the
-        excitation by balanced currents, not by balanced voltage, which would give
-        `0.524944 + j1.186838` against `0.574145 + j1.318688` ohm/mile on the two-phase
-        lateral, 9.8 per cent apart: the words "the same balanced-voltage excitation as
-        every other element" of 16.2 read "the balanced-current excitation of the series
-        rule", the number stands. The checker's new major, outside the rulings: a
-        control reads terminal currents, so the current factor of a winding is its
-        reduced terminal current over its real one, 1 for a three-phase wye or delta
-        winding (not `√3` for the delta), `2/3` for a two-phase wye winding,
-        `|Δw_r| / 3` for a one-phase winding, in general `(n |Δw_r| / 3) |I_leg /
-        I_terminal|`, and a RegControl with `ctprim` on the delta winding of a Dy bank
-        keeps its `ctprim`. The second reviser applies it with the three minors (the
-        `ctprim = 350` twin of the open-delta pin reads one half, Grainger p. 462, the
-        16.2 words) and a second fresh checker reads the result. MPS-01 starts after
-        that check.
+17. **One procedure for every MakePosSequence matrix question** (user, 2026-10-04, from
+    two research runs: literature, derivation, DSS representation, a skeptic each. Refined
+    through 2026-10-17 by three opus rounds of plan review and two fable rounds of
+    literature review with two sources per statement. Items 16 to 18 were the
+    coordinator's rulings of 2026-10-10 and 2026-10-16 under the delegation "вопросы ко
+    мне решай сам".) The complete text is stated in `MAKEPOSSEQ_PLAN.md` and is binding
+    there: the procedure in section 1 (the principle, the node map, the elimination, the
+    chains, the merge, the two projection forms, the sources, the element written, the
+    buses, the refusals and the unchanged circuit, the literature check), the decisions in
+    section 2, the stated limits in section 6, the four questions decided in section 8.
+    Five sentences of 2026-10-04 were replaced by the books' values and the plan states
+    the replacements: the mirrored phase order is not an exact case of the inter-circuit
+    term (section 6, L1), a unit of an open-delta pair divides its rated power by 2√3
+    (section 1.13), a bank of one-phase units between one pair of ports is projected
+    jointly (section 1.13), the two-phase self term is the balanced-current excitation
+    (section 1.14), and `Cb = Aᵀ C A` is Dommel's, not the project's own derivation
+    (section 1.7). Two more are refined by the plan's own derivation, which it states
+    and pins: the rated power over 3 holds where the legs sit at one per-unit voltage,
+    the other legs follow the leg rule of decision D17 (stated limit L11), and the lost
+    power of a non-reciprocal inter-circuit term is written with 6 Re(A12) and
+    6 Im(A12) (stated limit L1). The Clarke page 420 of the mirrored order is Vol. I,
+    and a source above three phases is refused under case 2 of section 1.12.
 
 ## Queue
 
@@ -489,10 +338,10 @@ stages 7 to 10.
 | 10 | rating details: three states, typed `0` and negatives, Save writes `-1` or the typed number, no overwrite of a typed value, partly rated Line is an error, derived zero, derived negatives, `?` and Save after `Set %Normal`, refusal of inputs that make a stamp or rating non-finite | 14 | running since 2026-10-10 on lane-c from 73a364f9 (state folder rating_details), three plan checks each left one major (F1 under 14.10 to 14.12, A under 14.13, M1 under 14.14 which supersedes 14.13), the plan is revised a fourth time and checked again, then the executors, stopped 2026-10-10 on the user's order inside the first executor part, resumed 2026-10-16 from a clean tree |
 | 11 | transformer kVA ratings not set | 14 | queued, after step 10 |
 | 12 | protective-device ratings not set | 14 | queued, after step 10 |
-| 13 | MakePosSequence by physics: the node map, elimination of internal nodes and chains, merge of parallel cores, the projection in its two forms, coupled `phases=M` elements, sources, refusals that stop the command, matrix order, repeated command, ratings | 16.1-16.9, 17 | replaced by `MAKEPOSSEQ_PLAN.md` steps MPS-01 to MPS-06 and MPS-09 (plan accepted 2026-10-10 under 17.16 and 17.17, its literature review closed by 17.18, the second revision and check running since 2026-10-16, MPS-01 after them) |
+| 13 | MakePosSequence by physics: the node map, elimination of internal nodes and chains, merge of parallel cores, the projection in its two forms, coupled `phases=M` elements, sources, refusals that stop the command, matrix order, repeated command, ratings | `MAKEPOSSEQ_PLAN.md` | replaced by `MAKEPOSSEQ_PLAN.md` steps MPS-01 to MPS-06, MPS-09 and MPS-10 (plan accepted 2026-10-10, its literature review closed 2026-10-17 by the second fresh check with no major, the plan holds every MakePosSequence rule itself since 2026-10-17, MPS-01 next) |
 | 14 | LineGeometry additions: empty readback, equivalent distances with their own unit, `nconds=` order, conductor without position, `wires=` count rule, help text, capacitance pin, `mm` (the `like=` unit of 16.13 and the `nconds=` reset of 16.14 are done in step 4) | 16.11-16.18 | running since 2026-10-10 on lane-b from 73a364f9 (state folder linegeometry_additions), stopped 2026-10-10 on the user's order inside the gate with all five parts committed, resumed 2026-10-16 |
-| 15 | delta Capacitor and Reactor: conductor count in either order of `conn=` and `phases=`, the delta Reactor matrix stamp | 16.4, 16.10 | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-07 (wave W2) |
-| 16 | MakePosSequence of PVSystem, Transformer, Storage and the other power conversion classes by the same rule | 16.1 | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-08 (wave W3) |
+| 15 | delta Capacitor and Reactor: conductor count in either order of `conn=` and `phases=`, the delta Reactor matrix stamp | `MAKEPOSSEQ_PLAN.md` | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-07 (wave 2) |
+| 16 | MakePosSequence of PVSystem, Transformer, Storage and the other power conversion classes by the same rule | `MAKEPOSSEQ_PLAN.md` | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-08 (wave 3) |
 | 17 | exact unit words in every class with a unit property, the `nconds=` rule in LineSpacing | 16.12, 16.14 | queued, after step 14 |
 | 18 | overhead wire height above its radius, the finite full-Carson limit at zero height | - | queued, after step 14 |
 | 19 | TSData tape-lap correction by physics: derive the resistance factor of a lapped tape from its geometry, check against Kersting 3rd ed. section 4.2 (tape-shield example) and manufacturer data, measure both oracles, pin, upstream report if the engine's factor is wrong | 16.20 | queued, after step 14 |
