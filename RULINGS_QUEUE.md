@@ -113,6 +113,87 @@ stages 7 to 10.
        of the protective devices, a conductor `normamps=1.7e308` whose 1.5-times
        emergency rating overflows to `+Inf`, and a finite `Set %Normal=1e10` on
        `emergamps=1e308`. Each of these is refused by the same rule.
+    10. (coordinator, 2026-10-10, under the delegation "вопросы ко мне решай сам", from the
+        plan of step 10) The questions the plan put to the user are decided. The narrow
+        paths taken in the plan stand for Q-A (refused at the recalc, no YPrim, the Y build
+        gives one error, the element and its typed properties stay), Q-C (a later
+        `linecode=`, `geometry=` or `spacing=` definition applies and clears the Line's
+        typed rating), Q-D, Q-E (the partly rated Line logs the error and is built with that
+        rating not set), Q-G (a typed non-finite kVA or device rating is refused at its
+        token, as step 2 refuses a typed current rating), Q-H (a `Set %Normal` that
+        overflows refuses the whole command), Q-I, Q-J, Q-L (a zero size `kvar=0` is an open
+        device with a not-set derived rating, a zero base `kv=0` is refused), Q-M (a
+        dynamics or harmonics quantity is checked when its mode first computes it) and
+        Q-N (14.4 reads the phase conductors). Three alternatives are taken instead:
+        Q-B, a derived negative rating other than the `-1` sentinel loads against its
+        magnitude, as the user decided for Transformer and AutoTrans on 2026-10-03, since
+        the current of a 300 kvar inductive bank flows whatever the sign of `kvar`. Q-F,
+        the rating a LineGeometry derives is the weakest phase conductor's, as the spacing
+        form already does, since every phase conductor carries the line current, and the
+        gated cases that move (three asymmetric decks reading 230 where the oracles read
+        530) are excluded field by field and pinned, with an upstream report. Q-K, a
+        typed non-finite rated voltage or kVA base is refused at its token as well, since
+        the documentation gives those as positive numbers, beside the recalc refusal of a
+        finite input with a non-finite result.
+    11. (coordinator, 2026-10-10, same delegation, from the plan check of step 10, F1 and
+        S9) Each rating of a spacing or geometry Line is derived on its own at the end of
+        the Line's edit from the typed record: a rating typed after the conductors stops
+        only its own derivation, the untyped partner takes the weakest-phase reading and
+        the 14.4 check, and `Seasons=` or `Ratings=` typed after the conductors no longer
+        stop the scalar derivations. This is 14.3 and 14.4 applied, no typed value is
+        overwritten and no derived rating escapes the partly rated check. The same deck
+        reads the same whether written on one line or split with `~`.
+    12. (coordinator, 2026-10-10, same delegation) The side finds of the plan that lie in
+        classes without a rating go to their own queue step (step 22): `Vsource basekv=0`
+        solving with finite voltages and no message, `AutoTrans kvs=[0 6.9]` giving a
+        negative series kV with a finite solve, `GICTransformer r1=0 r2=0`. Each is a zero
+        base that leaves the data without meaning and is refused at the recalc by the rule
+        of 14.9. The inline RPN inside a list property (S4) and a conductor whose emergency
+        rating lies below its normal rating (S8) stay open items without a ruling.
+    13. (coordinator, 2026-10-10, same delegation, from the second plan check of step 10,
+        finding A) A typed transformer current rating is kept under 14.3 also where it
+        hides an overload the oracles report from the derived rating: on the gated
+        `StoCtrl_SeasonTarget/Run_example.dss` the typed 400 A on `xfm1` writes no
+        `DI_Overloads` row where both channels write thirteen from 76.3 A. The demand
+        interval comparer compares the row count of every file unconditionally, so the
+        harness gains one element-scoped row exclusion for `DI_Overloads` files only (the
+        ledger names the case, the channel, the file and the element, the matching rows
+        leave both sides before the count and the cells, an entry nothing matched fails as
+        stale). Every other file keeps the unconditional row count. The exclusion is pinned
+        by a harness unit test, described in `TESTING.md`, and the divergence by the pin of
+        the kept typed rating with a `DI_Overloads` leg (the typed transformer writes no
+        row, its untyped twin writes one). The upstream report states that the typed rating
+        is silently replaced by the derived one. Minor findings B, C and D and the notes of
+        that check are fixed in the plan by its third revision, none needs a ruling.
+    14. (coordinator, 2026-10-10, same delegation, from the third plan check of step 10,
+        finding M1) `normamps` and `emergamps` of a Transformer and an AutoTrans are read
+        only. The documentation says "(Read only) Normal rated current. Use normhkVA to
+        specify transformer normal rating." and the same for the emergency current with
+        `emerghkVA`, the r4133 property help says the same, and IEC 60076-1 3.4.7 derives a
+        transformer's rated current from its rated power and voltage, so the element has no
+        current rating of its own: on `xfm1` of `StoCtrl_SeasonTarget/Run_example.dss` the
+        typed 400 A at 4.16 kV would be 2882 kVA on a 500 kVA transformer and hides a
+        measured loading of 113.6 % of the rated current. A typed value is refused at its
+        token (`like=` included) with a message naming the element, the property and the
+        property that sets the rating, the derived rating stays and nothing typed is
+        recorded. 14.3 covers the ratings the documentation lets the user write and is not
+        engaged here. 14.13 is superseded: no row exclusion for `DI_Overloads`, no ledger
+        entry for the hidden overload, the readings equal both oracles'. Save and the JSON
+        set-order sweep write neither property for the two classes, since the documentation
+        gives them no written form, so a saved deck reloads without the refusal, and every
+        golden byte that moves is listed by the plan. The gated decks that type the property
+        declare the message in `expect_warnings` and their population-lock cells move. The
+        upstream report states that a read-only property accepts a value in silence. The
+        notes of that check: a zero winding kVA is a zero size by physics (`Z = z U^2/S`),
+        refused as the narrow path because the documentation gives a rated power as a
+        positive number, and the plan's wording and report N1 say so (N1). A derived `-1` A
+        follows 14.10 (N3). The seasonal `Ratings` of an untyped geometry stay as the third
+        revision has them, the per-season weakest reading is an open item without a ruling
+        (N4). The wording of m2 (the neutral has no reader, its thermal duty is unchecked)
+        and N2 (the weakest-phase rating never misses an overload, it is not the exact check)
+        goes into the plan, the pins and the reports. The population lock formats no
+        `expect_warnings` and gets no `warn=` field: the declared message is checked by
+        the gate alone (fourth check, N1).
 15. **The open questions of steps 3 and 4** are decided by a research workflow: physics
     with standards and textbooks for MakePosSequence, the documentation and the needs
     of a future language server for LineGeometry. The verdicts come back to the user.
@@ -326,6 +407,71 @@ stages 7 to 10.
         symmetric part (Kersting Example 4.2: the antisymmetric part is 1.73 times the
         symmetric part, reactive power off by up to 8.1e-3).
 
+    16. (coordinator, 2026-10-10, under the delegation "вопросы ко мне решай сам", from the
+        MakePosSequence plan, its section 8) The four questions the plan puts to the user
+        are decided with the plan's proposals. Q1: a two-phase Line keeps the ruled
+        `(3/4)(Z11 + Z22 - Z12)` with the stated limit L3 (2.3e-3 of the source power on
+        the 5-mile lateral), since the loop form needs a scan of everything downstream and
+        is wrong once one load to earth is added. Q2: the symmetric part of a non-reciprocal
+        inter-circuit term is always written, no refusal above a share, since a share that
+        refuses Kersting Example 4.2 refuses an ordinary three-phase and two-phase pair
+        too. Q3: the four-conductor line with its neutral on node 0 at both ends is
+        Kron-reduced in Z and struck in C, as 17.5 decides. Q4: the positive-order check of
+        17.12 applies to the elements whose model depends on the order (Vsource, Isource,
+        IndMach012, VSConverter and the other sequence-model machines), while a Load, a
+        passive bank or a winding draws the same balanced power in either order and is not
+        refused for it. 17.12 reads with this narrowing. The plan states each as decided.
+
+    17. (coordinator, 2026-10-10, same delegation, from the third check of the MakePosSequence
+        plan) The plan is accepted with its four open findings folded into the steps that
+        own them, by the acceptance rule of its brief. C3-1: a control on the reduced circuit
+        reads conductor 1 wherever its phase selector (`PTPhase`, `CTPhase`, `PTphase`)
+        names a phase above the reduced count, and the two power-factor guards of CapControl
+        compare the balanced total with `k * TotalKvar` of the reduced bank, so a reduced
+        `ieee9500` or `epri_dpv J1` deck neither panics nor trips at a third of its
+        threshold (into MPS-10, three pins, an upstream report section). C3-2: the pin of
+        the two-phase Load that already passes at the base is named as such in the MPS-08
+        acceptance. C3-3: the bare bus spelling of terminal 1 in the MPS-03 pin. C3-4: an
+        Isource above three phases and a lone group that is no balanced set meet the
+        refusal that case 3 gives a Vsource (into the step that owns case 3). Before any
+        step starts, the plan passes a review against the literature of the brief with the
+        books as the basis, at least two sources per statement (user order 2026-10-10): a
+        ruling item the books contradict is reported, not softened.
+    18. (coordinator, 2026-10-16, same delegation, from the literature review of 17.17:
+        three reviewers, a reviser and a fresh checker, two sources per statement, the
+        checker re-opened every page and recomputed the numbers) Five items move with the
+        books, and the plan states them. 17.14: the symmetric part of an inter-circuit
+        term is exact only for circuits of the same phase order at a displacement of 0
+        or 180 degrees. The mirrored order is not exact (Tleis p. 139, Clarke Vol. II
+        p. 420: the antisymmetric part is `|tan θ|` of the mutual, 0.158 on Tleis
+        Example 3.4, where the same order leaves 3.5e-18), so the mirrored order leaves
+        the exact cases of 17.14 and joins its stated limit. 17.8 with 17.1: a bank of
+        one-phase units between one pair of ports (three units into a delta, an
+        open-delta pair) with every conductor that joins the same two ports is one set,
+        projected jointly with a positive-sequence current at the far port, and a
+        conductor of the set that carries no current is disabled (the `Line.Jumper` of
+        the IEEE 37 regulator bank: dS/S 1.6e-5 jointly against 0.45 unit by unit). 16.1:
+        a unit of an open-delta pair divides its rated power by `2√3`, not 3, since each
+        unit carries a line current and the bank's balanced capacity is `√3 S_u`
+        (Kersting eq. (8.104)), so its loading reads as the real unit's where `kVA/3`
+        would read `√3/2` of it. 17.15: `Cb = A^T C A` is confirmed by Dommel section
+        4.1.2.2 and leaves the own-derivation list. 16.2: the two-phase
+        `(3/4)(Z11 + Z22 - Z12)` is the impedance form of the series rule of 17.8, the
+        excitation by balanced currents, not by balanced voltage, which would give
+        `0.524944 + j1.186838` against `0.574145 + j1.318688` ohm/mile on the two-phase
+        lateral, 9.8 per cent apart: the words "the same balanced-voltage excitation as
+        every other element" of 16.2 read "the balanced-current excitation of the series
+        rule", the number stands. The checker's new major, outside the rulings: a
+        control reads terminal currents, so the current factor of a winding is its
+        reduced terminal current over its real one, 1 for a three-phase wye or delta
+        winding (not `√3` for the delta), `2/3` for a two-phase wye winding,
+        `|Δw_r| / 3` for a one-phase winding, in general `(n |Δw_r| / 3) |I_leg /
+        I_terminal|`, and a RegControl with `ctprim` on the delta winding of a Dy bank
+        keeps its `ctprim`. The second reviser applies it with the three minors (the
+        `ctprim = 350` twin of the open-delta pin reads one half, Grainger p. 462, the
+        16.2 words) and a second fresh checker reads the result. MPS-01 starts after
+        that check.
+
 ## Queue
 
 | # | step | rulings | state |
@@ -340,18 +486,19 @@ stages 7 to 10.
 | 7 | Storage dynamics model | 7 | queued |
 | 8 | `Open` on a machine in dynamics | 10 | queued, after step 5 |
 | 9 | `DynamicEq` re-link: calculated values keep their rows by name, the equation memory survives, Save writes `DynamicEq` before `DynOut`, a machine refuses a `DynOut` that names one variable twice, a host with `NVariables` omitted lists only the named variables, upstream reports: a new one for the `DynOut` that names one variable twice (measured on r4133, with the documentation quote), the documentation quote added to 85 and 86, the r4133 measurements still missing in 84, 87, 89 | 12, 13 | queued |
-| 10 | rating details: three states, typed `0` and negatives, Save writes `-1` or the typed number, no overwrite of a typed value, partly rated Line is an error, derived zero, derived negatives, `?` and Save after `Set %Normal`, refusal of inputs that make a stamp or rating non-finite | 14 | queued, after step 2 lands |
+| 10 | rating details: three states, typed `0` and negatives, Save writes `-1` or the typed number, no overwrite of a typed value, partly rated Line is an error, derived zero, derived negatives, `?` and Save after `Set %Normal`, refusal of inputs that make a stamp or rating non-finite | 14 | running since 2026-10-10 on lane-c from 73a364f9 (state folder rating_details), three plan checks each left one major (F1 under 14.10 to 14.12, A under 14.13, M1 under 14.14 which supersedes 14.13), the plan is revised a fourth time and checked again, then the executors, stopped 2026-10-10 on the user's order inside the first executor part, resumed 2026-10-16 from a clean tree |
 | 11 | transformer kVA ratings not set | 14 | queued, after step 10 |
 | 12 | protective-device ratings not set | 14 | queued, after step 10 |
-| 13 | MakePosSequence by physics: the node map, elimination of internal nodes and chains, merge of parallel cores, the projection in its two forms, coupled `phases=M` elements, sources, refusals that stop the command, matrix order, repeated command, ratings | 16.1-16.9, 17 | queued, after step 3 lands and its audits are compared with the verdicts |
-| 14 | LineGeometry additions: empty readback, equivalent distances with their own unit, `nconds=` order, conductor without position, `wires=` count rule, help text, capacitance pin, `mm` (the `like=` unit of 16.13 and the `nconds=` reset of 16.14 are done in step 4) | 16.11-16.18 | queued, after step 4 lands and its audits are compared with the verdicts |
-| 15 | delta Capacitor and Reactor: conductor count in either order of `conn=` and `phases=`, the delta Reactor matrix stamp | 16.4, 16.10 | queued, corpus scan with continuation lines first |
-| 16 | MakePosSequence of PVSystem, Transformer, Storage and the other power conversion classes by the same rule | 16.1 | queued, after step 13 |
+| 13 | MakePosSequence by physics: the node map, elimination of internal nodes and chains, merge of parallel cores, the projection in its two forms, coupled `phases=M` elements, sources, refusals that stop the command, matrix order, repeated command, ratings | 16.1-16.9, 17 | replaced by `MAKEPOSSEQ_PLAN.md` steps MPS-01 to MPS-06 and MPS-09 (plan accepted 2026-10-10 under 17.16 and 17.17, its literature review closed by 17.18, the second revision and check running since 2026-10-16, MPS-01 after them) |
+| 14 | LineGeometry additions: empty readback, equivalent distances with their own unit, `nconds=` order, conductor without position, `wires=` count rule, help text, capacitance pin, `mm` (the `like=` unit of 16.13 and the `nconds=` reset of 16.14 are done in step 4) | 16.11-16.18 | running since 2026-10-10 on lane-b from 73a364f9 (state folder linegeometry_additions), stopped 2026-10-10 on the user's order inside the gate with all five parts committed, resumed 2026-10-16 |
+| 15 | delta Capacitor and Reactor: conductor count in either order of `conn=` and `phases=`, the delta Reactor matrix stamp | 16.4, 16.10 | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-07 (wave W2) |
+| 16 | MakePosSequence of PVSystem, Transformer, Storage and the other power conversion classes by the same rule | 16.1 | replaced by `MAKEPOSSEQ_PLAN.md` step MPS-08 (wave W3) |
 | 17 | exact unit words in every class with a unit property, the `nconds=` rule in LineSpacing | 16.12, 16.14 | queued, after step 14 |
 | 18 | overhead wire height above its radius, the finite full-Carson limit at zero height | - | queued, after step 14 |
 | 19 | TSData tape-lap correction by physics: derive the resistance factor of a lapped tape from its geometry, check against Kersting 3rd ed. section 4.2 (tape-shield example) and manufacturer data, measure both oracles, pin, upstream report if the engine's factor is wrong | 16.20 | queued, after step 14 |
 | 20 | Capacitor delta and cmatrix filter stamp by the exact form Y_d (I + zl Y_d)^-1 in place of the 1.000001 diagonal scaling, pinned against the wye equivalent, both oracles diverge by 6.7e-7 | 16.22 | queued, after step 14, disjoint from the MakePosSequence plan steps unless one touches the Capacitor stamp |
 | 21 | LineGeometry `nconds` defaults to the documented 3 (tree and r4133 hold 0), with the Save, `like=` and readback consequences measured on both oracles and pinned | 16.26 | queued, after step 17 |
+| 22 | zero bases in classes without a rating refused at the recalc by the rule of 14.9: `Vsource basekv=0`, `AutoTrans kvs=[0 6.9]`, `GICTransformer r1=0 r2=0`, and the other routes a census finds | 14.9, 14.12 | queued, after step 10 |
 
 ## Open items that need no ruling now
 
