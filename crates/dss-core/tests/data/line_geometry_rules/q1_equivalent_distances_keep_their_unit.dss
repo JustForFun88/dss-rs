@@ -1,0 +1,27 @@
+! Equivalent distances keep the unit of their spacing (metres here: phases
+! 1.2 m apart and 1.5 m from the neutral). ga is built on the spacing, gu is ga
+! with a units=ft after it and no conductor selected, which moves the default
+! unit only, and gl is a like= copy of ga. Lq is a Line with its own spacing=
+! and wires= on a three-wire equivalent spacing in metres.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.eq nconds=4 nphases=3 detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 AvgPhaseHeight=8.5 AvgNeutralHeight=7.3 units=m
+New LineSpacing.eq3 nconds=3 nphases=3 detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 AvgPhaseHeight=8.5 AvgNeutralHeight=7.3 units=m
+New LineGeometry.ga nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New LineGeometry.gu nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+~ units=ft
+New LineGeometry.gl like=ga
+New Line.La bus1=src.1.2.3.0 bus2=ba.1.2.3.0 geometry=ga length=1 units=mi
+New Load.la bus1=ba phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Lu bus1=src.1.2.3.0 bus2=bu.1.2.3.0 geometry=gu length=1 units=mi
+New Load.lu bus1=bu phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Ll bus1=src.1.2.3.0 bus2=bl.1.2.3.0 geometry=gl length=1 units=mi
+New Load.ll bus1=bl phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Lq bus1=src.1.2.3 bus2=bq.1.2.3 spacing=eq3 wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Load.lq bus1=bq phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

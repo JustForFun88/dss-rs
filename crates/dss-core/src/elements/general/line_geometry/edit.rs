@@ -14,36 +14,93 @@ use super::accessors::LENGTH_UNITS;
 use super::{ConductorChoice, LineGeometryObj, UNIT_UNSET, UNITS_FT, prop};
 use crate::support::line_units::LineUnits;
 
+/// A fresh conductor table: the engine (none without conductors) and each
+/// conductor's kind, object, position and unit.
+struct ConductorTable {
+    engine: Option<LineConstants>,
+    choice: Vec<ConductorChoice>,
+    wiredata: Vec<Option<ConductorObj>>,
+    x: Vec<Option<f64>>,
+    h: Vec<Option<f64>>,
+    units: Vec<i32>,
+}
+
+impl ConductorTable {
+    /// The table of `n` conductors, `None` when any part cannot be allocated.
+    /// The engine, the one part that grows with the square of `n`, comes
+    /// first.
+    fn try_new(n: usize) -> Option<Self> {
+        let engine = if n >= 1 {
+            Some(LineConstants::try_new(n)?)
+        } else {
+            None
+        };
+        Some(ConductorTable {
+            engine,
+            choice: filled(n, ConductorChoice::Overhead)?,
+            wiredata: filled(n, None)?,
+            x: filled(n, None)?,
+            h: filled(n, None)?,
+            units: filled(n, UNIT_UNSET)?,
+        })
+    }
+}
+
+/// `n` copies of `value`, `None` when they cannot be allocated.
+fn filled<T: Clone>(n: usize, value: T) -> Option<Vec<T>> {
+    let mut v = Vec::new();
+    v.try_reserve_exact(n).ok()?;
+    v.resize(n, value);
+    Some(v)
+}
+
 impl LineGeometryObj {
     /// The `nconds` side effect: reset every per-conductor array to its
-    /// default (no conductor object, coordinates 0, no unit of its own,
+    /// default (no conductor object, no position, no unit of its own,
     /// overhead) whether or not the count changed, drop the equivalent spacing
-    /// a `spacing=` copied, select no conductor and build a fresh overhead
-    /// engine sized `NConds` (none without conductors). The geometry then
-    /// computes only from data written after it.
-    /// The first allocation keeps the default unit, so a `units=` written
-    /// before the first `nconds=` still applies. A re-allocation of a geometry
-    /// that has conductors starts the default from feet again.
-    /// Pinned by
-    /// `exec::tests::line_geometry_rules::a_redefinition_drops_the_equivalent_spacing`.
-    pub(super) fn realloc_conductors(&mut self) {
-        if !self.funits.is_empty() {
-            self.flast_unit = UNITS_FT;
-        }
+    /// a `spacing=` copied, return the default unit to feet, select no
+    /// conductor and build a fresh overhead engine sized `NConds` (none without
+    /// conductors). The geometry then computes only from data written after
+    /// it. Pinned by
+    /// `exec::tests::line_geometry_rules::a_redefinition_drops_the_equivalent_spacing`
+    /// and `tests::every_nconds_starts_from_feet`. A count whose table or
+    /// engine cannot be allocated is refused, naming it, and the geometry
+    /// keeps the conductors it had, pinned by
+    /// `exec::tests::line_geometry_rules::a_count_beyond_the_memory_is_refused`.
+    /// Returns whether the table was built.
+    pub(super) fn realloc_conductors(&mut self) -> bool {
+        let n = self.fnconds.max(0) as usize;
+        let Some(table) = ConductorTable::try_new(n) else {
+            let msg = self.nconds_memory_refusal(&n.to_string());
+            self.data.push_error(msg);
+            self.fnconds = i32::try_from(self.fx.len()).unwrap_or(i32::MAX);
+            return false;
+        };
+        self.flast_unit = UNITS_FT;
         self.equivalent_spacing = false;
         self.eq_dist_ph_ph = 0.0;
         self.eq_dist_ph_n = 0.0;
         self.avg_phase_height = 0.0;
         self.avg_neutral_height = 0.0;
-        let n = self.fnconds.max(0) as usize;
-        self.fphase_choice = vec![ConductorChoice::Overhead; n];
-        self.fwiredata = (0..n).map(|_| None).collect();
-        self.fx = vec![0.0; n];
-        self.fy = vec![0.0; n];
-        self.funits = vec![UNIT_UNSET; n];
+        self.fphase_choice = table.choice;
+        self.fwiredata = table.wiredata;
+        self.fx = table.x;
+        self.fy = table.h;
+        self.funits = table.units;
         self.selected = None;
         self.last_filled = None;
-        self.fline_data = (n >= 1).then(|| LineConstants::new(n));
+        self.fline_data = table.engine;
+        true
+    }
+
+    /// The message refusing `nconds=<count>`, the count as written, whose
+    /// conductor table the memory cannot hold.
+    pub(super) fn nconds_memory_refusal(&self, count: &str) -> String {
+        format!(
+            "LineGeometry.{}.NConds: nconds={count} needs more memory than is available, so \
+             the value is not applied.",
+            self.data.name()
+        )
     }
 
     /// Set the conductor model of conductor `slot` (0-based, `None` for no
@@ -89,9 +146,10 @@ impl LineGeometryObj {
     }
 
     /// The `spacing=` side effect: when the spacing's wire count matches,
-    /// copy its coordinates/units into every conductor and clear the `X`/`H`
-    /// "set" marks; otherwise log the wrong-count error. A spacing with no
-    /// length unit (code 0, or a code outside 1 to 8) is refused and not kept.
+    /// copy its coordinates/units into every conductor, or its four
+    /// equivalent distances and their unit, and clear the `X`/`H` "set"
+    /// marks; otherwise log the wrong-count error. A spacing with no length
+    /// unit (code 0, or a code outside 1 to 8) is refused and not kept.
     pub(super) fn apply_spacing(&mut self) {
         let Some(spc) = self.line_spacing_obj.as_ref() else {
             return;
@@ -119,13 +177,14 @@ impl LineGeometryObj {
                 self.eq_dist_ph_n = spc.eq_dist_ph_n();
                 self.avg_phase_height = spc.avg_phase_height();
                 self.avg_neutral_height = spc.avg_neutral_height();
+                self.eq_unit = units;
             } else {
                 let xs = spc.xcoord().to_vec();
                 let hs = spc.ycoord().to_vec();
                 let n = self.fnconds.max(0) as usize;
                 for i in 0..n {
-                    self.fx[i] = xs[i];
-                    self.fy[i] = hs[i];
+                    self.fx[i] = Some(xs[i]);
+                    self.fy[i] = Some(hs[i]);
                     self.funits[i] = units;
                 }
             }
@@ -141,24 +200,18 @@ impl LineGeometryObj {
         }
     }
 
-    /// The plural `wires=` fill (text path). The list is the buried neutrals
-    /// after the phase conductors when the selected conductor is a cable or,
-    /// with none selected, when a phase conductor holds a cable, and every
-    /// conductor otherwise. The selection is left alone.
+    /// The plural `wires=` fill (text path). The count comes from the data,
+    /// never from the selection: the list is the buried neutrals after the
+    /// phase conductors when a phase conductor holds a cable, and every
+    /// conductor otherwise. The selection is left alone. Pinned by
+    /// `exec::tests::line_geometry_rules::wires_count_follows_the_data_not_the_selection`.
     pub(super) fn set_wires(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         let n = self.fnconds.max(0) as usize;
-        let mut start = 0usize;
-        match self.active_index() {
-            Some(a) => {
-                if self.fphase_choice[a] == ConductorChoice::Unknown {
-                    self.change_line_constants_type_at(Some(a), ConductorChoice::Overhead);
-                } else if self.fphase_choice[a] != ConductorChoice::Overhead {
-                    start = self.phase_positions();
-                }
-            }
-            None if self.phases_hold_a_cable() => start = self.phase_positions(),
-            None => {}
-        }
+        let start = if self.phases_hold_a_cable() {
+            self.phase_positions()
+        } else {
+            0
+        };
         self.fill(
             start..n,
             refs,
@@ -182,10 +235,10 @@ impl LineGeometryObj {
         self.last_filled = None;
         let expected = slots.len();
         if expected != refs.len() {
-            let why = match (expected, self.fnconds) {
-                (0, ..=0) => ": the geometry has no conductors. Set NConds first".to_string(),
-                (0, _) => format!(": {empty}"),
-                _ => String::new(),
+            let why = if expected == 0 {
+                format!(": {empty}")
+            } else {
+                String::new()
             };
             self.data.push_error(format!(
                 "LineGeometry.{}: Unexpected number ({}) of objects; expected {expected} objects{why}.",

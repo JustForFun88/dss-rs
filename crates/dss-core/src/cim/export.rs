@@ -1953,7 +1953,9 @@ fn write_cn_data_catalog(buf: &mut writer::Writer, classes: &mut [DssClass]) {
 /// Pascal LineGeometry catalog sweep (`ExportCIMXML.pas:4575-4599`): one
 /// `WireSpacingInfo` + a `WirePosition` per conductor. `isCable` reads the first
 /// conductor's `PhaseChoice`. Each coordinate is converted from its conductor's
-/// unit, its own or the geometry's default.
+/// unit, its own or the geometry's default, and a coordinate never given is
+/// not written. Pinned by
+/// `exec::tests::line_geometry_rules::cim_writes_no_coordinate_never_given`.
 fn write_line_geometry_catalog(
     buf: &mut writer::Writer,
     classes: &mut [DssClass],
@@ -2010,18 +2012,12 @@ fn write_line_geometry_catalog(
                 i as i64,
             );
             let v1 = LineUnits::from_code(us[i - 1]).to_meters();
-            writer::double_node(
-                buf,
-                ProfileChoice::Cat,
-                "WirePosition.xCoord",
-                xs[i - 1] * v1,
-            );
-            writer::double_node(
-                buf,
-                ProfileChoice::Cat,
-                "WirePosition.yCoord",
-                ys[i - 1] * v1,
-            );
+            if let Some(x) = xs[i - 1] {
+                writer::double_node(buf, ProfileChoice::Cat, "WirePosition.xCoord", x * v1);
+            }
+            if let Some(y) = ys[i - 1] {
+                writer::double_node(buf, ProfileChoice::Cat, "WirePosition.yCoord", y * v1);
+            }
             writer::end_instance(buf, ProfileChoice::Cat, "WirePosition");
         }
     }

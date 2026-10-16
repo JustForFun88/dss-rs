@@ -2706,7 +2706,8 @@ const RESET_REPLACES: &[(&str, &str, &[&str])] = &[
 /// ([`crate::report::save::save::parse_sizer`] over every property of every
 /// registered class) and locked against [`SIZED_ARRAYS`]. For each (class,
 /// sizer) pair one deck is built from the property table, not by hand:
-/// `new <class>.rfx`, then `edit rfx <sizer>=N` with every sized array at `N`
+/// `new <class>.rfx` (with `nconds=1` for a LineGeometry, which refuses every
+/// property before it), then `edit rfx <sizer>=N` with every sized array at `N`
 /// entries (`N` = the sizer's default + 1, at least 2 — an array parsed against
 /// the default count loses entries; a `StringList` sizer gets `N` names), then
 /// `edit rfx <sizer>=N` again — the re-set moves the sizer behind its arrays in
@@ -2852,7 +2853,12 @@ fn save_writes_every_sizing_property_ahead_of_its_arrays() {
         let mut dss = Dss::new();
         dss.command("clear");
         dss.command("new circuit.rfd0104all basekv=12.47 pu=1.0 phases=3 bus1=src");
-        dss.command(&format!("new {lc}.rfx"));
+        // A LineGeometry refuses every property before its first `nconds=`.
+        if lc == "linegeometry" {
+            dss.command("new linegeometry.rfx nconds=1");
+        } else {
+            dss.command(&format!("new {lc}.rfx"));
+        }
         let ci = dss.class_by_name[&lc];
         let (s, sizer_is_list, default) = {
             let cls = &dss.classes[ci];

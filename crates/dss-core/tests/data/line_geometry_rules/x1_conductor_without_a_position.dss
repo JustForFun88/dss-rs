@@ -1,0 +1,40 @@
+! Rule 7 names a conductor without an x or an h. nox (one conductor) has no
+! x, noh has no h on conductor 3, mixed lacks the x of conductor 1 and the h of
+! conductor 3, buried's bare neutral that wires= fills has neither, and ge,
+! built on an equivalent spacing, holds no wire. ga on the equivalent spacing
+! and gd on a detailed spacing need no x= and no h=.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.eq nconds=4 nphases=3 detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 AvgPhaseHeight=8.5 AvgNeutralHeight=7.3 units=m
+New LineSpacing.sp nconds=4 nphases=3 x=[-4 0 4 0] h=[28 28 28 24] units=ft
+New LineGeometry.nox nconds=1 nphases=1
+~ cond=1 wire=ACSR_556_5 h=28
+New LineGeometry.noh nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 x=-4 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4
+New LineGeometry.mixed nconds=3 nphases=3
+~ cond=1 wire=ACSR_556_5 h=28
+~ cond=2 wire=ACSR_556_5 x=0 h=28
+~ cond=3 wire=ACSR_556_5 x=4
+New LineGeometry.buried nconds=3 nphases=2
+~ cond=1 cncable=250_1/3 x=-0.5 h=-4 units=ft
+~ cond=2 cncable=250_1/3 x=0.5 h=-4 wires=[ACSR_4/0]
+New LineGeometry.ge nconds=4 nphases=3 spacing=eq
+New LineGeometry.ga nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New LineGeometry.gd nconds=4 nphases=3 spacing=sp wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New Line.Lnox bus1=src.1 bus2=bnox.1 geometry=nox length=1 units=mi
+New Line.Lnoh bus1=src.1.2.3 bus2=bnoh.1.2.3 geometry=noh length=1 units=mi
+New Line.Lmixed bus1=src.1.2.3 bus2=bmixed.1.2.3 geometry=mixed length=1 units=mi
+New Line.Lb bus1=src.1.2.0 bus2=bb.1.2.0 geometry=buried length=1 units=mi
+New Line.Le bus1=src.1.2.3.0 bus2=be.1.2.3.0 geometry=ge length=1 units=mi
+New Line.La bus1=src.1.2.3.0 bus2=ba.1.2.3.0 geometry=ga length=1 units=mi
+New Load.la bus1=ba phases=3 kv=12.47 kw=1000 pf=0.95
+New Line.Ld bus1=src.1.2.3.0 bus2=bd.1.2.3.0 geometry=gd length=1 units=mi
+New Load.ld bus1=bd phases=3 kv=12.47 kw=1000 pf=0.95
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

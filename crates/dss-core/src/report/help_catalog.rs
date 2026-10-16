@@ -3337,7 +3337,7 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "LineGeometry.cond",
-        "Number of the conductor that the following wire, cncable, tscable, x, h and units apply to, 1 to NConds. No conductor is selected after New, like= or nconds=, so conductor data needs cond=N first.",
+        "Number of the conductor that the following wire, cncable, tscable, x, h and units apply to, 1 to NConds. There is no default: no conductor is selected after New, like= or nconds=, so conductor data needs cond=N first.",
     ),
     (
         "LineGeometry.emergamps",
@@ -3390,7 +3390,7 @@ static HELP_CATALOG: &[(&str, &str)] = &[
     ),
     (
         "LineGeometry.units",
-        "Units for x and h: {mi|kft|km|m|Ft|in|cm } Initial default is \"ft\", but defaults to last unit defined",
+        "Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written whole. Initial default is \"ft\", but defaults to last unit defined.",
     ),
     (
         "LineGeometry.wire",

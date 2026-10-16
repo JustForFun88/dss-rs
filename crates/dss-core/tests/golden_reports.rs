@@ -6620,24 +6620,30 @@ fn dump3_commands_matches_oracle() {
     // `golden_lock.rs::CAPI_V0145_OVERLAYS` (the row stays `capi_v0145`: every
     // other block is the pinned-oracle capture).
     //
-    // The `[LineGeometry]` `Cond` help line states the engine's conductor
-    // selection rule instead of the golden's "Default is 1.", pinned by
-    // `cond_help_states_rule_2`.
+    // Two `[LineGeometry]` help lines state the engine's rules instead of the
+    // golden's text: `Cond` the conductor selection rule in place of "Default
+    // is 1.", pinned by `cond_help_states_rule_2`, and `Units` the eight unit
+    // words the class reads, `mm` included, pinned by
+    // `units_help_lists_the_accepted_words`.
     run_deck_dump_exact_block_masked(
         "dump3_commands",
         &["[WindGen]"],
-        &[("[LineGeometry]", LINEGEOMETRY_COND_HELP_PREFIX)],
+        &[
+            ("[LineGeometry]", LINEGEOMETRY_COND_HELP_PREFIX),
+            ("[LineGeometry]", LINEGEOMETRY_UNITS_HELP_PREFIX),
+        ],
     );
 }
 
 /// The start of the `[LineGeometry]` `Cond` line of `Dump commands`.
 const LINEGEOMETRY_COND_HELP_PREFIX: &str = "3, \"Cond\", ";
 
-/// The `[LineGeometry]` `Cond` line of `Dump commands` states the rule the
-/// engine enforces: only `cond=N` selects a conductor, and none is selected
-/// after `New`, `like=` or `nconds=`. It never says "Default is 1".
-#[test]
-fn cond_help_states_rule_2() {
+/// The start of the `[LineGeometry]` `Units` line of `Dump commands`.
+const LINEGEOMETRY_UNITS_HELP_PREFIX: &str = "7, \"Units\", ";
+
+/// The `[LineGeometry]` lines of the `Dump commands` report of the
+/// `dump3_commands` deck that start with `prefix`.
+fn linegeometry_help_lines(tag: &str, prefix: &str) -> Vec<String> {
     let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join("dump3_commands.meta.json");
@@ -6645,7 +6651,7 @@ fn cond_help_states_rule_2() {
             std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
         serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", p.display()))
     };
-    let scratch = scratch_dir("dump3_commands_cond_help");
+    let scratch = scratch_dir(tag);
     let mut dss = Dss::new();
     dss.command("clear");
     for c in &meta.deck {
@@ -6660,24 +6666,52 @@ fn cond_help_states_rule_2() {
     std::fs::remove_dir_all(&scratch).ok();
 
     let mut section = "";
-    let lines: Vec<&str> = rust
-        .lines()
+    rust.lines()
         .filter(|ln| {
             if ln.starts_with('[') {
                 section = ln.trim();
             }
-            section == "[LineGeometry]" && ln.starts_with(LINEGEOMETRY_COND_HELP_PREFIX)
+            section == "[LineGeometry]" && ln.starts_with(prefix)
         })
-        .collect();
+        .map(str::to_string)
+        .collect()
+}
+
+/// The `[LineGeometry]` `Cond` line of `Dump commands` states the rule the
+/// engine enforces: only `cond=N` selects a conductor, there is no default,
+/// and none is selected after `New`, `like=` or `nconds=`. It never says
+/// "Default is 1". The pin of the `Cond` line exclusion of
+/// `dump3_commands_matches_oracle`.
+#[test]
+fn cond_help_states_rule_2() {
+    let lines = linegeometry_help_lines("dump3_commands_cond_help", LINEGEOMETRY_COND_HELP_PREFIX);
     assert_eq!(
         lines,
         [
             "3, \"Cond\", \"Number of the conductor that the following wire, cncable, tscable, \
-             x, h and units apply to, 1 to NConds. No conductor is selected after New, like= or \
-             nconds=, so conductor data needs cond=N first.\""
+             x, h and units apply to, 1 to NConds. There is no default: no conductor is selected \
+             after New, like= or nconds=, so conductor data needs cond=N first.\""
         ]
     );
+    assert!(lines[0].contains("There is no default"));
     assert!(!lines[0].contains("Default is 1"));
+}
+
+/// The `[LineGeometry]` `Units` line of `Dump commands` lists the eight unit
+/// words the class reads, each written whole, `mm` included. The pin of the
+/// `Units` line exclusion of `dump3_commands_matches_oracle`.
+#[test]
+fn units_help_lists_the_accepted_words() {
+    let lines =
+        linegeometry_help_lines("dump3_commands_units_help", LINEGEOMETRY_UNITS_HELP_PREFIX);
+    assert_eq!(
+        lines,
+        [
+            "7, \"Units\", \"Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written \
+             whole. Initial default is \"ft\", but defaults to last unit defined.\""
+        ]
+    );
+    assert!(lines[0].contains("mm"));
 }
 
 /// `Dump alloc` — `DumpAllocationFactors`: `ConnectedkVA`-spec loads render

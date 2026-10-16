@@ -6,10 +6,16 @@ rule the engine enforces where the wheel's text contradicts it.
 """
 
 PORT_HELP: dict[str, str] = {
-    # Only cond=N selects a conductor, and conductor data without one is refused.
+    # Only cond=N selects a conductor, there is no default, and conductor data
+    # without one is refused.
     "LineGeometry.cond": (
         "Number of the conductor that the following wire, cncable, tscable, x, h and units "
-        "apply to, 1 to NConds. No conductor is selected after New, like= or nconds=, so "
-        "conductor data needs cond=N first."
+        "apply to, 1 to NConds. There is no default: no conductor is selected after New, "
+        "like= or nconds=, so conductor data needs cond=N first."
+    ),
+    # The class reads one exact word of these eight, in any case.
+    "LineGeometry.units": (
+        "Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written whole. Initial "
+        'default is "ft", but defaults to last unit defined.'
     ),
 }

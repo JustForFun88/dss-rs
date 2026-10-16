@@ -57,7 +57,12 @@ impl LineGeometryObj {
             }
         }
         self.fnconds = actual_nconds;
-        self.realloc_conductors();
+        if !self.realloc_conductors() {
+            return Err(format!(
+                "{}: {actual_nconds} conductors need more memory than is available.",
+                self.error_subject()
+            ));
+        }
         self.fnphases = actual_nphases;
         self.line_spacing_obj = Some(spc.clone());
         if self.fnconds > self.fnphases {
@@ -87,7 +92,7 @@ impl LineGeometryObj {
             self.eq_dist_ph_n = spc.eq_dist_ph_n();
             self.avg_phase_height = spc.avg_phase_height();
             self.avg_neutral_height = spc.avg_neutral_height();
-            self.flast_unit = spc.spacing_units();
+            self.eq_unit = spc.spacing_units();
         }
 
         // Skip-NIL copy: contiguous conductor `j`, spacing coordinates indexed by
@@ -107,8 +112,8 @@ impl LineGeometryObj {
             let Some(o) = o.as_ref() else { continue };
             self.fwiredata[j] = Some(o.clone());
             if !self.equivalent_spacing {
-                self.fx[j] = xs[i];
-                self.fy[j] = hs[i];
+                self.fx[j] = Some(xs[i]);
+                self.fy[j] = Some(hs[i]);
                 self.funits[j] = units;
             }
             let (cn, ce) = conductor_norm_emerg(o);
@@ -137,27 +142,50 @@ impl LineGeometryObj {
     /// the Carson `Calc` (and a Kron `Reduce` when `FReduce`). `earth_model` is
     /// Pascal's `DSS.ActiveEarthModel`, supplied by the solution.
     ///
-    /// Returns `Err` for the two abort paths: conductors without a conductor
-    /// object (one message naming every one of them) and a failed geometry
+    /// Returns `Err` for the two abort paths: incomplete conductors (one
+    /// message naming each of them and what it lacks) and a failed geometry
     /// check (conductors in the same place).
     pub fn update_line_geometry_data(&mut self, f: f64, earth_model: i32) -> Result<(), String> {
         let n = self.fnconds.max(0) as usize;
 
-        // Gather every conductor's data first (immutable borrows) so the engine
-        // fill below can borrow `FLineData`.
-        let geoms: Vec<Option<ConductorGeom>> = (0..n)
-            .map(|i| {
-                self.fwiredata
-                    .get(i)
-                    .and_then(|o| o.as_ref())
-                    .map(|o| o.geom())
-            })
-            .collect();
-        let missing: Vec<usize> = (0..n).filter(|&i| geoms[i].is_none()).collect();
-        if !missing.is_empty() {
-            return Err(missing_conductors_message(&self.error_subject(), &missing));
+        // Check every conductor first (immutable borrows) so the engine fill
+        // below can borrow `FLineData`. Every conductor needs a conductor
+        // object, and its `x` and `h` unless the geometry is built on an
+        // equivalent spacing, which reads no position. The fill reads only the
+        // positions checked here.
+        let mut complete: Vec<(ConductorGeom, Option<(f64, f64)>)> = Vec::with_capacity(n);
+        let mut incomplete: Vec<(usize, Lacks)> = Vec::new();
+        for i in 0..n {
+            let geom = self
+                .fwiredata
+                .get(i)
+                .and_then(|o| o.as_ref())
+                .map(|o| o.geom());
+            let x = self.fx.get(i).copied().flatten();
+            let h = self.fy.get(i).copied().flatten();
+            let lacks = Lacks {
+                object: geom.is_none(),
+                x: !self.equivalent_spacing && x.is_none(),
+                h: !self.equivalent_spacing && h.is_none(),
+            };
+            match geom {
+                Some(g) if !lacks.any() => {
+                    let position = if self.equivalent_spacing {
+                        None
+                    } else {
+                        x.zip(h)
+                    };
+                    complete.push((g, position));
+                }
+                _ => incomplete.push((i, lacks)),
+            }
         }
-        let geoms: Vec<ConductorGeom> = geoms.into_iter().flatten().collect();
+        if !incomplete.is_empty() {
+            return Err(incomplete_conductors_message(
+                &self.error_subject(),
+                &incomplete,
+            ));
+        }
         let units = self.conductor_units();
         let phases = self.phase_positions();
 
@@ -166,13 +194,12 @@ impl LineGeometryObj {
             return Ok(());
         };
 
-        // dss_capi 0.15.x `UpdateLineGeometryData`: push the equivalent-spacing
-        // state first. The distances are converted from `flast_unit` to meters;
-        // the avg heights also carry the (0-default) height offset.
+        // Push the equivalent-spacing state first. The distances are converted
+        // from the unit of the spacing they came from to meters, the average
+        // heights also carry the (0-default) height offset.
         eng.set_equivalent_spacing(self.equivalent_spacing);
         if self.equivalent_spacing {
-            let to_m =
-                crate::support::line_units::LineUnits::from_code(self.flast_unit).to_meters();
+            let to_m = crate::support::line_units::LineUnits::from_code(self.eq_unit).to_meters();
             let h_off = eng.height_offset_meters();
             eng.set_equivalent_distances(
                 self.eq_dist_ph_ph * to_m,
@@ -182,11 +209,11 @@ impl LineGeometryObj {
             );
         }
 
-        for (i, g) in geoms.iter().enumerate() {
+        for (i, (g, position)) in complete.iter().enumerate() {
             // Equivalent spacing reads no coordinates.
-            if !self.equivalent_spacing {
-                eng.set_x(i, units[i], self.fx[i]);
-                eng.set_y(i, units[i], self.fy[i]);
+            if let Some((x, h)) = *position {
+                eng.set_x(i, units[i], x);
+                eng.set_y(i, units[i], h);
             }
             eng.set_radius(i, g.radius_units, g.radius);
             eng.set_capradius(i, g.radius_units, g.cap_radius);
@@ -347,20 +374,73 @@ impl LineGeometryObj {
     }
 }
 
-/// The one error for conductors without a conductor object: `missing` holds
-/// their 0-based slots, the message names them 1-based after `subject`.
-fn missing_conductors_message(subject: &str, missing: &[usize]) -> String {
-    let numbers: Vec<String> = missing.iter().map(|i| (i + 1).to_string()).collect();
-    let (noun, verb, list) = match numbers.split_last() {
-        Some((last, [])) => ("conductor", "has", last.clone()),
-        Some((last, rest)) => (
-            "conductors",
-            "have",
-            format!("{} and {last}", rest.join(", ")),
-        ),
-        None => ("conductor", "has", String::new()),
-    };
-    format!("{subject}: {noun} {list} {verb} no wire, cncable or tscable.")
+/// What a conductor lacks for the calculation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Lacks {
+    object: bool,
+    x: bool,
+    h: bool,
+}
+
+impl Lacks {
+    fn any(self) -> bool {
+        self.object || self.x || self.h
+    }
+
+    /// `no wire, cncable or tscable, no x and no h`, or the part of it that
+    /// applies.
+    fn phrase(self) -> String {
+        let parts: Vec<String> = [
+            (self.object, "no wire, cncable or tscable"),
+            (self.x, "no x"),
+            (self.h, "no h"),
+        ]
+        .into_iter()
+        .filter(|&(lacks, _)| lacks)
+        .map(|(_, text)| text.to_string())
+        .collect();
+        join_and(&parts)
+    }
+}
+
+/// `a`, `a and b`, `a, b and c`.
+fn join_and(items: &[String]) -> String {
+    match items.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => String::new(),
+    }
+}
+
+/// The one error for incomplete conductors: `incomplete` holds their 0-based
+/// slots, in order, with what each lacks. Conductors that lack the same form
+/// one group, groups in the order of their lowest conductor. The first group
+/// follows `subject`, each later one is a sentence of its own:
+/// `LineGeometry.g: conductor 1 has no x. Conductor 3 has no h.` Pinned by
+/// `exec::tests::line_geometry_rules::a_conductor_without_a_position_is_the_rule_7_error`.
+fn incomplete_conductors_message(subject: &str, incomplete: &[(usize, Lacks)]) -> String {
+    let mut groups: Vec<(Lacks, Vec<String>)> = Vec::new();
+    for &(slot, lacks) in incomplete {
+        let number = (slot + 1).to_string();
+        match groups.iter_mut().find(|(l, _)| *l == lacks) {
+            Some((_, numbers)) => numbers.push(number),
+            None => groups.push((lacks, vec![number])),
+        }
+    }
+    let sentences: Vec<String> = groups
+        .iter()
+        .enumerate()
+        .map(|(k, (lacks, numbers))| {
+            let (noun, verb) = match (numbers.len(), k) {
+                (1, 0) => ("conductor", "has"),
+                (1, _) => ("Conductor", "has"),
+                (_, 0) => ("conductors", "have"),
+                _ => ("Conductors", "have"),
+            };
+            format!("{noun} {} {verb} {}.", join_and(numbers), lacks.phrase())
+        })
+        .collect();
+    format!("{subject}: {}", sentences.join(" "))
 }
 
 /// `(NormAmps, EmergAmps)` of a conductor (Pascal `Wires[1].NormAmps/EmergAmps`),

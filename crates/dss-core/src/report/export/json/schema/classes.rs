@@ -469,7 +469,8 @@ pub(crate) fn class_schema(
             match jtype {
                 "number" => {
                     if !elide_scalar {
-                        // A rating that is not set has no default.
+                        // A rating that is not set, or a value the sample
+                        // does not hold, has no default.
                         if let Some(d) = scalar_double(pd, sample, prop_index)
                             && d.is_finite()
                         {
@@ -941,8 +942,11 @@ fn iterator_property_index(props: &ClassProps, prop_index: usize) -> usize {
 
 /// Pascal `obj.GetDouble(propIndex)` (`GetObjDouble`): the scalar value scaled
 /// out (and inverted under `InverseValue`). A rating reads its set value, and
-/// `None` when it is not set.
+/// `None` when it is not set. A property that holds no value reads `None`.
 fn scalar_double(pd: &PropDef, obj: &dyn DssObject, idx: usize) -> Option<f64> {
+    if obj.holds_no_value(idx) {
+        return None;
+    }
     if pd.ptype == PropType::Rating {
         return obj.get_rating(idx).if_set();
     }

@@ -245,6 +245,7 @@ pub struct LineConstants {
     frho_earth: f64,    // ohm-m
     fme: Complex64,     // factor for earth impedance
     frho_changed: bool, // also flags eps_r_medium / height_offset / user_height_unit / equiv changes
+    fearth_model: i32,  // earth model the matrices hold (-1 before the first calc)
 
     // dss_capi 0.15.x `TLineConstants` additions (SVN r3913-era line/conductor
     // rework, LineConstants.pas). Defaults preserve the 0.14.5 numerics:
@@ -264,6 +265,12 @@ impl LineConstants {
     /// `TOHLineConstants.Create(NumConductors)` — the overhead base.
     pub fn new(num_conductors: usize) -> Self {
         Self::with_kind(num_conductors, LineConstantsKind::Overhead)
+    }
+
+    /// [`Self::new`] when the matrices and the conductor table can be
+    /// allocated, `None` when they cannot.
+    pub fn try_new(num_conductors: usize) -> Option<Self> {
+        Self::try_with_kind(num_conductors, LineConstantsKind::Overhead)
     }
 
     /// `TCableConstants.Create(NumConductors)` — merged cable engine (no
@@ -298,36 +305,47 @@ impl LineConstants {
     }
 
     fn with_kind(num_conductors: usize, kind: LineConstantsKind) -> Self {
+        Self::try_with_kind(num_conductors, kind).unwrap_or_else(|| {
+            panic!("no memory for a line-constants engine of {num_conductors} conductors")
+        })
+    }
+
+    /// The engine, `None` when its matrices or its conductor table cannot be
+    /// allocated. The two `n × n` matrices are allocated first, so a count
+    /// whose matrices exceed the address space allocates nothing.
+    fn try_with_kind(num_conductors: usize, kind: LineConstantsKind) -> Option<Self> {
         let n = num_conductors;
+        let fz_matrix = CMatrix::try_new(n)?;
+        let fyc_matrix = CMatrix::try_new(n)?;
         // The merged cable engine `Allocmem`s all extra arrays in the
         // constructor (`Some(CableData::default())`, all zeros); the overhead
         // base leaves them empty (`None`, never indexed in its `Calc`).
         let cable = matches!(kind, LineConstantsKind::Cable);
         // Pascal initializes rdc/gmr/radius/capradius to "not set" (-1.0);
         // rac/x/y are left zero by Allocmem.
-        let cond = (0..n)
-            .map(|_| Conductor {
-                x: 0.0,
-                y: 0.0,
-                rdc: -1.0,
-                rac: 0.0,
-                gmr: -1.0,
-                radius: -1.0,
-                cap_radius: -1.0,
-                cable: if cable {
-                    Some(CableData::default())
-                } else {
-                    None
-                },
-            })
-            .collect();
-        LineConstants {
+        let mut cond = Vec::new();
+        cond.try_reserve_exact(n).ok()?;
+        cond.extend((0..n).map(|_| Conductor {
+            x: 0.0,
+            y: 0.0,
+            rdc: -1.0,
+            rac: 0.0,
+            gmr: -1.0,
+            radius: -1.0,
+            cap_radius: -1.0,
+            cable: if cable {
+                Some(CableData::default())
+            } else {
+                None
+            },
+        }));
+        Some(LineConstants {
             kind,
             num_conds: n,
             nphases: n,
             cond,
-            fz_matrix: CMatrix::new(n),
-            fyc_matrix: CMatrix::new(n),
+            fz_matrix,
+            fyc_matrix,
             fz_reduced: None,
             fyc_reduced: None,
             ffrequency: -1.0, // not computed
@@ -335,6 +353,7 @@ impl LineConstants {
             frho_earth: 100.0, // default value
             fme: Complex64::ZERO,
             frho_changed: true, // using for both rho and epsilon_r
+            fearth_model: -1,
             equivalent_spacing: false,
             eps_r_medium: 1.0,   // default value should be 1.0
             height_offset: 0.0,  // default value should be 0.0
@@ -343,7 +362,7 @@ impl LineConstants {
             eq_dist_ph_n: 0.0,
             avg_phase_height: 0.0,
             avg_neutral_height: 0.0,
-        }
+        })
     }
 
     /// Which subclass this engine reproduces.
@@ -733,6 +752,7 @@ impl LineConstants {
             LineConstantsKind::Overhead => self.calc_overhead(f, earth_model),
             LineConstantsKind::Cable => self.calc_cable(f, earth_model),
         }
+        self.fearth_model = earth_model;
     }
 
     /// `TLineConstants.Calc` — the overhead base.
@@ -886,10 +906,11 @@ impl LineConstants {
     }
 
     /// `Get_Zmatrix(f, Lngth, Units, EarthModel)`: a new Z matrix corrected for
-    /// length and units; recalcs if the frequency or earth rho changed. Uses the
-    /// reduced matrix when present.
+    /// length and units; recalcs if the frequency, the earth resistivity or the
+    /// earth model changed. Uses the reduced matrix when present. Pinned by
+    /// `tests::z_matrix_recomputes_for_another_earth_model`.
     pub fn z_matrix(&mut self, f: f64, length: f64, units: i32, earth_model: i32) -> CMatrix {
-        if f != self.ffrequency || self.frho_changed {
+        if f != self.ffrequency || self.frho_changed || earth_model != self.fearth_model {
             self.calc(f, earth_model);
         }
         let z = self.fz_reduced.as_ref().unwrap_or(&self.fz_matrix);

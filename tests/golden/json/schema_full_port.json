@@ -3229,8 +3229,7 @@
         },
         "Cond" : {
           "type" : "integer",
-          "default" : 0,
-          "description" : "Number of the conductor that the following wire, cncable, tscable, x, h and units apply to, 1 to NConds. No conductor is selected after New, like= or nconds=, so conductor data needs cond=N first.",
+          "description" : "Number of the conductor that the following wire, cncable, tscable, x, h and units apply to, 1 to NConds. There is no default: no conductor is selected after New, like= or nconds=, so conductor data needs cond=N first.",
           "title" : "Cond",
           "$dssPropertyIndex" : 3,
           "$dssPropertyOrder" : 4
@@ -3246,7 +3245,6 @@
         },
         "X" : {
           "type" : "number",
-          "default" : 0.0000000000000000E+000,
           "description" : "x coordinate.",
           "title" : "X",
           "$dssPropertyIndex" : 5,
@@ -3254,7 +3252,6 @@
         },
         "H" : {
           "type" : "number",
-          "default" : 0.0000000000000000E+000,
           "description" : "Height of conductor.",
           "title" : "H",
           "$dssPropertyIndex" : 6,
@@ -3263,7 +3260,7 @@
         "Units" : {
           "$ref" : "#/$defs/LengthUnit",
           "default" : "ft",
-          "description" : "Units for x and h: {mi|kft|km|m|Ft|in|cm } Initial default is \"ft\", but defaults to last unit defined",
+          "description" : "Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written whole. Initial default is \"ft\", but defaults to last unit defined.",
           "title" : "Units",
           "$dssPropertyIndex" : 7,
           "$dssPropertyOrder" : 8

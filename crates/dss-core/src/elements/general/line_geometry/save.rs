@@ -99,28 +99,39 @@ impl LineGeometryObj {
         }
     }
 
-    /// One `Cond=i <kind>=<name> X=%.7g h=%.7g units=<str>` token group per
-    /// conductor, `<kind>` = `tscable`/`cncable`/`wire` by the stored
-    /// conductor's catalog type, skipping conductors without one. `units=` is
-    /// the conductor's unit, its own or the default, never `none`.
+    /// One `Cond=i [<kind>=<name>] [X=%.7g] [h=%.7g] units=<str>` token group
+    /// per conductor that holds a conductor object, an `x` or an `h`, skipping
+    /// a conductor that holds none of them. `<kind>` = `tscable`/`cncable`/
+    /// `wire` by the stored conductor's catalog type, written when it holds
+    /// one. `X=` and `h=` are written only when given, so a reload holds the
+    /// same positions and reports the same missing ones. `units=` is the
+    /// conductor's unit, its own or the default, never `none`. Pinned by
+    /// `exec::tests::line_geometry_rules::save_writes_each_given_position_and_no_other`.
     fn write_conductor_block(&self, out: &mut String) {
         for i in 0..self.fnconds.max(0) as usize {
-            let Some(w) = self.fwiredata[i].as_ref() else {
-                continue; // Pascal `if FWireData[i] = NIL then continue`.
-            };
-            let kind = match w.conductor_kind() {
-                ConductorKind::Ts => "tscable",
-                ConductorKind::Cn => "cncable",
-                ConductorKind::Wire => "wire",
-            };
+            let object = self.fwiredata[i].as_ref();
+            let (x, h) = (self.fx[i], self.fy[i]);
+            if object.is_none() && x.is_none() && h.is_none() {
+                continue;
+            }
+            out.push_str(&format!(" Cond={}", i + 1));
+            if let Some(w) = object {
+                let kind = match w.conductor_kind() {
+                    ConductorKind::Ts => "tscable",
+                    ConductorKind::Cn => "cncable",
+                    ConductorKind::Wire => "wire",
+                };
+                out.push_str(&format!(" {kind}={}", w.name()));
+            }
+            if let Some(x) = x {
+                out.push_str(&format!(" X={}", g(x, 7)));
+            }
+            if let Some(h) = h {
+                out.push_str(&format!(" h={}", g(h, 7)));
+            }
             out.push_str(&format!(
-                " Cond={} {}={} X={} h={} units={}",
-                i + 1,
-                kind,
-                w.name(),
-                g(self.fx[i], 7),
-                g(self.fy[i], 7),
-                LineUnits::from_code(self.conductor_unit(i)).as_str(),
+                " units={}",
+                LineUnits::from_code(self.conductor_unit(i)).as_str()
             ));
         }
     }

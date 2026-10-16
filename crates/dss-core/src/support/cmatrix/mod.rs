@@ -56,6 +56,16 @@ impl CMatrix {
         }
     }
 
+    /// [`Self::new`] when the `n × n` values can be allocated, `None` when
+    /// they cannot.
+    pub fn try_new(n: usize) -> Option<Self> {
+        let len = n.checked_mul(n)?;
+        let mut values = Vec::new();
+        values.try_reserve_exact(len).ok()?;
+        values.resize(len, Complex64::ZERO);
+        Some(Self { n, values })
+    }
+
     /// Matrix order (Pascal `Order` property).
     pub fn order(&self) -> usize {
         self.n

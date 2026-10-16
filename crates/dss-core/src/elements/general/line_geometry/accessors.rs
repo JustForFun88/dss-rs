@@ -17,6 +17,9 @@ const COND_OUT_OF_RANGE: u32 = 10102;
 /// The length units `units=` accepts, as its refusal lists them.
 pub(crate) const LENGTH_UNITS: &str = "mi, kft, km, m, ft, in, cm, mm";
 
+/// The words `units=` accepts, each read whole and in any case.
+pub(super) const UNIT_WORDS: [&str; 8] = ["mi", "kft", "km", "m", "ft", "in", "cm", "mm"];
+
 /// The `like=` row the class table appends after the class's own properties.
 const LIKE: usize = prop::NUM_PROPS;
 
@@ -53,7 +56,6 @@ impl LineGeometryObj {
     /// geometry's conductor count and the selection it leaves.
     fn cond_refusal(&self, text: &str, what: &str) -> String {
         let has = match self.fnconds.max(0) {
-            0 => "has no conductors yet, set NConds first".to_string(),
             1 => "has 1 conductor".to_string(),
             n => format!("has {n} conductors"),
         };
@@ -68,10 +70,11 @@ impl LineGeometryObj {
         self.data.copy_prp_sequence_from(other.data());
         let o = other;
         {
-            // Size like the source (which selects no conductor), then copy
-            // the source's default unit and every per-conductor array.
+            // Take the source's count and select no conductor, then copy the
+            // source's default unit, every per-conductor array and its engine.
             self.fnconds = o.fnconds;
-            self.realloc_conductors();
+            self.selected = None;
+            self.last_filled = None;
             self.flast_unit = o.flast_unit;
             self.fnphases = o.fnphases;
             self.line_spacing_obj = o.line_spacing_obj.clone();
@@ -80,6 +83,7 @@ impl LineGeometryObj {
             self.eq_dist_ph_n = o.eq_dist_ph_n;
             self.avg_phase_height = o.avg_phase_height;
             self.avg_neutral_height = o.avg_neutral_height;
+            self.eq_unit = o.eq_unit;
             self.equivalent_spacing = o.equivalent_spacing;
             self.fline_type = o.fline_type;
             self.fphase_choice.clone_from(&o.fphase_choice);
@@ -161,10 +165,19 @@ impl DssObject for LineGeometryObj {
         }
     }
 
+    /// An `x` or `h` that the selected conductor does not hold, or with none
+    /// selected, reads `NaN`: every reader asks [`DssObject::holds_no_value`]
+    /// first and shows it empty.
     fn get_f64(&self, idx: usize) -> f64 {
         match idx {
-            prop::X => self.active_index().map_or(0.0, |a| self.fx[a]),
-            prop::H => self.active_index().map_or(0.0, |a| self.fy[a]),
+            prop::X => self
+                .active_index()
+                .and_then(|a| self.fx[a])
+                .unwrap_or(f64::NAN),
+            prop::H => self
+                .active_index()
+                .and_then(|a| self.fy[a])
+                .unwrap_or(f64::NAN),
             _ => unreachable!("LineGeometry has no double at {idx}"),
         }
     }
@@ -172,12 +185,12 @@ impl DssObject for LineGeometryObj {
         match idx {
             prop::X => {
                 if let Some(a) = self.selected_for("X") {
-                    self.fx[a] = value;
+                    self.fx[a] = Some(value);
                 }
             }
             prop::H => {
                 if let Some(a) = self.selected_for("H") {
-                    self.fy[a] = value;
+                    self.fy[a] = Some(value);
                 }
             }
             _ => unreachable!("LineGeometry has no double at {idx}"),
@@ -297,7 +310,23 @@ impl DssObject for LineGeometryObj {
     /// A whole number in the integer range goes on to the range check of the
     /// selection. Pinned by
     /// `exec::tests::line_geometry_rules::cond_that_is_not_a_whole_number_selects_nothing`.
+    /// A `nconds=` past the integer range is refused naming the value as
+    /// written: a count that large needs more memory than is available, and a
+    /// negative one is no count. Pinned by
+    /// `exec::tests::line_geometry_rules::a_count_beyond_the_memory_is_refused`.
     fn refuse_integer(&self, idx: usize, text: &str, value: f64) -> Option<String> {
+        if idx == prop::NCONDS {
+            return if value > f64::from(i32::MAX) {
+                Some(self.nconds_memory_refusal(text))
+            } else if value < f64::from(i32::MIN) {
+                Some(format!(
+                    "LineGeometry.{}.NConds: Value ({text}) cannot be negative.",
+                    self.data.name()
+                ))
+            } else {
+                None
+            };
+        }
         if idx != prop::COND {
             return None;
         }
@@ -321,22 +350,52 @@ impl DssObject for LineGeometryObj {
     }
 
     /// With no conductor selected, the JSON export leaves out the selected
-    /// conductor's values (`Cond` 0, no conductor object, zero coordinates):
-    /// the import refuses each of them by the selection rules. A geometry
-    /// without conductors leaves out `NConds`, whose 0 the import refuses.
+    /// conductor's values (`Cond` 0, no conductor object): the import refuses
+    /// each of them by the selection rules. A geometry without conductors
+    /// writes its name only, since the import refuses every property before
+    /// `NConds` and its 0. Pinned by
+    /// `exec::tests::line_geometry_rules::json_export_of_a_geometry_without_conductors_writes_its_name_only`.
     fn json_omits(&self, idx: usize) -> bool {
-        (idx == prop::NCONDS && self.fnconds == 0)
+        self.fnconds <= 0
             || (self.selected.is_none()
-                && matches!(
-                    idx,
-                    prop::COND | prop::WIRE | prop::X | prop::H | prop::CNCABLE | prop::TSCABLE
-                ))
+                && matches!(idx, prop::COND | prop::WIRE | prop::CNCABLE | prop::TSCABLE))
     }
 
-    /// `units=` refuses a word that maps to no length unit (`none`, or one
-    /// outside the list), naming the word.
+    /// `x` and `h` hold no value with no conductor selected, or when the
+    /// selected conductor's was never given. Pinned by
+    /// `exec::tests::line_geometry_rules::x_and_h_read_empty_when_never_given`.
+    fn holds_no_value(&self, idx: usize) -> bool {
+        match idx {
+            prop::X => self.active_index().and_then(|a| self.fx[a]).is_none(),
+            prop::H => self.active_index().and_then(|a| self.fy[a]).is_none(),
+            _ => false,
+        }
+    }
+
+    /// Before the first `nconds=` the geometry has no conductors, and every
+    /// property but `nconds=` and `like=` is refused, naming it. A `like=` of
+    /// a source with conductors builds the table as `nconds=` does. Pinned by
+    /// `exec::tests::line_geometry_rules::a_property_before_the_first_nconds_is_refused`.
+    fn refuse_property(&self, idx: usize, prop_name: &str) -> Option<String> {
+        (self.fnconds <= 0 && idx != prop::NCONDS && idx != LIKE).then(|| {
+            format!(
+                "LineGeometry.{}.{prop_name}: the geometry has no conductors yet, so the value \
+                 is not applied. Give nconds= first.",
+                self.data.name()
+            )
+        })
+    }
+
+    /// `units=` takes one of [`UNIT_WORDS`] whole, in any case, and refuses
+    /// any other word (`none`, a prefix, a longer spelling), naming it.
     fn refuse_enum_text(&self, idx: usize, text: &str, ordinal: i32) -> Option<String> {
-        (idx == prop::UNITS && ordinal == LineUnits::None.code()).then(|| {
+        if idx != prop::UNITS {
+            return None;
+        }
+        let exact = UNIT_WORDS
+            .iter()
+            .any(|w| w.eq_ignore_ascii_case(text.trim()));
+        (!exact || ordinal == LineUnits::None.code()).then(|| {
             format!(
                 "LineGeometry.{}.Units: \"{text}\" is not one of the length units {LENGTH_UNITS}.",
                 self.data.name()
@@ -398,7 +457,7 @@ impl DssObject for LineGeometryObj {
             // they were.
             prop::NCONDS => {
                 if std::mem::take(&mut self.nconds_stored) {
-                    self.realloc_conductors();
+                    let _ = self.realloc_conductors();
                 }
             }
             prop::SPACING => self.apply_spacing(),

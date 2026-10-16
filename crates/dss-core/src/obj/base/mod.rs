@@ -918,6 +918,15 @@ pub trait DssObject: Send {
         let _ = idx;
     }
 
+    /// The message refusing any value written to property `idx` (named
+    /// `prop_name`) in the object's present state, or `None` to go on. Asked
+    /// before the value is read: a refused property writes nothing, enters no
+    /// set order and runs no side effect. Accepts every property by default.
+    fn refuse_property(&self, idx: usize, prop_name: &str) -> Option<String> {
+        let _ = (idx, prop_name);
+        None
+    }
+
     /// The message refusing `text`, written to the mapped-enum property `idx`
     /// and mapped to `ordinal`, or `None` to accept it. A refused text writes
     /// nothing. Accepts every text by default.
@@ -953,6 +962,14 @@ pub trait DssObject: Send {
     /// Whether the JSON export leaves property `idx` out because its present
     /// value is one the import would refuse. Never by default.
     fn json_omits(&self, idx: usize) -> bool {
+        let _ = idx;
+        false
+    }
+
+    /// Whether property `idx` holds no value in the object's present state:
+    /// `?`, `Dump` and Save read it empty, the JSON export leaves it out and
+    /// the schema gives it no default. Never by default.
+    fn holds_no_value(&self, idx: usize) -> bool {
         let _ = idx;
         false
     }

@@ -1,5 +1,5 @@
-! cond= before nconds= is refused, then spacing= and wires= fill every
-! conductor: the conductor table sits ahead of NConds= in the set order.
+! cond= before nconds= is refused and enters no set order, then spacing= and
+! wires= fill every conductor.
 Clear
 Set DefaultBaseFrequency=60
 New Circuit.lgrules basekv=12.47 phases=3 bus1=src
