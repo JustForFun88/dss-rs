@@ -10378,11 +10378,7 @@ const RF_I00_05_NAMES: [(&str, &[&str]); 3] = [
 const RF_I00_05_DOCS: [&str; 2] = ["TESTING.md", "docs/phase-records/retro-fixes.md"];
 
 /// The documents that name `tools/gate-kind` (and [`GATE_RAILS`]).
-const RF_I00_05_TOOL_DOCS: [&str; 3] = [
-    "RETRO_FIXES_PLAN.md",
-    "TESTING.md",
-    "docs/phase-records/retro-fixes.md",
-];
+const RF_I00_05_TOOL_DOCS: [&str; 2] = ["TESTING.md", "docs/phase-records/retro-fixes.md"];
 
 /// The rails the step record names, each defined exactly once.
 const RF_I00_05_PINS: [&str; 8] = [
