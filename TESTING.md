@@ -512,7 +512,7 @@ r4133-gated micro deck `modes/makeposseq/makeposseq_gic.dss` instead of flipping
 the shunt deck, because r4133's `MakePosSequence` round-trips reduced parameters
 through a 5-significant-digit command string (`Capacitor.pas:801`/`:806`/`:829`)
 and would quantize exactly what that deck exists to compare. Evidence:
-`docs/upgrade/DIVERGENCES.md` §D12/D14, `investigations/issue-37-…`,
+`investigations/issue-37-…`,
 `investigations/to_opendss/58-…`.
 
 **WP-G1 compare-depth flags (the vocabulary, declared once).**
@@ -2180,7 +2180,7 @@ pool respawns it (a raised access violation may have poisoned the process). Pinn
 drives a scratch copy of the deck, asserts the whole surface survives the fault (checkpoints, the
 `b3, 0.0180069930672805` winner, 4 AutoAddLog rows, the two created names) and reds in **both**
 directions — if dss_capi is ever fixed, the guard is reported as retirable. It is an
-outdated-oracle artifact: recorded in `docs/upgrade/DIVERGENCES.md` (2026-09-06), never reproduced,
+outdated-oracle artifact: never reproduced,
 never a ledger row.
 
 **The case-fold is a cross-oracle normalization, not a tolerance, and it is structural.** The two
@@ -2190,8 +2190,8 @@ oracles disagree with each other on the spelling: r4133 writes `EXP_VOLTAGES.CSV
 deck-supplied stem (`auto1bus_hl_current.txt` against capi's `Auto1bus_HL_current.txt`). The port
 follows capi's spelling — `export_with` / `write_export` name the lower-case stems at
 `crates/dss-core/src/exec/report.rs::do_export_cmd` and `report.rs::export_y_to_file` — and the comparator
-folds ASCII case on all three sides, so both channels gate the same set — the R-18 decision and its
-four reasons are recorded in `docs/upgrade/DIVERGENCES.md` and pinned literally by
+folds ASCII case on all three sides, so both channels gate the same set — the R-18 decision is
+pinned literally by
 `run_files_pins::the_two_oracle_spellings_of_auto1bus_fold_to_one_member` (the nine raw names per
 side, so a later normalizer change cannot silently drop the case). Operational caveat, measured
 2026-09-06: that pin reads the real created-file set of the vendored deck, so a dropping an earlier
@@ -2227,8 +2227,7 @@ channels, port 6).
 the r4133 channel creates `testYgD_Transformer_tr1_PQ.DSV` + `.dbl` for `Visualize powers
 Transformer.TR1` (`Executive/ExecHelper.pas:4071`); dss_capi 0.14.5 fires a callback and writes
 nothing, and the port emits a JSON plot payload instead (`exec/command.rs`). That is a **product**
-divergence, not an upstream defect — no `investigations/to_opendss/` note is owed, the decision is
-in `docs/upgrade/DIVERGENCES.md` — so it is one `r4133` `exclusion` entry
+divergence, not an upstream defect — no `investigations/to_opendss/` note is owed — so it is one `r4133` `exclusion` entry
 (`r4133-visualize-writes-a-dssview-file-pair`, cause `visualize-dssview-file-pair`) scoped by
 `name_re` to the two `_pq` names, plus the both-numbers pin
 `run_files_pins::visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port` (r4133 6
@@ -2613,8 +2612,7 @@ And **`calc_reliability_indices` regained `TotalUpDownstreamCustomers`**
 (r4133 `Meters/EnergyMeter.pas:2466-2468`, a 1:1 gap fixed under CLAUDE.md's
 "port gaps immediately" rule): it moves nothing on the corpus, on goldens or in
 the ledger, and diverges from the pinned dss_capi 0.14.5 oracle only under
-`RelCalc <restore>`, which no deck drives — see `docs/upgrade/DIVERGENCES.md`
-(2026-09-05, D22).
+`RelCalc <restore>`, which no deck drives.
 
 The pins: `bus_reliability_columns_match_both_oracles_on_the_duty_deck`,
 `bus_reliability_sections_and_durations_on_the_relcalc_deck`,
@@ -2829,8 +2827,7 @@ third capi_v0145 `exclusion` is GOLDEN_REBASE G1.3a's
 own bus 1 to the **monitored element's** terminal on r4133 and in the port
 (`Controls/CapControl.pas:605` + `:622`) and to the controlled capacitor's bus on
 dss_capi 0.14.5 (`:597-608` → `:619`), so the deck's two CapControls read a
-different bus's voltage on that one channel (`docs/upgrade/DIVERGENCES.md` L8;
-the r4133 channel of the same case needs no entry). The seventh r4133
+different bus's voltage on that one channel (the r4133 channel of the same case needs no entry). The seventh r4133
 `exclusion` is `r4133-posseq-seqpowers-slot-gic` (coordinator decision **D31**,
 2026-09-05, taken at G1.3b's landing): r4133's `SeqPowers` writes the
 1φ-positive-sequence arm one slot late with a stride of one
@@ -2849,7 +2846,7 @@ The **eighth** r4133 `exclusion` is GOLDEN_REBASE G1.10a's
 `visualize-dssview-file-pair`): `Visualize` writes a DSSView `.DSV`/`.dbl`
 pair on r4133 where the port emits a JSON plot payload, so those two names
 — and only those two — are excluded from that deck's created-file SET; a
-**product** divergence, so `docs/upgrade/DIVERGENCES.md` and no
+**product** divergence, so no
 `investigations/to_opendss/` report, pinned by
 `visualize_writes_a_dssview_pair_on_r4133_and_a_json_payload_in_the_port`.
 The seventh and eighth capi_v0145 `exclusion` hold one `yprim` each on
@@ -3597,8 +3594,7 @@ union it), shown here because `skip_prop` consults it on the same call:
 
 **Link 1b — ratings that are not set** (`not_set_ratings.rs::LANE_NOT_SET_RATINGS`,
 seven rows). The engine reads a current rating nobody gave as not set and
-prints `none` (user decision 2026-10-04, `DIVERGENCES.md` §"A rating that is not
-set is `none`, not a number"), where both oracles print the number their class
+prints `none` (user decision 2026-10-04), where both oracles print the number their class
 starts from: `-1` for a spacing Line, `0` for a Fault, a GICTransformer and a
 geometry Line (`[ 0]` for its seasonal ratings). Each row names that number, and
 `not_set_ratings.rs::reads_not_set` excuses a cell only when every `none` faces

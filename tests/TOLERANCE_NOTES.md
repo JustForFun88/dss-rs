@@ -946,9 +946,7 @@ a deterministic closed-form) — a real WTG3 model bug moves the non-PLL variabl
      measured gap `7.275958e-12` W).
   4. **The `Get_Losses` trust guard is deliberately NOT copied.** The
      whole-element band carries an oracle-self-consistency escape for a *measured*
-     capi015 daily-freeze quirk on a rev this gate does not run
-     (`docs/upgrade/DIVERGENCES.md` §"capi015 daily `CktElement.Losses`
-     staleness"). An untriggered twin
+     capi015 daily-freeze quirk on a rev this gate does not run. An untriggered twin
      here could only mask, so `compare_element_phase_losses` has none; the
      identity is asserted positively instead (3 above).
   5. **Cross-channel headroom** (capi_v0145 vs r4133 on the same request, three

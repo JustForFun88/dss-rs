@@ -5187,19 +5187,18 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
         bad.join("\n"),
         citing_files
     );
-    // Exact counts, read once every citation is sound (RF-D07-01, RP5.2 audit
-    // AT-1; audit AC-2): five citations of `tests/TOLERANCE_NOTES.md` in
-    // `harness/mod.rs` and two of the archived R4133_PROPS plan in
-    // `props_r4133_replay.rs`. They only ever go down.
+    // Exact counts, read once every citation is sound: two citations of the
+    // archived R4133_PROPS plan in `props_r4133_replay.rs`. They only ever go
+    // down.
     assert!(
-        checked <= 7 && citing_files.len() <= 2,
+        checked <= 2 && citing_files.len() <= 1,
         "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, more \
-         than the 7 over 2 files this gate holds. A Rust comment cites a plan or record \
+         than the 2 over 1 file this gate holds. A Rust comment cites a plan or record \
          passage by its heading, never by a line number (RETRO_FIXES ruling R18): cite \
          the new one by its heading, and never raise these counts"
     );
     assert_eq!(
-        checked, 7,
+        checked, 2,
         "the walk found {checked} `record.md:LINE` citations over {citing_files:?}, and \
          this gate holds the exact count — a floor lets the table shrink. One re-cited by \
          its heading lowers this number in the same commit; one that vanished unasked \
@@ -5207,7 +5206,7 @@ fn rust_comments_citing_a_record_line_point_at_the_passage_they_name() {
     );
     assert_eq!(
         citing_files.len(),
-        2,
+        1,
         "the `record.md:LINE` citations now sit in {citing_files:?}, and this gate holds \
          the exact number of citing files — a floor lets the table shrink. Lower it in \
          the same commit as the edit that re-cited a file's last citation by its heading"
