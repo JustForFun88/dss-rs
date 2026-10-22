@@ -8,7 +8,7 @@ re-run and the goldens in `tests/golden/ncim/` are frozen. Do NOT touch those
 bytes. They pin solver INTERNALS (`Export Jacobian`, `Show PV2PQ_Conversions`)
 that are unaffected by the swing-source-report path, so they survive the
 oracle-of-record flip capi015→r4133 (NCIM is now LIVE-gated against r4133 via
-`epri-worker`; see `docs/upgrade/DIVERGENCES.md` and
+`epri-worker`; see
 `exec/tests/ncim.rs::ncim_vsource_reported_currents_match_oracle`). This header is
 kept for provenance only.
 

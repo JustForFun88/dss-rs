@@ -30,9 +30,9 @@ current official release in two independently-gated rungs
 
 Every deliberate divergence from r4133 (an FPC-vs-Delphi last-ulp / display
 floor, a dss_capi property-format difference, or a proven upstream bug we do or
-don't reproduce) is catalogued in **`docs/upgrade/DIVERGENCES.md`** and pinned,
-case-by-case with measured envelopes, in the **gating divergence ledger
-`tests/corpus/ledger.json`**. There are **no "not yet ported" gaps** against
+don't reproduce) is pinned, case by case with measured envelopes, in the
+**gating divergence ledger `tests/corpus/ledger.json`** and by an
+expected-value test. There are **no "not yet ported" gaps** against
 r4133.
 
 ## Test gate
@@ -61,9 +61,7 @@ Windows-only). Measured upstream divergences are pinned in the gating ledger
 ## Where to read next
 
 - **`PORTING_PLAN.md`** — the authoritative roadmap and binding decisions.
-- **`CLAUDE.md`** — conventions (`TODO(compat)`, known upstream bugs, the
-  no-tolerance-fudging / prove-the-divergence rules).
-- **`docs/plans-archive/UPGRADE_PLAN.md`** — the r3723 → r4133 upgrade, both
-  rungs (archived — completed).
+- **`CLAUDE.md`** — conventions (`TODO(compat)`, the no-tolerance-fudging /
+  prove-the-divergence rules).
 - **`TESTING.md`** — the map of the whole test infrastructure.
 - **`STATUS.md`** — the living project-status / session-handoff snapshot.
