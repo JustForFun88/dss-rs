@@ -323,7 +323,7 @@ fn struct_count_prop(cls: &ClassProps) -> usize {
         .map_or(0, |pd| pd.size_prop)
 }
 
-/// What the sizing-property hoist ([`save_order`]) does to one object's line.
+/// What [`save_order`] does to one object's line.
 #[derive(Default)]
 struct Hoist {
     /// The order [`write_dss_object`] walks the object's set properties in, or
@@ -385,12 +385,47 @@ struct Hoist {
 /// moves, and no other token is added or dropped. Values are rendered live, so
 /// a property written behind a sizer it used to precede reloads the value the
 /// object holds now.
+///
+/// On a `DynamicEq` host a `DynOut` set ahead of `DynamicEq` then moves to
+/// directly behind it, because `DynOut` names outputs of the linked equation,
+/// and nothing else moves (`save_writes_dynamic_eq_before_dynout`).
 fn save_order(cls: &ClassProps, obj: &dyn DssObject) -> Hoist {
     let data = obj.data();
     let chain: Vec<usize> = std::iter::successors(data.next_property_set(None), |&p| {
         data.next_property_set(Some(p))
     })
     .collect();
+    let mut hoist = sizing_hoist(cls, obj, &chain);
+    if obj.as_dyneq().is_some() {
+        let mut order = hoist.order.take().unwrap_or_else(|| chain.clone());
+        dyn_out_behind_dynamic_eq(cls, &mut order);
+        hoist.order = (order != chain).then_some(order);
+    }
+    hoist
+}
+
+/// `DynOut` moves from ahead of `DynamicEq` in `order` to directly behind it.
+fn dyn_out_behind_dynamic_eq(cls: &ClassProps, order: &mut Vec<usize>) {
+    let (Some(eq), Some(out)) = (
+        cls.property_index("DynamicEq"),
+        cls.property_index("DynOut"),
+    ) else {
+        return;
+    };
+    let (Some(e), Some(o)) = (
+        order.iter().position(|&p| p == eq),
+        order.iter().position(|&p| p == out),
+    ) else {
+        return;
+    };
+    if o < e {
+        order.remove(o);
+        order.insert(e, out);
+    }
+}
+
+/// The sizing-property hoist of [`save_order`] over the set-order `chain`.
+fn sizing_hoist(cls: &ClassProps, obj: &dyn DssObject, chain: &[usize]) -> Hoist {
     // Fast path: most lines hold no sized property at all.
     if chain.iter().all(|&p| parse_sizer(cls, p).is_none()) {
         return Hoist::default();
@@ -422,9 +457,9 @@ fn save_order(cls: &ClassProps, obj: &dyn DssObject) -> Hoist {
         use crate::elements::pd::line::prop::{CMATRIX, RMATRIX, XMATRIX};
         cls.class_name() == "Line" && matches!(p, RMATRIX | XMATRIX | CMATRIX)
     };
-    let mut order = chain.clone();
+    let mut order = chain.to_vec();
     let mut lead = Vec::new();
-    for &s in &chain {
+    for &s in chain {
         let Some(pos) = order.iter().position(|&p| p == s) else {
             return Hoist::default();
         };
@@ -612,16 +647,13 @@ pub fn write_dss_object(
             .data_mut()
             .copy_prp_sequence_from(&snapshot);
     }
-    // Pascal `TDynEqPCE.SaveWrite` (`CAPI:PCElements/DynEqPCE.pas:252-273`):
-    // `inherited SaveWrite(F)` and then every `UserDynInit` assignment — the
-    // `DynamicEq` state-variable initializers, which are not class properties
-    // and so are in no `PrpSequence` chain. Without the tail a Generator /
-    // PVSystem / Storage driven by a `DynamicEq` re-compiles with every
-    // initializer lost. A `TJSONNumber` prints through `FloatToStr`, a
-    // `TJSONString` through `CheckForBlanks` (the same split the AltDSS JSON
-    // `"DynInit"` tail makes, `report/export/json/build.rs`).
+    // The `DynamicEq` state-variable assignments of the linked equation,
+    // none while no equation is linked: they are not class properties and so
+    // are in no `PrpSequence` chain. A number prints through `float_to_str`,
+    // a text value through `check_for_blanks` (the same split the JSON
+    // `"DynInit"` tail makes).
     if let Some(dyneq) = arena.obj(idx).as_dyneq() {
-        for (var, val) in &dyneq.user_dyn_init {
+        for (var, val) in dyneq.written_init() {
             out.push(' ');
             out.push_str(var);
             out.push('=');

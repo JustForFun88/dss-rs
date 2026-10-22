@@ -713,6 +713,17 @@ impl DssObject for Generator {
         }
     }
 
+    /// A `DynOut` list that names one variable twice is refused at its token.
+    fn refuse_string_list(&self, idx: usize, list: &[String]) -> Option<String> {
+        if idx != prop::DYNOUT {
+            return None;
+        }
+        crate::elements::pc::dyneq_pce::DynEqPceData::refuse_output_list(
+            &format!("Generator.{}", self.cd.obj.name()),
+            list,
+        )
+    }
+
     fn set_bus_name(&mut self, terminal: usize, value: &str) {
         self.cd.set_bus(terminal, value);
     }
@@ -811,9 +822,6 @@ impl DssObject for Generator {
                 }
             }
             KVA | MVA => self.kva_not_set = false,
-            // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
-            // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
-            DYNAMICEQ => self.dyneq.on_dynamic_eq_set(),
             // WASM_USERMODELS WM.3 — the `EndEdit` dispatch order
             // (`generator.pas:767-775`): `UserModel.Name` (load) before
             // `UserData` (edit), `ShaftModel.Name` before `ShaftData`. The
@@ -848,7 +856,7 @@ impl DssObject for Generator {
         variable: &str,
         value: &str,
         vars: &dss_parser::ParserVars,
-    ) -> bool {
+    ) -> Result<bool, dss_parser::ParserError> {
         self.dyneq.parse_dyn_var(variable, value, vars)
     }
 

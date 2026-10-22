@@ -608,6 +608,17 @@ impl DssObject for WindGen {
         }
     }
 
+    /// A `DynOut` list that names one variable twice is refused at its token.
+    fn refuse_string_list(&self, idx: usize, list: &[String]) -> Option<String> {
+        if idx != prop::DYNOUT {
+            return None;
+        }
+        crate::elements::pc::dyneq_pce::DynEqPceData::refuse_output_list(
+            &format!("WindGen.{}", self.cd.obj.name()),
+            list,
+        )
+    }
+
     fn set_bus_name(&mut self, terminal: usize, value: &str) {
         self.cd.set_bus(terminal, value);
     }
@@ -683,7 +694,6 @@ impl DssObject for WindGen {
                 self.wind_model_dyn.rated_kva = self.kva_rating;
                 self.kva_not_set = false;
             }
-            DYNAMICEQ => self.dyneq.on_dynamic_eq_set(),
             // The `Edit` dispatch order (`WindGen.pas:641-642`): `UserModel.Name`
             // (load) before `UserData` (edit). The filesystem/current-dir are
             // unreachable from the property hook, so each records a deferred
@@ -727,7 +737,7 @@ impl DssObject for WindGen {
         variable: &str,
         value: &str,
         vars: &dss_parser::ParserVars,
-    ) -> bool {
+    ) -> Result<bool, dss_parser::ParserError> {
         self.dyneq.parse_dyn_var(variable, value, vars)
     }
 

@@ -129,21 +129,20 @@ pub fn obj_to_json_data(
         }
     }
 
-    // The `TDynEqPCE` `"DynInit"` tail (`CAPI_Obj.pas:752-759`): for an object
-    // that is a `TDynEqPCE` (Generator/PVSystem/Storage) whose `UserDynInit`
-    // is non-NIL — i.e. at least one `DynamicEq` state-variable assignment was
-    // parsed — append a literal `"DynInit"` object of its var→value init
-    // assignments. The `"DynInit"` key is emitted verbatim (Pascal `resObj.Add`
-    // with a string literal — never lowercased, even under LowercaseKeys). The
-    // inner keys are the already-lowercased variable names; each value is a JSON
-    // number (a plain constant) or a JSON string (a calc-value operand or an
-    // RPN constant). Appended in both default and Full sweeps, always last.
-    if let Some(dyneq) = obj.as_dyneq()
-        && !dyneq.user_dyn_init.is_empty()
-    {
-        let dyn_members: Vec<(String, Json)> = dyneq
-            .user_dyn_init
-            .iter()
+    // The `"DynInit"` tail of a `DynamicEq` host: an object of the
+    // state-variable assignments of the linked equation, appended when there
+    // is at least one. The `"DynInit"` key is emitted verbatim, never
+    // lowercased, even under LowercaseKeys. The inner keys are the lowercased
+    // variable names. Each value is a JSON number (a plain constant) or a JSON
+    // string (a calc-value operand or an RPN constant).
+    // Appended in both default and Full sweeps, always last.
+    let init = obj
+        .as_dyneq()
+        .map(|dyneq| dyneq.written_init())
+        .unwrap_or_default();
+    if !init.is_empty() {
+        let dyn_members: Vec<(String, Json)> = init
+            .into_iter()
             .map(|(k, v)| {
                 let jv = match v {
                     DynInitValue::Number(n) => Json::Float(*n),

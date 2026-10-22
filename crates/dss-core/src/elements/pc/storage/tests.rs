@@ -933,8 +933,7 @@ fn bind_dynamic_eq(st: &mut Storage) {
     let mut eq = DynamicExpObj::new("sde");
     eq.set_i32(dexp::NVARIABLES, 2);
     eq.set_string_list(dexp::VARNAMES, vec!["speed".into(), "theta".into()]);
-    st.base.dyneq.dynamic_eq_obj = Some(eq);
-    st.base.dyneq.on_dynamic_eq_set();
+    st.base.dyneq.link("sde".into(), None, Some(eq));
     st.base.dyneq.dynamic_eq_vals = vec![[1.5, -0.25], [0.75, 0.125]];
 }
 
@@ -1034,8 +1033,7 @@ fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
 
     let mut empty = DynamicExpObj::new("empty");
     empty.set_i32(dexp::NVARIABLES, 0);
-    st.base.dyneq.dynamic_eq_obj = Some(empty);
-    st.base.dyneq.on_dynamic_eq_set();
+    st.base.dyneq.link("empty".into(), None, Some(empty));
     assert_eq!(st.base.dyneq.num_variables(), 0);
     assert_eq!(st.num_variables(), 34 + 4 + 4);
     let linked: Vec<String> = (0..=43).map(|i| st.variable_name(i)).collect();

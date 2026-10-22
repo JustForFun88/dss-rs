@@ -959,6 +959,15 @@ pub trait DssObject: Send {
         None
     }
 
+    /// The message refusing `list`, the names written to the string-list
+    /// property `idx`, none of them empty, or `None` to accept it. A refused
+    /// list writes nothing and runs no side effect. Accepts every list by
+    /// default.
+    fn refuse_string_list(&self, idx: usize, list: &[String]) -> Option<String> {
+        let _ = (idx, list);
+        None
+    }
+
     /// Whether the JSON export leaves property `idx` out because its present
     /// value is one the import would refuse. Never by default.
     fn json_omits(&self, idx: usize) -> bool {
@@ -982,22 +991,21 @@ pub trait DssObject: Send {
         let _ = (ordinal, errors);
     }
 
-    /// Pascal `TDSSObject.ParseDynVar` (DSSObject.pas l.242, overridden by
-    /// `TDynEqPCE`): handle a `name=value` pair whose `name` is **not** a class
-    /// property but may be a state variable of a linked `DynamicExp` (the
-    /// `DynamicEq=`/`DynOut=` hosts: Generator/PVSystem/Storage). The edit loop
-    /// calls this on the "unknown parameter" fallback (Pascal `DSSClass.Edit`
-    /// l.1656); `true` means it was consumed, `false` ⇒ report the unknown
-    /// parameter. `vars` re-evaluates the value with the executive's `Var`
-    /// substitutions. Default `false` (the base `TDSSObject`).
+    /// Handle a `name=value` pair whose `name` is not a class property but may
+    /// be a state variable of a linked `DynamicExp` (the `DynamicEq=` hosts:
+    /// Generator, WindGen, PVSystem, Storage). The edit loop calls this on the
+    /// unknown-parameter fallback: `Ok(true)` consumes the pair, `Ok(false)`
+    /// reports the unknown parameter, and an error refuses a value that does
+    /// not read as a number, with nothing recorded. `vars` re-evaluates the
+    /// value with the executive's `Var` substitutions. Default `Ok(false)`.
     fn parse_dyn_var(
         &mut self,
         variable: &str,
         value: &str,
         vars: &dss_parser::ParserVars,
-    ) -> bool {
+    ) -> Result<bool, dss_parser::ParserError> {
         let _ = (variable, value, vars);
-        false
+        Ok(false)
     }
 
     /// Pascal per-class `EndEdit`: recompute derived state once an edit block

@@ -739,6 +739,17 @@ impl DssObject for Storage {
         }
     }
 
+    /// A `DynOut` list that names one variable twice is refused at its token.
+    fn refuse_string_list(&self, idx: usize, list: &[String]) -> Option<String> {
+        if idx != prop::DYN_OUT {
+            return None;
+        }
+        crate::elements::pc::dyneq_pce::DynEqPceData::refuse_output_list(
+            &format!("Storage.{}", self.cd.obj.name()),
+            list,
+        )
+    }
+
     fn set_bus_name(&mut self, terminal: usize, value: &str) {
         self.cd.set_bus(terminal, value);
     }
@@ -841,9 +852,6 @@ impl DssObject for Storage {
                 }
                 self.cd.yprim_invalid = true;
             }
-            // Pascal `TProp.DynamicEq` side effect: size the DynamicEqVals memory
-            // to the linked DynamicExp's NVariables (a nil ref leaves it empty).
-            DYNAMIC_EQ => self.base.dyneq.on_dynamic_eq_set(),
             // WASM_USERMODELS WM.4 — the §2.4 uniform activation rule. The Pascal
             // edit dispatch (Storage.pas:851-866): `UserModel.Name` (load) then
             // `UserData` (edit); `DynaModel.Name` (load) then `DynaData` (edit).
@@ -898,7 +906,7 @@ impl DssObject for Storage {
         variable: &str,
         value: &str,
         vars: &dss_parser::ParserVars,
-    ) -> bool {
+    ) -> Result<bool, dss_parser::ParserError> {
         self.base.dyneq.parse_dyn_var(variable, value, vars)
     }
 

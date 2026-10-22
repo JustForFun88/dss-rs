@@ -19,8 +19,14 @@ impl ClassProps {
     /// accessors (Pascal `ParseObjPropertyValue` + `SetObj*`). Returns the
     /// property's previous integer value, which side effects may consult.
     /// Range/sign check failures are recorded in `eng.errors` and leave the
-    /// property unchanged, matching `DoSimpleMsg`-and-continue; only a genuine
-    /// number-conversion failure is returned as `Err`.
+    /// property unchanged. A value refused at its token is returned as `Err`
+    /// and leaves the property unchanged too: a property that is not ported,
+    /// a value that does not read as a number or as a name of its
+    /// enumeration, a rating that is not finite, a string list with an empty
+    /// element before a name, a value its element refuses
+    /// ([`DssObject::refuse_string_list`], [`DssObject::refuse_object_ref`],
+    /// [`DssObject::refuse_integer`]) and `like=`, which only the executive
+    /// applies.
     pub fn parse_into(
         &self,
         obj: &mut dyn DssObject,
@@ -158,16 +164,38 @@ impl ClassProps {
                 eng.parser.set_cmd_string(value);
                 let mut list = Vec::new();
                 loop {
+                    let at = eng.parser.position();
                     eng.parser.next_param(eng.vars);
                     let token = eng.parser.make_string(eng.vars);
-                    if token.is_empty() {
+                    if token.is_empty() && eng.parser.position() == at {
                         break;
                     }
-                    list.push(if lower {
-                        token.to_ascii_lowercase()
-                    } else {
-                        token
-                    });
+                    list.push(token);
+                }
+                // An element that is empty or only white space names
+                // nothing. Such elements at the end are dropped. One left in
+                // the list stands before a name, and the list is refused at
+                // its token with the element as it was
+                // (`every_string_list_refuses_an_empty_element_before_a_name`).
+                let blank = |name: &String| name.trim().is_empty();
+                while list.last().is_some_and(blank) {
+                    list.pop();
+                }
+                if list.iter().any(blank) {
+                    return Err(ParserError::new(format!(
+                        "{full}.{}: [{}] has an empty element before a name. Remove it so \
+                         that each element names one entry.",
+                        pd.name,
+                        list.join(", ")
+                    )));
+                }
+                if lower {
+                    list.iter_mut().for_each(|name| name.make_ascii_lowercase());
+                }
+                // A list the element refuses is an error at this token, and
+                // the element stays as it was.
+                if let Some(msg) = obj.refuse_string_list(idx, &list) {
+                    return Err(ParserError::new(msg));
                 }
                 obj.set_string_list(idx, list);
                 Ok(0)
