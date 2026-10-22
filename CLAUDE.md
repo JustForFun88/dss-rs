@@ -1,198 +1,73 @@
-# dss-rs — pure-Rust OpenDSS engine (ported 1:1 from the Pascal DSS C-API)
+# dss-rs — pure-Rust OpenDSS engine
 
 > **Ritual step 0 — source-integrity gate (every session, every plan, before anything
-> else — even before the model-tier check).** The Pascal at `.inputs/dss_capi` (186
-> `.pas` files) is the *spec*; oracle/live work also needs `.inputs/electricdss-tst`. If
-> the folder you port FROM is missing or empty at **any** point — startup or mid-task —
-> **STOP immediately**: make no edits, run no gate, and do **not** reconstruct, guess, or
-> "port" a source you cannot read. Tell the user the vendored source is gone and must be
-> re-vendored, then wait. No spec → nothing to port; inventing one from memory is silent,
-> unverifiable fabrication — far worse than stopping. (Canonical placement: `PLAN_SEQUENCE.md`
-> §Model-tier protocol, ahead of the tier/refuse check — binding for every plan.)
+> else).** `.inputs/dss_capi` (186 `.pas` files) must be present and non-empty, and
+> oracle or live work also needs `.inputs/electricdss-tst`. If a folder you need is
+> missing or empty at **any** point, startup or mid-task, **STOP**: make no edits, run
+> no gate, and never reconstruct or guess a source you cannot read. Tell the user it
+> must be re-vendored, then wait.
 
-The **1:1 behavioral port** of the Free Pascal "DSS C-API" engine (vendored at
-`.inputs/dss_capi`) to pure safe Rust is **finished** — final acceptance
-(PORTING_PLAN.md §6) executed and referee-certified 2026-07-11. `PORTING_PLAN.md`
-stays as the historical record of the binding porting decisions; the project's
-direction is now **post-acceptance**: pure idiomatic Rust (`DE_PASCALIZE_PLAN.md`),
-wasm-sandboxed user models (`WASM_USERMODELS_PLAN.md`), new methods and models,
-and r4133-and-beyond upstream semantics (`UPGRADE_PLAN` line, `PLAN_SEQUENCE.md`
-orders it all). Never argue from "we are a 1:1 port" — that stage is done; the
-binding invariants that survive it are:
+The 1:1 port of the Pascal DSS C-API to safe Rust is finished (accepted
+2026-07-11). The direction now is idiomatic Rust, wasm-sandboxed user models, new
+methods and models, and behaviour that is right by physics. Never argue from "we
+are a 1:1 port". The invariants that bind:
 
-- `#![forbid(unsafe_code)]` in every **product** crate; no C bindings in the
-  shipped engine ever. The **sole exception** is the test-only oracle bridge
-  `crates/dss-epri` (`publish = false`): it drives the official EPRI
-  `OpenDSSDirect.dll` via `libloading` under `#![deny(unsafe_op_in_unsafe_fn)]`,
-  `#[cfg(windows)]`, and module-level `// SAFETY` docs, and never ships.
-- Sparse solver is pure-Rust **faer**, wrapped in `dss-sparse` behind a
-  KLUSolve-shaped API.
-- No C-API export layer; the product is a Rust-native library (`dss-core`) + CLI.
-- The numeric oracle is **dss-python pinned in `tools/golden/PIN.txt`**
-  (0.15.7, backend = dss_capi 0.14.5 — the exact vendored Pascal source).
-  Goldens live in `tests/golden/`; regenerate only manually, with the pinned
-  versions, via `tools/golden/*.py`.
-- A second **gating** oracle channel drives the official EPRI OpenDSS r4133
-  binary (git-tracked at `tools/opendss/bin/r4133/`) through the in-house
-  `crates/dss-epri` bridge (`epri-worker`). The unified corpus gate is
-  manifest-driven: each case declares `engines: "capi_v0145" | "r4133" |
-  "both"`, and measured upstream divergences are pinned per-case/per-channel in
-  the gating divergence ledger `tests/corpus/ledger.json` (fail-on-stale — see
-  TESTING.md). See `tools/opendss/README.md` for the artifact + bridge.
-- Any phase may freely refactor earlier code; passing tests are the only contract.
+- `#![forbid(unsafe_code)]` in every **product** crate, no C bindings in the
+  shipped engine. The one exception is the test-only oracle bridge
+  `crates/dss-epri` (`publish = false`, `#[cfg(windows)]`,
+  `#![deny(unsafe_op_in_unsafe_fn)]`, module-level `// SAFETY` docs): it drives the
+  official EPRI `OpenDSSDirect.dll` and never ships.
+- The sparse solver is pure-Rust **faer**, wrapped in `dss-sparse`.
+- The product is a Rust library (`dss-core`) plus a CLI, with no C-API export layer.
+- Two oracle channels gate the corpus. `capi_v0145` is the dss-python pinned in
+  `tools/golden/PIN.txt` (dss_capi 0.14.5), which also produced the goldens in
+  `tests/golden/` (regenerated only by hand, with the pinned versions, through
+  `tools/golden/*.py`). `r4133` is the EPRI OpenDSS r4133 binary, git-tracked at
+  `tools/opendss/bin/r4133/` and driven through `epri-worker`
+  (`tools/opendss/README.md`). Each corpus case declares its channels, and every
+  measured divergence is pinned in `tests/corpus/ledger.json` (fail-on-stale).
+- Any code may be refactored freely: passing tests are the only contract.
 
-## Policy (user decisions 2026-08-02 and 2026-10-03 — binding): physics is the only authority; bugs are NEVER reproduced
+## Policy: physics is the only authority, bugs are never reproduced (user decisions 2026-08-02 and 2026-10-03)
 
-- **No engine is an authority.** The authority is the answer that is right by
-  physics and power engineering: conservation of complex power, the circuit
-  laws, what the quantity means to an engineer. A behaviour question is decided
-  from physics first (a derivation plus a measured balance), never from what a
-  code base happens to do. When r4133 and dss_capi agree on a physically wrong
-  number, both are wrong and the engine computes the right one.
+- **No engine is an authority.** A behaviour question is decided by physics and
+  power engineering, a derivation plus a measured balance: conservation of complex
+  power, the circuit laws, what the quantity means to an engineer. When r4133 and
+  dss_capi agree on a physically wrong number, both are wrong and the engine
+  computes the right one.
 - **Only where physics is indifferent** (the DSS script language, property and
-  command semantics, report layout) the official EPRI OpenDSS **r4133** trunk
-  (`.inputs/electricdss-code-r4133-trunk`) is the reference, and only when its
-  behaviour is logically sound and not a bug. An accident of the implementation
-  is not a rule to copy. "r4133 does it" alone is never sufficient evidence.
-- The pinned dss_capi 0.14.5 is outdated: it remains a *numeric oracle only*
-  (goldens, the `capi_v0145` corpus channel) and never outranks r4133 or physics.
-- A doubtful case goes to the user with the physical argument, not with a
-  source-code citation as the reason.
-- **Upstream bugs are never reproduced — in any lane, parity included.** The engine
-  computes the correct value; each resulting divergence from an oracle channel is
-  excluded field-by-field and pinned by its own expected-value test (lane.rs
-  exclusions, `ledger.json` entries, golden-comparison fix-ups). Where r4133 does
-  not share the bug, prefer gating the affected case on the `r4133` channel.
-- What *may* still be reproduced is precision-compat only: truncated constants,
-  FPC rounding/formatting, algorithm-identity numerics. The `oracle-parity` lane
-  therefore shrinks to a *precision-compat* lane and is **scheduled for full
-  teardown** — do not add new bug kernels to it, ever.
-- The old doctrine "the parity lane must mirror dss_capi bugs" is **rescinded**;
-  any statement to that effect elsewhere in the docs is historical.
-- Status: the nine capi-only bugs (absent in r4133 — see
-  `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md`) are removed from both
-  lanes by the R4133-alignment pass (2026-08-02). The bug kernels shared with
-  r4133 are being removed by `GOLDEN_REBASE_PLAN.md` WP-G2: the eight
-  zero-footprint rows (G2.1a–G2.1h, 2026-08-03…05, single-point stddev first),
-  then Iresidual + Bus_Int_Duration (G2.2a), Monitor BaseFrequency + the Isource
-  Bus2 latch (G2.2b), the Fault `Dump` `MinAmps` reprint + the two CIM attribute
-  names (G2.2c), the two Relay event-log labels (G2.2d) and the Newton stale
-  `Iterminal` (G2.3, 2026-08-05) are done — with G2.3 **none** of the six
-  §"Known upstream bugs" is reproduced in any lane. The corpus-blocked
-  `WholeCase` fixes (G2.5) and the `Show` column width (G2.6) are queued behind
-  them.
+  command semantics, report layout) r4133 is the reference, and only when its
+  behaviour is logical and not a bug. "r4133 does it" alone is never evidence.
+- dss_capi 0.14.5 is outdated: a numeric oracle only, never above r4133 or physics.
+  A change taken from the dss_capi 0.15.x branch needs the same proof as any other.
+- A doubtful case goes to the user with the physical argument.
+- **Upstream bugs are never reproduced, in any lane.** The engine computes the
+  correct value. Each divergence from an oracle channel is excluded field by field
+  (`lane.rs` exclusions, `ledger.json` entries, golden fix-ups) and pinned by an
+  expected-value test. Where r4133 does not share the bug, gate the case on the
+  `r4133` channel. Every fixed OpenDSS bug gets an upstream report in
+  `investigations/to_opendss/`.
+- Only precision quirks may be reproduced (truncated constants such as
+  `pi = 3.14159265359`, FPC rounding and formatting, algorithm-identity numerics),
+  each marked `TODO(compat):` with the intended clean fix. The tag is used for
+  nothing else and stays greppable (`rg "TODO\(compat\)"`). A precision site leaves
+  only with empirical proof. The `oracle-parity` lane that holds them is scheduled
+  for teardown and takes no new kernel.
 
-## `TODO(compat)` convention (see PORTING_PLAN.md §4.1)
-
-Every place where we deliberately reproduce an upstream *precision* quirk
-(truncated `pi = 3.14159265359`, `rad→deg = 57.29577951`, FPC `Round`'s
-integer-indefinite path, ...) **must** be marked `TODO(compat):` with an
-explanation and the intended clean fix.
-
-- Since the 2026-08-02 policy the tag covers **precision/convention sites only**:
-  logic bugs are never tagged — they are fixed outright in all lanes (see the
-  policy section above).
-- Do not use the `TODO(compat)` tag for anything else; it must stay greppable
-  (`rg "TODO\(compat\)"`).
-- The historical sweep was `DE_PASCALIZE_PLAN.md` Stage F (the `oracle-parity`
-  feature split; the Part IV dual-kernel table was its closed inventory).
-  Bug-reproducing kernels and sites are deleted by the R4133-alignment WPs;
-  surviving precision sites are removed only with empirical proof (see the
-  tolerance rules below).
-
-## Known upstream bugs (`investigations/`)
-
-Six proven dss_capi/OpenDSS engine bugs, each with a full deep-dive report in
-the (gitignored, local-only) `investigations/` folder — check there before
-chasing a divergence in those areas. The sixth (Monitor BaseFrequency) is a
-plain hardcoded-constant bug with a single fully-traced consumer and lived
-inline for a while; its report is `issue-06-monitor-basefrequency-60.md`.
-**Rule (since 2026-08-02): no upstream bug is reproduced in ANY lane** — the
-engine computes the correct value and every observable divergence from an oracle
-channel is excluded field-by-field and pinned by an expected-value test. The
-per-bug notes below record how each one stands; the parity-side reproductions
-were dismantled by `GOLDEN_REBASE_PLAN.md` WP-G2 (the nine capi-only bugs done
-2026-08-02; of the ones below — all shared with r4133 — `Iresidual` and
-`Bus_Int_Duration` fell in G2.2a, Monitor `BaseFrequency` in G2.2b and Newton
-stale `Iterminal` in G2.3, so **none of the six is reproduced in any lane**).
-English upstream-ready reports for all confirmed r4133 bugs live in
-`investigations/to_opendss/`.
-
-- **Export SeqCurrents `Iresidual`** — every terminal row prints *terminal 1*'s
-  residual (missing `(j-1)*Ncond` offset). **Not reproduced in either lane**
-  since GOLDEN_REBASE G2.2a: `report/export/seq_currents.rs` sums the row's own
-  terminal, the `Terminal >= 2` cells of the `export_seqcurrents` golden are
-  excluded unconditionally, and the pin
-  `export_seqcurrents_iresidual_sums_the_rows_own_terminal` derives them from
-  `Export Currents`' `Iresid_j`.
-- **Multi-meter `Bus_Int_Duration`** — the `CalcReliabilityIndices` duration loop
-  walks ALL circuit buses, indexing foreign section ids into this meter's
-  `FeederSections`. In-range id → deterministic cross-zone overwrite, **not
-  reproduced in either lane** since GOLDEN_REBASE G2.2a
-  (`solution/meters/reliability.rs` walks only its own zone; the `Duration`
-  column of the golden `export_busreliability_multimeter` is masked
-  unconditionally and pinned literally by
-  `export_busreliability_multimeter_duration_stays_in_the_meters_zone`);
-  out-of-range id → OOB heap read, proven nondeterministic, not reproduced in
-  either lane (safe `.get()` skip; nothing to pin).
-- **VSConverter `GetCurrents`** — self-aliased `MVMult` over `ComplexBuffer`:
-  reported currents violate KCL and every read mutates state (can poison the next
-  solve). Not reproduced — the port computes physically-correct currents, gated
-  via oracle source currents + KCL (`exec/tests/vs_converter.rs`).
-- **Harmonics `Powers`-after-`Currents`** — stale `Iterminal` cache makes
-  Thevenin-DER (Generator/PVSystem/Storage) `Powers` order-dependent in harmonics
-  mode. Not reproduced (Rust computes single-pass); golden capture reads `Powers`
-  first (`tools/golden/gen_checkpoints.py::capture_element`).
-- **Newton `Powers`/`Losses` stale `Iterminal`** — after `Set algorithm=Newton`,
-  `DoNewtonSolution` stamps `Iterminal` at `NodeV_{n-1}` then does `NodeV -= dV`,
-  so `Get_Powers`/`Get_Losses` (cache-aware) return a one-Newton-step-stale
-  current while `Currents` recompute fresh (`S ≠ V·conj(I)`). **Not reproduced in
-  either lane** since GOLDEN_REBASE G2.3: `exec/view.rs::snapshot_elements`
-  recomputes once at the converged `NodeV` and feeds Powers, Losses and Currents
-  from that one current. It was the only channel distinguishing Newton from the
-  normal fixed-point on the `newton*` gates and no oracle rev reports it
-  correctly (r3723/r4088/r4133 all carry the bug), so **both** lanes now exclude
-  those two decks' powers/losses
-  (`crates/dss-test-harness/src/harness/lane.rs::LANE_SKIP_ELEM_POWERS`, unconditional) and the signal
-  is carried by the in-engine dispatch tripwire
-  `exec::tests::newton::newton_dispatch_leaves_a_valid_but_stale_iterminal_cache`
-  plus the expected-value pin `newton_powers_match_the_normal_algorithm` (Newton
-  powers == the normal algorithm's, in both lanes). Everything else about those
-  decks — currents, voltages, Y, discrete state, iteration count — stays
-  oracle-compared.
-- **Monitor `BaseFrequency` 60.0** — `TMonitorObj.Create` hard-pins
-  `Basefrequency := 60.0` (Monitor.pas:472 == r4133:552), overriding the base-class
-  `BaseFrequency := ActiveCircuit.Fundamental` (CktElement.pas:203 — the last
-  statement of `TDSSCktElement.Create`) that every other element inherits. Its one physical consumer is mode-4 flicker: it is passed as
-  `fBase` into `FlickerMeter` (Monitor.pas:1657 → Pstcalc.pas:594), where `fBase =
-  50.0` selects the IEC 61000-4-15 230V/50Hz lamp weighting coefficients vs the
-  120V/60Hz set (Pstcalc.pas:609-626) — so a mode-4 monitor in a 50 Hz circuit
-  computes Pst with the wrong (60 Hz) lamp curve unless the user sets `basefreq=50`.
-  **Not reproduced in either lane** since GOLDEN_REBASE G2.2b:
-  `exec/command.rs::create_object_no_edit` inherits `Fundamental` for every
-  element, the Monitor included; the one oracle-compared observable
-  (`Monitor.BaseFreq` on the 50 Hz LVTestCase) is excluded in both lanes
-  (`crates/dss-test-harness/src/harness/mod.rs::LANE_SKIP_PROPS`) and pinned by
-  `monitor_basefreq_inherits_the_fundamental`. In a 60 Hz circuit the two
-  readings coincide, so no golden byte and no Pst number moves.
-
-## Launching agents and workflows (user rule 2026-10-03 — binding)
+## Launching agents and workflows (user rule 2026-10-03)
 
 - **Check the machine before every launch** of an agent or a workflow, also when
-  the user has just asked for the work: count the workflows and building lanes
-  in flight, read the gate queue (`tools/gate/README.md`: waiting tickets mean
-  the machine is full), and look at CPU load, free memory and the running
-  `cargo`/`rustc` processes.
-- **Resources free: launch without asking.** The check is not a question to the
-  user on every launch.
-- **Resources short: ask first.** Do not launch. Tell the user what is already
-  running (how many agents and workflows, the queue), that one more will slow
-  everything down, and ask whether they really want it started now.
-- **Ceiling:** about three workflows and three to four building lanes at once.
-  Past it the machine counts as short. A freed lane is not a reason to launch.
+  the user has just asked for the work: the workflows and building lanes in flight,
+  the gate queue (`tools/gate/README.md`: waiting tickets mean the machine is full),
+  CPU load, free memory and the running `cargo`/`rustc` processes.
+- **Resources free: launch without asking.**
+- **Resources short: ask first.** Tell the user what already runs and that one more
+  will slow everything down, and ask whether to start it now.
+- **Ceiling:** about three workflows and three to four building lanes at once. A
+  freed lane is not a reason to launch.
 - After stopping a workflow, check that its scripts no longer queue builds.
 
-## Gate (must be green before any commit)
+## Gate (green before any commit)
 
 ```
 cargo fmt --all --check
@@ -204,238 +79,122 @@ cargo test --workspace --doc
 cargo test --workspace --doc --features dss-core/oracle-parity
 ```
 
-Those seven commands are the mandatory gate (RETRO_FIXES RF-I00-01): commands
-4-5 run the pinned `cargo-nextest` of `.config/nextest.toml` (every test in its
-own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-7
-run the doctests, which nextest does not. On a shared machine every gate command
-runs through the queue wrapper,
-`python tools/gate/gatelock.py --label "<who>" -- cargo <args>` (`tools/gate/README.md`).
+Commands 4-5 run the pinned `cargo-nextest` of `.config/nextest.toml` (each test in
+its own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-7
+run the doctests. On a shared machine every command goes through the queue,
+`python tools/gate/gatelock.py --label "<who>" -- cargo <args>`.
 
-A landing does not repeat a gate that the same tree already passed (user decision
-2026-10-03). When the lane head passed the seven commands and `update` has not
-moved past the lane's base, the squash commit differs from that head only in
-`STATUS.md` and the record, so it lands on the lane's gate: check
-`git diff --stat <lane head> <landing commit>` shows nothing else, run
-`cargo fmt --all --check` and the doc rails
-(`cargo nextest run -p dss-core --test oracle_parity_cfg_gate`), then push. When
-`update` has moved, or the diff shows any other file, the landing runs the full
-gate.
+A landing reuses the gate its tree already passed (user decision 2026-10-03). When
+the lane head passed the seven commands, `update` has not moved past the lane's
+base and `git diff --stat <lane head> <landing commit>` shows only `STATUS.md` and
+the record, run `cargo fmt --all --check` and the doc rails
+(`cargo nextest run -p dss-core --test oracle_parity_cfg_gate`), then push.
+Otherwise the landing runs the full gate.
 
-Since DE_PASCALIZE **Stage F**
-(the `oracle-parity` feature split) the engine ships in **two lanes**, and both
-must be green:
+The engine ships in two lanes and both must be green:
 
-- **parity** (`--features dss-core/oracle-parity`) — the *precision-compat*
-  engine: byte goldens, checkpoint Y, corpus floors, exact iteration counts and
-  discrete state. Its no-re-baseline discipline applies to **precision numerics
-  only**; since the 2026-08-02 policy it does **not** mirror upstream bugs — bug
-  fixes land in both lanes, with each observable divergence from the pinned
-  oracles excluded field-by-field and pinned by an expected-value test. The lane
-  is scheduled for full teardown.
-- **default** (no features) — the idiomatic product: upstream bugs fixed,
-  reports rendered natively. Same oracle floors on continuous quantities,
-  discrete state still exact, iteration counts ±1, each deliberate divergence
-  excluded field-by-field and pinned by its own expected-value test.
+- **parity** (`--features dss-core/oracle-parity`): the precision-compat engine,
+  byte-exact on the goldens, exact iteration counts and discrete state.
+- **default** (no features): the product. The same oracle floors on continuous
+  quantities, discrete state exact, iteration counts within ±1.
 
-The lane policy is implemented once in `crates/dss-test-harness/src/harness/lane.rs`
-(the test-only harness crate `dss-test-harness`);
-`#[cfg(feature = "oracle-parity")]` may appear only inside the three `compat`
-modules and test code (gated by `oracle_parity_cfg_gate.rs`). Stage F
-introduces **no** tolerance anywhere — the default-lane report policy is
-`rel = abs = 0`.
+The lane policy lives in `crates/dss-test-harness/src/harness/lane.rs`.
+`#[cfg(feature = "oracle-parity")]` appears only in the three `compat` modules and
+in test code (`oracle_parity_cfg_gate.rs`). The default-lane report policy has no
+tolerance (`rel = abs = 0`). `pwsh -File tools/lanes/lane_diff.ps1` compares the
+two lanes' solved states on demand (`TESTING.md` §"The parity↔default differential
+gate"): run it whenever a `compat` kernel, a lane alias or the solver changes.
 
-A third, **on-demand** job compares the two lanes against each other:
-`pwsh -File tools/lanes/lane_diff.ps1` builds both, dumps each one's solved-state
-checkpoint stream (errors, convergence, iterations, node voltages, element
-currents/powers/losses, the assembled Y — not meters, monitors, the event log or
-report text, which the corpus gate compares live in both lanes) and diffs them
-within the documented bounds (`crates/dss-core/examples/lane_dump.rs`;
-`TESTING.md` §"The parity↔default differential gate").
-
-The parity lane is byte-exact on the committed goldens and oracle-gated at the
-calibrated `tests/TOLERANCE_NOTES.md` floors — it is **not** bitwise equal to
-the oracle — so the honest chain is
-`|default − oracle| ≤ |default − parity| + |parity − oracle|`. What makes this
-job the transitive proof `default ≈ oracle` is the *measured* left term: the
-2026-07-31 run came back `max |Δ| = 0` exactly on every gated kind, which makes
-the default lane bit-identical to the parity lane and gives it precisely the
-parity lane's oracle standing. Read the second term back in the moment Δ stops
-being zero (expected at MULTITHREADING M3c and RESONANCE WP-R1).
-
-It is not part of the gate's test run (two release builds, ~215 MB of dumps per lane):
-run it whenever a `compat` kernel, a lane alias or the solver changes.
-
-The unified live corpus gate
-(`crates/dss-core/tests/corpus_gate.rs`, successor of `corpus_live.rs`) is part
-of the gate's test run (commands 4-5) and runs **unconditionally**: one scheduler-driven test
-(`corpus_gate_all_cases_match_engines`) walks all 526 manifest cases — solving
-the 522 that are not abort-by-design
-(vendored `tests/corpus/electricdss-tst` decks + the three synthetic families)
-on the Rust engine and live-compares the full model against each case's gating
-channel(s) — the pinned dss-python oracle (`capi_v0145`) and/or the EPRI r4133
-DLL (`r4133`), partitioned by the divergence ledger `tests/corpus/ledger.json`
-(every entry must be hit; stale entries fail the gate). Prerequisites: the
-pinned dss-python (`tools/golden/PIN.txt`) must be installed — without it the
-gate fails rather than skipping; the r4133 DLL is git-tracked and its
-`epri-worker` bridge is built by the gate's own `cargo nextest run` (Windows-only —
-`crates/dss-epri` is `#[cfg(windows)]`, bar its DLL-free `guard` module, ungated
-since GOLDEN_REBASE G1.10a so all three producers share one classification). New tests read feeders from the
-vendored corpus, never from `.inputs/` at runtime.
-
-**`TESTING.md`** is the map of the whole test infrastructure — the layers (unit
-/ golden / unified corpus gate / corpus hygiene), the env-var knobs
-(`DSS_GATE_*`, `DSS_ORACLE_*`, …), and the procedures (regenerate goldens, add
-a corpus case, triage a divergence into the ledger, re-vendor the r4133
-binary, run the seeding report). Read it to find where a given kind of test
-lives.
+The live corpus gate (`crates/dss-core/tests/corpus_gate.rs`,
+`corpus_gate_all_cases_match_engines`) runs inside commands 4-5 over every
+manifest case against its channels, partitioned by `tests/corpus/ledger.json`,
+where an entry nothing hits fails the gate. It needs the pinned dss-python
+installed and fails without it. New tests read feeders from the vendored corpus,
+never from `.inputs/` at runtime. `TESTING.md` maps the test infrastructure, its
+knobs and its procedures.
 
 ## Git worktrees — safe deletion (`.inputs`/`.venv` junction hazard)
 
-Parallel-agent worktrees live under `.claude/worktrees/`. Each one does **not**
-copy the gitignored `.inputs/` (vendored `dss_capi` + `electricdss-tst`) or
-`.venv/` — it holds Windows **directory junctions** pointing at main's real
-copies. `git worktree remove` and *any* recursive delete (`rm -rf`,
-`Remove-Item -Recurse`, `rmdir /s`) follow those junctions and delete the
-**shared target's contents in main**. This has already wiped main's `.inputs`
-once (recovery = a full re-vendor). Batching removals makes it worse: the loop
-empties the shared target on the first worktree, then keeps going.
+Worktrees under `.claude/worktrees/` hold Windows **directory junctions** to main's
+`.inputs/` and `.venv/`. `git worktree remove` and any recursive delete (`rm -rf`,
+`Remove-Item -Recurse`, `rmdir /s`) follow them and delete main's copies. This has
+wiped main's `.inputs` twice. **Never batch-remove worktrees.** For each one, in
+**PowerShell only** (under Git Bash `cmd /c rmdir` silently does nothing and exits 0):
 
-**Rule — never batch-remove worktrees; neutralize junctions first.** For each
-worktree, drop the junction *reparse points only* (never descend into them),
-then remove the worktree:
-
-1. List reparse points without following them (recurse — a junction may sit
-   below the top level, e.g. `tools/opendss/.venv`):
+1. List the reparse points without following them:
    `Get-ChildItem -LiteralPath <wt> -Recurse -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
-2. Remove the **link only** — `$_.Delete()` on the `DirectoryInfo`
-   (or `cmd /c rmdir "<path>"` **without** `/s`). Both drop the junction and
-   leave the target untouched. Never use `Remove-Item -Recurse` / `rmdir /s` on
-   a junction — they recurse through it into main.
-   **PowerShell ONLY — never the Bash tool.** Under Git Bash, MSYS
-   path-converts the `/c` in `cmd /c …`, cmd starts an interactive session,
-   executes NOTHING, and exits 0 — the junction silently survives. This exact
-   false-success wiped `.inputs` the second time (2026-07-19).
-3. **Prove every link is gone before touching git:** `Test-Path '<wt>\.inputs'`
-   and `Test-Path '<wt>\tools\opendss\.venv'` must both be **False**.
-   Checking that main's target still has its items is NOT sufficient — it
-   stays intact exactly while an un-dropped junction still exists, and dies
-   on the next step.
-4. Only now `git worktree remove --force <wt>`, then `git worktree prune`.
+2. Drop the **link only**: `$_.Delete()` on the `DirectoryInfo`, or
+   `cmd /c rmdir "<path>"` without `/s`.
+3. Prove the links are gone: `Test-Path '<wt>\.inputs'` and
+   `Test-Path '<wt>\tools\opendss\.venv'` must both be **False**.
+4. Only then `git worktree remove --force <wt>`, then `git worktree prune`.
 
-After each removal verify the shared target survived — `(gci .inputs -Force |
-measure).Count` must be unchanged. Delete the merged per-agent branches
-(`worktree-agent-*`, `wf_*`, `wp*`, `wpg*`) separately with `git branch -D`;
-branch deletion never touches `.inputs`.
+After each removal `(gci .inputs -Force | measure).Count` must be unchanged. Delete
+merged branches separately with `git branch -D`.
 
 ## Conventions
 
-- **Module layout:** keep files focused; when a module grows large or mixes
-  concerns, split it into a directory module (`foo/mod.rs` + concern submodules
-  like `accessors`/`edit`/`solve`/`compute`) via `SPLITTING_RULES.md`'s byte-faithful
-  protocol (no behavior change; the test suite is the contract). Unit tests stay
-  inline as `#[cfg(test)]` modules, extracted to a sibling `tests.rs` only when the
-  file is large; the `#[cfg(test)] mod tests;` declaration goes right after the
-  module doc. Integration tests are thin drivers over the golden harness, the
-  test-only workspace crate `dss-test-harness` (`crates/dss-test-harness/src/harness/`), which each
-  driver imports with `use dss_test_harness::harness;`.
-- Where numerics matter the algorithm follows the reference loop-for-loop and the
-  test pins it; the comment describes the Rust, not the Pascal it came from.
-- 0-based indexing everywhere except the ground-node convention (`NodeRef == 0` =
-  ground), converted only at parse/report boundaries.
-- Case-insensitive identifiers via lowercase-normalized keys (THashList semantics).
-- New behavior questions are settled empirically against the oracle (see
-  `tools/golden/probe_val.py` for the pattern), not by guessing FPC semantics.
-- **The dss_capi 0.15.x branch is NOT an unconditional authority — every
-  "improvement" taken from it must be verified against the EPRI r4133 source
-  AND physics (live probe where observable) before adoption.** "capi015 does
-  it" alone is never sufficient evidence. Two of its changes were proven wrong
-  on 2026-07-19: the RegControl idle no-load-zone test written as an OR (a
-  tautology under the default ±100 kW band — EPRI r4088/r4133 use the correct
-  bounded AND; adopted r4133) and the DynExp SolveEq "index-bug fix" (an early
-  `Exit` that makes the evaluator a no-op — both gating oracles evaluate the
-  full RHS; reverted, `DIVERGENCES.md` §D14). New `DIVERGENCES.md` decisions
-  must cite r4133 evidence (source lines and/or an epri-worker probe), not
-  just the 0.15.x side.
-- **Never wave off a Rust↔oracle divergence as "conditioning / not a bug" without
-  empirical proof.** That label has hidden real port bugs (e.g. a missing per-step
-  state reset in `InvControl.update_inv_control` that latched `FFlagVWOperates`
-  across time steps — see STATUS §WP7.5). A contractive iteration cannot amplify
-  ~1e-8 rounding into a kW-scale gap, so such a gap is a bug until proven otherwise.
-  Prove cause before concluding: (1) tighten the loop tolerance — if the gap
-  collapses, the engines share the fixpoint; (2) run a controlled experiment that
-  isolates the suspect (e.g. fixed vs adaptive factor); (3) dump the per-iteration
-  trajectory + iteration count on both engines and find the first divergence. A gap
-  that vanishes under tighter tolerance but leaves *different iteration counts* is a
-  cross-step state-leak bug, not conditioning.
-- **The converse needs the same rigor: when a gap genuinely IS a cancellation
-  floor, prove it by decomposition, never by a tolerance sweep.** A residual that is
-  the near-cancellation of two large summands (e.g. generator dynamics `dSpeed =
-  (Pshaft + TracePower.re)/Mmass`, two ≈±2e9 W terms whose ≈31 W difference is
-  1.5e-8 rel) has an *inherent* Rust↔oracle floor of ~1 f32-ulp (~9e-8) / ~6e-8 in
-  f64 — faer-vs-KLU last-ulp rounding amplified by the cancellation. Prove it's the
-  floor and not a bug by reading the **live f64** state (dss-python
-  `ActiveCktElement.AllVariableValues` vs Rust element fields / `get_all_variables`
-  — the f32 monitor channel hides it) and checking each summand matches the oracle
-  to f64-ulp (Pshaft 1 ulp, TracePower 7 ulp) while only their difference is loose.
-  Such a floor is NOT a `TODO(compat)` and must not be "fixed" — forcing the
-  residual to 0 *diverges* from the oracle = a real port bug. (Documented at the
-  `dSpeed` pins in `exec/tests/dynamics.rs`.)
-- **Never loosen a test tolerance to make a failing oracle comparison pass — no
-  fudging.** The tier floors in `crates/dss-test-harness/src/harness` (`Tolerances`/`tol_for`, see
-  `tests/TOLERANCE_NOTES.md`) are calibrated to *proven* f64/f32/faer-vs-KLU
-  reality. A Rust↔oracle gap above its floor is a porting **bug**: find and fix the
-  root cause (per the two rules above), never widen the band to hide it. Tolerances
-  change only with empirical proof of the floor — they tighten far more often than
-  they loosen, and are *never* relaxed to mask a divergence.
-- **Commit messages: keep them short.** A concise subject line plus, only if
-  needed, 1–3 short bullets — not half a page. State *what changed and why* in a
-  sentence or two; the detailed rationale belongs in `STATUS.md`/code comments, not
-  the commit body. Don't restate the diff.
-- **A commit subject names the change in the code, never the process behind it.**
-  No plan name, step id, wave, lane or work-package number in a subject or body
-  (`RETRO_FIXES`, `RF-D03-01`, `wave 105`, `G2.3`, `lane-b`), and no path into
-  `docs/`, `tmp/`, `investigations/`, `.inputs/` or a plan file: the plans,
-  `STATUS.md`, `docs/` and those folders are on their way out, and the log must
-  read on its own after they are gone. Write what a reader of the code sees:
-  `SeqCurrents: exclude and pin the negative-rating divergence`, not
-  `RF-D03-01 settlement + record`. A lane lands as one such commit (squash), not
-  as `merge lane-x: <step>`. A `STATUS.md` or record edit rides in the commit of
-  the change it describes and never gets a commit of its own.
-- **STATUS/record entries: keep them short too.** A sub-step record is 5–10
-  lines: what changed and why, the r4133 citation, the ledger exclusions and
-  their pins by name, the commits, the gate result. Point at evidence that
-  already exists (tests, `ledger.json`, doc comments, `DIVERGENCES.md`, audit
-  reports) instead of restating it; no before/after tables, no narrative.
+- **Module layout:** keep files focused. A module that grows large or mixes
+  concerns becomes a directory module (`foo/mod.rs` plus concern submodules) by
+  `SPLITTING_RULES.md`, with no behaviour change. Unit tests stay inline as
+  `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the
+  `#[cfg(test)] mod tests;` line right after the module doc. Integration tests are
+  thin drivers over the test-only crate `dss-test-harness`
+  (`use dss_test_harness::harness;`).
+- 0-based indexing everywhere except the ground node (`NodeRef == 0`), converted
+  only at parse and report boundaries. Identifiers are case-insensitive through
+  lowercase keys.
+- Behaviour questions are settled by measurement (`tools/golden/probe_val.py`,
+  epri-worker), never by guessing.
+- **A Rust↔oracle gap is a bug until proven otherwise.** "Conditioning" needs
+  proof: tighten the loop tolerance (a gap that collapses means a shared fixpoint),
+  isolate the suspect in a controlled experiment, dump both trajectories and find
+  the first divergence. A gap that vanishes under a tighter tolerance but leaves
+  different iteration counts is a state leak across steps.
+- **A cancellation floor is proven by decomposition, never by a tolerance sweep.**
+  Read the live f64 state on both engines and show that each summand matches to the
+  last ulps while only their difference is loose (the `dSpeed` pins in
+  `exec/tests/dynamics.rs`). Such a floor is not a precision quirk to mark and is
+  not "fixed".
+- **Never loosen a tolerance to make an oracle comparison pass.** The floors of
+  `crates/dss-test-harness/src/harness/mod.rs::tol_for` (`tests/TOLERANCE_NOTES.md`)
+  change only with empirical proof of the floor.
 
-- **Cite code by name, never by line number.** A doc comment, a test message,
-  a document or a record never cites `file.rs:N` (nor `:A-B`, `.py:N`, `.md:N`)
-  for a file of this repository: the number rots with the next edit above it.
-  Name the item the way a rustdoc path does — from a Rust doc comment an
-  intra-doc link (`` [`tol_for`] ``, `` [`dss_core::exec::view::snapshot_elements`] ``)
-  so `cargo doc` checks it; elsewhere the path plus the item
-  (`crates/dss-test-harness/src/harness/mod.rs::tol_for`, the `"feeder"` arm),
-  and a document passage by its heading. Documents and records (never code)
-  may still cite a line of the frozen vendored Pascal or use the commit-pinned
-  form `<sha>:<path>:<N>` for a statement about the past. The `LINE_CITED_DOCS`
-  rail of `crates/dss-core/tests/oracle_parity_cfg_gate.rs` guards `TESTING.md`
-  and `tests/TOLERANCE_NOTES.md` (RETRO_FIXES ruling R18).
+### Commits, records and citations
+
+- **A commit subject names the change in the code.** No plan, step, wave, lane,
+  ruling or work-package id in a subject or body, and no path into `docs/`, `tmp/`,
+  `investigations/`, `.inputs/` or a plan file. Write
+  `SeqCurrents: exclude and pin the negative-rating divergence`, not
+  `RF-D03-01 settlement + record`. A subject plus at most three short bullets. A
+  lane lands as one squash commit, and its `STATUS.md` or record edit rides in it.
+- **Plans and queues are not committed.** `RULINGS_QUEUE.md`, `MAKEPOSSEQ_PLAN.md`,
+  `RETRO_FIXES_PLAN.md` and the step plans are the coordinator's working files,
+  kept in the checkout outside git.
+- **No OpenDSS or Pascal source is cited in committed text**: not in code, tests,
+  records, `TESTING.md`, `ledger.json` or this file. No `.pas` name, no Pascal
+  line, no `.inputs/` path. A behaviour choice rests on physics (a derivation and a
+  measured balance) or on a measurement named by its recipe and its numbers
+  ("measured 2026-10-17 with the epri-worker on the r4133 DLL"). The upstream
+  reports in `investigations/to_opendss/` (gitignored, written for the OpenDSS
+  developers) are the one place that cites the source. Existing citations leave
+  when their text is next edited.
+- **Cite code by name, never by line number.** No `file.rs:N` (nor `:A-B`, `.py:N`,
+  `.md:N`) for a file of this repository: from a doc comment an intra-doc link
+  (`` [`tol_for`] ``) so `cargo doc` checks it, elsewhere the path plus the item
+  (`crates/dss-test-harness/src/harness/mod.rs::tol_for`), and a document passage
+  by its heading. A record may use the commit-pinned form `<sha>:<path>:<N>` for a
+  statement about the past.
 - **Comments are short and say what the code does now.** No history, no
-  `<sha>:path:N`, no citation of OpenDSS or the vendored Pascal in code: the
-  product is Rust, the Pascal is on its way out and the reader has the tests. A
-  behaviour choice that needs a justification gets one sentence and the name of
-  the test that pins it. The r4133 evidence behind a decision lives in
-  `DIVERGENCES.md`, the record or the pin's doc, not in the engine comment.
-  Existing Pascal citations in code are not extended and leave with the OpenDSS
-  teardown.
-- **Never cite a gitignored or scratch file as provenance in committed text.**
-  `tmp/`, `tmp/retro_fix/state/...`, the session scratchpad, a worktree-local
-  transcript or probe script exist on one machine only and vanish, so a reader
-  of the pin, doc comment or record cannot follow the path (`tmp/rp37/`,
-  `tmp/g110c/` and two retro-fix probes already went that way — RF-D01-02).
-  Committed provenance is a dated sentence naming the tool and the recipe that
-  re-derives the numbers (epri-worker on the r4133 DLL, the pinned dss-python,
-  the corpus gate's own capture) and, when it is small, the tracked evidence
-  itself (a pin literal, a golden, a `tests/corpus` file). Local transcripts
-  stay local and are never copied into `docs/` as evidence directories
-  (RETRO_FIXES ruling R5). Keep the local path in your report to the
-  coordinator, not in the tree.
+  `<sha>:path:N`. A behaviour choice that needs a justification gets one sentence
+  and the name of the test that pins it. The measurement behind it lives in the
+  pin's doc or the record.
+- **Records are short.** A step record is 5-10 lines: what changed and why, the
+  measurement behind it, the ledger exclusions and their pins by name, the commits,
+  the gate result. Point at evidence that exists (tests, `ledger.json`, doc
+  comments, audit reports). No tables, no narrative.
+- **No gitignored or scratch file as provenance in committed text** (`tmp/`, the
+  session scratchpad, a worktree-local probe): they vanish. Committed provenance is
+  a dated sentence naming the tool and the recipe that re-derives the numbers and,
+  when small, the tracked evidence itself (a pin literal, a golden, a
+  `tests/corpus` file). Local paths go in the report to the coordinator.
