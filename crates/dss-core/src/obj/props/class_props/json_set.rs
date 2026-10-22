@@ -182,6 +182,18 @@ fn json_num(v: &Json) -> f64 {
     }
 }
 
+/// `element` inside the first quote pair of the tokenizer whose closing
+/// character it does not hold, so the tokenizer reads it as one element.
+fn quoted_element(element: &str) -> String {
+    [('"', '"'), ('\'', '\''), ('(', ')'), ('[', ']'), ('{', '}')]
+        .into_iter()
+        .find(|&(_, close)| !element.contains(close))
+        .map_or_else(
+            || element.to_string(),
+            |(open, close)| format!("{open}{element}{close}"),
+        )
+}
+
 /// Build the DSS value string for property `pd` from its JSON value, matching
 /// the grammar `ClassProps::parse_into` reads for that [`PropType`]. Returns
 /// `None` when there is nothing to apply.
@@ -197,6 +209,16 @@ fn json_to_value_string(pd: &PropDef, jval: &Json) -> Option<String> {
     };
     let s = match pd.ptype {
         PropType::Rating => rating_token(jval),
+        // Each item of a string list is one element, an empty item included,
+        // so `parse_into` decides the list by its items.
+        PropType::StringList => match jval {
+            Json::Arr(a) => a
+                .iter()
+                .map(|item| quoted_element(&json_scalar_str(item)))
+                .collect::<Vec<_>>()
+                .join(","),
+            scalar => json_scalar_str(scalar),
+        },
         PropType::RatingArray => match jval {
             Json::Arr(a) => a.iter().map(rating_token).collect::<Vec<_>>().join(" "),
             scalar => rating_token(scalar),

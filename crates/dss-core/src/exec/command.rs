@@ -223,12 +223,12 @@ impl Dss {
                 if !obj_name.is_empty() && !self.set_object(&obj_name) {
                     return;
                 }
-                // Rebuild the command line and pass it to the editor; quotes
-                // ensure the first parameter is interpreted OK after rebuild.
-                let remainder = self.parser.remainder().to_string();
-                self.parser
-                    .set_cmd_string(&format!("{prop_name}=\"{param}\" {remainder}"));
-                self.edit_active();
+                // The editor takes the value as read, whatever quotes or
+                // brackets it holds, and then the rest of the line, so the
+                // line applies as `Edit` would apply it
+                // (`the_property_form_applies_a_value_as_edit_does`).
+                let quoted = self.parser.is_quoted();
+                self.edit_active_from(Some((prop_name, param, quoted)));
             }
             return;
         }
@@ -1460,7 +1460,14 @@ impl Dss {
     /// from the property setters; nothing reads them mid-edit, so polling
     /// after the edit is equivalent).
     pub(super) fn edit_active(&mut self) {
-        self.edit_active_inner();
+        self.edit_active_from(None);
+    }
+
+    /// [`Self::edit_active`] with `first`, when given, as the first
+    /// parameter: its name, its value as read and whether the value was
+    /// quoted. The rest of the line follows on the main parser.
+    fn edit_active_from(&mut self, first: Option<(String, String, bool)>) {
+        self.edit_active_inner(first);
 
         // Pascal `TStorageControllerObj.RecalcElementData` ends every edit
         // line by building the fleet and pushing the controller's rates onto
@@ -1502,7 +1509,7 @@ impl Dss {
         );
     }
 
-    fn edit_active_inner(&mut self) {
+    fn edit_active_inner(&mut self, first: Option<(String, String, bool)>) {
         let Some(ci) = self.active_class else {
             self.errors
                 .push("There is no active element to edit.".to_string());
@@ -1574,13 +1581,18 @@ impl Dss {
         active_arena[oi].data_mut().begin_edit_boundary();
 
         let mut param_pointer: i64 = 0;
-        let mut param_name = parser.next_param(vars);
-        let mut param = parser.make_string(vars);
         // Pascal `IsQuotedString` for the value token (r4133 per-phase switch
         // and relay state writers key on it — the quotes are stripped before
         // the property arm runs, so carry the flag beside the value;
         // [`PropEngine::was_quoted`]).
-        let mut param_was_quoted = parser.is_quoted();
+        let (mut param_name, mut param, mut param_was_quoted) = match first {
+            Some(first) => first,
+            None => {
+                let name = parser.next_param(vars);
+                let value = parser.make_string(vars);
+                (name, value, parser.is_quoted())
+            }
+        };
         while !param.is_empty() {
             if param_name.is_empty() {
                 param_pointer += 1;
@@ -1595,7 +1607,20 @@ impl Dss {
                 // Not a class property, but may still be a dynamic-equation
                 // variable for some classes (Pascal `DSSClass.Edit` l.1656 →
                 // `Obj.ParseDynVar`).
-                if active_arena[oi].parse_dyn_var(&param_name, &param, vars) {
+                let dyn_var = active_arena[oi].parse_dyn_var(&param_name, &param, vars);
+                if let Err(e) = dyn_var {
+                    // A state-variable value that does not read as a number,
+                    // logged at its value token like a property's.
+                    let from = errors.len();
+                    errors.push(e);
+                    attach_source(
+                        errors,
+                        from,
+                        parser.token_span(),
+                        cmd_origin,
+                        parser.cmd_string(),
+                    );
+                } else if matches!(dyn_var, Ok(true)) {
                     // Consumed as a DynamicExp state-variable initializer.
                 } else if param_name.is_empty() {
                     let from = errors.len();

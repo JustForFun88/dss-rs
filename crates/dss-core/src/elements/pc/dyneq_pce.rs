@@ -8,15 +8,17 @@
 //! the base PCElement". The concrete hosts — Generator, PVSystem, Storage — embed
 //! [`DynEqPceData`] and drive `solve_eq` over `dynamic_eq_vals` each step.
 //!
-//! Scope (WP7.7 step 3b): the data record + the parse helpers (`parse_dyn_var`,
-//! `set_dyn_output_names`/`get_dyn_output_names`), the `DynamicEq=` sizing side
-//! effect, and the state-variable interface (`num_variables`/`variable_name`/
-//! `get_all_variables`). The per-host integration (which calc values feed the
-//! equation, which outputs drive the model) lives in each host's `dynamics.rs`.
-//! `SaveWrite` (the `UserDynInit` dump) is Phase 8; `SetDynVars` (the JSON
-//! init API) has no corpus path and is not ported.
+//! The module holds the data record, the link of `DynamicEq=`
+//! ([`DynEqPceData::link`], which carries the host's values and memory to the
+//! new equation by variable name), the parse helpers (`parse_dyn_var`,
+//! `set_dyn_output_names`/`get_dyn_output_names`) and the state-variable
+//! interface (`num_variables`/`variable_name`/`get_all_variables`). The
+//! per-host integration (which calc values feed the equation, which outputs
+//! drive the model) lives in each host's `dynamics.rs`. `Save` and the JSON
+//! export write the assignments through [`DynEqPceData::written_init`].
+//! `SetDynVars` (the JSON init API) has no corpus path and is not ported.
 
-use dss_parser::{Parser, ParserVars};
+use dss_parser::{Parser, ParserError, ParserVars};
 
 use crate::elements::general::dynamic_exp::{DYN_SLOT_LENGTH, DynamicExpObj, VarRef};
 use crate::elements::traits::Idx;
@@ -67,23 +69,34 @@ pub struct DynEqPceData {
     /// The resolved `DynamicExp`'s stable arena handle (statically that class —
     /// `DynamicEq=` is an `object_ref_class("DynamicExp", …)` property).
     pub dynamic_eq_ref: Option<Idx<DynamicExpObj>>,
-    /// `DynamicEqVals` — per-variable `[value, derivative]` memory, sized by the
-    /// `DynamicEq=` side effect to `DynamicExp.NVariables` rows.
+    /// `DynamicEqVals` — per-variable `[value, derivative]` memory,
+    /// `DynamicExp.NVariables` rows, sized and carried by name at
+    /// [`Self::link`].
     pub dynamic_eq_vals: Vec<[f64; DYN_SLOT_LENGTH]>,
+    /// The variable each row of `dynamic_eq_vals` belongs to, `None` for a
+    /// row past `VarNames`. Set at every link to an equation and kept with the
+    /// memory through a link to none.
+    pub memory_names: Vec<Option<String>>,
+    /// The rows, value and derivative, of the variables the linked equation
+    /// lacks or holds past its memory, by name: kept from an earlier
+    /// equation or written past the memory, until a link to an equation that
+    /// holds the variable moves the row into its memory.
+    pub parked_rows: Vec<(String, [f64; DYN_SLOT_LENGTH])>,
     /// `DynOut` — the outputs the last accepted `DynOut=` list named, in slot
     /// order: a machine integrates the first as its speed and the second as
     /// its angle, an inverter the first as its current. Empty until a list
     /// resolves, and emptied by a re-link to an equation without those
     /// outputs ([`Self::link`]).
     pub dyn_out: Vec<usize>,
-    /// `DynamicEqPair` — flat (var-index, operand-code) pairs for the
-    /// calculated/initialization values (`ParseDynVar` / `Check_If_CalcValue`).
+    /// `DynamicEqPair` — flat (variable row, operand code) pairs of the
+    /// calculated values the host loads, built from `user_dyn_init` against
+    /// the linked equation.
     pub dynamic_eq_pair: Vec<i32>,
-    /// `UserDynInit` — the user dynamic-init assignments (var → typed value),
-    /// deduped by variable and kept in insertion order (the last write of a
-    /// variable moves to the end, mirroring Pascal `Delete` + `Add`). Consumed
-    /// by the AltDSS JSON `"DynInit"` tail (`CAPI_Obj.pas:752-759`) and, once
-    /// ported, `SaveWrite`.
+    /// `UserDynInit` — the user's state-variable assignments (variable →
+    /// typed value), deduplicated by variable and kept in assignment order (a
+    /// re-assigned variable moves to the end). Every link keeps them all, and
+    /// `Save` and the JSON `"DynInit"` tail write those of the linked
+    /// equation through [`Self::written_init`].
     pub user_dyn_init: Vec<(String, DynInitValue)>,
 }
 
@@ -99,11 +112,28 @@ impl DynEqPceData {
     }
 
     /// Link the equation `DynamicEq=` named (`eq_obj` is `None` when the name
-    /// did not resolve). The outputs `DynOut` reads back are resolved again by name
-    /// against the new equation: they stay when every one is an output of it,
-    /// and `DynOut` is emptied otherwise, so no slot keeps an index into the
-    /// equation it replaced
-    /// (`every_host_refuses_a_relink_to_an_equation_without_its_outputs`).
+    /// is empty or did not resolve). What the host holds follows its variable
+    /// by name, never an index into the equation it replaces:
+    /// - the outputs `DynOut` reads back stay when every one is an output of
+    ///   the new equation, and `DynOut` is emptied otherwise
+    ///   (`every_host_refuses_a_relink_to_an_equation_without_its_outputs`),
+    /// - the memory gets `NVariables` rows, and each named row, value and
+    ///   derivative, moves to the row of its variable
+    ///   (`every_host_keeps_its_equation_memory_through_a_relink`). A name
+    ///   `VarNames` repeats carries the row the name resolves to, its first
+    ///   (`a_relink_carries_the_row_a_repeated_variable_name_resolves_to`),
+    /// - a row whose variable the new equation lacks or holds past its memory
+    ///   is parked by name until a later link holds the variable again
+    ///   (`every_host_keeps_what_an_equation_lacks_for_a_later_link`),
+    /// - the assignments are all kept, and the calculated values are paired
+    ///   with the rows of their variables in the new equation
+    ///   (`every_host_carries_its_calculated_values_by_name_through_a_relink`).
+    ///   The host lists and writes only the variables of the new equation
+    ///   (`a_relink_lists_and_writes_only_the_variables_of_the_new_equation`).
+    ///
+    /// A link to no equation empties `DynOut` and the pairs and keeps the
+    /// memory and the assignments for the next link
+    /// (`a_link_to_no_equation_keeps_the_values_for_the_next_link`).
     pub fn link(
         &mut self,
         name: String,
@@ -117,83 +147,163 @@ impl DynEqPceData {
                 .map(|n| usize::try_from(eq.get_out_idx(n)).ok())
                 .collect::<Option<Vec<_>>>()
         });
+        if let Some(eq) = &eq_obj {
+            let rows = eq.n_variables().max(0) as usize;
+            let mut memory = vec![[0.0; DYN_SLOT_LENGTH]; rows];
+            let mut parked = Vec::new();
+            for (var, row) in self.rows_by_name() {
+                match eq.get_var_idx(&var) {
+                    VarRef::State(j) if j < rows => memory[j] = row,
+                    _ => parked.push((var, row)),
+                }
+            }
+            self.dynamic_eq_vals = memory;
+            self.parked_rows = parked;
+            self.memory_names = (0..rows)
+                .map(|row| eq.get_var_name(row * DYN_SLOT_LENGTH))
+                .collect();
+        }
         self.dynamic_eq = name;
         self.dynamic_eq_ref = eq_ref;
         self.dynamic_eq_obj = eq_obj;
         self.dyn_out = outputs.unwrap_or_default();
+        self.rebuild_pairs();
     }
 
-    /// Pascal `TProp.DynamicEq` side effect (generator.pas l.805,
-    /// PVsystem/Storage equivalents): `SetLength(DynamicEqVals,
-    /// DynamicEqObj.NVariables)`. Called from the host `side_effects` after the
-    /// object ref resolves. A nil ref leaves the memory empty (Pascal guards on
-    /// `DynamicEqObj <> NIL`).
-    pub fn on_dynamic_eq_set(&mut self) {
-        if let Some(eq) = &self.dynamic_eq_obj {
-            let n = eq.n_variables().max(0) as usize;
-            self.dynamic_eq_vals = vec![[0.0; DYN_SLOT_LENGTH]; n];
+    /// Every row the host holds, by variable name: the memory row each name
+    /// resolves to (the first of a name `VarNames` repeats), then the parked
+    /// rows.
+    fn rows_by_name(&self) -> Vec<(String, [f64; DYN_SLOT_LENGTH])> {
+        let memory = self
+            .memory_names
+            .iter()
+            .zip(&self.dynamic_eq_vals)
+            .filter_map(|(var, row)| Some((var.as_ref()?, row)));
+        let parked = self.parked_rows.iter().map(|(var, row)| (var, row));
+        let mut rows: Vec<(String, [f64; DYN_SLOT_LENGTH])> = Vec::new();
+        for (var, row) in memory.chain(parked) {
+            if !rows.iter().any(|(seen, _)| seen == var) {
+                rows.push((var.clone(), *row));
+            }
+        }
+        rows
+    }
+
+    /// Write `value` into the parked row of `var`, a variable the linked
+    /// equation holds past its memory, so a later link that holds the
+    /// variable starts it from the value.
+    fn park_value(&mut self, var: &str, value: f64) {
+        match self.parked_rows.iter_mut().find(|(v, _)| v == var) {
+            Some((_, row)) => row[0] = value,
+            None => {
+                let mut row = [0.0; DYN_SLOT_LENGTH];
+                row[0] = value;
+                self.parked_rows.push((var.to_string(), row));
+            }
         }
     }
 
-    /// Pascal `TDynEqPCE.ParseDynVar` (was `CheckIfDynVar`): handle a `name=value`
-    /// pair whose `name` is not a class property but *is* a state variable of the
-    /// linked `DynamicExp`. Returns `false` when there is no dynamic equation or
-    /// `name` is not one of its variables — the edit loop then reports the
-    /// "Unknown parameter" error, exactly like Pascal's `DSSClass.Edit` fallback.
+    /// Pair each calculated value of `user_dyn_init`, in assignment order,
+    /// with the row of its variable in the linked equation. Empty with no
+    /// equation.
+    fn rebuild_pairs(&mut self) {
+        self.dynamic_eq_pair.clear();
+        let Some(eq) = &self.dynamic_eq_obj else {
+            return;
+        };
+        for (var, val) in &self.user_dyn_init {
+            let DynInitValue::Text(text) = val else {
+                continue;
+            };
+            let code = DynamicExpObj::check_if_calc_value(text);
+            if code >= 0
+                && let VarRef::State(row) = eq.get_var_idx(var)
+            {
+                self.dynamic_eq_pair.push(row as i32);
+                self.dynamic_eq_pair.push(code);
+            }
+        }
+    }
+
+    /// The assignments `Save` and the JSON `"DynInit"` tail write: those of
+    /// the variables of the linked equation, in assignment order, and none
+    /// while no equation is linked, because a saved line takes only the
+    /// variables of its equation
+    /// (`a_relink_lists_and_writes_only_the_variables_of_the_new_equation`,
+    /// `a_link_to_no_equation_keeps_the_values_for_the_next_link`).
+    pub fn written_init(&self) -> Vec<&(String, DynInitValue)> {
+        let Some(eq) = &self.dynamic_eq_obj else {
+            return Vec::new();
+        };
+        self.user_dyn_init
+            .iter()
+            .filter(|(var, _)| matches!(eq.get_var_idx(var), VarRef::State(_)))
+            .collect()
+    }
+
+    /// Handle a `name=value` pair whose `name` is not a class property but a
+    /// state variable of the linked `DynamicExp`. Returns `Ok(false)` when no
+    /// equation is linked or `name` is not one of its state variables, and the
+    /// edit loop then reports the unknown parameter.
+    /// A constant that does not read as a number is refused with the parser's
+    /// error before anything is recorded, so the variable keeps its earlier
+    /// assignment (`an_unreadable_state_variable_value_is_refused`).
     ///
     /// `vars` is the executive's `ParserVars` so the value re-evaluates with the
     /// same `Var` substitutions / RPN a normal double property would (the value
     /// `value` is the parser token with its `(...)`/`[...]` delimiters already
     /// stripped, so it is re-wrapped in `(...)` before `make_double`, exactly as
     /// `obj/props/setters.rs` does for a `Double` property).
-    pub fn parse_dyn_var(&mut self, variable: &str, value: &str, vars: &ParserVars) -> bool {
+    ///
+    /// The pairs are rebuilt from the assignments, so the last assignment of
+    /// a variable is the one the host applies
+    /// (`a_constant_after_a_calculated_value_replaces_it`). A constant written
+    /// to a variable past the memory is parked by name
+    /// (`every_host_keeps_what_an_equation_lacks_for_a_later_link`).
+    pub fn parse_dyn_var(
+        &mut self,
+        variable: &str,
+        value: &str,
+        vars: &ParserVars,
+    ) -> Result<bool, ParserError> {
         let variable = variable.to_ascii_lowercase();
         let Some(eq) = &self.dynamic_eq_obj else {
-            return false;
+            return Ok(false);
         };
-        // Pascal: `if (varIdx < 0) or (varIdx >= 50000) then Exit`
-        // (`DynEqPCE.pas:152-154`) — bail unless `Get_Var_Idx` found a state
-        // variable, i.e. neither the "not found" (-1) nor the numeric-constant
-        // (50001) code. `VarRef::State` is exactly that test.
+        // Only a state variable is consumed, not an unknown name or a number.
         let VarRef::State(var_idx) = eq.get_var_idx(&variable) else {
-            return false;
+            return Ok(false);
         };
 
-        // Dedup the UserDynInit entry (Pascal `UserDynInit.Delete(variable)`).
-        self.user_dyn_init.retain(|(k, _)| *k != variable);
-
-        let op = DynamicExpObj::check_if_calc_value(value);
-        if op >= 0 {
-            // A value the host computes from its model (P/Q/Vmag/.../P0/Q0/edp):
-            // record the (var index, operand code) pair for the step loop.
-            // Pascal stores the raw operand token as a `TJSONString`.
-            self.dynamic_eq_pair.push(var_idx as i32);
-            self.dynamic_eq_pair.push(op);
-            self.user_dyn_init
-                .push((variable, DynInitValue::Text(value.to_string())));
+        let stored = if DynamicExpObj::check_if_calc_value(value) >= 0 {
+            // A value the host computes from its model (P/Q/Vmag/.../P0/Q0/edp),
+            // kept as its operand token and paired with its row below.
+            DynInitValue::Text(value.to_string())
         } else {
-            // A constant: evaluate (with RPN) into the values array. A fresh
-            // parser defaults `auto_increment = false`, so advance to the token
-            // explicitly before `make_double` reads it. `make_double_ex` also
-            // reports Pascal's `requiredRPN` (more than one RPN token): a plain
-            // number is stored as a `TJSONNumber` (the evaluated double), a value
-            // that required RPN is stored as the raw `TJSONString`
-            // (`DynEqPCE.pas:173-178`).
+            // A constant, evaluated with RPN into the memory row of its
+            // variable, or into its parked row past the memory. A fresh parser
+            // does not advance on its own, so it moves to the token before
+            // `make_double_ex` reads it. A plain number is kept as the evaluated
+            // number, a value that needs more than one RPN token as its text.
             let mut parser = Parser::new();
             parser.set_cmd_string(&format!("({value})"));
             parser.next_param(vars);
-            let (dbl, required_rpn) = parser.make_double_ex(vars).unwrap_or((0.0, false));
-            if var_idx < self.dynamic_eq_vals.len() {
-                self.dynamic_eq_vals[var_idx][0] = dbl;
+            let (dbl, required_rpn) = parser.make_double_ex(vars)?;
+            match self.dynamic_eq_vals.get_mut(var_idx) {
+                Some(row) => row[0] = dbl,
+                None => self.park_value(&variable, dbl),
             }
-            let stored = if required_rpn {
+            if required_rpn {
                 DynInitValue::Text(value.to_string())
             } else {
                 DynInitValue::Number(dbl)
-            };
-            self.user_dyn_init.push((variable, stored));
-        }
-        true
+            }
+        };
+        // A new assignment of a variable replaces its earlier one.
+        self.user_dyn_init.retain(|(k, _)| *k != variable);
+        self.user_dyn_init.push((variable, stored));
+        self.rebuild_pairs();
+        Ok(true)
     }
 
     /// Resolve `DynOut=[names]` to the outputs of the linked equation, in slot
@@ -252,6 +362,34 @@ impl DynEqPceData {
         errors
     }
 
+    /// The first variable `list` names more than once, compared without case
+    /// and lowercased, or `None` when every name is its own.
+    pub fn repeated_output(list: &[String]) -> Option<String> {
+        let mut seen: Vec<String> = Vec::with_capacity(list.len());
+        for name in list {
+            let name = name.to_ascii_lowercase();
+            if seen.contains(&name) {
+                return Some(name);
+            }
+            seen.push(name);
+        }
+        None
+    }
+
+    /// The refusal of a `DynOut=` list written to the host `element`
+    /// (`Class.name`) that names one variable more than once. Asked before
+    /// [`Self::set_dyn_output_names`], so it holds with or without a linked
+    /// equation and ahead of 50009 and 50008
+    /// (`every_host_refuses_a_dynout_that_names_one_variable_twice`).
+    pub fn refuse_output_list(element: &str, list: &[String]) -> Option<String> {
+        let name = Self::repeated_output(list)?;
+        Some(format!(
+            "{element}.DynOut: [{}] names the variable \"{name}\" more than once. Each output \
+             needs its own variable.",
+            list.join(", ")
+        ))
+    }
+
     /// The `DynOut=` readback: the names of the outputs the slots hold, one
     /// per name of the accepted list. A slot whose variable has no name is
     /// left out.
@@ -265,21 +403,29 @@ impl DynEqPceData {
             .collect()
     }
 
-    /// Pascal `TDynEqPCE.NumVariables`: `DynamicEqObj.NVariables *
-    /// Length(DynamicEqVals[0])` (= `NVariables * DYN_SLOT_LENGTH`), or 0 with no
-    /// linked equation (the host then falls back to its classic variable count).
+    /// How many variables the host lists from its equation memory, a value
+    /// and a derivative slot per row. A written `NVariables` lists all its
+    /// rows. An omitted one lists only the rows its `VarNames` name, at most
+    /// the 20 the memory holds, so an equation without names lists none
+    /// (`an_omitted_nvariables_lists_only_the_named_variables`). 0 with no
+    /// linked equation: the host then lists its classic variables.
     pub fn num_variables(&self) -> usize {
-        match &self.dynamic_eq_obj {
-            Some(eq) => (eq.n_variables().max(0) as usize) * DYN_SLOT_LENGTH,
-            None => 0,
-        }
+        let Some(eq) = &self.dynamic_eq_obj else {
+            return 0;
+        };
+        let rows = eq.n_variables().max(0) as usize;
+        let listed = if eq.n_variables_written() {
+            rows
+        } else {
+            rows.min(eq.num_state_vars())
+        };
+        listed * DYN_SLOT_LENGTH
     }
 
-    /// Pascal `TDynEqPCE.VariableName(i)` (1-based): the memory-slot name, or
-    /// `None` when there is no equation / `i` is out of range (the host then falls
-    /// back to its classic name table). Pascal guards `i > NVariables*Len` (the
-    /// last valid index is exactly `NVariables*Len`). A memory row past
-    /// `VarNames` is named by the empty string.
+    /// The name of memory slot `i` (1-based), or `None` with no equation or
+    /// an `i` past [`Self::num_variables`], the last valid index (the host
+    /// then falls back to its classic name table). When the count was
+    /// written, a memory row past `VarNames` is named by the empty string.
     pub fn variable_name(&self, i: usize) -> Option<String> {
         let eq = self.dynamic_eq_obj.as_ref()?;
         if i < 1 || i > self.num_variables() {
