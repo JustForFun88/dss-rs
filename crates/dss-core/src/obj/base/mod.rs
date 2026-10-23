@@ -220,6 +220,87 @@ impl DssObjData {
         }
     }
 
+    /// Give property `index` the set-order place just before the earliest set
+    /// property of `before`, so `Save` and the JSON dump write it first. Every
+    /// other property keeps its order, and the per-edit boundary moves with
+    /// the marks it separates. Nothing moves when `index` is unset, when no
+    /// property of `before` is set, or when `index` already comes first.
+    pub fn move_seq_before(&mut self, index: usize, before: &[usize]) {
+        let old = self.prp_sequence.get(index).copied().unwrap_or(0);
+        let Some(target) = before
+            .iter()
+            .filter_map(|&p| self.prp_sequence.get(p).copied())
+            .filter(|&seq| seq != 0)
+            .min()
+        else {
+            return;
+        };
+        if old == 0 || old < target {
+            return;
+        }
+        for (i, seq) in self.prp_sequence.iter_mut().enumerate().skip(1) {
+            if i != index && *seq >= target && *seq < old {
+                *seq += 1;
+            }
+        }
+        self.prp_sequence[index] = target;
+        if (target..old).contains(&self.edit_seq_boundary) {
+            self.edit_seq_boundary += 1;
+        }
+    }
+
+    /// Give the set properties of `after` that come before property `index`
+    /// the set-order places just after it, in their order, so `Save` and the
+    /// JSON dump write every property set between them first, then `index`,
+    /// then them. Every other property keeps its order, the counter stays,
+    /// and each mark that does not move keeps its side of the per-edit
+    /// boundary. Nothing moves when `index` is unset or no property of
+    /// `after` comes before it.
+    pub fn move_seq_after(&mut self, index: usize, after: &[usize]) {
+        let top = self.prp_sequence.get(index).copied().unwrap_or(0);
+        let seq_of = |p: usize| self.prp_sequence.get(p).copied().unwrap_or(0);
+        let mut moved: Vec<usize> = after
+            .iter()
+            .copied()
+            .filter(|&p| (1..top).contains(&seq_of(p)))
+            .collect();
+        if moved.is_empty() {
+            return;
+        }
+        moved.sort_unstable_by_key(|&p| self.prp_sequence[p]);
+        moved.dedup();
+        let low = self.prp_sequence[moved[0]];
+        // The marks from the earliest moved one to `index`, in set order.
+        let mut span: Vec<(u32, usize)> = self
+            .prp_sequence
+            .iter()
+            .enumerate()
+            .skip(1)
+            .filter(|&(_, &seq)| (low..=top).contains(&seq))
+            .map(|(p, &seq)| (seq, p))
+            .collect();
+        span.sort_unstable();
+        let boundary = self.edit_seq_boundary;
+        if (low..top).contains(&boundary) {
+            let kept_before = span
+                .iter()
+                .filter(|&&(seq, p)| seq <= boundary && !moved.contains(&p))
+                .count();
+            self.edit_seq_boundary = match kept_before {
+                0 => low - 1,
+                n => span[n - 1].0,
+            };
+        }
+        let stay: Vec<usize> = span
+            .iter()
+            .map(|&(_, p)| p)
+            .filter(|p| !moved.contains(p))
+            .collect();
+        for (p, (seq, _)) in stay.into_iter().chain(moved).zip(span) {
+            self.prp_sequence[p] = seq;
+        }
+    }
+
     /// Pascal `TDSSObject.MakeLike` (`DSSObject.pas:133`): the base-class part
     /// of `like=` copies `SizeOf(Integer) * (NumProperties + 1)` bytes = the
     /// counter slot (index 0) plus every property slot (1..=NumProperties), so

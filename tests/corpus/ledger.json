@@ -40,6 +40,7 @@
     "regcontrol-idle": "RegControl `idle` is a 0.15.x/r4133 feature the pinned dss_capi 0.14.5 rejects (#110 Unknown parameter 'idle'), so only the r4133 channel gates the idle-regulator deck. BUG WP regcontrol_idle (2026-07-19): the port adopted r4133's no-load-zone AND semantics (idle when the through-power is inside the BOUNDED [RevPowerThreshold, FwdPowerThreshold] band; r4133 RegControl.pas:1218). dss_capi 0.15.x wrote it as an `or` (8a898cba, still OR at the 0.15.x tip) — a tautology under the default symmetric band that made an idling reg never tap; the port previously reproduced it (MV.1 8.8% low). After adoption the idle tap/voltage match r4133 exactly (tapnum 15, tap 1.09375, MV.1=7650.08 V; probe D: widening fwdThreshold to bracket the load makes r4133 idle to the old 7030.24 V, proving the bounded-AND mechanism). The only residual is a getter-convention difference on revThreshold/fwdThreshold: r4133's getter returns the InitPropertyValues display strings (revThreshold '100' = band half-width, RegControl.pas:1448; fwdThreshold unset '') decoupled from the signed internal, while the port reports the signed effective thresholds in kW (rev -100, fwd +100). Definitional, not physics — exact-pair.",
     "linespacing-normamps": "Line built from LineSpacing+wiredata: dss_capi 0.14.5 reports Line.lsp.normamps=730/emergamps=1095 (the FIRST wire's NormAmps rating, ACSR_556) where the port and the newer engines (0.15.x/r4133) report 230/345 — the MINIMUM NormAmps over the phase conductors (min{556->730, 4-0->340, 1-0->230}=230; r4133 V8 LineGeometry.pas:1237-1239, WP-U1.2 D3). The port follows the corrected 0.15.x min-over-phase derivation, so on capi_v0145 it intentionally diverges from 0.14.5 (settled empirically 2026-07-18: port=230/345, oracle 0.14.5=730/1095 — the port value matches the r4133 source and is CORRECT). r4133 additionally #303-crashes this deck (skip). Exact-pair property entry on capi_v0145.",
     "generator-makeposseq-foreign-slots": "dss_capi 0.14.5's TGeneratorObj.MakePosSequence decides \"the user set kVA=/MVA=\" from the raw property-sequence slots [26]/[27] (Generator.pas:2804-2806), but its enum reorder moved Xdp/Xdpp into 26/27 while kVA/MVA sit at 23/24, so both rating guards read foreign cells: a 3-phase generator declared with kVA=/MVA= keeps its full rating after makeposseq instead of having it divided by the phase count. EPRI r4133 writes the same two literals (Version8/Source/PCElements/generator.pas:3060-3062) but there they are CORRECT — kVA is registered at 26 and MVA at 27 (:459-460), Xdp/Xdpp at 29/30 (:463/:465) — so the defect is a dss_capi regression, not upstream behaviour. Per the 2026-08-02 policy the port follows r4133 in both lanes and divides the rating; the pinned 0.14.5 oracle keeps the undivided value. Exact-pair (a discrete value jump, not display precision).",
+    "makeposseq-runs-again-on-a-reduced-circuit": "MakePosSequence on a circuit already positive-sequence reduces it again on both oracles: a Load's kW, kvar and xfkVA are divided by 3 a second time and every Vsource's BasekV by sqrt(3) a second time, so a 400 kW load reads kW 44.44, a ninth, and on dss_capi draws 46.02 kW at 0.58 pu (measured 2026-10-23 with the pinned dss-python on makeposseq_pc_repeat.dss), and the source EMF falls to 12.47/3 kV. The port changes nothing on a positive-sequence circuit (the CktModel guard of exec::make_pos_seq), so after a second makeposseq it holds the circuit of the first: the one-phase equivalent of a reduced circuit is that circuit.",
     "line-merge-length-units-reset": "TLineObj.MergeWith's matrix-model series branch and the length units. EPRI r4133 saves the units before the merge (Version8/Source/PDElements/Line.pas:1627 LenUnitsSaved := LengthUnits) and re-applies them with a SEPARATE Edit that runs AFTER the Rmatrix/Xmatrix (:1778-1779) and Cmatrix (:1791-1792) Edits -- Format(' Length=%-g  Units=%s', [TotalLen, LineUnitsStr(LenUnitsSaved)]) at :1794-1796 -- precisely because the 12..14 property side effect calls ResetLengthUnits (:691-693). Its MakePosSequence uses the same construction for the same reason (:1595-1596, 'Repeat the Length Units to compensate for unexpected reset'). The pinned dss_capi 0.14.5 inverted the two: src/PDElements/Line.pas:1806-1807 writes Len and LengthUnits as FIELDS and :1815-1817 then runs PropertySideEffects(rmatrix/xmatrix/cmatrix), whose ResetLengthUnits (:2080-2085) wipes LengthUnits back to UNITS_NONE one statement later, so every matrix-model series merge on 0.14.5 reports 'none'. The port had copied that order; r4133 is the behavioral authority and its bugs are never reproduced (CLAUDE.md 2026-08-02), so R4133_PROPS_PLAN RP3.5 fixed it in BOTH lanes and the three merged lines of this deck now render their saved 'kft'. Probed live 2026-08-28 on the r4133 DLL (Version 11.0.0.1, tools/opendss/bin/r4133): 'kft' on all three merged lines here, and deck-dependent elsewhere ('mi'/'cm' on two purpose-built micro-decks, 'none' on a switch), so the getter is live state (LineUnitsStr(LengthUnits), :1404) and not an echo. THE ELECTRICAL MODEL DOES NOT MOVE: ConvertLineUnits returns 1.0 whenever either side is UNITS_NONE (Shared/LineUnits.pas:110-115), so FUnitsConvert is 1.0 on both engines either way and the merged line's YPrim, the assembled Y, the node voltages, currents, powers, losses, the node count (88) and the iteration count (5) are identical, measured on all three engines. CORRECTION 2026-09-05 (GOLDEN_REBASE G1.4b): 'units' is NOT the only divergent cell -- the same UNITS_NONE makes the EnergyMeter zone walk read the merged 4 kft lines as 4 km (Meters/EnergyMeter.pas:1833-1838), so capi's Bus.Distance is 4.0 km high at l2e, l3e and l9e. That is entry reduce-merge-units-lost-midi-capi-distance; the claim held only because no gated surface read DistFromMeter before G1.4b. Correct value pinned by dss_core::exec::tests::reduce::merged_matrix_line_keeps_the_surviving_lines_length_units, which reads two micro-decks whose surviving lines carry DIFFERENT saved units (so the pin cannot pass against a hardwired getter) plus an un-merged control and a post-merge rmatrix= reset.",
     "line-switch-kills-linecode": "TLineObj.PropertySideEffects arm 15 (switch=) and the LineCode flag. EPRI r4133 keeps TWO independent pieces of state: FLineCodeSpecified (Boolean) and CondCode (the lowercased code name), both set by FetchLineCode (Version8/Source/PDElements/Line.pas:385-387, :413). The flag is cleared by the impedance side effects -- arms 6..11, 26..27 open with FLineCodeSpecified := FALSE (:685) and so do arms 12..14 (:691) -- but arm 15, the switch= arm, does NOT touch it: :694-700 assigns SymComponentsChanged, YprimInvalid, GeometrySpecified := FALSE, SpacingSpecified := False, r1/x1/r0/x0 := 1.0, c1 := 1.1e-9, c0 := 1.0e-9, len := 0.001 and calls ResetLengthUnits, and contains no FLineCodeSpecified statement. The omission is written arm by arm, one line above and one line below the two arms that do clear it, not forgotten at the end of a block. The flag is read live by the property getter (3: If FLineCodeSpecified Then Result := CondCode else Result := '', :1357) -- it is NOT an echo of PropertyValue[], so this pair carries no PROPS_ECHO_R4133 row -- and by the units= arm, which picks ConvertLineUnits(FLineCodeUnits, NewLengthUnits) when the flag is TRUE and FUnitsConvert * ConvertLineUnits(LengthUnits, NewLengthUnits) when it is FALSE (:626-627). The pinned dss_capi 0.14.5 ADDED a kill to that arm and flagged it in its own source: KillLineCodeSpecified(); //TODO: check if this missing is relevant bug (.inputs/dss_capi/src/PDElements/Line.pas:677). The port had copied 0.14.5 (elements/pd/line/accessors.rs, SWITCH arm). r4133 is the behavioral authority and upstream bugs are never reproduced (CLAUDE.md 2026-08-02), so R4133_PROPS_PLAN RP3.6 deleted that one call in BOTH lanes. r4133 clears the flag at EIGHT other statements -- :685, :691, FetchLineSpacing :1832, FetchConductorList :1853, FetchWireList :1952, FetchCNCableList :2016, FetchTSCableList :2075 and FetchGeometryCode :2131 -- and the port now carries a counterpart for every one of them: seven were already in place, and the eighth (FetchConductorList's) was added by the RP3.6 audit settlement on 2026-08-29, after a live r4133 probe measured '? Line.<x>.linecode' = '' behind a 'conductors=[..]' where the port still answered the code name. No impedance moves on this corpus: every one of the five cells declares units=m on the LineCode and units=m on the Line, so the TRUE branch computes ConvertLineUnits(m, m) = 1.0 and the FALSE branch computes 1.0 * ConvertLineUnits(none, m) = 1.0 (Shared/LineUnits.pas -- either operand UNITS_NONE yields 1.0). Measured live 2026-08-29 on all three engines: r1 = '1' on r4133, on the 0.14.5 oracle and in the port, node voltages agreeing to 1.1e-10 relative and the r4133-vs-port current spread (9.7e-08) SMALLER than the capi-vs-port spread (1.9e-07) on the same deck, i.e. the residual is the documented faer-vs-KLU near-cancellation floor on an ideal switch, not a flag effect. The flag's real consequence is pinned on a purpose-built discriminating deck (a code in kft, the line in m, where the two branches differ by 304.8) by exec::tests::line_fetch::switch_yes_keeps_the_linecode_and_its_units_conversion, in both lanes and without an oracle -- through the rendered r1 AND, since the audit settlement, through the SOLVED node voltages of that deck, pinned against the r4133 DLL's own YNodeVarray (the flagged switch drops 1/304.8 of what the identical bare switch drops). The r4133 channel needs no entry: after the RP4.1 unmask these five cells compare and MATCH, which is the point of the sub-step.",
     "swtcontrol-per-phase-state-render": "TSwtControlObj's switch state is PER PHASE on EPRI r4133 and scalar on the pinned dss_capi 0.14.5, so the two engines render different SHAPES for the same state. r4133 holds FPresentState and FNormalState as pStateArray (Version8/Source/Controls/SwtControl.pas:37-38), allocated one slot per phase in Create (:299-307, every slot CLOSED), written ganged from a bare token (:433-451) or phase-by-phase from a quoted list (:453-480: a fresh AuxParser, first-CHARACTER match with no else arm, capped at SWTCONTROLMAXDIM = 5 tokens, :14), each slot driving its own conductor through set_States (:532-549 -> ControlledElement.Closed[Idx]) and re-applied per phase by RecalcElementData (:347-355). Its getters render ONE TOKEN PER CONTROLLED-ELEMENT PHASE in the '[tok, tok, ... ]' form -- property 6 Normal at :589-599, property 7 State at :600-610 -- and '[]' when the controlled element is nil. dss_capi 0.14.5 has no per-phase model at all (one enum per object, .inputs/dss_capi/src/Controls/SwtControl.pas), so it renders the bare word 'closed'/'open'. r4133 is the behavioral authority (CLAUDE.md 2026-08-02) and R4133_PROPS_PLAN RP3.7 ported the per-phase model in BOTH lanes, so every SwtControl Normal/State cell on the 0.14.5 channel is now a RENDERING-SHAPE divergence with the identical switch state behind it: the port's tokens are exactly the oracle's word, repeated once per controlled phase. Structural only -- no conductor, YPrim, node voltage, current, power, loss or iteration count moves, and Lock/Action/Delay/SwitchedObj are untouched (the census reports no other moved cell on any of the five cases). Measured live 2026-09-02 on the r4133 DLL (Version 11.0.0.1, tools/opendss/bin/r4133) over all five gated decks: swtcontrol_lock '[closed, closed, closed, ]' for Normal and State both before and after the locked post 'action=open', makeposseq_ctrl '[closed, ]' for both (the switched line is 1-phase after MakePosSequence), and each IEEE_519 copy '[closed, closed, closed, ]' for both of its two controls -- byte-identical to what the port now renders. The r4133 channel needs NO entry, staged or landed: the pair's 80 in-scope cells (swtcontrol.normal and swtcontrol.state, 40 each, on the three r4133-gating decks midi_swtcontrol, swtcontrol_time and civanlar) COMPARE after the fix -- re-measured 2026-09-02 with the RP0.2 census knob, which reports ZERO Normal/State rows on that channel and leaves only the pairs owned elsewhere (Delay, Action, Reset, SwitchedObj, enabled). Correct value pinned by dss_core::exec::tests::controls::swtcontrol_state_renders_one_token_per_controlled_phase (the gated decks plus the 1/2/3-phase discriminator) and dss_core::exec::tests::controls::swtcontrol_state_renders_per_phase_on_the_r4133_only_decks (the three in-scope decks, which no capi channel can witness because 0.14.5 cannot render the array at all).",
@@ -961,9 +962,298 @@
         }
       ],
       "cause_ref": "generator-makeposseq-foreign-slots",
-      "source": "R4133-alignment pass 2026-08-02 (issue 27): the compat kernel GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS was dismantled, so BOTH lanes read the kVA/MVA slots the guards are named after (r4133 generator.pas:3060-3062 + :459-460). The pinned 0.14.5 oracle keeps the undivided ratings (g_kva 250 / 0.25, g_mva 300 / 0.3) where the port divides by the 3 phases of the FIRST makeposseq (83.3333333333333 / 0.0833333333333333, 100 / 0.1); the second makeposseq is a no-op because the machine is 1-phase by then. Five scopes: the deck probes generator.g_kva.kva, and the MODES family forces compare_all_properties on the capi channel, which reads all four cells again through the whole-element dump. kVA and MVA are ONE field (PropertyOffset aims both at GenVars.kVArating), which is why each generator lists both readouts. The rating reaches no power-flow quantity — it scales Xdp/Xdpp and the dynamics inertia only — so nothing else on the deck moves. Values measured live 2026-08-02 against the pinned dss-python 0.15.7 / dss_capi 0.14.5 and the built engine. Replacement pins: elements::pc::generator::tests::makeposseq_generator_{kva,mva}_guard_reads_its_own_slot and ...::makeposseq_generator_xdp_does_not_touch_the_kva_rating.",
+      "source": "R4133-alignment pass 2026-08-02 (issue 27): the compat kernel GENERATOR_POSSEQ_RATING_GUARDS_READ_XDP_SLOTS was dismantled, so BOTH lanes read the kVA and MVA ratings the guards are named after, as r4133 does. The pinned 0.14.5 oracle keeps the undivided ratings (g_kva 250 / 0.25, g_mva 300 / 0.3) where the port divides by the 3 phases of the deck's makeposseq (83.3333333333333 / 0.0833333333333333, 100 / 0.1). Restated 2026-10-17: the deck converts once, and makeposseq_pc_repeat.dss holds the second conversion (capi-generator-makeposseq-rating-repeat). Five scopes: the deck probes generator.g_kva.kva, and the MODES family forces compare_all_properties on the capi channel, which reads all four cells again through the whole-element dump. kVA and MVA read ONE rating (g_kva reads 250 kVA and 0.25 MVA, g_mva 300 kVA and 0.3 MVA), which is why each generator lists both readouts. The rating reaches no power-flow quantity — it scales Xdp/Xdpp and the dynamics inertia only — so nothing else on the deck moves. Values measured live 2026-08-02 against the pinned dss-python 0.15.7 / dss_capi 0.14.5 and the built engine. Replacement pins: elements::pc::generator::tests::makeposseq_generator_{kva,mva}_guard_reads_its_own_slot and ...::makeposseq_generator_xdp_does_not_touch_the_kva_rating.",
       "measured": {
         "date": "2026-08-02"
+      }
+    },
+    {
+      "id": "capi-generator-makeposseq-rating-repeat",
+      "case": "modes:makeposseq/makeposseq_pc_repeat.dss",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^generator\\.g_kva\\.kva$",
+          "oracle": "250",
+          "rust": "83.3333333333333"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^generator\\.g_kva\\.kva$",
+          "oracle": "250",
+          "rust": "83.3333333333333"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^generator\\.g_kva\\.mva$",
+          "oracle": "0.25",
+          "rust": "0.0833333333333333"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^generator\\.g_mva\\.kva$",
+          "oracle": "300",
+          "rust": "100"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^generator\\.g_mva\\.mva$",
+          "oracle": "0.3",
+          "rust": "0.1"
+        }
+      ],
+      "cause_ref": "generator-makeposseq-foreign-slots",
+      "source": "The PC deck converted twice (makeposseq_pc_repeat.dss). The generators are one-phase after the first makeposseq, so the second one leaves their ratings alone in both engines and the five cells are those of capi-generator-makeposseq-rating on makeposseq_pc.dss: the pinned 0.14.5 oracle keeps the undivided ratings (g_kva 250 / 0.25, g_mva 300 / 0.3) where the port divides by the 3 phases of the first makeposseq (83.3333333333333 / 0.0833333333333333, 100 / 0.1). Measured 2026-10-17 against the pinned dss-python 0.15.7 / dss_capi 0.14.5 and the built engine by the corpus gate. Replacement pins as in capi-generator-makeposseq-rating.",
+      "measured": {
+        "date": "2026-10-17"
+      }
+    },
+    {
+      "id": "makeposseq-repeat-capi",
+      "case": "modes:makeposseq/makeposseq_pc_repeat.dss",
+      "channel": "capi_v0145",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "voltages"
+        },
+        {
+          "field": "y"
+        },
+        {
+          "field": "y_fingerprint"
+        },
+        {
+          "field": "injection"
+        },
+        {
+          "field": "yprim",
+          "name_re": "(?i)^load\\."
+        },
+        {
+          "field": "element",
+          "channels": [
+            "powers",
+            "losses",
+            "voltages_mag_ang",
+            "phase_losses",
+            "seq_voltages",
+            "seq_powers",
+            "cplx_seq_voltages",
+            "total_powers"
+          ]
+        },
+        {
+          "field": "element",
+          "name_re": "(?i)^(vsource|line|load|generator|pvsystem|storage)\\.",
+          "channels": [
+            "currents",
+            "currents_mag_ang",
+            "seq_currents",
+            "cplx_seq_currents"
+          ]
+        },
+        {
+          "field": "element",
+          "name_re": "(?i)^(vsource|line)\\.",
+          "channels": [
+            "residuals"
+          ]
+        }
+      ],
+      "cause_ref": "makeposseq-runs-again-on-a-reduced-circuit",
+      "source": "The PC deck converted twice (makeposseq_pc_repeat.dss). The oracle's second makeposseq divides the four loads' kW, kvar and xfkVA by 3 and both Vsources' BasekV by sqrt(3) again, so every node moves by 42 per cent (src.1 7192.84 V in the port, 4162.04 V on the oracle) and with it the powers, losses and voltage channels of all 16 elements, the currents of all but the Isource, the residuals of the three Lines and two Vsources, the assembled Y, its fingerprint, the injection and the four loads' YPrims. The Isource injects a fixed 5 A at 30 degrees and the conductor currents of each Load, Generator, PVSystem and Storage sum to zero, so the Isource's currents and residuals and the residuals of those ten read the same once and twice on the oracle (equal at 1e-12 relative with the pinned dss-python 0.15.7 on 2026-10-23) and stay compared: the element scope stands in three parts, the eight power, loss and voltage channels for every element, the four current channels for all but the Isource and the residuals for the Lines and Vsources. The loads' YPrims are the only ones that move: the Vsources keep R1/X1 in ohms, and the lines, generators, PVSystem, Storage and Isource keep their properties. Measured 2026-10-17 by the corpus gate against the pinned dss-python 0.15.7 / dss_capi 0.14.5 (DSS_GATE_SEED_LEDGER, then DSS_GATE_ONLY in both lanes): dropping any one scope, or any one of the 13 element sub-channels, reds the case on that surface (Vsource.source power 45.12 - j131.95 kVA in the port against 206.36 + j5.31 kVA on the oracle). Measured 2026-10-23 the same way in both lanes: the case is green with the three element scopes, each of them dropped reds it at Vsource.source (currents 2.087 + j6.116 A against 16.528 - j0.347 A, residual 6.463 A against 16.532 A, the power above), and a Load left out of the current scope or a Line left out of the residual scope reds it at Load.ld_wye currents or Line.feed residuals. The final solve takes the oracle's iteration count in both lanes, so no iterations scope. The port's values are pinned by exec::tests::make_pos_seq::refusals::the_repeat_deck_holds_the_solution_of_the_once_converted_deck (every node voltage and element power bit for bit those of the oracle-compared makeposseq_pc.dss solved once more) and by a_second_makeposseq_changes_nothing, makeposseq_on_a_circuit_declared_positive_sequence_changes_nothing and makeposseq_after_a_save_and_reload_changes_nothing beside it.",
+      "measured": {
+        "date": "2026-10-17"
+      }
+    },
+    {
+      "id": "makeposseq-repeat-capi-props",
+      "case": "modes:makeposseq/makeposseq_pc_repeat.dss",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^load\\.ld_wye\\.kw$",
+          "oracle": "44.4444444444445",
+          "rust": "133.333333333333"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_wye\\.kw$",
+          "oracle": "44.4444444444445",
+          "rust": "133.333333333333"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_wye\\.kvar$",
+          "oracle": "14.6081824523939",
+          "rust": "43.8245473571818"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_wye\\.kva$",
+          "oracle": "46.7836257309942",
+          "rust": "140.350877192982"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_delta\\.xfkva$",
+          "oracle": "55.5555555555556",
+          "rust": "166.666666666667"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_delta\\.kw$",
+          "oracle": "25.5555555555556",
+          "rust": "76.6666666666667"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_delta\\.kvar$",
+          "oracle": "10.8866210790363",
+          "rust": "32.659863237109"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld3\\.kw$",
+          "oracle": "22.2222222222222",
+          "rust": "66.6666666666667"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld3\\.kvar$",
+          "oracle": "7.30409122619696",
+          "rust": "21.9122736785909"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld3\\.kva$",
+          "oracle": "23.3918128654971",
+          "rust": "70.1754385964912"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_1ph\\.kw$",
+          "oracle": "8.88888888888889",
+          "rust": "26.6666666666667"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_1ph\\.kvar$",
+          "oracle": "2.92163649047878",
+          "rust": "8.76490947143635"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^load\\.ld_1ph\\.kva$",
+          "oracle": "9.35672514619883",
+          "rust": "28.0701754385965"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.basekv$",
+          "oracle": "4.15666666666667",
+          "rust": "7.19955785679463"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.mvasc3$",
+          "oracle": "13.9683362871157",
+          "rust": "41.905008861347"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.mvasc1$",
+          "oracle": "13.9683362871157",
+          "rust": "41.905008861347"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.isc3$",
+          "oracle": "1940.16584975881",
+          "rust": "3360.4658268923"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.isc1$",
+          "oracle": "3360.4658268923",
+          "rust": "5820.49754927643"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.puz1$",
+          "oracle": "[1.73632435567897, 6.94529742271588]",
+          "rust": "[0.578774785226323, 2.31509914090529]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.puz0$",
+          "oracle": "[1.73632435567897, 6.94529742271588]",
+          "rust": "[0.578774785226323, 2.31509914090529]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.source\\.puz2$",
+          "oracle": "[1.73632435567897, 6.94529742271588]",
+          "rust": "[0.578774785226323, 2.31509914090529]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.basekv$",
+          "oracle": "4.15666666666667",
+          "rust": "7.19955785679463"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.mvasc3$",
+          "oracle": "5.46374469117864",
+          "rust": "16.3912340735359"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.mvasc1$",
+          "oracle": "5.46374469117864",
+          "rust": "16.3912340735359"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.isc3$",
+          "oracle": "758.90003245438",
+          "rust": "1314.45341407666"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.isc1$",
+          "oracle": "1314.45341407666",
+          "rust": "2276.70009736314"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.puz1$",
+          "oracle": "[5.78774785226323, 17.3632435567897]",
+          "rust": "[1.92924928408774, 5.78774785226323]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.puz0$",
+          "oracle": "[5.78774785226323, 17.3632435567897]",
+          "rust": "[1.92924928408774, 5.78774785226323]"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^vsource\\.v2\\.puz2$",
+          "oracle": "[5.78774785226323, 17.3632435567897]",
+          "rust": "[1.92924928408774, 5.78774785226323]"
+        }
+      ],
+      "cause_ref": "makeposseq-runs-again-on-a-reduced-circuit",
+      "source": "The 28 property cells and the Load.ld_wye.kW probe that the oracle's second makeposseq moves on makeposseq_pc_repeat.dss: kW, kvar and kVA (xfkVA on the delta load) of the four loads, divided by 3 again, and BasekV of both Vsources, divided by sqrt(3) again, with the Isc3, Isc1, MVAsc3, MVAsc1 and puZ1/puZ0/puZ2 derived from it. rust is the port's once value, which is the oracle's own reading of makeposseq_pc.dss, and oracle the pinned dss_capi 0.14.5's twice value. Measured 2026-10-17 by the corpus gate against the pinned dss-python 0.15.7 in both lanes (the same strings in each). The port's values are pinned by exec::tests::make_pos_seq::refusals::a_second_makeposseq_changes_nothing and by the repeat sections of the four makeposseq pins of tests/props_r4133_pins.rs, which also reproduce r4133's census literals of this circuit from them.",
+      "measured": {
+        "date": "2026-10-17"
       }
     },
     {

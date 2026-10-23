@@ -8,7 +8,9 @@ use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::dyneq_pce::DynEqHost;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
@@ -23,6 +25,24 @@ impl CktElement for Generator {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// Wye or delta legs by the connection, rated at `kV`, each generating
+    /// `1000 (kW + j kvar) / N` VA, its rated output. The Y stamp follows the
+    /// dispatch multiplier, the shape factor, the on and off state and the
+    /// model, and a one-phase delta stamp holds a third of the rating.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let n = self.cd.nphases;
+        let delta = self.connection == Connection::Delta;
+        let v = legs::v_leg_of(self.kv_generator_base, n, delta);
+        let s = -Complex64::new(self.kw_base, self.kvar_base) * (1000.0 / n as f64);
+        Some(legs::connected(n, delta, PosSeqLegKind::Lumped, v, s))
+    }
+
+    /// `(1, a², a)` for a three-phase `Model=7` generator with `Balanced=yes`.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        (self.cd.nphases == 3 && self.gen_model == 7 && self.force_balanced)
+            .then(|| legs::abc().to_vec())
     }
 
     /// Pascal `TGeneratorObj.MakePosSequence` (`generator.pas:2726`). Single

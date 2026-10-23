@@ -989,6 +989,7 @@ const MODES_REQUIRED: &[&str] = &[
     // is nondeterministic on any deck that instantiates a GICTransformer.
     "makeposseq/makeposseq_gic.dss",
     "makeposseq/makeposseq_pc.dss",
+    "makeposseq/makeposseq_pc_repeat.dss",
     "makeposseq/makeposseq_ctrl.dss",
     "makeposseq/makeposseq_report.dss",
     "time/daily.dss",

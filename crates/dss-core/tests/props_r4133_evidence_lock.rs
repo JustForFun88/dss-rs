@@ -347,7 +347,10 @@ const CENSUS_IN_SCOPE: (usize, &str) = (
 /// — one of [`CENSUS_OUT_OF_SCOPE`] named here reds. At RF-D00-16 the live
 /// manifests hold 526 cases (366 `both` + 101 `r4133` + 59 `capi_v0145`), 467
 /// in scope = the census's 462 + these five; the other change since, three GIC
-/// decks moved `both` → `r4133`, stays in scope and moves nothing.
+/// decks moved `both` → `r4133`, stays in scope and moves nothing. The live
+/// manifests hold 527 cases (366 + 101 + 60) since
+/// `modes:makeposseq/makeposseq_pc_repeat.dss` joined as a `capi_v0145` case,
+/// outside the in-scope population, so the 467 stand.
 const IN_SCOPE_ADDED_SINCE_CENSUS: &[&str] = &[
     "asymmetric:autotrans/autotrans_xfmrcode.dss",
     "controls:energymeter/midi_relcalc.dss",

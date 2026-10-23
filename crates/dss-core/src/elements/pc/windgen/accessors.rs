@@ -10,7 +10,9 @@ use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::pc::dyneq_pce::{DynEqHost, DynEqPce, DynEqPceData};
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad};
@@ -25,6 +27,17 @@ impl CktElement for WindGen {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// Wye or delta legs by the connection, rated at `kV`, each generating
+    /// `1000 (kW + j kvar) / N` VA, its rated output, not the wind power its
+    /// Y stamp follows.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let n = self.cd.nphases;
+        let delta = self.connection == Connection::Delta;
+        let v = legs::v_leg_of(self.kv_windgen_base, n, delta);
+        let s = -Complex64::new(self.kw_base, self.kvar_base) * (1000.0 / n as f64);
+        Some(legs::connected(n, delta, PosSeqLegKind::Lumped, v, s))
     }
 
     /// Pascal `TWindGenObj.MakePosSequence` (`WindGen.pas:2184`). Single phase,

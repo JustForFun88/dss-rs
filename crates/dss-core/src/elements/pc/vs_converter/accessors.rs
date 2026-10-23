@@ -5,7 +5,9 @@ use num_complex::Complex64;
 use super::{VsConverter, VscMode, prop};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
@@ -16,6 +18,25 @@ impl CktElement for VsConverter {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// One leg per AC conductor to earth, rated at `kVac`, the converter's
+    /// line-to-neutral voltage, whatever the number of AC conductors. Its Y
+    /// stamp holds no nominal power.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let n_ac = self.cd.nphases.saturating_sub(self.ndc);
+        Some(legs::to_earth(
+            n_ac,
+            PosSeqLegKind::Lumped,
+            self.f_kvac * 1000.0,
+            Complex64::ZERO,
+        ))
+    }
+
+    /// `exp(-j2πk/n)` over its `n` AC conductors.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        let n_ac = self.cd.nphases.saturating_sub(self.ndc);
+        (n_ac > 0).then(|| legs::rotation(n_ac))
     }
 
     /// Pascal `TVSConverterObj.MakePosSequence` (VSConverter.pas:485-494): unless

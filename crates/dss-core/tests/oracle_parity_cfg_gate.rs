@@ -9418,6 +9418,7 @@ const WALK_SITES: &[(&str, usize)] = &[
         "crates/dss-core/src/elements/general/load_shape/tests.rs",
         1,
     ),
+    ("crates/dss-core/src/elements/pos_seq/balance.rs", 1),
     ("crates/dss-core/src/exec/tests/allocation.rs", 1),
     ("crates/dss-core/src/exec/tests/element_extras.rs", 1),
     ("crates/dss-core/src/exec/tests/in_show_results.rs", 1),

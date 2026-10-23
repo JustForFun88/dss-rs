@@ -898,12 +898,12 @@ port's own state through a cited Pascal round trip, and the port is exact. **No
 product crate moved and no `rust` spelling in these extracts went stale.
 
 One mechanism covers all five chains: `MakePosSequence` scripts its conversion as
-a command string of five-significant-digit tokens and lets its own `Edit`
-re-parse them (`Parser.CmdString := S; Edit`), so everything r4133 derives
-afterwards is derived from the rounded input; the port applies the same
-conversion as typed `f64` setters (`exec/make_pos_seq.rs:200`, WPG.21) and keeps
-the exact value. Where the getter then prints full precision on both sides
-(`Format('%g')` / `%-g`), the two 15-digit strings differ in the 6th-7th digit —
+a command string of five-significant-digit tokens and reads them back through
+its own edit, so everything r4133 derives afterwards is derived from the
+rounded input. The port applies the same conversion as typed `f64` setters
+(`exec::make_pos_seq::apply::apply_pos_seq_actions`) and keeps the exact value.
+Where the getter then prints full precision on both sides, the two 15-digit
+strings differ in the 6th-7th digit —
 which is why `props_norm::display_is_render` refuses these rows, and why they are
 not a display artifact.
 
@@ -957,10 +957,10 @@ channel, in this shape (drafted here, deliberately **not** written to
   "case": "modes:makeposseq/makeposseq_<deck>.dss",
   "kind": "property", "class": "Load", "name": "ld_wye", "prop": "kva",
   "reason": "r4133's MakePosSequence scripts the conversion as %-.5g tokens and
-             re-parses them (Load.pas:2326 -> :2331-2332), so :1145 derives kVA
-             from the rounded pair; the port applies typed setters
-             (exec/make_pos_seq.rs:200) and keeps the exact value. Precision
-             class, upstream-rooted. Pinned by
+             reads them back, so it derives kVA from the rounded pair. The
+             port applies typed setters
+             (exec::make_pos_seq::apply::apply_pos_seq_actions) and keeps the
+             exact value. Precision class, upstream-rooted. Pinned by
              load_kva_after_makeposseq_is_the_exact_typed_conversion." }
 ```
 

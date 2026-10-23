@@ -79,11 +79,12 @@ impl Line {
         // values in ohms per unit length
     }
 
-    /// Pascal `TLineObj.FMakeZFromGeometry` (Line.pas:1929): build the total
-    /// `Z`/`Yc` (length + units already folded in) from the attached geometry at
-    /// frequency `f`, recomputing only when `f` differs from the last build. The
-    /// geometry's `ActiveEarthModel` is this Line's `FEarthModel`. Returns the
-    /// geometry's error (Pascal raises `ELineGeometryProblem` + `SolutionAbort`).
+    /// Build the total `Z`/`Yc` (length and units folded in) from the attached
+    /// geometry at frequency `f`, returning the last build when `f` is its
+    /// frequency. The geometry takes this Line's earth model. Returns the
+    /// geometry's error, which refuses the Line at the Y build. The guard for a
+    /// Line that holds no geometry is defensive: both callers, `calc_yprim`
+    /// and `make_pos_sequence`, take this path only when the Line holds one.
     fn make_z_from_geometry(&mut self, f: f64) -> Result<(), String> {
         if f == self.fz_frequency {
             return Ok(()); // already done for this frequency
@@ -92,10 +93,12 @@ impl Line {
         let units = self.length_units.code();
         let earth_model = self.earth_model;
         let (eps, h_off, h_unit) = (self.eps_r_medium, self.height_offset, self.height_units);
-        let geom = self
-            .geometry_obj
-            .as_mut()
-            .expect("make_z_from_geometry called without a geometry");
+        let Some(geom) = self.geometry_obj.as_mut() else {
+            return Err(format!(
+                "Line.{} has no LineGeometry to build its impedance from.",
+                self.cd.obj.name()
+            ));
+        };
         // dss_capi 0.15.x (Line.pas:2049-2051): push EpsRMedium/HeightOffset/
         // HeightUnit into the geometry's engine *before* the matrix read (which
         // recomputes because these flag `rhoChanged`).
@@ -108,12 +111,17 @@ impl Line {
         Ok(())
     }
 
-    /// Pascal `TLineObj.FMakeZFromSpacing` (Line.pas:1964): build the total
-    /// `Z`/`Yc` from the attached `LineSpacing` + wire list via a throwaway
-    /// `LineGeometry` (Pascal `pGeo`), recomputing only on a frequency change.
-    /// Length + units are folded into the geometry's `Zmatrix[f, len, units]`, so
-    /// the result is total (like the geometry path). Returns the geometry's error
-    /// (Pascal raises `ELineGeometryProblem` + `SolutionAbort`).
+    /// Build the total `Z`/`Yc` from the attached `LineSpacing` and conductor
+    /// list through a throwaway `LineGeometry` at frequency `f`, returning the
+    /// last build when `f` is its frequency. A conductor edit, a `spacing=`
+    /// miss and a switch to the spacing model drop the last build (see
+    /// `side_effects`), and `make_pos_sequence` drops it before its own build,
+    /// so each of them builds afresh. Other edits leave the last build in
+    /// place until the frequency changes. Length and units are folded in by
+    /// `LineGeometryObj::z_matrix`, so the result is total, as on the geometry
+    /// path. Returns the geometry's error, which refuses the Line at the Y
+    /// build. A Line whose `spacing=` named no LineSpacing that exists after
+    /// its wires were given holds no spacing and gets an error naming it.
     fn make_z_from_spacing(&mut self, f: f64) -> Result<(), String> {
         if f == self.fz_frequency {
             return Ok(()); // already done for this frequency
@@ -133,10 +141,12 @@ impl Line {
         // equivalent-spacing average heights).
         let mut pgeo = LineGeometryObj::new(self.cd.obj.name().to_string());
         {
-            let spc = self
-                .line_spacing_obj
-                .as_ref()
-                .expect("make_z_from_spacing called without a spacing");
+            let Some(spc) = self.line_spacing_obj.as_ref() else {
+                return Err(format!(
+                    "Line.{} has no LineSpacing to build its impedance from.",
+                    self.cd.obj.name()
+                ));
+            };
             pgeo.name_errors_after_line(self.cd.obj.name(), spc.data().name());
             pgeo.load_spacing_and_wires(
                 spc,
@@ -224,6 +234,32 @@ impl CktElement for Line {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// The solve itself, run on a clone at the base frequency: the first
+    /// message it queues, the singular series impedance (code 183) or the
+    /// impedance a geometry or spacing cannot build. A geometry's message
+    /// names the geometry alone, so this Line's name leads it, as
+    /// `exec::tests::make_pos_seq::refusals::a_line_whose_geometry_cannot_build_its_impedance_stops_makeposseq`
+    /// pins. The probe builds the impedance afresh and leaves the long-line
+    /// correction off, which keeps a singular `Z` singular and a regular one
+    /// regular, so it refuses what a solve that builds the impedance refuses.
+    fn pos_seq_refusal(&self) -> Option<String> {
+        let base = self.cd.base_frequency;
+        let sys = SysCtx {
+            frequency: base,
+            fundamental: base,
+            ..SysCtx::parse_default()
+        };
+        let mut probe = self.clone();
+        probe.fz_frequency = -1.0;
+        let _ = probe.cd.obj.take_errors();
+        probe.calc_yprim(&sys);
+        let first = probe.cd.obj.take_errors().into_iter().next()?;
+        if first.yprim_unbuilt && self.geometry_obj.is_some() {
+            return Some(format!("Line.{}: {}", self.cd.obj.name(), first.message));
+        }
+        Some(first.message)
     }
 
     fn line_length_km(&self) -> Option<f64> {
@@ -557,54 +593,84 @@ impl CktElement for Line {
         self.cd.yprim_invalid = false;
     }
 
-    /// Pascal `TLineObj.MakePosSequence` (Line.pas:1531-1629). Collapse a
-    /// multi-phase line to its positive-sequence single-phase equivalent. Only
-    /// acts when `FnPhases > 1`; a line already single-phase is left alone and
-    /// only the base bus rename runs (`inherited`). The property mutations are
-    /// returned as a [`PosSeqPlan`]; the `PrpSequence` clears (Pascal
-    /// `PrpSequence[..] := 0`, for a cleaner save) are direct self-mutations.
+    /// Collapse a multi-phase line to its positive-sequence single-phase
+    /// equivalent. A line already single-phase is left alone and only the
+    /// base bus rename runs. The property writes are returned as a
+    /// [`PosSeqPlan`], and the set-order marks of the impedance properties are
+    /// cleared here, for a cleaner save.
     ///
     /// Three source branches:
-    /// - `IsSwitch`: fixed switch constants (R1=1, X1=1, C1=1.1 nF, Phases=1,
+    /// - a switch: fixed switch constants (R1=1, X1=1, C1=1.1 nF, Phases=1,
     ///   Length=0.001).
-    /// - `SymComponentsModel`: keep the existing Z1 (R1, X1); C1 → nF.
-    /// - matrix/geometry/spacing: Z1 is the mean diagonal minus the mean
-    ///   off-diagonal term of the solve-derived `Z`. C1 is the
-    ///   positive-sequence self term of `Yc`: `(Σ C_ii − Σ_{i<j} C_ij) / 3` for
-    ///   two or three phases (the matrix embedded in three phases), the mean
-    ///   diagonal minus the mean off-diagonal term above three. Both divide by
-    ///   `FUnitsConvert` (and, for the total-matrix geometry/spacing forms, the
-    ///   embedded length via `LengthMult`). Pinned by
+    /// - the symmetrical components: keep the existing Z1 (R1, X1), C1 in nF.
+    /// - matrix, geometry or spacing: Z1 is the mean diagonal minus the mean
+    ///   off-diagonal term of `Z`. C1 is the positive-sequence self term of
+    ///   `Yc`: `(Σ C_ii − Σ_{i<j} C_ij) / 3` for two or three phases (the
+    ///   matrix embedded in three phases), the mean diagonal minus the mean
+    ///   off-diagonal term above three. A matrix given per unit length is
+    ///   divided by the length-units factor, which takes it to the Line's
+    ///   length unit. The total matrices of a geometry or a spacing, built in
+    ///   the Line's own unit, are divided by the length they hold alone, as
+    ///   the `units=` leg of
+    ///   `exec::tests::make_pos_seq::line_data::a_line_is_reduced_from_its_present_data_at_the_base_frequency`
+    ///   pins. Pinned by
     ///   `elements::pd::line::tests::make_pos_sequence_matrix_branch` (three
     ///   phases, to the bit) and its two-phase and four-conductor siblings.
+    ///
+    /// A geometry or spacing Line is reduced from the impedance its present
+    /// data give at the base frequency, built afresh here whatever the last
+    /// build left: no build, a build before an edit of the conductors, the
+    /// spacing, the length or its unit, or a build at another frequency (a
+    /// solve at another frequency, a harmonics study). The pins are the legs of
+    /// `exec::tests::make_pos_seq::line_data::a_line_is_reduced_from_its_present_data_at_the_base_frequency`,
+    /// `a_line_no_solve_built_is_reduced_from_its_conductors` and
+    /// `a_wires_edit_gives_the_line_of_those_wires`.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use prop::*;
 
-        // Pascal snapshots NormAmps/EmergAmps/LengthUnits before editing so it
-        // can restore them after the edit's unexpected resets.
-        let norm_amps0 = self.norm_amps;
-        let emerg_amps0 = self.emerg_amps;
-        let length_units0 = self.length_units.code();
-
-        // If already single phase, let alone — just run `inherited`.
+        // If already single phase, let alone: only the base bus rename runs.
         if self.cd.nphases <= 1 {
             return PosSeqPlan::base();
         }
 
+        if !self.is_switch
+            && !self.sym_components_model
+            && (self.geometry_obj.is_some() || self.spacing_specified)
+        {
+            let base = self.cd.base_frequency;
+            self.fz_frequency = -1.0;
+            let built = if self.geometry_obj.is_some() {
+                self.make_z_from_geometry(base)
+            } else {
+                self.make_z_from_spacing(base)
+            };
+            // The analysis built the same impedance on a clone and refused the
+            // Line on any error (`pos_seq_refusal`), so the build succeeds.
+            if let Err(message) = built {
+                debug_assert!(false, "{message}");
+                self.cd
+                    .obj
+                    .push_error(crate::diag::DssDiagnostic::yprim_unbuilt(message));
+            }
+        }
+
+        // The ratings and the length units, read before the writes reset them.
+        let norm_amps0 = self.norm_amps;
+        let emerg_amps0 = self.emerg_amps;
+        let length_units0 = self.length_units.code();
+
         let mut actions = vec![PosSeqAction::BeginEdit];
 
-        // Kill certain propertyvalue elements to get a cleaner looking save
-        // (Pascal `PrpSequence[ord(TProp.X)] := 0` — direct self-mutation).
+        // Clear the set-order marks of the impedance properties for a cleaner
+        // save.
         for p in [LINECODE, R1, X1, R0, X0, C1, C0, RMATRIX, XMATRIX, CMATRIX] {
             self.cd.obj.clear_seq(p);
         }
 
-        // If GeometrySpecified or SpacingSpecified, length is embedded in Z/Yc.
-        let length_mult = if self.geometry_obj.is_some() || self.spacing_specified {
-            self.len
-        } else {
-            1.0
-        };
+        // A geometry or a spacing gives total matrices in the Line's own
+        // length unit, which hold the length.
+        let total = self.geometry_obj.is_some() || self.spacing_specified;
+        let length_mult = if total { self.len } else { 1.0 };
 
         if self.is_switch {
             actions.push(PosSeqAction::SetF64(R1, 1.0));
@@ -619,8 +685,11 @@ impl CktElement for Line {
             } else {
                 // matrix was input directly, or built from physical data:
                 // average the diagonal and off-diagonal elements.
-                let z = self.z.as_ref().expect("Z built at RecalcElementData");
-                let yc = self.yc.as_ref().expect("Yc built at RecalcElementData");
+                let z = self.z.as_ref().expect("Z built by the recalc or the build");
+                let yc = self
+                    .yc
+                    .as_ref()
+                    .expect("Yc built by the recalc or the build");
                 let np = self.cd.nphases;
                 let npf = np as f64;
 
@@ -662,9 +731,11 @@ impl CktElement for Line {
                         * 1.0e9
                 }; // nanofarads
 
-                // compensate for length units
-                z1 /= self.units_convert;
-                c1_new /= self.units_convert;
+                // A matrix per unit length takes the Line's length unit.
+                if !total {
+                    z1 /= self.units_convert;
+                    c1_new /= self.units_convert;
+                }
                 (z1, c1_new)
             };
             actions.push(PosSeqAction::SetF64(R1, z1.re));
@@ -680,7 +751,7 @@ impl CktElement for Line {
         actions.push(PosSeqAction::SetI32(UNITS, length_units0));
         actions.push(PosSeqAction::EndEdit);
 
-        // `inherited MakePosSequence` runs the base bus rename afterwards.
+        // The base bus rename runs afterwards.
         PosSeqPlan::with_actions(actions)
     }
 }

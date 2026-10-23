@@ -5,7 +5,9 @@ use num_complex::Complex64;
 
 use super::{GicTransformer, SPEC_AUTO, SPEC_GSU, SPEC_YY};
 use crate::elements::ckt::CktElementData;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::CMatrix;
 
@@ -125,6 +127,28 @@ impl CktElement for GicTransformer {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// Branches winding by winding as its stamp walks them, terminal 1 to
+    /// terminal 2 and, for `Auto` and `YY`, terminal 3 to terminal 4, each
+    /// given by conductance. `phase` counts the legs over both windings.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let cd = &self.cd;
+        let n = cd.nphases;
+        let t2 = cd.nconds;
+        let t3 = t2 + cd.nconds;
+        let t4 = t3 + cd.nconds;
+        let winding =
+            |from, to| legs::branch(n, from, to, PosSeqLegKind::Lumped, 0.0, Complex64::ZERO);
+        let mut out = match self.spec_type {
+            SPEC_GSU => winding(0, t2),
+            SPEC_AUTO | SPEC_YY => [winding(0, t2), winding(t3, t4)].concat(),
+            _ => Vec::new(),
+        };
+        for (phase, leg) in out.iter_mut().enumerate() {
+            leg.phase = phase;
+        }
+        Some(out)
     }
 
     /// Pascal `TGICTransformerObj.MakePosSequence` (GICTransformer.pas:586-591):

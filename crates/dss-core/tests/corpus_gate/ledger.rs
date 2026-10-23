@@ -587,7 +587,10 @@ impl LedgerRuntime {
 /// (`cargo test -p dss-core --test corpus_gate -- --nocapture`, the lines under
 /// `corpus_gate bus arrays suppressed (D11(2))`): the eight deck-wide
 /// `voltages` exclusions of `tests/corpus/ledger.json`, each fired on its own
-/// case. The normalization is one structural rule rather than a ledger row per
+/// case. Nine since 2026-10-17: `makeposseq-repeat-capi` excludes every node
+/// voltage of `modes:makeposseq/makeposseq_pc_repeat.dss`, whose second
+/// `makeposseq` reduces the circuit again on the oracle and changes nothing in
+/// the port. The normalization is one structural rule rather than a ledger row per
 /// case, so nothing else notices it move: a new deck-wide `voltages` exclusion
 /// silences that case's bus arrays too, and a removed one stops silencing them.
 /// [`LedgerRuntime::assert_bus_array_suppressions_are_pinned`] re-derives the
@@ -607,6 +610,11 @@ pub(crate) const BUS_ARRAY_SUPPRESSIONS: &[(&str, &str, EngineChannel)] = &[
     (
         "modes:inputformat/shape_mmf/shape_mmf.dss",
         "mmf-accept-set-honoured-capi",
+        EngineChannel::CapiV0145,
+    ),
+    (
+        "modes:makeposseq/makeposseq_pc_repeat.dss",
+        "makeposseq-repeat-capi",
         EngineChannel::CapiV0145,
     ),
     (
@@ -4037,7 +4045,12 @@ fn the_loader_refuses_every_shape_parse_ledger_refuses() {
 /// `GICTransformer` deck onto the `r4133` channel alone — a SHRINK of the
 /// inheritance, i.e. two decks whose capi aggregate value arms now compare
 /// against the oracle again.
-const AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER: [(&str, &str); 12] = [
+///
+/// 12 → 13 on 2026-10-17: `makeposseq-repeat-capi` excludes every element's
+/// powers and losses on `modes:makeposseq/makeposseq_pc_repeat.dss`, whose
+/// second `makeposseq` reduces the circuit again on the oracle and changes
+/// nothing in the port.
+const AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER: [(&str, &str); 13] = [
     ("asymmetric:combo/combo_mesh_asym.dss", "r4133"),
     ("asymmetric:combo/midi_asym.dss", "r4133"),
     ("asymmetric:gic/gic_midi.dss", "r4133"),
@@ -4045,6 +4058,7 @@ const AGGREGATE_VALUE_ARMS_INHERITING_THE_ELEMENT_LEDGER: [(&str, &str); 12] = [
     ("asymmetric:indmach/indmach_asym.dss", "r4133"),
     ("asymmetric:indmach/midi_indmach_asym.dss", "r4133"),
     ("modes:inputformat/shape_mmf/shape_mmf.dss", "capi_v0145"),
+    ("modes:makeposseq/makeposseq_pc_repeat.dss", "capi_v0145"),
     ("modes:makeposseq/makeposseq_shunt.dss", "capi_v0145"),
     ("modes:windgen/windgen_daily.dss", "r4133"),
     ("modes:windgen/windgen_dyn.dss", "r4133"),

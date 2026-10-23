@@ -8,7 +8,7 @@ use super::GicSource;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pd::line::Line;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqPlan, legs};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ArenaClass;
 use crate::obj::base::RefAction;
@@ -113,6 +113,11 @@ impl CktElement for GicSource {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// The conductor pairs from terminal 1 to terminal 2.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        Some(legs::through(self.cd.nphases, self.cd.nconds))
     }
 
     /// Pascal `TGICSourceObj.MakePosSequence` (GICsource.pas:471-476): a

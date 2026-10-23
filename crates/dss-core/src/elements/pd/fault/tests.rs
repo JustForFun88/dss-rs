@@ -366,15 +366,22 @@ fn make_pos_sequence_gmatrix_fault_keeps_its_current() {
     balance::assert_rel(fg.currents[0].norm(), v * g1, 1e-9, "|I| vs |V1| S(G)");
 }
 
-/// Two phases reduce by the same self term, `S(G) = (G11 + G22 − G12) / 3`.
-/// Under a balanced voltage the two-phase fault draws
-/// `|V1|² (G11 + G22 − G12)`, three times `|V1|² S(G)`, so the one-phase
-/// fault keeps its power: `[0.12 | 0 0.12]` gets an `R` of 12.5 ohm (about
-/// 12440.07 kW) and `[0.12 | -0.02 0.12]` one of `3 / 0.26` ohm. The `r=`
-/// spelling of the first fault keeps its per-phase value under the reduction,
-/// which is open question 1, so it is not asserted here.
+/// A one- or two-phase fault has no positive-sequence form (IEEE Std
+/// 551-2006 section 3.6.12, p. 61: an unbalanced fault invalidates the
+/// single-phase equivalent), so `makeposseq` refuses it: one message naming
+/// the first such fault, code `None`, the saved circuit byte-identical, the
+/// circuit not flagged positive-sequence, both faults still two-phase with
+/// their matrices, and the solve after the refusal giving each fault its power
+/// before. Under a balanced voltage the two-phase fault draws
+/// `|V1|² (G11 + G22 − G12)`.
+///
+/// The element method, which the command does not reach for such a fault,
+/// still keeps the power on a direct call: it writes `Phases=1` and the
+/// resistance `1 / S(G)`, with `S(G) = (G11 + G22 − G12) / 3`, so
+/// `[0.12 | 0 0.12]` gets 12.5 ohm and `[0.12 | -0.02 0.12]` gets
+/// `3 / 0.26` ohm.
 #[test]
-fn make_pos_sequence_two_phase_gmatrix_fault_keeps_its_power() {
+fn makeposseq_refuses_a_two_phase_gmatrix_fault_and_keeps_its_power() {
     use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, balance};
     let cases = [
         ("f2", "[0.12 | 0 0.12]", [0.12, 0.0, 0.0, 0.12], 12.5),
@@ -407,23 +414,56 @@ fn make_pos_sequence_two_phase_gmatrix_fault_keeps_its_power() {
             "new fault.{name} bus1=b.1.2 phases=2 gmatrix={gm}"
         ));
     }
-    let pairs = balance::reduce(&mut dss, &["Fault.f2", "Fault.f2c"]);
+    balance::solve_clean(&mut dss, "before makeposseq");
     let v = balance::v1(&dss, "b");
-    for ((name, _, g, r), (before, after)) in cases.into_iter().zip(pairs) {
+    for (name, _, g, _) in cases {
         let full = format!("Fault.{name}");
-        balance::assert_kept(before, after, &full);
         balance::assert_rel(
-            after.re,
+            balance::power(&mut dss, &full).re,
             v * v * (g[0] + g[3] - g[1]) / 1000.0,
             1e-9,
             &format!("{full}: kW vs |V1|² (G11 + G22 − G12)"),
         );
-        balance::assert_rel(
-            balance::query_f64(&mut dss, &format!("{full}.r")),
-            r,
-            1e-12,
-            &format!("{full}.r after makeposseq"),
-        );
+    }
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "second solve: {:?}", dss.errors());
+    let source_before = balance::source_power(&mut dss);
+    let before: Vec<Complex64> = cases
+        .iter()
+        .map(|(name, ..)| balance::power(&mut dss, &format!("Fault.{name}")))
+        .collect();
+    let matrices: Vec<String> = cases
+        .iter()
+        .map(|(name, ..)| {
+            dss.command(&format!("? fault.{name}.gmatrix"));
+            dss.result().to_string()
+        })
+        .collect();
+    let saved = balance::saved_circuit(&mut dss, "flt2");
+
+    dss.command("makeposseq");
+    let errors = dss.errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(
+        errors[0].text(),
+        "MakePosSequence: Fault.f2 has 2 phases. A one- or two-phase fault has no \
+         positive-sequence form. Nothing was changed."
+    );
+    assert_eq!(errors[0].code, None);
+    assert_eq!(balance::saved_circuit(&mut dss, "flt2"), saved);
+    assert!(!dss.circuit().unwrap().positive_sequence);
+    for ((name, ..), matrix) in cases.iter().zip(&matrices) {
+        dss.command(&format!("? fault.{name}.phases"));
+        assert_eq!(dss.result(), "2", "Fault.{name}.phases");
+        dss.command(&format!("? fault.{name}.gmatrix"));
+        assert_eq!(dss.result(), matrix, "Fault.{name}.gmatrix");
+    }
+
+    let source_after = balance::solve_after_refusal(&mut dss, "after the refusal");
+    balance::assert_kept(source_before, source_after, "the source");
+    for ((name, ..), before) in cases.iter().zip(before) {
+        let full = format!("Fault.{name}");
+        balance::assert_kept(before, balance::power(&mut dss, &full), &full);
     }
 }
 

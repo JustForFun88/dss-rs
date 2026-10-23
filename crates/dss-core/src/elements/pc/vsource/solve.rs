@@ -6,7 +6,7 @@ use num_complex::Complex64;
 use super::{VSource, VsourceZSpec, get_vmag};
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqPlan, legs};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{CALPHA, EPSILON, quad_solver, sqrt3};
@@ -168,6 +168,25 @@ impl CktElement for VSource {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// The conductor pairs from terminal 1 to terminal 2 when terminal 2
+    /// reaches a node other than earth, else none.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let cd = &self.cd;
+        legs::reaches_a_live_node(cd.get_bus(2), cd.nphases, cd.nconds)
+            .then(|| legs::through(cd.nphases, cd.nconds))
+    }
+
+    /// `(1, a², a)`, `(1, -1)` or `(1)` by the phase count.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        let one = Complex64::new(1.0, 0.0);
+        match self.cd.nphases {
+            3 => Some(legs::abc().to_vec()),
+            2 => Some(vec![one, -one]),
+            1 => Some(vec![one]),
+            _ => None,
+        }
     }
 
     /// Pascal `TVsourceObj.MakePosSequence` (`VSource.pas:1201`). Single phase,

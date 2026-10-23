@@ -16,7 +16,9 @@ use crate::elements::pc::inv_based_pce::VarMode;
 use crate::elements::pc::inv_based_pce::{
     Connection, InvBasedPce, InvBasedPceData, InvDynamicVars, NUM_INV_DYN_VARS,
 };
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad, UserModelSlot};
@@ -68,6 +70,37 @@ impl CktElement for Storage {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// Wye or delta legs by the connection, rated at `kV`, each drawing what
+    /// its power-flow stamp puts on it in its present state: `Yeq` charging,
+    /// `-Yeq` discharging and nothing idling, a third of it on a delta leg. A
+    /// grid-forming unit draws nothing in any state: it stamps no admittance
+    /// charging or idling, and discharging it stamps a source impedance, which
+    /// holds no nominal power.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let n = self.cd.nphases;
+        let delta = self.base.connection == Connection::Delta;
+        let v = legs::v_leg_of(self.kv_storage_base, n, delta);
+        let y = match self.f_state {
+            _ if self.base.gfm_mode => Complex64::ZERO,
+            StorageState::Charging => self.yeq_discharge,
+            StorageState::Discharging => -self.yeq_discharge,
+            _ => Complex64::ZERO,
+        };
+        let y = if delta { y / 3.0 } else { y };
+        Some(legs::connected(
+            n,
+            delta,
+            PosSeqLegKind::Lumped,
+            v,
+            legs::s_leg_of(v, y),
+        ))
+    }
+
+    /// `(1, a², a)` for a three-phase unit with `Balanced=yes`.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        (self.cd.nphases == 3 && self.base.force_balanced).then(|| legs::abc().to_vec())
     }
 
     /// Pascal `TStorageObj.MakePosSequence` (`Storage.pas:3320`). Single phase,

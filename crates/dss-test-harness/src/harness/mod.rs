@@ -4705,7 +4705,7 @@ const SEQ_ARM_CENSUS_MEASURED: (usize, usize, usize) = (297_867, 78, 4);
 /// The floors under the two measured counts of [`SEQ_ARM_CENSUS_MEASURED`].
 ///
 /// `seen` catches a compare that stopped running or a mass un-gating of
-/// `compare_derived`; `posseq_capi` (contributed by the six
+/// `compare_derived`; `posseq_capi` (contributed by the
 /// `modes/makeposseq/*` decks) catches the collapse D-b1's ledgering rests on -
 /// the correct 1-phase-posseq layout is oracle-gated on that channel alone, so
 /// if all but one of those decks stopped gating the arm the claim would be
@@ -4764,15 +4764,16 @@ pub fn seq_arm_counters() -> (usize, usize, usize) {
 
 /// **The population guard behind D-b1's zero ledger rows.**
 ///
-/// `GOLDEN_REBASE_PLAN.md` G1.3b settles a real r4133 defect in the
-/// 1φ-positive-sequence arm of `SeqPowers`: mode `9` writes that arm with
-/// `Count := 2` and `inc(count)` (`DDLL/DCktElement.pas:760`, `:768`) — the
-/// 1-based `iV := 2` / `Inc(iV, 3)` of `CalcSeqCurrents` (`:50`, `:55`)
-/// transplanted onto a **0-based** dynamic array with the wrong stride — so the
-/// terminal's positive-sequence power lands in slot `3t+2` and then walks into
-/// the next terminal's slots, while capi's `iCount := 1` / `inc(icount, 3)`
-/// (`CAPI/CAPI_Alt.pas:555`, `:562`) is right. The port emits capi's layout
-/// because it is the correct one, and the gated corpus reaches that arm on the
+/// A real r4133 defect sits in the 1φ-positive-sequence arm of `SeqPowers`:
+/// r4133 writes the positive-sequence power of terminal `t` in slot `t+2`
+/// (slots 2, 3, 4, …): one slot late for the first terminal, one slot early
+/// for the second (its own zero-sequence slot) and in an earlier terminal's
+/// triple from the third on, while DSS C-API 0.14.5 writes it in slot `3t+1`
+/// of the `(0, +, −)` triple, which is right
+/// (both readings in
+/// `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`).
+/// The port emits that layout because it is the correct one, and the gated
+/// corpus reaches that arm on the
 /// **r4133** channel through exactly one deck —
 /// `modes/makeposseq/makeposseq_gic.dss`, which is gated on that channel and
 /// whose `solve → makeposseq → solve` tail leaves all four of its elements
@@ -4781,9 +4782,9 @@ pub fn seq_arm_counters() -> (usize, usize, usize) {
 /// `element`/`seq_powers` and nothing else because `SeqCurrents`/`SeqVoltages` are
 /// right on r4133 and stay compared, with the both-numbers pin
 /// `the_gic_posseq_deck_keeps_every_terminal_power_in_its_positive_slot`.
-/// Everywhere else the arm stays off that channel (the four r4133-gated
-/// `CktModel=Positive` decks have no 1-phase element; the six decks that do —
-/// `modes/makeposseq/*` — are `capi_v0145`-only), while the capi channel gates the
+/// Everywhere else the arm stays off that channel: the four r4133-gated
+/// `CktModel=Positive` decks have no 1-phase element, and the decks that do,
+/// `modes/makeposseq/*`, are `capi_v0145`-only. The capi channel gates the
 /// correct layout live.
 ///
 /// That population fact is load-bearing, so it is re-derived on every full run
@@ -4854,7 +4855,7 @@ fn check_seq_arm_population(seen: usize, posseq_capi: usize, posseq_r4133: usize
         "only {posseq_capi} gated element row(s) took the 1-phase \
          positive-sequence arm on the capi_v0145 channel, under the floor \
          {floor_capi} ({want_capi} measured, out of {seen} classified rows). \
-         That arm's correct layout is oracle-gated ONLY there - the six \
+         That arm's correct layout is oracle-gated ONLY there - the \
          `modes/makeposseq/*` decks - so a collapse here leaves D-b1 gated by \
          nothing but its in-engine pin \
          `seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal`. \
@@ -6651,8 +6652,8 @@ mod seq_floors {
         check_seq_arm_population(seen, 0, r4133);
     }
 
-    /// A shrink that a `> 0` rail cannot see (G1.3b audit settlement): five of
-    /// the six `modes/makeposseq/*` decks moving off `capi_v0145` would leave
+    /// A shrink that a `> 0` rail cannot see (G1.3b audit settlement): all but
+    /// one of the `modes/makeposseq/*` decks moving off `capi_v0145` would leave
     /// one deck's worth of rows and D-b1 gated by its in-engine pin alone, and
     /// the capi floor reds on it.
     #[test]
