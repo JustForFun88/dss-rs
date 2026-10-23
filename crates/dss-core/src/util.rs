@@ -1257,6 +1257,75 @@ pub fn interpret_dbl_array_dynamic(
     Ok(out)
 }
 
+/// Why [`interpret_given_values`] refuses a list: the 1-based position of the
+/// first value that refuses it, and the reason.
+pub type GivenRefusal = (usize, &'static str);
+
+/// Read the values written in `s`, in order, keeping at most `max` of them: a
+/// list that ends early keeps fewer, and nothing is padded. Returns the values
+/// kept and, for a list that cannot be kept, the 1-based position of the
+/// first value that refuses it with the reason: an empty value that another
+/// value follows (`1,,3` gives 2, "is empty") or a value that is not a
+/// finite number (`1,1e400` gives 2, "is not a finite number"). File-backed
+/// forms are rejected like [`interpret_dbl_array`].
+pub fn interpret_given_values(
+    parser: &mut Parser,
+    vars: &ParserVars,
+    s: &str,
+    max: usize,
+) -> Result<(Vec<f64>, Option<GivenRefusal>), ParserError> {
+    parser.set_auto_increment(false);
+    parser.set_cmd_string(s);
+    let parm_name = parser.next_param(vars);
+    if parm_name.eq_ignore_ascii_case("file")
+        || (!parm_name.is_empty()
+            && (compare_text_shortest_eq(&parm_name, "dblfile")
+                || compare_text_shortest_eq(&parm_name, "sngfile")))
+    {
+        return Err(ParserError::new(format!(
+            "file-backed numeric arrays (\"{parm_name}=\") are not supported yet"
+        )));
+    }
+
+    let mut out = Vec::new();
+    let mut first_empty = None;
+    let mut empty_inside = None;
+    let mut not_finite = None;
+    let mut written = 0usize;
+    loop {
+        let token = parser.make_string(vars);
+        if token.is_empty() && parser.remainder().trim().is_empty() {
+            break;
+        }
+        written += 1;
+        if token.is_empty() {
+            first_empty.get_or_insert(written);
+        } else {
+            let v = parser.make_double(vars)?;
+            if !v.is_finite() {
+                not_finite.get_or_insert(written);
+            }
+            if let Some(at) = first_empty {
+                empty_inside.get_or_insert(at);
+            } else if out.len() < max {
+                out.push(v);
+            }
+        }
+        let before = parser.position();
+        parser.next_param(vars);
+        if token.is_empty() && parser.position() == before {
+            break;
+        }
+    }
+    let refused = match (empty_inside, not_finite) {
+        (Some(empty), Some(at)) if at < empty => Some((at, "is not a finite number")),
+        (Some(empty), _) => Some((empty, "is empty")),
+        (None, Some(at)) => Some((at, "is not a finite number")),
+        (None, None) => None,
+    };
+    Ok((out, refused))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

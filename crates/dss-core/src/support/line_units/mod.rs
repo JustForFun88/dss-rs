@@ -23,6 +23,21 @@ pub enum LineUnits {
 /// `UNITS_MAXNUM` in Pascal.
 pub const UNITS_MAX_NUM: i32 = 9;
 
+/// The words of a position or height unit: LineGeometry and LineSpacing
+/// `units=`, Line `HeightUnit`.
+pub const POSITION_WORDS: &[&str] = &["mi", "kft", "km", "m", "ft", "in", "cm", "mm"];
+
+/// [`POSITION_WORDS`] as a refusal lists them.
+pub const POSITION_WORD_LIST: &str = "mi, kft, km, m, ft, in, cm, mm";
+
+/// The words of a length unit that may be `none`: Line `units=` and the
+/// `RUnits`, `GMRUnits` and `RadUnits` of WireData, CNData and TSData.
+pub const LENGTH_WORDS: &[&str] = &["none", "mi", "kft", "km", "m", "ft", "in", "cm", "mm"];
+
+/// The words of LineCode `units=` and of `Show LineConstants`, where `me`
+/// names metres too.
+pub const CODE_WORDS: &[&str] = &["none", "mi", "kft", "km", "m", "me", "ft", "in", "cm", "mm"];
+
 impl LineUnits {
     /// Numeric code as stored in DSS properties.
     pub fn code(self) -> i32 {
@@ -45,23 +60,18 @@ impl LineUnits {
         }
     }
 
-    /// Parse a unit string the way `GetUnitsCode` does: only the first two
-    /// characters are examined, case-insensitively, and unknown strings give
-    /// `None`.
-    pub fn parse(s: &str) -> LineUnits {
-        let stest: String = s.chars().take(2).collect::<String>().to_ascii_lowercase();
-        match stest.as_str() {
-            "no" => LineUnits::None,
-            "mi" => LineUnits::Miles,
-            "kf" => LineUnits::Kft,
-            "km" => LineUnits::Km,
-            "m" | "me" => LineUnits::Meter,
-            "ft" => LineUnits::Ft,
-            "in" => LineUnits::Inch,
-            "cm" => LineUnits::Cm,
-            "mm" => LineUnits::Mm,
-            _ => LineUnits::None,
+    /// The unit `text` names when it is one of `words`, written whole in any
+    /// case (surrounding blanks ignored). `me` reads as metres. Any other text
+    /// names no unit.
+    pub fn from_word(text: &str, words: &[&str]) -> Option<LineUnits> {
+        let text = text.trim();
+        let word = words.iter().find(|w| w.eq_ignore_ascii_case(text))?;
+        if word.eq_ignore_ascii_case("me") {
+            return Some(LineUnits::Meter);
         }
+        (0..UNITS_MAX_NUM)
+            .map(LineUnits::from_code)
+            .find(|u| u.as_str().eq_ignore_ascii_case(word))
     }
 
     /// Canonical short name (Pascal `LineUnitsStr`).

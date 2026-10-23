@@ -285,6 +285,39 @@ fn scan_number(s: &str) -> Option<(f64, usize)> {
 ///   `wires=` after three `cncables=` and fails the solve. Pinned by
 ///   `dss_core::exec::tests::line_geometry_rules::nphases_defaults_to_three`
 ///   and by the readback pin above.
+/// * `linespacing_units_none` / `Units` — a length unit is one exact
+///   documented word, and the LineSpacing list `mi kft km m ft in cm mm` has no
+///   `none`, so `units=none` is refused at its token and the spacing keeps
+///   feet, in both lanes. The pinned 0.14.5 oracle stores `none` and prints
+///   it, and so does r4133 (epri-worker on the r4133 DLL, 2026-10-17), which
+///   then reads the positions in metres. The refusal itself is a register
+///   entry of [`SCENARIO_ERRORS`]. Pinned by
+///   `dss_core::exec::tests::unit_words::every_class_refuses_a_word_that_is_not_whole`.
+/// * the **5 LineSpacing coordinate cells** — `linespacing_default` / `X`,
+///   `H`; `linespacing_array_clamp` / `H`; `linespacing_equivalent_spacing` /
+///   `X`, `H` (capi015 capture). A coordinate list holds the values given, in
+///   order (coordinator ruling 2026-10-17): a new spacing and an equivalent
+///   spacing given no `x=`/`h=` read `''`, and `h=(28)` on three conductors
+///   reads `[ 28]`, conductors 2 and 3 having no height, in both lanes. The
+///   pinned 0.14.5 oracle and capi015 pad each list with zeros (`[ 0 0 0]`,
+///   `[ 28 0 0]`, `[ 0 0 0 0]`). r4133 reads zeros for the new spacing and
+///   uninitialized memory past `h=(28)` and in the four-conductor equivalent
+///   spacing (epri-worker on the r4133 DLL, 2026-10-17, e.g. `[28,4.2E-314,
+///   1.6E-317]`). Every other property of the
+///   three scenarios still compares. Pinned by
+///   `dss_core::exec::tests::line_geometry_rules::a_short_spacing_list_keeps_its_gaps`
+///   and the `line_spacing` module tests `defaults` and
+///   `x_h_arrays_sized_by_nconds`.
+/// * `linespacing_shrink_nconds` / `X`, `H` — each `nconds=` of a LineSpacing
+///   keeps no position and returns the unit to feet (coordinator ruling
+///   2026-10-17), so after `nconds=2` both lists read `''` in both lanes. The
+///   pinned 0.14.5 oracle keeps the leading positions (`[ -1.2 0]`,
+///   `[ 28 28]`) and so does r4133 (`[-1.2,0]`, `[28,28]`, epri-worker on the
+///   r4133 DLL, 2026-10-17), both re-reading the metres given as feet. Every
+///   other property of the scenario still compares. Pinned by
+///   `dss_core::exec::tests::line_geometry_rules::a_spacing_nconds_keeps_no_position_and_returns_to_feet`
+///   and the `line_spacing` module test
+///   `nconds_keeps_no_position_and_returns_to_feet`.
 const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     ("isource_bus2_clobbered_by_bus1", "Bus2"),
     ("gictransformer_auto", "R2"),
@@ -338,6 +371,45 @@ const LANE_SKIP_SCENARIO_PROPS: &[(&str, &str)] = &[
     ("linegeometry_buried", "Units"),
     ("linegeometry_buried", "CNCable"),
     ("linegeometry_buried", "TSCable"),
+    // A length unit is one exact documented word (see the register above).
+    ("linespacing_units_none", "Units"),
+    // A LineSpacing coordinate list holds the values given (see the register
+    // above).
+    ("linespacing_default", "X"),
+    ("linespacing_default", "H"),
+    ("linespacing_array_clamp", "H"),
+    ("linespacing_equivalent_spacing", "X"),
+    ("linespacing_equivalent_spacing", "H"),
+    // Each LineSpacing `nconds=` keeps no position (see the register above).
+    ("linespacing_shrink_nconds", "X"),
+    ("linespacing_shrink_nconds", "H"),
+];
+
+/// The engine errors a scenario is expected to log, as `(scenario, message)`,
+/// in log order: a scenario named here logs exactly these, every other
+/// scenario not flagged `allow_errors` logs none. Each scenario writes a unit
+/// word outside its property's documented list, which both oracles accept:
+/// `units=none` on a LineSpacing (keeps feet, [`LANE_SKIP_SCENARIO_PROPS`]),
+/// and `HeightUnit=none` and `HeightUnit=meter` on a Line (the property keeps
+/// its default `m`, so the captured value still compares). Every entry must be
+/// hit. Pinned by
+/// `dss_core::exec::tests::unit_words::every_class_refuses_a_word_that_is_not_whole`.
+const SCENARIO_ERRORS: &[(&str, &str)] = &[
+    (
+        "linespacing_units_none",
+        "LineSpacing.ls1.Units: \"none\" is not one of the length units mi, kft, km, m, ft, in, \
+         cm, mm.",
+    ),
+    (
+        "linemedium_heightunit_none_snaps_to_m",
+        "Line.l3.HeightUnit: \"none\" is not one of the length units mi, kft, km, m, ft, in, cm, \
+         mm.",
+    ),
+    (
+        "linemedium_heightunit_meter_alias",
+        "Line.l5.HeightUnit: \"meter\" is not one of the length units mi, kft, km, m, ft, in, \
+         cm, mm.",
+    ),
 ];
 
 /// An **oracle-bug** exclusion, as `(class, property)` pairs, applied in **both
@@ -518,6 +590,7 @@ fn props_roundtrip_matches_oracle() {
     // lanes since G2.2b).
     let mut compared = 0usize;
     let mut lane_skips = 0usize;
+    let mut error_scenarios = 0usize;
     for sc in scenarios {
         let mut dss = Dss::new();
         // gen_props.py runs this preamble before every scenario (the `?`
@@ -528,12 +601,27 @@ fn props_roundtrip_matches_oracle() {
         for cmd in &sc.commands {
             dss.command(cmd);
         }
-        assert!(
-            sc.allow_errors || dss.errors().is_empty(),
-            "scenario {}: unexpected engine errors: {:?}",
-            sc.name,
-            dss.errors()
-        );
+        let expected_errors: Vec<&str> = SCENARIO_ERRORS
+            .iter()
+            .filter(|(name, _)| *name == sc.name)
+            .map(|(_, msg)| *msg)
+            .collect();
+        if expected_errors.is_empty() {
+            assert!(
+                sc.allow_errors || dss.errors().is_empty(),
+                "scenario {}: unexpected engine errors: {:?}",
+                sc.name,
+                dss.errors()
+            );
+        } else {
+            let logged: Vec<&str> = dss.errors().iter().map(|e| e.message.as_str()).collect();
+            assert_eq!(
+                logged, expected_errors,
+                "scenario {}: engine errors",
+                sc.name
+            );
+            error_scenarios += 1;
+        }
 
         for (prop, expected) in &sc.properties {
             // LANE-EXCLUSION(ISOURCE_BUS2_NEVER_LATCHES): both lanes latch
@@ -616,6 +704,15 @@ fn props_roundtrip_matches_oracle() {
         LANE_SKIP_SCENARIO_PROPS.len()
     );
 
+    let error_names: std::collections::BTreeSet<&str> =
+        SCENARIO_ERRORS.iter().map(|(name, _)| *name).collect();
+    assert_eq!(
+        error_scenarios,
+        error_names.len(),
+        "the run checked the expected errors of {error_scenarios} scenarios, and \
+         SCENARIO_ERRORS names {}: every entry must be reached",
+        error_names.len()
+    );
     assert_eq!(
         not_set_cells, LANE_NOT_SET_RATING_CELL_COUNT,
         "the not-set rating exclusion moved: {not_set_cells} cells excused, \

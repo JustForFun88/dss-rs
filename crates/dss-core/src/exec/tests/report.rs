@@ -2017,23 +2017,17 @@ fn save_hoist_leaves_the_set_order_chain_as_the_deck_built_it() {
     );
 }
 
-/// RF-D01-04 (RP3.11 AC-1) — `NConds` is written ahead of the conductor
-/// coordinates it sizes, so a four-wire LineSpacing reloads every conductor.
-///
-/// `X`/`H` are parsed against the live `NConds` (r4133
-/// `General/LineSpacing.pas:170`, `for i := 1 to NWires do`, in the
-/// `InterpretArray` the `x`/`h` arms `:210-211` call; the port's `DoubleVArray`
-/// with a `size_prop`). With `NConds` re-set after them, measured on the live
-/// `OpenDSSDirect.dll` 11.0.0.1 rev r4133 (epri-worker, RF-D01-04):
+/// `NConds=` leads a LineSpacing line, so a spacing whose `nconds=` was set
+/// again reloads every conductor and every property: the reload refuses a
+/// property ahead of `nconds=` and `nconds=` keeps no position. Four wires,
+/// since a deck of at most the default three would survive a count written
+/// last. r4133 writes `nconds` last and loses the fourth conductor, measured
+/// on `OpenDSSDirect.dll` 11.0.0.1 rev r4133 through the epri-worker:
 ///
 /// ```text
 /// r4133 save:   New "LineSpacing.sp4" nphases=3 x=[-1,0,1,0.5] h=[10,11,12,9] units=ft nconds=4
 /// r4133 reload: x=[-1,0,1,0]  h=[10,11,12,NAN]    — the fourth conductor is lost
 /// ```
-///
-/// The port reloads `X=[ -1 0 1 0.5]`, `H=[ 10 11 12 9]`. (Before RF-D01-04 it
-/// reloaded `[ -1 0 1 0]` / `[ 10 11 12 0]`; a deck with at most the default
-/// three conductors survives by accident, which is why this one uses four.)
 #[test]
 fn save_hoists_nconds_so_linespacing_reloads_every_conductor() {
     let mut dss = Dss::new();
@@ -2042,14 +2036,15 @@ fn save_hoists_nconds_so_linespacing_reloads_every_conductor() {
         "new circuit.rfd0104sp basekv=12.47 pu=1.0 phases=3 bus1=src",
         "new linespacing.sp4 nconds=4 nphases=3 x=[-1 0 1 0.5] h=[10 11 12 9] units=ft",
         "edit linespacing.sp4 nconds=4",
+        "edit linespacing.sp4 x=[-1 0 1 0.5] h=[10 11 12 9]",
     ] {
         dss.command(c);
     }
     assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
     let mut rt = SaveRoundTrip::run(&mut dss, "sp");
     assert!(rt.reload_errors.is_empty(), "{:?}", rt.reload_errors);
-    let want = "New \"LineSpacing.sp4\" NConds=4 NPhases=3 X=[ -1 0 1 0.5] H=[ 10 11 12 9] \
-                Units=ft";
+    let want = "New \"LineSpacing.sp4\" NConds=4 NPhases=3 Units=ft X=[ -1 0 1 0.5] H=[ 10 11 12 \
+                9]";
     assert_eq!(
         rt.line(1, "LineSpacing", "sp4"),
         want,
@@ -2064,6 +2059,111 @@ fn save_hoists_nconds_so_linespacing_reloads_every_conductor() {
             query(&mut rt.back, q),
             want,
             "{q} after the round trip; r4133 reloads x=[-1,0,1,0] h=[10,11,12,NAN]"
+        );
+    }
+}
+
+/// A LineSpacing line writes `NConds=` first whenever it was given, then the
+/// properties set: `nconds=` set again moves behind `NPhases` and `Units` in
+/// the set order, and a reload would refuse both ahead of it. The re-set
+/// keeps `Units` (back to ft) and `NPhases` and drops the equivalent spacing,
+/// so `e` saves no distance. `n`, whose `nconds=` was never given, saves its
+/// name only, so the reload still refuses a position ahead of a count. Each
+/// reload refuses nothing, keeps the phases and re-saves byte for byte. The
+/// default JSON record of `s` keeps the set order, `NConds` after `NPhases`
+/// and `Units`, and its import applies `NConds` first, so it refuses nothing
+/// and reads the phases and the lists of `s` and the record's unit, turned to
+/// metres so that a unit applied ahead of `NConds` would read feet.
+#[test]
+fn save_writes_linespacing_nconds_first() {
+    use crate::report::export::json::JsonOpts;
+    let mut dss = Dss::new();
+    for c in [
+        "clear",
+        "new circuit.lsnconds basekv=12.47 pu=1.0 phases=3 bus1=src",
+        "New LineSpacing.s nconds=3 nphases=2 units=m",
+        "Edit LineSpacing.s nconds=3",
+        "New LineSpacing.e nconds=4 nphases=3 detailed=no EqDistPhPh=2.5 EqDistPhN=4.272 \
+         AvgPhaseHeight=28 AvgNeutralHeight=24 units=ft",
+        "Edit LineSpacing.e nconds=4",
+        "New LineSpacing.n",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+    let mut rt = SaveRoundTrip::run(&mut dss, "lsn");
+    assert!(rt.reload_errors.is_empty(), "{:?}", rt.reload_errors);
+    for (name, want, nphases) in [
+        (
+            "s",
+            "New \"LineSpacing.s\" NConds=3 NPhases=2 Units=ft",
+            "2",
+        ),
+        (
+            "e",
+            "New \"LineSpacing.e\" NConds=4 NPhases=3 Units=ft",
+            "3",
+        ),
+        ("n", "New \"LineSpacing.n\"", "3"),
+    ] {
+        assert_eq!(rt.line(1, "LineSpacing", name), want, "{name}");
+        assert_eq!(
+            rt.line(2, "LineSpacing", name),
+            want,
+            "{name}: the fixed point"
+        );
+        assert_eq!(
+            query(&mut rt.back, &format!("linespacing.{name}.nphases")),
+            nphases,
+            "{name}"
+        );
+    }
+    rt.back.command("Edit LineSpacing.n x=[1 2 3]");
+    assert_eq!(
+        rt.back.error_texts(),
+        [
+            "LineSpacing.n.X: nconds= is not given yet, so the value is not applied. Give \
+             nconds= first."
+        ]
+    );
+    assert_eq!(query(&mut rt.back, "linespacing.n.x"), "");
+
+    dss.command("Edit LineSpacing.s x=[4 5 6] h=[7 8 9]");
+    assert!(dss.errors().is_empty(), "{:?}", dss.error_texts());
+    let record = dss
+        .obj_to_json("linespacing.s", JsonOpts::NONE)
+        .expect("linespacing.s");
+    let keys: Vec<&str> = record
+        .match_indices("\":")
+        .map(|(i, _)| {
+            let head = &record[..i];
+            &head[head.rfind('"').map(|p| p + 1).unwrap_or(0)..]
+        })
+        .collect();
+    assert_eq!(
+        keys,
+        ["Name", "NPhases", "Units", "NConds", "X", "H"],
+        "{record}"
+    );
+    // The record's unit becomes metres, so a `Units` skipped, refused or
+    // applied ahead of `NConds` reads feet.
+    let in_metres = record.replace("\"Units\":\"ft\"", "\"Units\":\"m\"");
+    assert_ne!(in_metres, record, "{record}");
+    let mut imported = Dss::new();
+    let json = format!(r#"{{"Name":"lsnjson","LineSpacing":[{in_metres}]}}"#);
+    assert_eq!(imported.circuit_from_json(&json), Ok(()));
+    assert!(imported.errors().is_empty(), "{:?}", imported.error_texts());
+    for (prop, want) in [
+        ("nconds", "3"),
+        ("nphases", "2"),
+        ("units", "m"),
+        ("x", "[ 4 5 6]"),
+        ("h", "[ 7 8 9]"),
+    ] {
+        assert_eq!(
+            query(&mut imported, &format!("linespacing.s.{prop}")),
+            want,
+            "{prop}"
         );
     }
 }
@@ -2675,7 +2775,8 @@ const NATURAL_ORDER_ONLY: &[(&str, &str, &str)] = &[(
 /// re-set replaces before any Save (a transformer `Windings` re-set rebuilds
 /// the winding values — r4133 turns a re-set `kvs=[115 12.47 4.16]` into
 /// `[12.47, 12.47, 12.47, ]` too, measured —, an element-list re-set resets the
-/// weights, a `NumHarm` re-set the angles, a `BHPoints` re-set the curve), so
+/// weights, a `NumHarm` re-set the angles, a `BHPoints` re-set the curve, a
+/// LineSpacing `NConds` re-set the coordinates), so
 /// on them the pin's value leg compares what the re-set left, not what the deck
 /// typed. Derived by the pin and locked exactly.
 const RESET_REPLACES: &[(&str, &str, &[&str])] = &[
@@ -2683,6 +2784,7 @@ const RESET_REPLACES: &[(&str, &str, &[&str])] = &[
     ("AutoTrans", "Windings", &["kVs", "kVAs", "Taps", "%Rs"]),
     ("ESPVLControl", "LocalControlList", &["LocalControlWeights"]),
     ("GenDispatcher", "GenList", &["Weights"]),
+    ("LineSpacing", "NConds", &["X", "H"]),
     ("Spectrum", "NumHarm", &["Angle"]),
     ("StorageController", "ElementList", &["Weights"]),
     ("Transformer", "BHPoints", &["BHCurrent", "BHFlux"]),
@@ -2725,7 +2827,7 @@ const RESET_REPLACES: &[(&str, &str, &[&str])] = &[
 /// checks raise #372 / #37201, and `new espvlcontrol` an access violation) —
 /// a port defect handed over by the RF-D01-04 settlement, tolerated here only
 /// because the reload repeats it. Leg (2) is live only where the re-set keeps
-/// the typed values: on the arrays [`RESET_REPLACES`] lists (9 of the pairs),
+/// the typed values: on the arrays [`RESET_REPLACES`] lists (10 of the pairs),
 /// the re-set itself replaces them, so there the order leg is the only live
 /// guard; the pin reds when that list moves. The per-winding cursor
 /// tokens are not typed by these decks

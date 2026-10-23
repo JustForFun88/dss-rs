@@ -1,0 +1,18 @@
+! Each nconds= of a LineSpacing keeps no position and returns to feet: p is
+! given in metres and set to nconds=3 again, e is an equivalent spacing in
+! metres set to nconds=4 again. Each spacing has a geometry on its own Line.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.p nconds=3 nphases=3 x=[-1.2 0 1.2] h=[8.5 8.5 8.5] units=m
+Edit LineSpacing.p nconds=3
+New LineSpacing.e nconds=4 nphases=3 detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 AvgPhaseHeight=8.5 AvgNeutralHeight=7.3 units=m
+Edit LineSpacing.e nconds=4
+New LineGeometry.gp nconds=3 nphases=3 spacing=p wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New LineGeometry.ge nconds=4 nphases=3 spacing=e wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New Line.Lp bus1=src.1.2.3 bus2=bp.1.2.3 geometry=gp length=1 units=mi
+New Line.Le bus1=src.1.2.3.0 bus2=be.1.2.3.0 geometry=ge length=1 units=mi
+Set voltagebases=[12.47]
+CalcVoltageBases

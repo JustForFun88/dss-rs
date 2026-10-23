@@ -2164,13 +2164,21 @@ impl Dss {
                             .unwrap_or(self.default_base_freq)
                     }
                 };
+                // A units word outside the list writes no report.
                 let units = {
+                    use crate::support::line_units::{CODE_WORDS, LineUnits};
                     self.parser.next_param(&self.vars);
                     let s = self.parser.make_string(&self.vars);
                     if s.is_empty() {
-                        crate::support::line_units::LineUnits::Kft.code()
+                        LineUnits::Kft.code()
+                    } else if let Some(u) = LineUnits::from_word(&s, CODE_WORDS) {
+                        u.code()
                     } else {
-                        crate::support::line_units::LineUnits::parse(&s).code()
+                        self.errors.push(format!(
+                            "Show LineConstants: \"{s}\" is not one of the length units {}.",
+                            CODE_WORDS.join(", ")
+                        ));
+                        return;
                     }
                 };
                 let rho = {

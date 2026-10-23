@@ -33,7 +33,7 @@ use crate::obj::Rating;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
-use crate::support::line_units::LineUnits;
+use crate::support::line_units::{LENGTH_WORDS, LineUnits, POSITION_WORDS};
 
 /// Pascal `ConductorChoice` (`PDElements/ConductorData.pas`): the conductor model
 /// the spacing path selects (`FPhaseChoice`). `Unknown` until the first cable/wire
@@ -170,7 +170,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("rho").flags(PropFlags::UNITS_OHM_METER),
         PropDef::object_ref_class("LineGeometry", "Geometry")
             .flags(PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::mapped_string_enum("Units", enums.units),
+        PropDef::mapped_string_enum("Units", enums.units).unit_words(LENGTH_WORDS),
         PropDef::object_ref_class("LineSpacing", "Spacing").flags(PropFlags::REQUIRED_IN_SPEC_SET),
         // SVN r3902/r3913 (0.15.x): the conductor lists accept `none` entries
         // (NIL slot) — `TPropertyFlag.AllowNoneItem`. WP-U1.1 item 3. `Wires`
@@ -207,7 +207,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // surfaces still expose them (`linemedium.json` golden pins the rendering).
         PropDef::double("EpsRMedium").flags(PropFlags::HIDE_015X),
         PropDef::double("HeightOffset").flags(PropFlags::HIDE_015X),
-        PropDef::mapped_string_enum("HeightUnit", enums.units).flags(PropFlags::HIDE_015X),
+        PropDef::mapped_string_enum("HeightUnit", enums.units)
+            .unit_words(POSITION_WORDS)
+            .flags(PropFlags::HIDE_015X),
         // dss_capi 0.15.x (Line.pas:62,341-344): `Conductors` — the merged mixed
         // wire/CN/TS object-reference-array over the 3-class proxy
         // `(WireData|CNData|TSData)` (`fullNames=True`, proxy `.Name = "Conductor"`).

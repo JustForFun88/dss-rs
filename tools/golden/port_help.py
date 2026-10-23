@@ -18,4 +18,27 @@ PORT_HELP: dict[str, str] = {
         "Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written whole. Initial "
         'default is "ft", but defaults to last unit defined.'
     ),
+    # The other unit properties read one exact word of their list, in any case.
+    "Line.units": (
+        "Length units, one of none, mi, kft, km, m, ft, in, cm or mm, written whole. "
+        "Default is None - assumes length units match impedance units."
+    ),
+    "LineCode.units": (
+        "One of (ohms per ...) none, mi, kft, km, m, me, ft, in, cm or mm, written whole, "
+        "me reading as m. Default is none, which assumes units agree with length units given "
+        "in Line object."
+    ),
+    "LineSpacing.units": (
+        "Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written whole. Initial "
+        'default is "ft", but defaults to last unit defined.'
+    ),
+    "ShowOption.lineconstants": (
+        "Creates two report files for the line constants (impedances) of every LINEGEOMETRY "
+        "element currently defined. One file shows the main report with the matrices. The other "
+        "file contains corresponding LINECODE definitions that you may use in subsequent "
+        "simulations.  Syntax:\n\nShow LIneConstants [frequency] "
+        "[none|mi|km|kft|m|me|ft|in|cm|mm] [rho]\n\nSpecify the frequency, length units (one "
+        "of the listed words, written whole) and earth resistivity (meter-ohms). Examples:\n\n"
+        "Show Lineconstants 60 kft 100\nShow Linecon 50 km 1000"
+    ),
 }

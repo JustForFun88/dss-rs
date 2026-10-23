@@ -6620,17 +6620,24 @@ fn dump3_commands_matches_oracle() {
     // `golden_lock.rs::CAPI_V0145_OVERLAYS` (the row stays `capi_v0145`: every
     // other block is the pinned-oracle capture).
     //
-    // Two `[LineGeometry]` help lines state the engine's rules instead of the
-    // golden's text: `Cond` the conductor selection rule in place of "Default
-    // is 1.", pinned by `cond_help_states_rule_2`, and `Units` the eight unit
-    // words the class reads, `mm` included, pinned by
-    // `units_help_lists_the_accepted_words`.
+    // Five help lines state the engine's rules instead of the golden's text:
+    // the `[LineGeometry]` `Cond` line the conductor selection rule in place of
+    // "Default is 1.", pinned by `cond_help_states_rule_2`, and the `Units`
+    // lines of `[LineGeometry]`, `[LineSpacing]`, `[LineCode]` and `[Line]` the
+    // unit words each class reads whole, `mm` included, pinned by
+    // `units_help_lists_the_accepted_words`,
+    // `linespacing_units_help_lists_the_accepted_words`,
+    // `linecode_units_help_lists_the_accepted_words` and
+    // `line_units_help_lists_the_accepted_words`.
     run_deck_dump_exact_block_masked(
         "dump3_commands",
         &["[WindGen]"],
         &[
             ("[LineGeometry]", LINEGEOMETRY_COND_HELP_PREFIX),
             ("[LineGeometry]", LINEGEOMETRY_UNITS_HELP_PREFIX),
+            ("[LineSpacing]", LINESPACING_UNITS_HELP_PREFIX),
+            ("[LineCode]", LINECODE_UNITS_HELP_PREFIX),
+            ("[Line]", LINE_UNITS_HELP_PREFIX),
         ],
     );
 }
@@ -6641,9 +6648,18 @@ const LINEGEOMETRY_COND_HELP_PREFIX: &str = "3, \"Cond\", ";
 /// The start of the `[LineGeometry]` `Units` line of `Dump commands`.
 const LINEGEOMETRY_UNITS_HELP_PREFIX: &str = "7, \"Units\", ";
 
-/// The `[LineGeometry]` lines of the `Dump commands` report of the
+/// The start of the `[LineSpacing]` `Units` line of `Dump commands`.
+const LINESPACING_UNITS_HELP_PREFIX: &str = "5, \"Units\", ";
+
+/// The start of the `[LineCode]` `Units` line of `Dump commands`.
+const LINECODE_UNITS_HELP_PREFIX: &str = "8, \"Units\", ";
+
+/// The start of the `[Line]` `Units` line of `Dump commands`.
+const LINE_UNITS_HELP_PREFIX: &str = "20, \"Units\", ";
+
+/// The lines of the `section` block of the `Dump commands` report of the
 /// `dump3_commands` deck that start with `prefix`.
-fn linegeometry_help_lines(tag: &str, prefix: &str) -> Vec<String> {
+fn help_lines(tag: &str, section: &str, prefix: &str) -> Vec<String> {
     let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join("dump3_commands.meta.json");
@@ -6665,13 +6681,13 @@ fn linegeometry_help_lines(tag: &str, prefix: &str) -> Vec<String> {
         .unwrap_or_else(|e| panic!("read produced {produced}: {e}"));
     std::fs::remove_dir_all(&scratch).ok();
 
-    let mut section = "";
+    let mut current = "";
     rust.lines()
         .filter(|ln| {
             if ln.starts_with('[') {
-                section = ln.trim();
+                current = ln.trim();
             }
-            section == "[LineGeometry]" && ln.starts_with(prefix)
+            current == section && ln.starts_with(prefix)
         })
         .map(str::to_string)
         .collect()
@@ -6684,7 +6700,11 @@ fn linegeometry_help_lines(tag: &str, prefix: &str) -> Vec<String> {
 /// `dump3_commands_matches_oracle`.
 #[test]
 fn cond_help_states_rule_2() {
-    let lines = linegeometry_help_lines("dump3_commands_cond_help", LINEGEOMETRY_COND_HELP_PREFIX);
+    let lines = help_lines(
+        "dump3_commands_cond_help",
+        "[LineGeometry]",
+        LINEGEOMETRY_COND_HELP_PREFIX,
+    );
     assert_eq!(
         lines,
         [
@@ -6702,13 +6722,79 @@ fn cond_help_states_rule_2() {
 /// `Units` line exclusion of `dump3_commands_matches_oracle`.
 #[test]
 fn units_help_lists_the_accepted_words() {
-    let lines =
-        linegeometry_help_lines("dump3_commands_units_help", LINEGEOMETRY_UNITS_HELP_PREFIX);
+    let lines = help_lines(
+        "dump3_commands_units_help",
+        "[LineGeometry]",
+        LINEGEOMETRY_UNITS_HELP_PREFIX,
+    );
     assert_eq!(
         lines,
         [
             "7, \"Units\", \"Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written \
              whole. Initial default is \"ft\", but defaults to last unit defined.\""
+        ]
+    );
+    assert!(lines[0].contains("mm"));
+}
+
+/// The `[LineSpacing]` `Units` line of `Dump commands` lists the eight unit
+/// words the class reads, each written whole, `mm` included and `none` not.
+/// The pin of the `[LineSpacing]` `Units` line exclusion of
+/// `dump3_commands_matches_oracle`.
+#[test]
+fn linespacing_units_help_lists_the_accepted_words() {
+    let lines = help_lines(
+        "dump3_commands_linespacing_units_help",
+        "[LineSpacing]",
+        LINESPACING_UNITS_HELP_PREFIX,
+    );
+    assert_eq!(
+        lines,
+        [
+            "5, \"Units\", \"Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written \
+             whole. Initial default is \"ft\", but defaults to last unit defined.\""
+        ]
+    );
+    assert!(lines[0].contains("mm"));
+}
+
+/// The `[LineCode]` `Units` line of `Dump commands` lists the ten unit words
+/// the class reads, each written whole, `none`, `me` and `mm` included. The
+/// pin of the `[LineCode]` `Units` line exclusion of
+/// `dump3_commands_matches_oracle`.
+#[test]
+fn linecode_units_help_lists_the_accepted_words() {
+    let lines = help_lines(
+        "dump3_commands_linecode_units_help",
+        "[LineCode]",
+        LINECODE_UNITS_HELP_PREFIX,
+    );
+    assert_eq!(
+        lines,
+        [
+            "8, \"Units\", \"One of (ohms per ...) none, mi, kft, km, m, me, ft, in, cm or mm, \
+             written whole, me reading as m. Default is none, which assumes units agree with \
+             length units given in Line object.\""
+        ]
+    );
+    assert!(lines[0].contains("mm"));
+}
+
+/// The `[Line]` `Units` line of `Dump commands` lists the nine unit words the
+/// class reads, each written whole, `none` and `mm` included. The pin of the
+/// `[Line]` `Units` line exclusion of `dump3_commands_matches_oracle`.
+#[test]
+fn line_units_help_lists_the_accepted_words() {
+    let lines = help_lines(
+        "dump3_commands_line_units_help",
+        "[Line]",
+        LINE_UNITS_HELP_PREFIX,
+    );
+    assert_eq!(
+        lines,
+        [
+            "20, \"Units\", \"Length units, one of none, mi, kft, km, m, ft, in, cm or mm, \
+             written whole. Default is None - assumes length units match impedance units.\""
         ]
     );
     assert!(lines[0].contains("mm"));

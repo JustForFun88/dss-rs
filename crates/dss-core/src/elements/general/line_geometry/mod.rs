@@ -58,8 +58,6 @@ mod edit;
 mod matrix;
 mod save;
 
-pub(crate) use accessors::LENGTH_UNITS;
-
 use crate::elements::general::conductor_data::{
     CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME, ConductorObj,
 };
@@ -69,6 +67,7 @@ use crate::obj::Rating;
 use crate::obj::base::DssObjData;
 use crate::obj::props::{PropDef, PropFlags, define_properties};
 use crate::support::line_constants::LineConstants;
+use crate::support::line_units::POSITION_WORDS;
 
 /// The `ft` code of `LineUnits`: the default unit a geometry starts with.
 const UNITS_FT: i32 = 5;
@@ -87,7 +86,8 @@ define_properties! {
     4  WIRE      => PropDef::object_ref_class("WireData", "Wire");
     5  X         => PropDef::double("X");
     6  H         => PropDef::double("H");
-    7  UNITS     => PropDef::mapped_string_enum("Units", enums.units);
+    7  UNITS     => PropDef::mapped_string_enum("Units", enums.units)
+        .unit_words(POSITION_WORDS);
     8  NORMAMPS  => PropDef::rating("NormAmps");
     9  EMERGAMPS => PropDef::rating("EmergAmps");
     10 REDUCE    => PropDef::boolean("Reduce");

@@ -139,6 +139,23 @@ impl ClassProps {
             }
         }
 
+        // A list that keeps only the values given takes one position per item,
+        // so an item that is not one number is refused, naming its place, and
+        // the list is not applied.
+        if pd.flags.contains(PropFlags::GIVEN_PREFIX)
+            && obj.refuse_property(idx, pd.name).is_none()
+            && let Some(why) = given_list_refusal(jval)
+        {
+            obj.value_unreadable(idx);
+            eng.errors.push(dss_parser::ParserError::new(format!(
+                "{}.{}.{}: {why}, so the list is not applied.",
+                self.class_name,
+                obj.data().name(),
+                pd.name
+            )));
+            return;
+        }
+
         // Everything else: render to the string its parse path expects, then run
         // the ordinary property-applier VM (seq mark + side effects included).
         if let Some(s) = json_to_value_string(pd, jval)
@@ -194,6 +211,53 @@ fn quoted_element(element: &str) -> String {
         )
 }
 
+/// The number one item of a JSON list holds: a number, or a string holding
+/// one number, blanks around it ignored. It may be infinite or NaN.
+fn json_one_number(v: &Json) -> Option<f64> {
+    match v {
+        Json::Int(i) => Some(*i as f64),
+        Json::Float(f) => Some(*f),
+        Json::Str(s) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+/// An empty item of a JSON list: `null` or a blank string. The parse refuses
+/// it inside the list and ends the list at it.
+fn json_empty_item(v: &Json) -> bool {
+    match v {
+        Json::Null => true,
+        Json::Str(s) => s.trim().is_empty(),
+        _ => false,
+    }
+}
+
+/// Why `jval` cannot be read as a list that keeps only the values given, or
+/// `None` when it can. Only a list is a list: an object, a boolean, a number
+/// or a string as the whole value is refused. Each item of a list is a finite
+/// number, a string holding one or an empty item. An item that is neither is
+/// named here, ahead of an empty item before it (`[-4,null,1e400]` names value
+/// 3), and the text parse names an empty item when the list holds no such
+/// item. Pinned by
+/// `exec::tests::line_geometry_rules::a_spacing_list_with_an_empty_value_is_refused`
+/// and `::a_spacing_coordinate_is_a_finite_length`, which holds the
+/// `[-4,null,1e400]` leg.
+fn given_list_refusal(jval: &Json) -> Option<String> {
+    match jval {
+        Json::Arr(items) => items.iter().enumerate().find_map(|(at, v)| {
+            let why = match json_one_number(v) {
+                Some(f) if f.is_finite() => return None,
+                Some(_) => "is not a finite number",
+                None if json_empty_item(v) => return None,
+                None => "is not a number",
+            };
+            Some(format!("value {} of the list {why}", at + 1))
+        }),
+        Json::Null => None,
+        _ => Some("the value is not a list of numbers".to_string()),
+    }
+}
+
 /// Build the DSS value string for property `pd` from its JSON value, matching
 /// the grammar `ClassProps::parse_into` reads for that [`PropType`]. Returns
 /// `None` when there is nothing to apply.
@@ -240,6 +304,23 @@ fn json_to_value_string(pd: &PropDef, jval: &Json) -> Option<String> {
             }
             parts.join(" | ")
         }
+        // A list that keeps only the values given is joined with commas, one
+        // number per item, so an empty item inside it is an empty value its
+        // parse refuses, naming it (`given_list_refusal` has refused every
+        // other item). Pinned by
+        // `exec::tests::line_geometry_rules::a_spacing_list_with_an_empty_value_is_refused`.
+        PropType::DoubleVArray if pd.flags.contains(PropFlags::GIVEN_PREFIX) => match jval {
+            Json::Arr(a) => a
+                .iter()
+                .map(|v| {
+                    json_one_number(v)
+                        .map(|f| format!("{f}"))
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+                .join(","),
+            scalar => json_scalar_str(scalar),
+        },
         // Every other array-shaped property is a flat, space-separated token
         // list (numbers, enum strings, bus names, object-ref names, complex
         // [re, im], interleaved xy points). `parse_into` tokenizes it.

@@ -1681,12 +1681,21 @@ impl Dss {
                     {
                         errors.push(e);
                     }
-                    // A LineGeometry refusal concerns this value token: it is
-                    // logged here, in token order, rather than after the edit.
-                    // Pinned by `exec::tests::line_geometry_rules::refusals_are_logged_at_their_token`.
+                    // A Line, LineGeometry or LineSpacing refusal concerns this
+                    // value token: it is logged here, in token order, rather than
+                    // after the edit. Pinned by
+                    // `exec::tests::line_geometry_rules::refusals_are_logged_at_their_token`,
+                    // `::a_spacing_property_before_nconds_is_refused` and
+                    // `::a_line_logs_its_refusals_in_token_order`.
                     if active_arena
-                        .get::<crate::elements::general::line_geometry::LineGeometryObj>(oi)
+                        .get::<crate::elements::pd::line::Line>(oi)
                         .is_some()
+                        || active_arena
+                            .get::<crate::elements::general::line_geometry::LineGeometryObj>(oi)
+                            .is_some()
+                        || active_arena
+                            .get::<crate::elements::general::line_spacing::LineSpacingObj>(oi)
+                            .is_some()
                     {
                         errors.extend(active_arena[oi].data_mut().take_errors());
                     }

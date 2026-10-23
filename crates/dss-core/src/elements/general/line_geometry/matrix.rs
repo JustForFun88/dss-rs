@@ -112,8 +112,9 @@ impl LineGeometryObj {
             let Some(o) = o.as_ref() else { continue };
             self.fwiredata[j] = Some(o.clone());
             if !self.equivalent_spacing {
-                self.fx[j] = Some(xs[i]);
-                self.fy[j] = Some(hs[i]);
+                // A coordinate the spacing was never given stays not given.
+                self.fx[j] = xs.get(i).copied();
+                self.fy[j] = hs.get(i).copied();
                 self.funits[j] = units;
             }
             let (cn, ce) = conductor_norm_emerg(o);

@@ -1,0 +1,10 @@
+! One geometry for the line-constants report.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.unitwords basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+New WireData.w GMRac=0.0244 GMRunits=ft Rac=0.306 Runits=mi Diam=0.721 Radunits=in
+New LineGeometry.g nconds=3 nphases=3
+~ cond=1 wire=w x=-4 h=28 units=ft
+~ cond=2 wire=w x=0 h=28
+~ cond=3 wire=w x=4 h=28

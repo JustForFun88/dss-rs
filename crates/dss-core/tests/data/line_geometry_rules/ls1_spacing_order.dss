@@ -1,0 +1,12 @@
+! A LineSpacing property before the first nconds= is refused, naming it: a
+! takes no nconds=, b writes its unit before nconds=, h is edited before any
+! nconds=. A like= copy of b and a second New of b take data at once.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+New LineSpacing.a x=[1 2 3] h=[4 5 6] units=m
+New LineSpacing.b units=m nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28]
+New LineSpacing.h
+Edit LineSpacing.h x=[1 2 3]
+New LineSpacing.k like=b x=[-1 0 1]
+New LineSpacing.b x=[-5 0 5]

@@ -599,24 +599,15 @@ pub fn write_dss_object(
         }
         snapshot
     });
-    // Pascal models `SaveWrite` as a virtual method; `TTransfObj` overrides it
-    // (the per-winding structure needs the array-property rewrite — see
-    // `elements/pd/transformer/save.rs`). Every other class uses the generic
-    // form. (More overrides are added here if/when a class needs one.)
-    //
-    // RP3.11 §1.1: the override set is the **union** of both upstreams', because
-    // every one of them exists to keep the emitted deck re-compilable. It is the
-    // complete union, class for class, and it was completed by the RP3.11
-    // settlement: the 0.14.5-derived Transformer / AutoTrans / LineGeometry /
-    // Line four, r4133's XYcurve (`XYcurve.pas:978-1003`) and RegControl
-    // (`RegControl.pas:1399-1421`) allocation/ordering guards, and 0.14.5's
-    // XfmrCode (`CAPI:General/XfmrCode.pas:667-745`, the winding rewrite —
-    // r4133 has none and drops every winding but the active one) plus DynEqPCE
-    // (`CAPI:PCElements/DynEqPCE.pas:252-273`, the `UserDynInit` tail, appended
-    // below because Pascal calls `inherited SaveWrite` first). 0.14.5's ninth,
-    // `TLoadShapeObj.SaveWrite`, is the `LoadShape` rule of [`save_write`].
-    // The overrides that write a per-winding or per-conductor table end with
-    // the reload's cursor on its last row; `restore_cursor` puts it back.
+    // A class whose Save line would not reload as written has a body of its
+    // own: the Transformer, AutoTrans and XfmrCode windings, the LineGeometry
+    // conductors, the Line, the LineSpacing, and the XYcurve and RegControl
+    // allocation order. Every other class writes the generic line, and a
+    // DynEqPCE host adds its dynamic-init tail after it (below). The bodies
+    // that write a per-winding or per-conductor table end with the reload's
+    // cursor on its last row, and `restore_cursor` puts it back. The
+    // LineSpacing body writes `NConds=` first, since the reload refuses every
+    // property ahead of it.
     let written = out.len();
     if let Some(xf) = arena.get::<crate::elements::pd::transformer::Transformer>(idx) {
         xf.save_write_body(out, cx);
@@ -631,6 +622,10 @@ pub fn write_dss_object(
         restore_cursor(out, written, cx, lg, "Cond", Some(0));
     } else if let Some(ln) = arena.get::<crate::elements::pd::line::Line>(idx) {
         ln.save_write_body(out, cx);
+    } else if let Some(ls) =
+        arena.get::<crate::elements::general::line_spacing::LineSpacingObj>(idx)
+    {
+        ls.save_write_body(out, cx);
     } else if let Some(xy) = arena.get::<crate::elements::general::xy_curve::XyCurveObj>(idx) {
         xy.save_write_body(out, cx);
     } else if let Some(rc) = arena.get::<crate::elements::control::reg_control::RegControl>(idx) {

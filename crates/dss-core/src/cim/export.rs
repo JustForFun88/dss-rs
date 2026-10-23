@@ -2023,10 +2023,12 @@ fn write_line_geometry_catalog(
     }
 }
 
-/// Pascal LineSpacing catalog sweep (`ExportCIMXML.pas:4601-4625`): one
-/// `WireSpacingInfo` + a `WirePosition` per conductor. `isCable` reads
-/// `Ycoord[1] > 0`. The single `Units` applies to every coordinate. The
-/// `WirePosition` UUIDs are keyed with `seq = 2` (Pascal's "2 for pSpac").
+/// One `WireSpacingInfo` per LineSpacing and a `WirePosition` per conductor.
+/// `isCable` reads the first height and is not written when that height was
+/// never given. The single `Units` applies to every coordinate, and a
+/// coordinate never given is not written. The `WirePosition` UUIDs are keyed
+/// with `seq = 2`. Pinned by
+/// `exec::tests::line_geometry_rules::a_short_spacing_list_keeps_its_gaps`.
 fn write_line_spacing_catalog(
     buf: &mut writer::Writer,
     classes: &mut [DssClass],
@@ -2059,9 +2061,14 @@ fn write_line_spacing_catalog(
             "WireSpacingInfo.phaseWireSpacing",
             0.0,
         );
-        // Pascal `if Ycoord[1] > 0.0 then isCable=FALSE else TRUE`.
-        let is_cable = ys.first().copied().unwrap_or(0.0) <= 0.0;
-        writer::boolean_node(buf, ProfileChoice::Cat, "WireSpacingInfo.isCable", is_cable);
+        if let Some(&h1) = ys.first() {
+            writer::boolean_node(
+                buf,
+                ProfileChoice::Cat,
+                "WireSpacingInfo.isCable",
+                h1 <= 0.0,
+            );
+        }
         writer::end_instance(buf, ProfileChoice::Cat, "WireSpacingInfo");
         for i in 1..=(nwires.max(0) as usize) {
             let wp_local = format!("WP_{name}_{i}");
@@ -2079,18 +2086,12 @@ fn write_line_spacing_catalog(
                 "WirePosition.sequenceNumber",
                 i as i64,
             );
-            writer::double_node(
-                buf,
-                ProfileChoice::Cat,
-                "WirePosition.xCoord",
-                xs[i - 1] * v1,
-            );
-            writer::double_node(
-                buf,
-                ProfileChoice::Cat,
-                "WirePosition.yCoord",
-                ys[i - 1] * v1,
-            );
+            if let Some(&x) = xs.get(i - 1) {
+                writer::double_node(buf, ProfileChoice::Cat, "WirePosition.xCoord", x * v1);
+            }
+            if let Some(&y) = ys.get(i - 1) {
+                writer::double_node(buf, ProfileChoice::Cat, "WirePosition.yCoord", y * v1);
+            }
             writer::end_instance(buf, ProfileChoice::Cat, "WirePosition");
         }
     }

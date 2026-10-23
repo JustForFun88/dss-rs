@@ -337,8 +337,9 @@ fn set_ref_array(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, targets:
     assert!(errs.is_empty(), "set {name}: {errs:?}");
 }
 
-/// Like [`set_ref_array`] but returns the deferred errors (for the count-mismatch
-/// path) instead of asserting.
+/// Like [`set_ref_array`] but returns the errors (a refused list's message,
+/// or the deferred errors) instead of asserting. A refused list writes
+/// nothing, enters no set order and runs no side effect, as in the edit.
 fn try_ref_array(
     cls: &ClassProps,
     obj: &mut dyn DssObject,
@@ -353,6 +354,11 @@ fn try_ref_array(
             Some((r.name().to_string(), r))
         })
         .collect();
+    if let Some(e) = obj.refuse_object_ref_array(idx, &refs) {
+        let mut log = crate::diag::ErrorLog::new();
+        log.push(e);
+        return log;
+    }
     obj.set_object_ref_array(idx, &refs);
     obj.data_mut().set_as_next_seq(idx);
     obj.side_effects(idx, 0);
@@ -1415,4 +1421,52 @@ fn reset_length_units_keeps_the_users_units() {
              both oracles (r4133 Line.pas:2330, dss_capi 0.14.5 Line.pas:2084)"
         );
     }
+}
+
+#[test]
+fn a_spacing_whose_unit_code_names_no_length_is_refused() {
+    // A spacing whose unit code is 0 or outside 1 to 8 (set directly, since
+    // the spacing's own `units=` refuses any word outside its list) is refused
+    // by the Line's `spacing=`, naming the Line, the spacing and the code. A
+    // spacing in feet is accepted. `try_spacing` applies only an accepted
+    // spacing, as the dispatcher does. The dispatcher's keep is pinned end to
+    // end by
+    // `exec::tests::line_geometry_rules::a_line_refuses_a_spacing_whose_unit_code_names_no_length`.
+    let enums = EnumRegistry::new();
+    let lcls = class_props(&enums);
+    let spacing = lcls.property_index("spacing").expect("known property");
+    let units = line_spacing::class_props(&enums)
+        .property_index("units")
+        .expect("known property");
+    let try_spacing = |line: &mut Line, target: &LineSpacingObj| -> Option<String> {
+        let arena = arena_of(target);
+        let refused = line.refuse_object_ref(spacing, &ResolvedObj::new(&arena, 0));
+        if refused.is_none() {
+            set_ref(&lcls, line, "spacing", &arena);
+        }
+        refused
+    };
+    let kept = build_spacing("sp3", 3, 3, &["0", "1", "2"], &["10", "10", "10"]);
+    let mut line = Line::new("l1");
+    scalar(&lcls, &mut line, "length", "1");
+    scalar(&lcls, &mut line, "units", "m");
+    assert_eq!(try_spacing(&mut line, &kept), None);
+    for (code, written) in [(0, "none"), (9, "9"), (99, "99"), (-1, "-1")] {
+        let mut sp = build_spacing("sp", 3, 3, &["-4", "0", "4"], &["28", "28", "28"]);
+        sp.set_i32(units, code);
+        assert_eq!(
+            try_spacing(&mut line, &sp),
+            Some(format!(
+                "Line.l1.Spacing: LineSpacing.sp has no length unit (units={written}), so the \
+                 Line is left as it was. Give the spacing one of mi, kft, km, m, ft, in, cm, mm."
+            )),
+            "{code}"
+        );
+        assert_eq!(lcls.get_value(&line, spacing, &enums), "sp3", "{code}");
+        assert_eq!(line.cd.nphases, 3, "{code}");
+    }
+    let mut feet = build_spacing("spft", 3, 3, &["-4", "0", "4"], &["28", "28", "28"]);
+    feet.set_i32(units, LineUnits::Ft.code());
+    assert_eq!(try_spacing(&mut line, &feet), None);
+    assert_eq!(lcls.get_value(&line, spacing, &enums), "spft");
 }

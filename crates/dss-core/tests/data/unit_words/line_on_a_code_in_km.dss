@@ -1,0 +1,11 @@
+! A Line in km on a LineCode in km, then units=miles, a word outside the
+! list: the Line keeps km and its impedance is the code's per-km value over
+! 1 km.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.unitwords basekv=12.47 phases=3 bus1=src
+New LineCode.c nphases=3 r1=0.3 x1=0.6 r0=0.3 x0=0.6 c1=0 c0=0 units=km
+New Line.l bus1=src.1.2.3 bus2=b.1.2.3 linecode=c length=1 units=km
+Edit Line.l units=miles
+Set voltagebases=[12.47]
+CalcVoltageBases

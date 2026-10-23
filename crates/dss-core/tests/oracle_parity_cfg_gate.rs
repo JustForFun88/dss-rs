@@ -9424,6 +9424,7 @@ const WALK_SITES: &[(&str, usize)] = &[
     ("crates/dss-core/src/exec/tests/ncim.rs", 1),
     ("crates/dss-core/src/exec/tests/report.rs", 1),
     ("crates/dss-core/src/exec/tests/storage.rs", 1),
+    ("crates/dss-core/src/exec/tests/unit_words.rs", 1),
     ("crates/dss-core/tests/ad_reference.rs", 1),
     ("crates/dss-core/tests/adiakoptics.rs", 1),
     ("crates/dss-core/tests/corpus_gate/engines.rs", 2),

@@ -290,49 +290,70 @@ impl Line {
         self.line_wire_data = (0..nwires).map(|_| None).collect();
     }
 
-    /// Pascal `TLineObj.SetWires` (Line.pas:803), the text path (`AllowAllConductors`
-    /// is JSON-only, skipped — the `LineGeometry.set_wires` precedent). The `wires=`
-    /// form: overhead conductors when `FPhaseChoice = Unknown`, else bare neutrals
-    /// appended after the cable phases (`istart = NPhases + 1`). Validates the count
-    /// against the open conductor span and seeds the Line's ratings from the wires.
-    pub(super) fn set_wires(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
-        let Some(spc) = self.line_spacing_obj.as_ref() else {
-            self.cd.obj.push_error(format!(
-                "You must assign the LineSpacing before the Wires Property (\"Line.{}\").",
-                self.cd.obj.name()
-            ));
-            return;
+    /// The open spacing positions a `wires=` list fills, 1-based: from the
+    /// first to the last position while no conductor list (`cncables=`,
+    /// `tscables=` or `conductors=`) has set the conductor model, else from
+    /// the position after the spacing's phases, the wires then being bare
+    /// neutrals. Empty without a spacing or when no position is open.
+    fn wire_positions(&self) -> std::ops::RangeInclusive<usize> {
+        let (first, last) = match self.line_spacing_obj.as_ref() {
+            None => (1, 0),
+            Some(spc) if self.fphase_choice == ConductorChoice::Unknown => {
+                (1, spc.nwires().max(0) as usize)
+            }
+            Some(spc) => (
+                spc.nphases().max(0) as usize + 1,
+                spc.nwires().max(0) as usize,
+            ),
         };
-        let nwires = spc.nwires().max(0) as usize;
-        let nphases = spc.nphases().max(0) as usize;
+        first..=last
+    }
 
-        let istart = if self.fphase_choice == ConductorChoice::Unknown {
+    /// The refusal of a `wires=` list of `count` wires, or `None` to take it.
+    /// The list needs a spacing and names one wire per open position
+    /// ([`Line::wire_positions`]), so a wire with no position (a spacing with
+    /// no conductor, or phase cables on every position) and a list longer or
+    /// shorter than the open positions are refused. A refused list changes
+    /// nothing on the Line: no line code or geometry is dropped, no rating is
+    /// reset and `wires` enters no set order. Pinned by
+    /// `exec::tests::line_geometry_rules::a_line_refuses_a_wire_with_no_position`
+    /// and `::a_refused_wire_list_changes_nothing_on_the_line`.
+    pub(super) fn wires_refusal(&self, count: usize) -> Option<String> {
+        let name = self.cd.obj.name();
+        if self.line_spacing_obj.is_none() {
+            return Some(format!(
+                "You must assign the LineSpacing before the Wires Property (\"Line.{name}\")."
+            ));
+        }
+        let expected = self.wire_positions().count();
+        (expected != count).then(|| {
+            format!(
+                "Line.{name}: Unexpected number ({count}) of wires; expected {expected} objects."
+            )
+        })
+    }
+
+    /// The `wires=` form, a list [`Line::wires_refusal`] has taken: one wire
+    /// per open position. A list that starts at position 1 drops a line code
+    /// and a geometry: the overhead wires of a Line whose model no conductor
+    /// list has set, and the neutrals after a cable or `conductors=` list on a
+    /// spacing whose `nphases` is 0 or negative. Seeds the Line's ratings from
+    /// the wires.
+    pub(super) fn set_wires(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
+        debug_assert!(self.wires_refusal(refs.len()).is_none());
+        let positions = self.wire_positions();
+        if *positions.start() == 1 {
             // it's an overhead line
             self.kill_line_code_specified();
             self.kill_geometry_specified();
-            1
-        } else {
-            // adding bare neutrals to an underground line
-            nphases + 1
-        };
-
-        // Validate number of elements: (NWires - istart + 1).
-        let expected = nwires.saturating_sub(istart) + 1;
-        if expected != refs.len() {
-            self.cd.obj.push_error(format!(
-                "Line.{}: Unexpected number ({}) of wires; expected {expected} objects.",
-                self.cd.obj.name(),
-                refs.len()
-            ));
-            return;
         }
 
         let mut new_num_rat = 1i32;
         let mut new_ratings: Vec<crate::obj::Rating> = Vec::new();
         let mut ratings_inc = false;
-        for (k, i) in (istart..=nwires).enumerate() {
+        for (r, i) in refs.iter().zip(positions) {
             // A `none` slot (AllowNoneItem) stays NIL and contributes no ratings.
-            let Some((_, res)) = refs[k].as_ref() else {
+            let Some((_, res)) = r.as_ref() else {
                 self.line_wire_data[i - 1] = None;
                 continue;
             };
@@ -411,26 +432,33 @@ impl Line {
         choice
     }
 
-    /// Pascal's generic `DSSObjectReferenceArrayProperty` fill for the
-    /// `cncables=`/`tscables=` forms (no `WriteByFunction`, unlike `wires=`): write
-    /// the resolved cables straight into `LineWireData` from conductor 1, with no
-    /// `istart` gymnastics. `FPhaseChoice` is set by the side effect, so a following
-    /// `wires=` appends bare neutrals after the cable phases. `prop` is the display
-    /// name for the no-spacing error (`CNCables`/`TSCables`).
-    ///
-    /// A missing/too-short wire array is left partly NIL: the solve-time
-    /// `load_spacing_and_wires` compacts the NIL slots out, and a NIL phase slot
-    /// then fails the Line's phase-count check. With *no* spacing at all
-    /// (`FWireDataSize < 1`) the generic fill raises error 402 up front.
-    pub(super) fn set_cables(&mut self, prop: &str, refs: &[ObjectRefArrayItem<'_>]) {
-        if self.line_wire_data.is_empty() {
-            self.cd.obj.push_error(format!(
+    /// The refusal of a `cncables=` or `tscables=` list (`prop` names it), or
+    /// `None` to take it: the list fills the conductor positions of a spacing,
+    /// so a Line with no position (no spacing, or a spacing with no conductor)
+    /// refuses it with 402, as a `conductors=` list. A refused list changes
+    /// nothing on the Line: no line code or geometry is dropped, the conductor
+    /// model stays and `prop` enters no set order. Pinned by
+    /// `exec::tests::line_geometry_rules::a_missing_object_or_a_cable_list_with_no_position_changes_nothing`.
+    pub(super) fn cables_refusal(&self, prop: &str) -> Option<dss_parser::ParserError> {
+        self.line_wire_data.is_empty().then(|| {
+            dss_parser::ParserError::new(format!(
                 "Line.{}.{prop}: No objects are expected! \
                  Check if the order of property assignments is correct.",
                 self.cd.obj.name()
-            ));
-            return;
-        }
+            ))
+            .with_code(402)
+        })
+    }
+
+    /// The `cncables=`/`tscables=` form, a list [`Line::cables_refusal`] has
+    /// taken: the cables fill the conductor positions from the first, a
+    /// position past the list keeping what it held and an item past the
+    /// positions being dropped. The side effect sets the conductor model, so a
+    /// following `wires=` adds bare neutrals after the cable phases. A
+    /// position left empty is compacted out at the solve, where an empty
+    /// phase position fails the Line's phase-count check.
+    pub(super) fn set_cables(&mut self, prop: &str, refs: &[ObjectRefArrayItem<'_>]) {
+        debug_assert!(self.cables_refusal(prop).is_none());
         for (k, r) in refs.iter().enumerate() {
             if k < self.line_wire_data.len() {
                 // A `none` slot (AllowNoneItem) stays NIL.

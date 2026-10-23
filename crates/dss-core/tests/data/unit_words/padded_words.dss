@@ -1,0 +1,14 @@
+! Unit words written with a blank around them: a LineCode in "km ", a wire
+! whose GMR is in " ft" before its radius in inches, and a LineSpacing in
+! "m " placing the conductors 1.2192 m (4 ft) apart at 8.5344 m (28 ft).
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.unitwords basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+New LineCode.c nphases=3 r1=0.3 x1=0.6 r0=0.3 x0=0.6 c1=0 c0=0 units="km "
+New Line.lc bus1=src.1.2.3 bus2=b.1.2.3 linecode=c length=1 units=km
+New WireData.w GMRac=0.0244 GMRunits=" ft" Rac=0.306 Runits=mi Diam=0.721 Radunits=in
+New LineSpacing.s nconds=3 nphases=3 x=[-1.2192 0 1.2192] h=[8.5344 8.5344 8.5344] units="m "
+New Line.L bus1=src.1.2.3 bus2=c.1.2.3 spacing=s wires=[w w w] length=1 units=mi
+Set voltagebases=[12.47]
+CalcVoltageBases

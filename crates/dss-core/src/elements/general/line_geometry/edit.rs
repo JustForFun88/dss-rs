@@ -10,9 +10,8 @@ use crate::obj::Rating;
 use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_constants::LineConstants;
 
-use super::accessors::LENGTH_UNITS;
 use super::{ConductorChoice, LineGeometryObj, UNIT_UNSET, UNITS_FT, prop};
-use crate::support::line_units::LineUnits;
+use crate::support::line_units::{LineUnits, POSITION_WORD_LIST};
 
 /// A fresh conductor table: the engine (none without conductors) and each
 /// conductor's kind, object, position and unit.
@@ -157,7 +156,7 @@ impl LineGeometryObj {
         if LineUnits::from_code(spc.spacing_units()) == LineUnits::None {
             let msg = format!(
                 "LineGeometry.{}.Spacing: LineSpacing.{} has no length unit, so nothing is \
-                 copied. Give the spacing one of {LENGTH_UNITS}.",
+                 copied. Give the spacing one of {POSITION_WORD_LIST}.",
                 self.data.name(),
                 spc.data().name()
             );
@@ -179,12 +178,13 @@ impl LineGeometryObj {
                 self.avg_neutral_height = spc.avg_neutral_height();
                 self.eq_unit = units;
             } else {
+                // A coordinate the spacing was never given stays not given.
                 let xs = spc.xcoord().to_vec();
                 let hs = spc.ycoord().to_vec();
                 let n = self.fnconds.max(0) as usize;
                 for i in 0..n {
-                    self.fx[i] = Some(xs[i]);
-                    self.fy[i] = Some(hs[i]);
+                    self.fx[i] = xs.get(i).copied();
+                    self.fy[i] = hs.get(i).copied();
                     self.funits[i] = units;
                 }
             }

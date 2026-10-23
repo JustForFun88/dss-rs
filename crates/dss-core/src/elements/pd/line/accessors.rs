@@ -3,13 +3,13 @@
 //! (LineCode/LineGeometry resolution), `PropertySideEffects`, and `MakeLike`.
 
 use crate::elements::general::line_code::{LineCodeObj, LineType};
-use crate::elements::general::line_geometry::{LENGTH_UNITS, LineGeometryObj};
+use crate::elements::general::line_geometry::LineGeometryObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
 use crate::obj::Rating;
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use crate::support::cmatrix::CMatrix;
-use crate::support::line_units::{LineUnits, convert_line_units};
+use crate::support::line_units::{LineUnits, POSITION_WORD_LIST, convert_line_units};
 
 use super::{ConductorChoice, Line};
 
@@ -208,14 +208,13 @@ impl DssObject for Line {
         self.cd.get_bus(terminal).to_string()
     }
 
-    /// `linecode=`: store the resolved code's name + typed handle and run
-    /// `FetchLineCode` immediately (Pascal stores the pointer then
-    /// `PropertySideEffects` calls `FetchLineCode`; here the resolved view is
-    /// only available at parse time, so we fetch here).
-    /// `spacing=` refuses a LineSpacing whose unit is no length unit, the way
-    /// a LineGeometry's `spacing=` does, and the Line keeps what it had.
-    /// Pinned by
-    /// `exec::tests::line_geometry_rules::a_line_refuses_a_spacing_without_a_unit`.
+    /// `spacing=` refuses a LineSpacing whose unit code names no length unit
+    /// (a code set directly, since the spacing's own `units=` refuses any word
+    /// outside its list), the way a LineGeometry's `spacing=` does, and the
+    /// Line keeps what it had. Pinned by
+    /// `exec::tests::line_geometry_rules::a_line_refuses_a_spacing_whose_unit_code_names_no_length`,
+    /// and each code by
+    /// `elements::pd::line::tests::a_spacing_whose_unit_code_names_no_length_is_refused`.
     fn refuse_object_ref(&self, idx: usize, resolved: &ResolvedObj<'_>) -> Option<String> {
         if idx != super::prop::SPACING {
             return None;
@@ -229,13 +228,35 @@ impl DssObject for Line {
             };
             format!(
                 "Line.{}.Spacing: LineSpacing.{} has no length unit (units={unit}), so the Line \
-                 is left as it was. Give the spacing one of {LENGTH_UNITS}.",
+                 is left as it was. Give the spacing one of {POSITION_WORD_LIST}.",
                 self.cd.obj.name(),
                 spc.data().name()
             )
         })
     }
 
+    /// `wires=` refuses a list [`Line::wires_refusal`] refuses, `cncables=` and
+    /// `tscables=` a list [`Line::cables_refusal`] refuses, and the Line keeps
+    /// what it had.
+    fn refuse_object_ref_array(
+        &self,
+        idx: usize,
+        refs: &[ObjectRefArrayItem<'_>],
+    ) -> Option<dss_parser::ParserError> {
+        use super::prop::{CNCABLES, TSCABLES, WIRES};
+        match idx {
+            WIRES => self
+                .wires_refusal(refs.len())
+                .map(dss_parser::ParserError::new),
+            CNCABLES => self.cables_refusal("CNCables"),
+            TSCABLES => self.cables_refusal("TSCables"),
+            _ => None,
+        }
+    }
+
+    /// `linecode=` stores the resolved code's name and typed handle and fetches
+    /// the code at once, since the resolved view exists only while the value
+    /// is parsed.
     fn set_object_ref(&mut self, idx: usize, name: String, resolved: Option<ResolvedObj<'_>>) {
         match idx {
             super::prop::LINECODE => {
@@ -484,9 +505,10 @@ impl DssObject for Line {
                 self.cd.yprim_invalid = true;
             }
             HEIGHT_UNIT => {
-                // Pascal `Line.pas:644-648`: `none` is not a valid height unit —
-                // it snaps back to Meters. (No YPrim-invalidation here; the value
-                // only takes effect at the next geometry/spacing Z build.)
+                // Code 0 set directly names no height unit and snaps back to
+                // metres, the documented default (the text and JSON paths
+                // refuse `none`). The value takes effect at the next
+                // geometry or spacing Z build.
                 if self.height_units == LineUnits::None.code() {
                     self.height_units = LineUnits::Meter.code();
                 }
@@ -513,14 +535,14 @@ impl DssObject for Line {
                         // executive-synced live flag rather than deferring.
                         self.recalc(self.positive_sequence);
                     } else {
-                        // Pascal (Line.pas:639-644): changing the phase count is
-                        // illegal for a matrix or geometry model — revert
-                        // `nphases` and log 18101. It is a `DoSimpleMsg`, so it
-                        // does *not* set `SolutionAbort` (it only logs and, under
-                        // the default `EARLY_ABORT`, sets `Redirect_Abort`, which
-                        // we do not model). The executive drains this after the
-                        // edit (confirmed live: `Illegal change of number of
-                        // phases for "Line.<name>"`, code 18101).
+                        // Changing the phase count is illegal for a matrix or
+                        // geometry model: `nphases` reverts and the refusal is
+                        // queued with no code and no solution abort. A command
+                        // logs it at its `phases=` token
+                        // (`exec::tests::line_geometry_rules::a_line_logs_its_refusals_in_token_order`),
+                        // and a JSON record after the object, behind the
+                        // refusal of a later member
+                        // (`::a_json_record_logs_a_queued_message_after_the_object`).
                         self.cd.nphases = prev_int.max(0) as usize;
                         self.cd.obj.push_error(format!(
                             "Illegal change of number of phases for \"Line.{}\"",
