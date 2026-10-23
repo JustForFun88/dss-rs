@@ -1,0 +1,26 @@
+! A bare cond=N changes no unit: the conductor takes the default unit at its
+! first selection, unless units= is written for it. In c conductor 2 is first
+! selected bare under the default feet, in d after the default became metres,
+! and in e bare, then given units=m.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineGeometry.c nconds=2 nphases=2
+~ cond=2
+~ cond=1 wire=ACSR_556_5 x=0 h=10 units=m
+~ cond=2 wire=ACSR_556_5 x=1 h=10
+New LineGeometry.d nconds=2 nphases=2
+~ cond=1 wire=ACSR_556_5 x=0 h=10 units=m
+~ cond=2 wire=ACSR_556_5 x=1 h=10
+New LineGeometry.e nconds=2 nphases=2
+~ cond=2
+~ cond=1 wire=ACSR_556_5 x=0 h=10 units=m
+~ cond=2 wire=ACSR_556_5 x=1 h=10 units=m
+New Line.Lc bus1=src.1.2 bus2=bc.1.2 geometry=c length=1 units=mi
+New Line.Ld bus1=src.1.2 bus2=bd.1.2 geometry=d length=1 units=mi
+New Line.Le bus1=src.1.2 bus2=be.1.2 geometry=e length=1 units=mi
+Set voltagebases=[12.47]
+CalcVoltageBases
+Solve

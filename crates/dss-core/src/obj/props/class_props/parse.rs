@@ -9,7 +9,8 @@ use crate::obj::props::setters::{
     parse_interval_units_i32, set_obj_double, set_obj_integer,
 };
 use crate::obj::props::{PropEngine, PropFlags, PropType};
-use crate::util::interpret_dbl_array;
+use crate::support::line_units::LineUnits;
+use crate::util::{interpret_dbl_array, interpret_given_values};
 use dss_parser::{ParserError, val_i32};
 
 use super::ClassProps;
@@ -338,23 +339,16 @@ impl ClassProps {
                 Ok(0)
             }
             PropType::ObjectRefArray if !pd.object_classes.is_empty() => {
-                // Pascal `DSSObjectReferenceArrayProperty` over a **3-class
-                // `TProxyClass`** created with `fullNames=True` — Line/LineGeometry
-                // `Conductors` (`FullNameAsArray`). This is the generic array-fill
-                // path (no `WriteByFunction`): first the count guard, then
-                // `ValidateObjectItem` per item, writing NIL/objects into the
-                // pre-sized conductor array (`DSSObjectHelper.pas:966-1010,6444`).
+                // The `conductors=` list of a Line or a LineGeometry: full
+                // `Class.Name` items over WireData, CNData and TSData.
                 parse_conductor_proxy(obj, idx, pd, value, eng, &full)
             }
             PropType::ObjectRefArray => {
-                // Pascal `DSSObjectReferenceArrayProperty` (`WriteByFunction`):
-                // parse every token, resolve each against the fixed class
-                // (`cls.Find`), and hand the resolved list to the object, which
-                // validates the count and stores the references (Pascal
-                // `SetWires`). On the *first* unresolved token the upstream logs
-                // its "object not found" message and `Exit`s immediately
-                // (DSSObjectHelper.pas) — the write function never runs, so
-                // nothing is stored and no count error is raised.
+                // Resolve every token against the class, then let the object
+                // refuse the list before it stores it. A token that resolves to
+                // nothing refuses the list at its own "not found". A refused
+                // list writes nothing, enters no set order and runs no side
+                // effect.
                 let class = pd
                     .object_class
                     .expect("object-ref-array property needs a class");
@@ -373,12 +367,8 @@ impl ClassProps {
                 let mut refs: Vec<crate::obj::base::ObjectRefArrayItem> =
                     Vec::with_capacity(names.len());
                 for token in &names {
-                    // Pascal `AllowNoneItem` (`DSSObjectHelper.ValidateObjectItem`
-                    // l.6456, SVN r3902/r3913): a `none` list entry becomes a NIL
-                    // slot (no "not found" error) — used by the mixed conductor
-                    // lists (Line/LineGeometry Wires/CNCables/TSCables). WP-U1.1
-                    // item 3. (0.14.5 errors #40303 here; the mixed-list *numerics*
-                    // that consume a NIL conductor are WP-U1.4.)
+                    // With `ALLOW_NONE_ITEM` (the Line's `wires`, `cncables`
+                    // and `tscables`) a `none` item is an empty slot.
                     if allow_none && token.eq_ignore_ascii_case("none") {
                         refs.push(None);
                         continue;
@@ -386,13 +376,15 @@ impl ClassProps {
                     match eng.foreign.and_then(|f| f.find(class, token)) {
                         Some(o) => refs.push(Some((o.name().to_string(), o))),
                         None => {
-                            eng.errors.push(format!(
+                            return Err(ParserError::new(format!(
                                 "{full}.{}: {class} object \"{token}\" not found.",
                                 pd.name
-                            ));
-                            return Ok(0);
+                            )));
                         }
                     }
+                }
+                if let Some(e) = obj.refuse_object_ref_array(idx, &refs) {
+                    return Err(e);
                 }
                 obj.set_object_ref_array(idx, &refs);
                 Ok(0)
@@ -413,8 +405,8 @@ impl ClassProps {
                         Some(v) => f64::from(v),
                         None => get_double(eng, value)?,
                     };
-                    if let Some(msg) = obj.refuse_integer(idx, value, number) {
-                        return Err(ParserError::new(msg));
+                    if let Some(e) = obj.refuse_integer(idx, value, number) {
+                        return Err(e);
                     }
                     get_integer(eng, value)?
                 } else {
@@ -431,15 +423,25 @@ impl ClassProps {
             PropType::MappedStringEnum | PropType::MappedIntEnum => {
                 let enum_id = pd.enum_id.expect("mapped enum property needs an enum");
                 let ord = if pd.ptype == PropType::MappedStringEnum {
-                    let ord = eng
-                        .enums
-                        .get(enum_id)
-                        .string_to_ordinal(&value.to_ascii_lowercase())?;
-                    if let Some(msg) = obj.refuse_enum_text(idx, value, ord) {
-                        obj.data_mut().push_error(msg);
-                        return Ok(obj.get_i32(idx));
+                    if pd.unit_words.is_empty() {
+                        eng.enums
+                            .get(enum_id)
+                            .string_to_ordinal(&value.to_ascii_lowercase())?
+                    } else {
+                        // A length unit is one of its listed words, written
+                        // whole, and the unit read is the unit stored. Any
+                        // other text writes nothing and runs no side effect.
+                        match LineUnits::from_word(value, pd.unit_words) {
+                            Some(unit) => unit.code(),
+                            None => {
+                                return Err(ParserError::new(format!(
+                                    "{full}.{}: \"{value}\" is not one of the length units {}.",
+                                    pd.name,
+                                    pd.unit_words.join(", ")
+                                )));
+                            }
+                        }
                     }
-                    ord
                 } else {
                     let v = get_integer(eng, value)?;
                     if !eng.enums.get(enum_id).is_ordinal_valid(v) {
@@ -602,6 +604,26 @@ impl ClassProps {
                 obj.set_f64_array(idx, buf);
                 Ok(0)
             }
+            PropType::DoubleVArray if pd.flags.contains(PropFlags::GIVEN_PREFIX) => {
+                // The values written, in order, at most the object's count. An
+                // empty value inside the list, or one that is not a finite
+                // number, writes nothing.
+                let n = obj.array_size(idx);
+                let (mut buf, refused) = interpret_given_values(eng.parser, eng.vars, value, n)?;
+                if let Some((at, why)) = refused {
+                    return Err(ParserError::new(format!(
+                        "{full}.{}: value {at} of the list {why}, so the list is not applied.",
+                        pd.name
+                    )));
+                }
+                if pd.scale != 1.0 {
+                    for v in &mut buf {
+                        *v *= pd.scale;
+                    }
+                }
+                obj.set_f64_array(idx, buf);
+                Ok(0)
+            }
             PropType::DoubleVArray => {
                 // Pascal `DoubleVArrayProperty` + `SizeIsFunction`: the object
                 // computes the element count (e.g. XSCArray = XscSize).
@@ -728,28 +750,17 @@ impl ClassProps {
     }
 }
 
-/// Pascal `ValidateObjectItem` + the generic array fill for a **3-class
-/// `TProxyClass`** `DSSObjectReferenceArrayProperty` created with
-/// `fullNames=True` — Line/LineGeometry `Conductors`
-/// (`DSSObjectHelper.pas:966-1010,6444`; `DSSClass.pas:2603`). Reproduces the
-/// upstream diagnostics 1:1:
-///  * count `< 1` (spacing/`NConds` not yet set) → #402 "No objects are
-///    expected!", checked **before** any item;
-///  * a bare item (no `Class.` prefix) → #10103 "You must define the `<Proxy>`
-///    class for all the valid items in the array." (`AllowNoneItem` → "valid"; the
-///    r4133 `dotpos = 0` arm, LineGeometry.pas:476-479);
-///  * a class-prefixed item resolves by a **case-insensitive** class match
-///    (r4133 `LowerCase(CondClass)` dispatch), else #10103 "Invalid class
-///    (`<lowercased>`) for item. Valid classes: (`WireData|CNData|TSData`)".
-///
-/// The class match was case-*sensitive* until the 0.15.x-adoption sweep: dss_capi
-/// 0.15.x's `TProxyClass.GetDSSClass` compared the `AnsiLowerCase`d token against
-/// the original-case `TargetClassNames`, so every prefixed item errored #10103 —
-/// a capi015-only breakage the port reproduced. r4133 has no `TProxyClass`; it
-/// parses `conductors=` natively with a `LowerCase` compare AND solves (own
-/// r4133 probe, DIVERGENCES §"Line/LineGeometry Conductors"), so the port adopts
-/// r4133. The count-`< 1` #402 and bare-name #10103 arms are unchanged (the port
-/// keeps its clean #402 rather than r4133's conductors-before-spacing #303 AV).
+/// The `conductors=` list of a Line or a LineGeometry, filled into the
+/// conductor array from its first slot: each item is the `Class.Name` of a
+/// WireData, CNData or TSData object, the class matched in any case, or
+/// `none` for an empty slot. The list is refused at its token, writing
+/// nothing, entering no set order and running no side effect, when the
+/// array is not sized yet (402 "No objects are expected!", before any
+/// item), when an item names no class (10103 "You must define the
+/// `<Proxy>` class for all the valid items in the array."), when it names
+/// another class (10103 "Invalid class (`<lowercased>`) for item. Valid
+/// classes: (`WireData|CNData|TSData`)") and when its object is not found.
+/// Pinned by `exec::tests::line_geometry_rules::a_refused_conductor_list_changes_nothing`.
 fn parse_conductor_proxy(
     obj: &mut dyn DssObject,
     idx: usize,
@@ -762,23 +773,18 @@ fn parse_conductor_proxy(
     let proxy_name = pd.proxy_name.unwrap_or("Conductor");
     let valid_classes = format!("({})", pd.object_classes.join("|"));
 
-    // Pascal count guard (`intVal := PropertyStructArrayCountOffset^`): the
-    // conductor array must already be sized (spacing/NConds set) → #402.
+    // The conductor array is sized by a spacing or `nconds=`.
     let count = obj.array_size(idx);
     if count < 1 {
-        eng.errors.push(crate::diag::DssDiagnostic::msg(
-            format!(
-                "{full}.{}: No objects are expected! Check if the order of property \
-                 assignments is correct.",
-                pd.name
-            ),
-            Some(402),
-        ));
-        return Ok(0);
+        return Err(ParserError::new(format!(
+            "{full}.{}: No objects are expected! Check if the order of property \
+             assignments is correct.",
+            pd.name
+        ))
+        .with_code(402));
     }
 
-    // Tokenize, then validate/fill up to `count` items (Pascal reads at most
-    // `intVal` items and stops at the first empty token).
+    // At most `count` items, up to the first empty token.
     eng.parser.set_auto_increment(false);
     eng.parser.set_cmd_string(value);
     let mut refs: Vec<crate::obj::base::ObjectRefArrayItem> = Vec::new();
@@ -788,61 +794,43 @@ fn parse_conductor_proxy(
         if token.is_empty() {
             break;
         }
-        // `ValidateObjectItem` (`DSSObjectHelper.pas:6444`).
         if allow_none && token.eq_ignore_ascii_case("none") {
             refs.push(None);
             continue;
         }
-        // `FullNameAsArray`: `ParseObjectClassAndName(AnsiLowerCase(token))`.
         let lower = token.to_ascii_lowercase();
         let (class_tok, name_tok) = match lower.split_once('.') {
             Some((c, n)) => (c, n),
             None => {
-                // No class prefix → error #10103.
                 let items = if allow_none { "valid items" } else { "items" };
-                eng.errors.push(crate::diag::DssDiagnostic::msg(
-                    format!(
-                        "{full}.{}: You must define the {proxy_name} class for all the \
-                         {items} in the array.",
-                        pd.name
-                    ),
-                    Some(10103),
-                ));
-                return Ok(0);
+                return Err(ParserError::new(format!(
+                    "{full}.{}: You must define the {proxy_name} class for all the \
+                     {items} in the array.",
+                    pd.name
+                ))
+                .with_code(10103));
             }
         };
-        // r4133 native `conductors=` parse (LineGeometry.pas:485-503 / Line.pas):
-        // `LowerCase(CondClass) = 'wiredata'/'cndata'/'tsdata'` — a
-        // CASE-INSENSITIVE class match. (dss_capi 0.15.x routed this through a
-        // `TProxyClass.GetDSSClass` that compared the lowercased token against the
-        // original-case target names — a mismatch never satisfiable, so EVERY
-        // class-prefixed item errored #10103 "Invalid class". The port reproduced
-        // that capi015-only breakage; the 0.15.x-adoption sweep proved r4133
-        // parses it natively and solves, so the port adopts r4133.)
         let subcls = pd
             .object_classes
             .iter()
             .find(|c| c.eq_ignore_ascii_case(class_tok))
             .copied();
         let Some(subcls) = subcls else {
-            eng.errors.push(crate::diag::DssDiagnostic::msg(
-                format!(
-                    "{full}.{}: Invalid class ({class_tok}) for item. Valid classes: \
-                     {valid_classes}",
-                    pd.name
-                ),
-                Some(10103),
-            ));
-            return Ok(0);
+            return Err(ParserError::new(format!(
+                "{full}.{}: Invalid class ({class_tok}) for item. Valid classes: \
+                 {valid_classes}",
+                pd.name
+            ))
+            .with_code(10103));
         };
         match eng.foreign.and_then(|f| f.find(subcls, name_tok)) {
             Some(o) => refs.push(Some((o.name().to_string(), o))),
             None => {
-                eng.errors.push(format!(
+                return Err(ParserError::new(format!(
                     "{full}.{}: {subcls} object \"{token}\" not found.",
                     pd.name
-                ));
-                return Ok(0);
+                )));
             }
         }
     }

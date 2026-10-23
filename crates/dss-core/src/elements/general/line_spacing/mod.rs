@@ -1,32 +1,37 @@
-//! `LineSpacing` (`TLineSpacingObj`) — overhead-line conductor spacing geometry.
-//! Port of Pascal `General/LineSpacing.pas`.
+//! `LineSpacing`: overhead-line conductor spacing geometry.
 //!
 //! A `DSS_OBJECT` catalog class (no terminals, no YPrim): a `LineGeometry`
 //! references it by name and reads the per-conductor horizontal/vertical
 //! coordinate arrays (`X`/`H`, in `Units`) plus `NConds`/`NPhases` to build the
-//! Carson `LineConstants` matrices. The two coordinate arrays are
-//! `DoubleVArrayProperty` with the element count taken from `FNConds`
-//! (`PropertyOffset2 = @FNConds`), so they are sized — and re-sized — by the
-//! `nconds` property's side effect.
+//! Carson `LineConstants` matrices. Each coordinate list holds the values
+//! given, in order, at most `nconds` of them: a conductor the list does not
+//! reach has no position, which a geometry built on the spacing copies.
+//! Every property but `nconds=` and `like=` is refused until `nconds=` is
+//! given, and each `nconds=` starts the spacing over in feet with no position.
 
 #[cfg(test)]
 mod tests;
 
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
+use crate::report::save::save::{SaveCtx, save_write_token};
+use crate::support::line_units::POSITION_WORDS;
 
-/// Pascal `LineUnits.UNITS_FT` — the `ft` ordinal of `DSS.UnitsEnum`; the
-/// default unit and the value the `nconds` side effect resets `Units` to.
+/// The `ft` code of the length units: the default unit, and the unit each
+/// `nconds=` returns `Units` to.
 const UNITS_FT: i32 = 5;
+
+/// The `like=` property, the one after the class's own.
+const LIKE: usize = prop::NUM_PROPS;
 
 define_properties! {
     class "LineSpacing", abbrev true, enums enums;
-    1 NCONDS  => PropDef::integer("NConds").flags(PropFlags::SUPPRESS_JSON);
+    1 NCONDS  => PropDef::integer("NConds");
     2 NPHASES => PropDef::integer("NPhases");
-    3 X       => PropDef::double_v_array("X").size_prop(NCONDS);
-    4 H       => PropDef::double_v_array("H").size_prop(NCONDS);
-    5 UNITS   => PropDef::mapped_string_enum("Units", enums.units);
-    // dss_capi 0.15.x additions (LineSpacing.pas): the equivalent-spacing model.
+    3 X       => PropDef::double_v_array("X").size_prop(NCONDS).flags(PropFlags::GIVEN_PREFIX);
+    4 H       => PropDef::double_v_array("H").size_prop(NCONDS).flags(PropFlags::GIVEN_PREFIX);
+    5 UNITS   => PropDef::mapped_string_enum("Units", enums.units).unit_words(POSITION_WORDS);
+    // dss_capi 0.15.x additions: the equivalent-spacing model.
     // `Detailed` (default true) selects per-conductor coordinates; when false the
     // four equivalent distances replace them. UPGRADE_PLAN.md WP-U1.4 rows B3/C1.
     6 DETAILED          => PropDef::boolean("Detailed");
@@ -36,14 +41,17 @@ define_properties! {
     10 AVGNEUTRALHEIGHT => PropDef::double("AvgNeutralHeight");
 }
 
-/// `TLineSpacingObj`. Pascal stores `FX`/`FY` as 1-based `pDoubleArray`s of
-/// length `FNConds`; here they are plain `Vec<f64>` kept at `fnconds` elements.
+/// A LineSpacing. `fx`/`fy` hold the coordinates given, in order, at most
+/// `fnconds` of each.
 #[derive(Debug, Clone)]
 pub struct LineSpacingObj {
     data: DssObjData,
     fx: Vec<f64>,
     fy: Vec<f64>,
     fnconds: i32,
+    /// Whether an `nconds=` was accepted (or copied by `like=`). `fnconds`
+    /// holds the documented default of 3 before it.
+    nconds_given: bool,
     nphases: i32,
     units: i32,
     // dss_capi 0.15.x equivalent-spacing fields. `detailed` defaults `true`
@@ -57,30 +65,28 @@ pub struct LineSpacingObj {
 }
 
 impl LineSpacingObj {
+    /// Three conductors and three phases in feet, with no position given.
     pub fn new(name: impl Into<String>) -> Self {
-        // Pascal `TLineSpacingObj.Create`: FNConds := 3, then the `nconds`
-        // side effect sizes FX/FY to 3 (and sets Units := ft); the arrays are
-        // then zeroed and NPhases := 3.
-        let mut obj = Self {
+        Self {
             data: DssObjData::new(name.into().to_ascii_lowercase(), prop::NUM_PROPS),
             fx: Vec::new(),
             fy: Vec::new(),
             fnconds: 3,
+            nconds_given: false,
             nphases: 3,
             units: UNITS_FT,
-            // Pascal `Create`: eqDist*/avg* := 0.0, detailed := true.
+            // No equivalent spacing: `detailed` Yes and every distance 0.
             detailed: true,
             eq_dist_ph_ph: 0.0,
             eq_dist_ph_n: 0.0,
             avg_phase_height: 0.0,
             avg_neutral_height: 0.0,
-        };
-        obj.realloc_conductors();
-        obj
+        }
     }
 
-    /// Pascal `EquivalentSpacing()` = `not detailed`: `TLineGeometryObj` reads
-    /// this (plus the four equivalent distances) when building the Carson matrices.
+    /// Whether the spacing is an equivalent one (`detailed` No): a geometry
+    /// reads this and the four equivalent distances when it builds the Carson
+    /// matrices.
     pub fn equivalent_spacing(&self) -> bool {
         !self.detailed
     }
@@ -101,21 +107,22 @@ impl LineSpacingObj {
         self.avg_neutral_height
     }
 
-    /// Pascal `NWires` (= `FNConds`): the conductor count a `LineGeometry`
-    /// matches against when it reads this spacing's coordinates.
+    /// The conductor count, `nconds`, a `LineGeometry` matches against when it
+    /// reads this spacing's coordinates.
     pub fn nwires(&self) -> i32 {
         self.fnconds
     }
-    /// Pascal `NPhases` (= `FNphases`): the phase count `TLineObj.FetchLineSpacing`
-    /// adopts and `SetWires` uses to place buried neutrals.
+    /// The phase count a Line's `spacing=` adopts and its `wires=` uses to place
+    /// bare neutrals after cable phases.
     pub fn nphases(&self) -> i32 {
         self.nphases
     }
-    /// Pascal `Xcoord`/`Ycoord` arrays (length `FNConds`) and `Units` — read by
-    /// `TLineGeometryObj`'s `spacing=` side effect.
+    /// The x coordinates given, in order: conductor `i` has none past the end.
+    /// Read with the heights and `Units` by a geometry's or a Line's `spacing=`.
     pub fn xcoord(&self) -> &[f64] {
         &self.fx
     }
+    /// The heights given, in order: conductor `i` has none past the end.
     pub fn ycoord(&self) -> &[f64] {
         &self.fy
     }
@@ -123,14 +130,52 @@ impl LineSpacingObj {
         self.units
     }
 
-    /// Pascal `nconds` `PropertySideEffects`: `ReAllocmem(FX/FY, FNConds)`.
-    /// Pascal leaves grown entries uninitialized; we zero-fill the tail (the
-    /// preserved leading entries match, and undefined upstream memory is not a
-    /// behaviour the goldens pin). Shrinking truncates, as Pascal does.
-    fn realloc_conductors(&mut self) {
-        let n = self.fnconds.max(0) as usize;
-        self.fx.resize(n, 0.0);
-        self.fy.resize(n, 0.0);
+    /// An accepted `nconds=`: no position is kept, the unit returns to feet
+    /// and the equivalent spacing is dropped (`detailed` Yes, every distance
+    /// 0). The positions, `detailed` and the distances leave the set order,
+    /// and `Units` keeps any place it has there, now holding `ft`. Kept, a
+    /// position or a distance would be re-read in feet. The count allocates
+    /// nothing. Pinned by
+    /// `exec::tests::line_geometry_rules::a_spacing_nconds_keeps_no_position_and_returns_to_feet`.
+    fn start_over(&mut self) {
+        self.nconds_given = true;
+        self.fx.clear();
+        self.fy.clear();
+        self.units = UNITS_FT;
+        self.detailed = true;
+        self.eq_dist_ph_ph = 0.0;
+        self.eq_dist_ph_n = 0.0;
+        self.avg_phase_height = 0.0;
+        self.avg_neutral_height = 0.0;
+        for p in [
+            prop::X,
+            prop::H,
+            prop::DETAILED,
+            prop::EQDISTPHPH,
+            prop::EQDISTPHN,
+            prop::AVGPHASEHEIGHT,
+            prop::AVGNEUTRALHEIGHT,
+        ] {
+            self.data.clear_seq(p);
+        }
+    }
+
+    /// The Save line body: `NConds=` first whenever it was given, since every
+    /// property after it would reload refused or emptied otherwise, then the
+    /// set properties in order. Pinned by
+    /// `exec::tests::report::save_writes_linespacing_nconds_first`.
+    pub(crate) fn save_write_body(&self, out: &mut String, cx: &SaveCtx) {
+        if self.nconds_given {
+            save_write_token(out, cx, self, prop::NCONDS);
+        }
+        let data = self.data();
+        let mut iprop = data.next_property_set(None);
+        while let Some(ip) = iprop {
+            if ip != prop::NCONDS {
+                save_write_token(out, cx, self, ip);
+            }
+            iprop = data.next_property_set(Some(ip));
+        }
     }
 }
 
@@ -139,15 +184,12 @@ impl LineSpacingObj {
         self.data.copy_prp_sequence_from(other.data());
         let o = other;
         {
-            // Pascal `MakeLike`: copy FNConds, run the `nconds` side effect
-            // (resize + Units := ft), copy NPhases, then the X/Y arrays, and
-            // finally `Units := Other.Units` (overriding the side effect).
+            // The count, the phases, the coordinates as given and the unit.
             self.fnconds = o.fnconds;
-            self.realloc_conductors();
+            self.nconds_given = o.nconds_given;
             self.nphases = o.nphases;
-            let n = self.fnconds.max(0) as usize;
-            self.fx[..n].copy_from_slice(&o.fx[..n]);
-            self.fy[..n].copy_from_slice(&o.fy[..n]);
+            self.fx.clone_from(&o.fx);
+            self.fy.clone_from(&o.fy);
             self.units = o.units;
             // The equivalent-spacing block is copied too, as the authority does:
             // r4133 `TLineSpacing.MakeLike` copies `FEquivalentSpacing`,
@@ -228,12 +270,7 @@ impl DssObject for LineSpacingObj {
             prop::H => &self.fy,
             _ => unreachable!("LineSpacing has no double array at {idx}"),
         };
-        // Pascal `ReAllocmem(FX, 0)` (the `nconds=0` side effect) frees the
-        // buffer and leaves the pointer nil, so `GetDSSArray` returns the empty
-        // string `''` — not `'[]'`. Mirror that: an empty coordinate array reads
-        // as nil. (For `nconds < 0` the Pascal realloc raises an exception; we
-        // clamp the size to 0, so that degenerate path likewise reads `''` and
-        // is not oracle-pinnable.)
+        // A list with no coordinate given reads `''`.
         if arr.is_empty() {
             None
         } else {
@@ -248,7 +285,7 @@ impl DssObject for LineSpacingObj {
         }
     }
 
-    /// Both `X` and `H` are sized by `FNConds` (`PropertyOffset2 = @FNConds`).
+    /// `X` and `H` each take at most `nconds` values.
     fn array_size(&self, idx: usize) -> usize {
         match idx {
             prop::X | prop::H => self.fnconds.max(0) as usize,
@@ -256,14 +293,39 @@ impl DssObject for LineSpacingObj {
         }
     }
 
-    fn side_effects(&mut self, idx: usize, _prev_int: i32) {
-        // Pascal `TLineSpacingObj.PropertySideEffects`: `nconds` resizes the
-        // coordinate arrays and resets the unit to feet.
+    /// `X` and `H` hold no value when no coordinate was given. Pinned by
+    /// `exec::tests::line_geometry_rules::a_short_spacing_list_keeps_its_gaps`.
+    fn holds_no_value(&self, idx: usize) -> bool {
         match idx {
-            prop::NCONDS => {
-                self.realloc_conductors();
-                self.units = UNITS_FT;
-            }
+            prop::X => self.fx.is_empty(),
+            prop::H => self.fy.is_empty(),
+            _ => false,
+        }
+    }
+
+    /// Before the first `nconds=` every property but `nconds=` and `like=` is
+    /// refused, naming it. Pinned by
+    /// `exec::tests::line_geometry_rules::a_spacing_property_before_nconds_is_refused`.
+    fn refuse_property(&self, idx: usize, prop_name: &str) -> Option<String> {
+        (!self.nconds_given && idx != prop::NCONDS && idx != LIKE).then(|| {
+            format!(
+                "LineSpacing.{}.{prop_name}: nconds= is not given yet, so the value is not \
+                 applied. Give nconds= first.",
+                self.data.name()
+            )
+        })
+    }
+
+    /// A spacing whose `nconds=` was never given exports its name only, since
+    /// the import refuses every other property. Pinned by
+    /// `exec::tests::line_geometry_rules::a_spacing_property_before_nconds_is_refused`.
+    fn json_omits(&self, _idx: usize) -> bool {
+        !self.nconds_given
+    }
+
+    fn side_effects(&mut self, idx: usize, _prev_int: i32) {
+        match idx {
+            prop::NCONDS => self.start_over(),
             // dss_capi 0.15.x `Detailed` side effect: use `Detailed` to clear the
             // property-tracking of the now-unused set, so Save/Dump only emit the
             // active model. (The upstream `NoPropertyTracking` compat flag is

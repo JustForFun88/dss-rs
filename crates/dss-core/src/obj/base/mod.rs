@@ -27,10 +27,20 @@ pub struct DssObjData {
     /// Kept as a scalar so it stays out of the `next_property_set`/`prp_specified`
     /// property-index sweeps; copied by `MakeLike` exactly like the array.
     edit_seq_boundary: u32,
-    /// Deferred `DoSimpleMsg`/`DoErrorMsg` messages emitted by
-    /// `side_effects`/`end_edit` (which run without direct access to the
-    /// engine error sink). The executive drains these right after the edit
-    /// loop, so the message ordering within a command is preserved.
+    /// Messages queued by `side_effects`, `end_edit` and the other hooks,
+    /// which run without the engine error log. A Line, LineGeometry or
+    /// LineSpacing command logs a queued message at the value token that
+    /// raised it, so it logs its messages in token order
+    /// (`exec::tests::line_geometry_rules::a_line_logs_its_refusals_in_token_order`).
+    /// A command of any other class logs a queued message after the edit,
+    /// behind a refusal at a later token: a one-phase LineCode's `kron=y` is
+    /// refused behind the `normamps=abc` that follows it. The JSON import and
+    /// the MakePosSequence applier log every queued message after the object,
+    /// so a JSON record logs a Line's queued message behind the refusal of a
+    /// later member. Both orders are pinned by
+    /// `exec::tests::line_geometry_rules::a_json_record_logs_a_queued_message_after_the_object`.
+    /// The Y build and the dynamics initialisation log what their own calls
+    /// queue.
     deferred_errors: Vec<crate::diag::DssDiagnostic>,
     /// Set alongside a deferred message emitted via [`Self::push_error_abort`]
     /// (the Pascal `DoErrorMsg` path, which sets `DSS.SolutionAbort := True` —
@@ -130,9 +140,12 @@ impl DssObjData {
         self.uuid = Some(uuid);
     }
 
-    /// Queue a `DoSimpleMsg`-style message from inside a property hook; the
-    /// executive collects it after the active edit finishes. Accepts a bare
-    /// `String`/`&str` (→ `code: None`) or a built [`crate::diag::DssDiagnostic`].
+    /// Queue a message that only logs, from inside a property hook. A Line,
+    /// LineGeometry or LineSpacing command logs it at its value token, a
+    /// command of any other class after the edit, and the JSON import and the
+    /// MakePosSequence applier after the object (see `deferred_errors`).
+    /// Accepts a bare `String`/`&str` (→ `code: None`) or a built
+    /// [`crate::diag::DssDiagnostic`].
     pub fn push_error(&mut self, msg: impl Into<crate::diag::DssDiagnostic>) {
         self.deferred_errors.push(msg.into());
     }
@@ -847,14 +860,14 @@ pub trait DssObject: Send {
         unreachable!("set_object_ref not implemented for property {idx}")
     }
 
-    /// `DSSObjectReferenceArrayProperty` write (e.g. a LineGeometry `wires`):
-    /// `refs` is the parsed, resolved list — each slot in script order is either
-    /// `Some((name, ElemId, read view))` or **`None`** for a `none` entry
-    /// (Pascal `TPropertyFlag.AllowNoneItem`, `DSSObjectHelper.ValidateObjectItem`
-    /// l.6456: `none` → `otherObj := NIL`, no error). The object validates the
-    /// count and stores the references (Pascal `SetWires`), cloning each read
-    /// view; a `None` slot stays NIL. The dump reads back through
-    /// [`DssObject::get_object_ref_names`] (NIL → `""`).
+    /// Write an object reference list (a LineGeometry `wires`, for one):
+    /// `refs` is the parsed, resolved list, each slot in script order either
+    /// `Some((name, read view))` or `None` for a `none` item, an empty slot.
+    /// A list of one class (`wires=`, `cncables=`, `tscables=`) arrives only
+    /// once [`DssObject::refuse_object_ref_array`] has taken it, and a
+    /// `conductors=` list of `Class.Name` items without asking it. The object
+    /// stores the references, cloning each read view. The dump reads them back
+    /// through [`DssObject::get_object_ref_names`], an empty slot as `""`.
     fn set_object_ref_array(&mut self, idx: usize, refs: &[ObjectRefArrayItem<'_>]) {
         let _ = (idx, refs);
         unreachable!("set_object_ref_array not implemented for property {idx}")
@@ -927,22 +940,20 @@ pub trait DssObject: Send {
         None
     }
 
-    /// The message refusing `text`, written to the mapped-enum property `idx`
-    /// and mapped to `ordinal`, or `None` to accept it. A refused text writes
-    /// nothing. Accepts every text by default.
-    fn refuse_enum_text(&self, idx: usize, text: &str, ordinal: i32) -> Option<String> {
-        let _ = (idx, text, ordinal);
-        None
-    }
-
-    /// The message refusing `value`, the number the text `text` written to
-    /// the integer property `idx` reads as, or `None` to accept it with the
-    /// usual rounding. Asked only for a property flagged
+    /// The error refusing `value`, the number the text `text` written to the
+    /// integer property `idx` reads as, with its code if it has one, or
+    /// `None` to accept it with the usual rounding. Asked only for a property
+    /// flagged
     /// [`PropFlags::WHOLE_NUMBER`](crate::obj::props::PropFlags::WHOLE_NUMBER).
     /// A refused value writes nothing and runs no side effect:
     /// [`DssObject::value_unreadable`] runs instead. Accepts every value by
     /// default.
-    fn refuse_integer(&self, idx: usize, text: &str, value: f64) -> Option<String> {
+    fn refuse_integer(
+        &self,
+        idx: usize,
+        text: &str,
+        value: f64,
+    ) -> Option<dss_parser::ParserError> {
         let _ = (idx, text, value);
         None
     }
@@ -965,6 +976,20 @@ pub trait DssObject: Send {
     /// default.
     fn refuse_string_list(&self, idx: usize, list: &[String]) -> Option<String> {
         let _ = (idx, list);
+        None
+    }
+
+    /// The error refusing `refs`, the resolved list of one class written to
+    /// the object reference list property `idx`, with its code if it has one,
+    /// or `None` to accept it. Not asked for a `conductors=` list. A refused
+    /// list writes nothing, enters no set order and runs no side effect.
+    /// Accepts every list by default.
+    fn refuse_object_ref_array(
+        &self,
+        idx: usize,
+        refs: &[ObjectRefArrayItem<'_>],
+    ) -> Option<dss_parser::ParserError> {
+        let _ = (idx, refs);
         None
     }
 

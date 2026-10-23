@@ -1032,7 +1032,7 @@
         "Units" : {
           "$ref" : "#/$defs/LengthUnit",
           "default" : "none",
-          "description" : "One of (ohms per ...) {none|mi|km|kft|m|me|ft|in|cm}.  Default is none; assumes units agree with length units given in Line object",
+          "description" : "One of (ohms per ...) none, mi, kft, km, m, me, ft, in, cm or mm, written whole, me reading as m. Default is none, which assumes units agree with length units given in Line object.",
           "title" : "Units",
           "$dssPropertyIndex" : 8,
           "$dssPropertyOrder" : 9
@@ -3073,53 +3073,51 @@
           "$dssPropertyOrder" : 0,
           "$dssPropertyIndex" : 0
         },
+        "NConds" : {
+          "type" : "integer",
+          "default" : 3,
+          "description" : "Number of wires in this geometry. Default is 3. Triggers memory allocations. Define first!",
+          "title" : "NConds",
+          "$dssPropertyIndex" : 1,
+          "$dssPropertyOrder" : 2
+        },
         "NPhases" : {
           "type" : "integer",
           "default" : 3,
           "description" : "Number of retained phase conductors. If less than the number of wires, list the retained phase coordinates first.",
           "title" : "NPhases",
           "$dssPropertyIndex" : 2,
-          "$dssPropertyOrder" : 2
+          "$dssPropertyOrder" : 3
         },
         "X" : {
           "type" : "array",
           "items" : {
             "type" : "number"
           },
-          "default" : [
-            0.0000000000000000E+000,
-            0.0000000000000000E+000,
-            0.0000000000000000E+000
-          ],
           "$dssLength" : "NConds",
           "description" : "Array of wire X coordinates.",
           "title" : "X",
           "$dssPropertyIndex" : 3,
-          "$dssPropertyOrder" : 3
+          "$dssPropertyOrder" : 4
         },
         "H" : {
           "type" : "array",
           "items" : {
             "type" : "number"
           },
-          "default" : [
-            0.0000000000000000E+000,
-            0.0000000000000000E+000,
-            0.0000000000000000E+000
-          ],
           "$dssLength" : "NConds",
           "description" : "Array of wire Heights.",
           "title" : "H",
           "$dssPropertyIndex" : 4,
-          "$dssPropertyOrder" : 4
+          "$dssPropertyOrder" : 5
         },
         "Units" : {
           "$ref" : "#/$defs/LengthUnit",
           "default" : "ft",
-          "description" : "Units for x and h: {mi|kft|km|m|Ft|in|cm } Initial default is \"ft\", but defaults to last unit defined",
+          "description" : "Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written whole. Initial default is \"ft\", but defaults to last unit defined.",
           "title" : "Units",
           "$dssPropertyIndex" : 5,
-          "$dssPropertyOrder" : 5
+          "$dssPropertyOrder" : 6
         },
         "Detailed" : {
           "type" : "boolean",
@@ -3127,7 +3125,7 @@
           "description" : "{Yes/True | No/False} Default = Yes. Determines whether the spacing uses a detailed cross-section coordinates with x and h arrays (Yes/True), or uses equivalent spacing fields (No/False). The equivalent spacing fields are EqDistPhPh, EqDistPhN, AvgPhaseHeight and AvgNeutralHeight.",
           "title" : "Detailed",
           "$dssPropertyIndex" : 6,
-          "$dssPropertyOrder" : 6
+          "$dssPropertyOrder" : 7
         },
         "EqDistPhPh" : {
           "type" : "number",
@@ -3135,7 +3133,7 @@
           "description" : "Equivalent distance between phase conductors (geometric mean distance). Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
           "title" : "EqDistPhPh",
           "$dssPropertyIndex" : 7,
-          "$dssPropertyOrder" : 7
+          "$dssPropertyOrder" : 8
         },
         "EqDistPhN" : {
           "type" : "number",
@@ -3143,7 +3141,7 @@
           "description" : "Equivalent distance between phase and neutral conductors (geometric mean distance). Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
           "title" : "EqDistPhN",
           "$dssPropertyIndex" : 8,
-          "$dssPropertyOrder" : 8
+          "$dssPropertyOrder" : 9
         },
         "AvgPhaseHeight" : {
           "type" : "number",
@@ -3151,7 +3149,7 @@
           "description" : "Average height of phase conductors. Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
           "title" : "AvgPhaseHeight",
           "$dssPropertyIndex" : 9,
-          "$dssPropertyOrder" : 9
+          "$dssPropertyOrder" : 10
         },
         "AvgNeutralHeight" : {
           "type" : "number",
@@ -3159,7 +3157,7 @@
           "description" : "Average height of neutral conductors. Used for equivalent distance modeling (detailed=no) as opposed to detailed cross-section coordinates.",
           "title" : "AvgNeutralHeight",
           "$dssPropertyIndex" : 10,
-          "$dssPropertyOrder" : 10
+          "$dssPropertyOrder" : 11
         },
         "Like" : {
           "type" : "string",
@@ -3874,7 +3872,7 @@
         "Units" : {
           "$ref" : "#/$defs/LengthUnit",
           "default" : "none",
-          "description" : "Length Units = {none | mi|kft|km|m|Ft|in|cm } Default is None - assumes length units match impedance units.",
+          "description" : "Length units, one of none, mi, kft, km, m, ft, in, cm or mm, written whole. Default is None - assumes length units match impedance units.",
           "title" : "Units",
           "$dssPropertyIndex" : 20,
           "$dssPropertyOrder" : 21

@@ -9,16 +9,11 @@ use crate::obj::base::{DssObjData, DssObject, ObjectRefArrayItem};
 use super::{ConductorChoice, LineGeometryObj, LineType, prop};
 use crate::elements::general::conductor_data::ConductorObj;
 use crate::elements::general::line_spacing::LineSpacingObj;
-use crate::support::line_units::LineUnits;
+use crate::support::line_units::{LineUnits, POSITION_WORD_LIST};
+use dss_parser::ParserError;
 
 /// The number of the out-of-range `cond=` diagnostic.
 const COND_OUT_OF_RANGE: u32 = 10102;
-
-/// The length units `units=` accepts, as its refusal lists them.
-pub(crate) const LENGTH_UNITS: &str = "mi, kft, km, m, ft, in, cm, mm";
-
-/// The words `units=` accepts, each read whole and in any case.
-pub(super) const UNIT_WORDS: [&str; 8] = ["mi", "kft", "km", "m", "ft", "in", "cm", "mm"];
 
 /// The `like=` row the class table appends after the class's own properties.
 const LIKE: usize = prop::NUM_PROPS;
@@ -39,7 +34,9 @@ impl LineGeometryObj {
     }
 
     /// Select conductor `value` (1-based), or refuse an out-of-range value and
-    /// select none.
+    /// select none. A written `cond=` is range-checked by `refuse_integer`
+    /// first, so this refusal serves a value set directly. Pinned by
+    /// `elements::general::line_geometry::tests::cond_set_directly_out_of_range_selects_nothing`.
     fn select_conductor(&mut self, value: i32) {
         let n = self.fnconds.max(0);
         if value >= 1 && value <= n {
@@ -141,14 +138,14 @@ impl DssObject for LineGeometryObj {
             prop::COND => self.select_conductor(value),
             // A unit belongs to the selected conductor (if any) and becomes the
             // default. Code 0 and a code outside 1 to 8 name no length unit and
-            // are refused (a text that maps to 0 is refused before, by
-            // `refuse_enum_text`).
+            // are refused (the text path refuses any word outside the list
+            // before it gets here).
             prop::UNITS => {
                 if LineUnits::from_code(value) == LineUnits::None {
                     let name = self.data.name().to_string();
                     self.data.push_error(format!(
                         "LineGeometry.{name}.Units: unit code {value} is not one of the length \
-                         units {LENGTH_UNITS}."
+                         units {POSITION_WORD_LIST}."
                     ));
                     return;
                 }
@@ -305,39 +302,45 @@ impl DssObject for LineGeometryObj {
         self.amp_ratings = value;
     }
 
-    /// `cond=` takes a conductor number: a fraction is refused, and so is a
-    /// whole number past the integer range, each naming the value as written.
-    /// A whole number in the integer range goes on to the range check of the
-    /// selection. Pinned by
-    /// `exec::tests::line_geometry_rules::cond_that_is_not_a_whole_number_selects_nothing`.
+    /// `cond=` takes a conductor number from 1 to `nconds`: a fraction is
+    /// refused, and so is a whole number outside that range, each naming the
+    /// value as written, the out-of-range one with code 10102 in and past the
+    /// integer range alike. Pinned by
+    /// `exec::tests::line_geometry_rules::cond_that_is_not_a_whole_number_selects_nothing`
+    /// and `::cond_out_of_range_is_refused_and_selects_nothing`.
     /// A `nconds=` past the integer range is refused naming the value as
     /// written: a count that large needs more memory than is available, and a
     /// negative one is no count. Pinned by
     /// `exec::tests::line_geometry_rules::a_count_beyond_the_memory_is_refused`.
-    fn refuse_integer(&self, idx: usize, text: &str, value: f64) -> Option<String> {
+    fn refuse_integer(&self, idx: usize, text: &str, value: f64) -> Option<ParserError> {
         if idx == prop::NCONDS {
-            return if value > f64::from(i32::MAX) {
-                Some(self.nconds_memory_refusal(text))
+            let msg = if value > f64::from(i32::MAX) {
+                self.nconds_memory_refusal(text)
             } else if value < f64::from(i32::MIN) {
-                Some(format!(
+                format!(
                     "LineGeometry.{}.NConds: Value ({text}) cannot be negative.",
                     self.data.name()
-                ))
+                )
             } else {
-                None
+                return None;
             };
+            return Some(ParserError::new(msg));
         }
         if idx != prop::COND {
             return None;
         }
-        let what = if !value.is_finite() || value.fract() != 0.0 {
-            "is not a conductor number"
-        } else if value < f64::from(i32::MIN) || value > f64::from(i32::MAX) {
-            "is out of range"
-        } else {
+        if !value.is_finite() || value.fract() != 0.0 {
+            return Some(ParserError::new(
+                self.cond_refusal(text, "is not a conductor number"),
+            ));
+        }
+        if value >= 1.0 && value <= f64::from(self.fnconds.max(0)) {
             return None;
-        };
-        Some(self.cond_refusal(text, what))
+        }
+        Some(
+            ParserError::new(self.cond_refusal(text, "is out of range"))
+                .with_code(COND_OUT_OF_RANGE),
+        )
     }
 
     /// A `cond=` whose value is not a number, or one `refuse_integer` refuses,
@@ -381,23 +384,6 @@ impl DssObject for LineGeometryObj {
             format!(
                 "LineGeometry.{}.{prop_name}: the geometry has no conductors yet, so the value \
                  is not applied. Give nconds= first.",
-                self.data.name()
-            )
-        })
-    }
-
-    /// `units=` takes one of [`UNIT_WORDS`] whole, in any case, and refuses
-    /// any other word (`none`, a prefix, a longer spelling), naming it.
-    fn refuse_enum_text(&self, idx: usize, text: &str, ordinal: i32) -> Option<String> {
-        if idx != prop::UNITS {
-            return None;
-        }
-        let exact = UNIT_WORDS
-            .iter()
-            .any(|w| w.eq_ignore_ascii_case(text.trim()));
-        (!exact || ordinal == LineUnits::None.code()).then(|| {
-            format!(
-                "LineGeometry.{}.Units: \"{text}\" is not one of the length units {LENGTH_UNITS}.",
                 self.data.name()
             )
         })

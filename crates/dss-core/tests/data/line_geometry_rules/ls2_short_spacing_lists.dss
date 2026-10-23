@@ -1,0 +1,35 @@
+! Short coordinate lists of a LineSpacing keep their gaps. short gives two x
+! for three conductors, one gives a height and no x, noh gives no height, and
+! r is given a full x list, then a list of one. full is a whole spacing and eq
+! an equivalent spacing in metres with no x and no h. Each spacing has a
+! geometry (gs, g1, gh, gr, gf, ga) on its own Line, and Ls, Lo and Lsh are
+! Lines with their own spacing= and wires= on short, one and noh.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.lgrules basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+Redirect library.dss
+New LineSpacing.short nconds=3 nphases=3 x=[-4 4] h=[28 28 28] units=ft
+New LineSpacing.one nconds=1 nphases=1 h=[28] units=ft
+New LineSpacing.noh nconds=3 nphases=3 x=[-4 0 4] units=ft
+New LineSpacing.r nconds=3 nphases=3 x=[1 2 3] h=[28 28 28] units=ft
+Edit LineSpacing.r x=[9]
+New LineSpacing.full nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft
+New LineSpacing.eq nconds=4 nphases=3 detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 AvgPhaseHeight=8.5 AvgNeutralHeight=7.3 units=m
+New LineGeometry.gs nconds=3 nphases=3 spacing=short wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New LineGeometry.g1 nconds=1 nphases=1 spacing=one wires=[ACSR_556_5]
+New LineGeometry.gh nconds=3 nphases=3 spacing=noh wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New LineGeometry.gr nconds=3 nphases=3 spacing=r wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New LineGeometry.gf nconds=3 nphases=3 spacing=full wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
+New LineGeometry.ga nconds=4 nphases=3 spacing=eq wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5 ACSR_4/0]
+New Line.Lg bus1=src.1.2.3 bus2=bg.1.2.3 geometry=gs length=1 units=mi
+New Line.Ls bus1=src.1.2.3 bus2=bs.1.2.3 spacing=short wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Line.L1 bus1=src.1 bus2=b1.1 phases=1 geometry=g1 length=1 units=mi
+New Line.Lo bus1=src.1 bus2=bo.1 phases=1 spacing=one wires=[ACSR_556_5] length=1 units=mi
+New Line.Lh bus1=src.1.2.3 bus2=bh.1.2.3 geometry=gh length=1 units=mi
+New Line.Lsh bus1=src.1.2.3 bus2=bsh.1.2.3 spacing=noh wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
+New Line.Lr bus1=src.1.2.3 bus2=br.1.2.3 geometry=gr length=1 units=mi
+New Line.Lf bus1=src.1.2.3 bus2=bf.1.2.3 geometry=gf length=1 units=mi
+New Line.La bus1=src.1.2.3.0 bus2=ba.1.2.3.0 geometry=ga length=1 units=mi
+Set voltagebases=[12.47]
+CalcVoltageBases

@@ -43,10 +43,20 @@
     },
     {
       "class": "LineSpacing",
+      "kind": "port_shown_property",
+      "prop_key": "NConds",
+      "index": 1,
+      "order": 2,
+      "count": 1,
+      "props": ["NConds"],
+      "cause": "Coordinator ruling 2026-10-17, under the user's delegation: a LineSpacing takes no property before its first nconds=, so its JSON record writes NConds and the import applies it first. The pinned 0.14.5 oracle suppresses LineSpacing.NConds from its JSON (no block, no $dssPropertyOrder) and its import sizes every array to the default 3 wires, so a four-wire spacing comes back with three. The port renders the NConds block at $dssPropertyIndex 1 / $dssPropertyOrder 2, which moves the order of every later LineSpacing property up by one. Pinned by exec::tests::line_geometry_rules::a_short_spacing_list_keeps_its_gaps (the NConds key and its import) and ::a_spacing_property_before_nconds_is_refused."
+    },
+    {
+      "class": "LineSpacing",
       "kind": "port_extra_property",
       "prop_key": "Detailed",
       "index": 6,
-      "order": 6,
+      "order": 7,
       "count": 1,
       "props": ["Detailed"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 adds the LineSpacing equivalent-spacing model (LineSpacing.pas): Detailed selects per-conductor coordinates (x/h arrays) vs the four equivalent-distance fields. The port adopted it (line_spacing/mod.rs, UPGRADE_PLAN.md WP-U1.4); pinned dss_capi 0.14.5 (LineSpacing `TProp` ends at units=5) lacks it."
@@ -56,7 +66,7 @@
       "kind": "port_extra_property",
       "prop_key": "EqDistPhPh",
       "index": 7,
-      "order": 7,
+      "order": 8,
       "count": 1,
       "props": ["EqDistPhPh"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): geometric-mean distance between phase conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
@@ -66,7 +76,7 @@
       "kind": "port_extra_property",
       "prop_key": "EqDistPhN",
       "index": 8,
-      "order": 8,
+      "order": 9,
       "count": 1,
       "props": ["EqDistPhN"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): geometric-mean distance between phase and neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
@@ -76,7 +86,7 @@
       "kind": "port_extra_property",
       "prop_key": "AvgPhaseHeight",
       "index": 9,
-      "order": 9,
+      "order": 10,
       "count": 1,
       "props": ["AvgPhaseHeight"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of phase conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
@@ -86,7 +96,7 @@
       "kind": "port_extra_property",
       "prop_key": "AvgNeutralHeight",
       "index": 10,
-      "order": 10,
+      "order": 11,
       "count": 1,
       "props": ["AvgNeutralHeight"],
       "cause": "dss_capi 0.15.x / OpenDSS r4133 LineSpacing equivalent-spacing model (LineSpacing.pas): average height of neutral conductors. Port-adopted (line_spacing/mod.rs, UPGRADE WP-U1.4); absent from pinned dss_capi 0.14.5."
@@ -397,6 +407,42 @@
       "count": 1,
       "props": ["Ratings"],
       "cause": "User decision 2026-10-04: a rating that is not set is its own value, not a number. A conductor's seasonal ratings start not set, so the port's schema writes no default for TSData.Ratings. The pinned 0.14.5 oracle writes its -1 sentinel as the default. Pinned by unset_ratings_read_none_by_default."
+    },
+    {
+      "class": "LineCode",
+      "kind": "port_changed_line",
+      "from": "      \"description\" : \"One of (ohms per ...) none, mi, kft, km, m, me, ft, in, cm or mm, written whole, me reading as m. Default is none, which assumes units agree with length units given in Line object.\",",
+      "to": "      \"description\" : \"One of (ohms per ...) {none|mi|km|kft|m|me|ft|in|cm}.  Default is none; assumes units agree with length units given in Line object\",",
+      "count": 1,
+      "props": ["Units"],
+      "cause": "User ruling 2026-10-04: a length unit is one exact documented word, mm included, no prefixes. The port's LineCode.Units reads only the words none, mi, kft, km, m, me, ft, in, cm and mm, each written whole, and its help lists them. The pinned 0.14.5 oracle prints the wheel's list, which omits mm. Pinned by linecode_units_help_lists_the_accepted_words."
+    },
+    {
+      "class": "LineSpacing",
+      "kind": "port_changed_line",
+      "from": "      \"description\" : \"Units for x and h, one of mi, kft, km, m, ft, in, cm or mm, written whole. Initial default is \\\"ft\\\", but defaults to last unit defined.\",",
+      "to": "      \"description\" : \"Units for x and h: {mi|kft|km|m|Ft|in|cm } Initial default is \\\"ft\\\", but defaults to last unit defined\",",
+      "count": 1,
+      "props": ["Units"],
+      "cause": "User ruling 2026-10-04: a length unit is one exact documented word, mm included, no prefixes. The port's LineSpacing.Units reads only the words mi, kft, km, m, ft, in, cm and mm, each written whole, and its help lists them. The pinned 0.14.5 oracle prints the wheel's list, which omits mm. Pinned by linespacing_units_help_lists_the_accepted_words."
+    },
+    {
+      "class": "LineSpacing",
+      "kind": "port_changed_line",
+      "from": "      \"$dssLength\" : \"NConds\",",
+      "to": "      \"default\" : [\r\n        0.0000000000000000E+000,\r\n        0.0000000000000000E+000,\r\n        0.0000000000000000E+000\r\n      ],\r\n      \"$dssLength\" : \"NConds\",",
+      "count": 2,
+      "props": ["X", "H"],
+      "cause": "Coordinator ruling 2026-10-17, under the user's delegation: a LineSpacing coordinate list holds the values given, in order, and a conductor it does not reach has no position. A new spacing has none given, so the port's X and H render no default. The pinned 0.14.5 oracle sizes both lists to the default three conductors and renders a default of three zeros. Pinned by a_short_spacing_list_keeps_its_gaps."
+    },
+    {
+      "class": "Line",
+      "kind": "port_changed_line",
+      "from": "      \"description\" : \"Length units, one of none, mi, kft, km, m, ft, in, cm or mm, written whole. Default is None - assumes length units match impedance units.\",",
+      "to": "      \"description\" : \"Length Units = {none | mi|kft|km|m|Ft|in|cm } Default is None - assumes length units match impedance units.\",",
+      "count": 1,
+      "props": ["Units"],
+      "cause": "User ruling 2026-10-04: a length unit is one exact documented word, mm included, no prefixes. The port's Line.Units reads only the words none, mi, kft, km, m, ft, in, cm and mm, each written whole, and its help lists them. The pinned 0.14.5 oracle prints the wheel's list, which omits mm. Pinned by line_units_help_lists_the_accepted_words."
     }
   ]
 }

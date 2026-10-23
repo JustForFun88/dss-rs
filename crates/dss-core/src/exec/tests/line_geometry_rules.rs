@@ -20,7 +20,9 @@
 //! takes one exact unit word, and a `wires=` list takes its count from the
 //! data, never from the selection. A conductor without an `x` or an `h` is
 //! rule 7's error too, unless the geometry is built on an equivalent spacing,
-//! whose distances keep the unit of their spacing.
+//! whose distances keep the unit of their spacing. A LineSpacing takes no
+//! property before its first `nconds=` either, and each `nconds=` starts it
+//! over in feet with no position.
 //!
 //! Every script and variant is a tracked deck under
 //! `crates/dss-core/tests/data/line_geometry_rules/` (`library.dss` holds the
@@ -156,7 +158,7 @@ fn zpart(dss: &Dss, line: &str, real: bool) -> Vec<Vec<f64>> {
         .collect()
 }
 
-fn xmatrix(dss: &Dss, line: &str) -> Vec<Vec<f64>> {
+pub(super) fn xmatrix(dss: &Dss, line: &str) -> Vec<Vec<f64>> {
     zpart(dss, line, false)
 }
 
@@ -234,6 +236,14 @@ fn before_nconds(geom: &str, prop: &str) -> String {
     format!(
         "LineGeometry.{geom}.{prop}: the geometry has no conductors yet, so the value is not \
          applied. Give nconds= first."
+    )
+}
+
+/// A LineSpacing property written before its first `nconds=`.
+fn spacing_before_nconds(spacing: &str, prop: &str) -> String {
+    format!(
+        "LineSpacing.{spacing}.{prop}: nconds= is not given yet, so the value is not applied. \
+         Give nconds= first."
     )
 }
 
@@ -358,7 +368,7 @@ fn carson_x_equivalent(gmr: &[f64], nphases: usize, d_pp: f64, d_pn: f64) -> Vec
 /// The simple Carson reactance of `n` conductors, Ω/mi, where `d(i, j)` is
 /// the distance of conductors `i` and `j` in metres and `d(i, i)` the GMR of
 /// conductor `i`.
-fn carson_x_of(n: usize, d: impl Fn(usize, usize) -> f64) -> Vec<Vec<f64>> {
+pub(super) fn carson_x_of(n: usize, d: impl Fn(usize, usize) -> f64) -> Vec<Vec<f64>> {
     let f = 60.0_f64;
     let rho = 100.0_f64;
     let mu0 = 4.0e-7 * std::f64::consts::PI;
@@ -375,7 +385,7 @@ fn carson_x_of(n: usize, d: impl Fn(usize, usize) -> f64) -> Vec<Vec<f64>> {
 /// 8e-8 Ω/mi on these matrices. [`carson_x`] takes the engine's earth-return
 /// depth, so the band leaves out the 3.4e-6 Ω/mi of Carson's series value. A
 /// misread unit moves an off-diagonal entry by 0.04 Ω/mi or more.
-const X_BAND: f64 = 1e-6;
+pub(super) const X_BAND: f64 = 1e-6;
 
 /// Line `line`'s reactance equals [`carson_x`] of `placed` entry by entry, and
 /// each `(i, j, value)` of `spot` (1-based) as well.
@@ -1722,6 +1732,31 @@ fn variant_a_conductor_selected_again_keeps_its_own_unit() {
     assert_eq!((g[0].x, g[0].h), (Some(-5.0), Some(28.0)));
 }
 
+/// A bare `cond=N` changes no unit: the conductor takes the geometry's default
+/// unit at its first selection, unless `units=` is written for it. In `c`
+/// conductor 2 is first selected bare under the default feet, so the `units=m`
+/// of conductor 1 after it leaves it in feet: (0, 10) m and (1, 10) ft, 6.9587
+/// m apart, X21 0.5831588 Ω/mi. In `d` conductor 2 is first selected after the
+/// default became metres, and in `e` it is first selected bare and given
+/// `units=m` later, so both are 1 m apart, X21 0.8185604 Ω/mi. Both oracles
+/// read the same units (r4133 X21 0.5831588 and 0.8185604 on `Lc` and on `Ld`
+/// and `Le`, dss_capi 0.583093787813716 and 0.818495370392536 with its own
+/// earth-return depth).
+#[test]
+fn a_bare_cond_keeps_the_default_unit_of_its_first_selection() {
+    let dss = compile("q3_bare_cond.dss");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    assert!(solved(&dss));
+    assert_eq!(units(&dss, "c"), ["m", "ft"]);
+    assert_eq!(units(&dss, "d"), ["m", "m"]);
+    assert_eq!(units(&dss, "e"), ["m", "m"]);
+    let c = [phase(0.0, 10.0, "m"), phase(1.0, 10.0, "ft")];
+    assert_x(&dss, "Lc", &c, &[(2, 1, 0.583_158_8)], "c");
+    let in_m = [phase(0.0, 10.0, "m"), phase(1.0, 10.0, "m")];
+    assert_x(&dss, "Ld", &in_m, &[(2, 1, 0.818_560_4)], "d");
+    assert_x(&dss, "Le", &in_m, &[(2, 1, 0.818_560_4)], "e");
+}
+
 /// Two Lines on script F's geometry report the missing conductor once.
 #[test]
 fn variant_two_lines_on_one_broken_geometry_give_one_error() {
@@ -2003,6 +2038,7 @@ fn cond_out_of_range_is_refused_and_selects_nothing() {
     );
     let e = compile("e_cond_out_of_range.dss");
     assert_eq!(errors(&e)[0], out_of_range("g", 11, "has 4 conductors"));
+    assert_eq!(e.errors()[0].code, Some(10102));
     let mut one = compile("h2_one_conductor_with_cond.dss");
     for value in [2, -1] {
         one.command("Edit LineGeometry.g cond=1");
@@ -2110,7 +2146,10 @@ fn cond_that_is_not_a_number_selects_nothing() {
 /// oracles round `1.5` to conductor 2 and `2.9` to 3 with no message and ignore
 /// the other two, so their `x=` lands on conductor 3 (r4133 X21 0.6514911,
 /// X32 0.8294189 Ω/mi), and dss_capi reports those two as `Invalid value
-/// (1410065408)` and `(-2147483648)`.
+/// (1410065408)` and `(-2147483648)`. A whole number outside 1 to 4 written
+/// as a decimal (`5.0`) is refused naming it as written, and every
+/// out-of-range refusal carries code 10102, in and past the integer range
+/// alike.
 #[test]
 fn cond_that_is_not_a_whole_number_selects_nothing() {
     let mut dss = compile("r6c_cond_not_a_whole_number.dss");
@@ -2133,6 +2172,11 @@ fn cond_that_is_not_a_whole_number_selects_nothing() {
             no_cond("g", "X"),
         ]
     );
+    let codes: Vec<_> = dss.errors().iter().map(|e| e.code).collect();
+    assert_eq!(
+        codes,
+        [None, None, None, None, Some(10102), None, Some(10102), None]
+    );
     assert!(solved(&dss));
     assert_eq!(cond(&mut dss, "g"), "0");
     let c0 = compile("c0_cond_in_order.dss");
@@ -2144,6 +2188,14 @@ fn cond_that_is_not_a_whole_number_selects_nothing() {
         &[(2, 1, 0.794_511_1), (3, 2, 0.794_511_1)],
         "R6c",
     );
+    // A whole number outside the conductors, written as a decimal, is named
+    // as written and selects nothing.
+    dss.command("Edit LineGeometry.g cond=2");
+    let before = dss.errors().len();
+    dss.command("Edit LineGeometry.g cond=5.0");
+    assert_eq!(errors(&dss)[before..], [refused("5.0", "is out of range")]);
+    assert_eq!(dss.errors()[before].code, Some(10102));
+    assert_eq!(cond(&mut dss, "g"), "0");
     // A whole number written as a decimal selects its conductor.
     dss.command("Edit LineGeometry.g cond=2.0 x=0");
     assert_eq!(cond(&mut dss, "g"), "2");
@@ -2268,8 +2320,9 @@ fn a_conductor_without_a_position_is_the_rule_7_error() {
 /// (X21 0.9386771 Ω/mi, where metres give script C's 0.7945111), and
 /// `units=none` is refused with conductor 1 keeping feet, and so is
 /// `units=feet`, a word outside the unit names. A redefinition reads its
-/// unit-less numbers in feet (R9). A spacing with no length unit is refused
-/// ([`a_spacing_without_a_unit_is_refused`]). The buried neutral that `wires=`
+/// unit-less numbers in feet (R9). A spacing refuses a unit word outside its
+/// list and keeps feet ([`a_spacing_refuses_a_unit_word_outside_its_list`]).
+/// The buried neutral that `wires=`
 /// fills saves in feet, with no position, while no `cond=` has selected it,
 /// read by a replay up to the `Edit` that places it, and follows the default
 /// to metres when a `units=m` after `cond=1` makes metres the default (rule 4).
@@ -2635,8 +2688,9 @@ fn a_y_build_abort_is_the_only_error_of_the_solve() {
 }
 
 /// A Line whose impedance cannot be built beside a Capacitor that refuses its
-/// stamp: the build drops its Y, as for the refusal alone, the Capacitor's
-/// message is logged, and the build's error names the Line.
+/// stamp: the voltage-base pass builds the series Y and drops it, as for the
+/// refusal alone, the Capacitor's message is logged, and the build's error
+/// names the Line. No system Y is built either.
 #[test]
 fn a_broken_geometry_beside_a_refused_stamp_names_both() {
     let mut dss = Dss::new();
@@ -2664,7 +2718,11 @@ fn a_broken_geometry_beside_a_refused_stamp_names_both() {
     );
     let solution = &dss.circuit().unwrap().solution;
     assert!(solution.solution_abort);
-    assert!(solution.y_system.is_none(), "the refused build left a Y");
+    assert!(
+        solution.y_series.is_none(),
+        "the refused series build left a Y"
+    );
+    assert!(solution.y_system.is_none(), "a system Y was built");
 }
 
 /// A Y rebuild outside the solve logs the build's one error itself:
@@ -2896,77 +2954,88 @@ fn a_refused_nconds_is_not_saved() {
     );
 }
 
-/// S7: a `spacing=` whose LineSpacing has no length unit (`units=none`, or a
-/// word that names none) is refused with one error naming the spacing, and
-/// nothing of it is copied or kept. The spacing in feet is copied.
+/// The refusal of a unit word outside a LineSpacing's list, as the spacing
+/// logs it at its own token.
+fn spacing_word_refused(spacing: &str, word: &str) -> String {
+    format!(
+        "LineSpacing.{spacing}.Units: \"{word}\" is not one of the length units mi, kft, km, m, \
+         ft, in, cm, mm."
+    )
+}
+
+/// S7: a LineSpacing refuses `units=none` and `units=feet` at its own token,
+/// naming the word, and keeps feet. A geometry's `spacing=` then copies the
+/// spacing in feet: `gnone` and `gfeet` hold its positions in feet and build
+/// like `gft` (X21 0.7945111 Ω/mi at 4 ft, [`carson_x`]). Both oracles read
+/// `feet` and `none` as no unit and compute those geometries in metres, X21
+/// 0.6503451 on r4133.
 #[test]
-fn a_spacing_without_a_unit_is_refused() {
+fn a_spacing_refuses_a_unit_word_outside_its_list() {
     let scratch = Scratch::new("s7");
     let mut dss = compile("s7_spacing_without_a_unit.dss");
-    let refused = |g: &str, sp: &str| {
-        format!(
-            "LineGeometry.{g}.Spacing: LineSpacing.{sp} has no length unit, so nothing is \
-             copied. Give the spacing one of mi, kft, km, m, ft, in, cm, mm."
-        )
-    };
     assert_eq!(
         errors(&dss),
-        [refused("gnone", "sp_none"), refused("gfeet", "sp_feet")]
+        [
+            spacing_word_refused("sp_none", "none"),
+            spacing_word_refused("sp_feet", "feet"),
+        ]
     );
     assert!(solved(&dss));
-    for g in ["gnone", "gfeet"] {
-        assert!(
-            conductors(&dss, g)
-                .iter()
-                .all(|c| c.x.is_none() && c.h.is_none() && c.object.is_some()),
+    for sp in ["sp_none", "sp_feet"] {
+        assert_eq!(
+            query(&mut dss, &format!("LineSpacing.{sp}.Units")),
+            "ft",
+            "{sp}"
+        );
+    }
+    let row = [
+        phase(-4.0, 28.0, "ft"),
+        phase(0.0, 28.0, "ft"),
+        phase(4.0, 28.0, "ft"),
+    ];
+    for (g, sp, line) in [
+        ("gnone", "sp_none", "Lnone"),
+        ("gfeet", "sp_feet", "Lfeet"),
+        ("gft", "sp_ft", "L"),
+    ] {
+        let held: Vec<_> = conductors(&dss, g)
+            .iter()
+            .map(|c| (c.x, c.h, c.unit, c.object.is_some()))
+            .collect();
+        assert_eq!(
+            held,
+            [
+                (Some(-4.0), Some(28.0), "ft", true),
+                (Some(0.0), Some(28.0), "ft", true),
+                (Some(4.0), Some(28.0), "ft", true),
+            ],
             "{g}"
         );
-        assert_eq!(query(&mut dss, &format!("LineGeometry.{g}.Spacing")), "");
+        assert_eq!(query(&mut dss, &format!("LineGeometry.{g}.Spacing")), sp);
         let (rows, _) = saved_rows(&save(&mut dss, &scratch.dir(g), g));
         assert!(rows.iter().all(|r| r[4] == "units=ft"), "{g}: {rows:?}");
+        assert_x(&dss, line, &row, &[(2, 1, 0.794_511_1)], g);
     }
-    assert_eq!(units(&dss, "gft"), ["ft"; 3]);
-    assert_x(
-        &dss,
-        "L",
-        &[
-            phase(-4.0, 28.0, "ft"),
-            phase(0.0, 28.0, "ft"),
-            phase(4.0, 28.0, "ft"),
-        ],
-        &[(2, 1, 0.794_511_1)],
-        "S7",
-    );
 }
 
 /// A Line's own `spacing=` reads its LineSpacing's unit the way a geometry's
 /// `spacing=` does. A spacing in feet, metres or inches is converted (`Lft` and
-/// `Lin` X21 0.7945111 Ω/mi, `Lm` 0.6503451). A spacing with no length unit
-/// (`units=none`, and `units=feet`, which the LineSpacing reads as none) is one
-/// error naming the Line, the spacing and the unit, and the Line stays as it
-/// was: `Ln` and `Lfe` are default Lines like `Ldef`, whose `wires=` then has no
-/// spacing to fill, and `Lkeep` keeps its spacing in feet. Both oracles read
-/// those spacings as metres, X21 0.6503451 on r4133.
+/// `Lin` X21 0.7945111 Ω/mi, `Lm` 0.6503451). A LineSpacing refuses
+/// `units=none` and `units=feet` at its own token and keeps feet, so `Ln`,
+/// `Lfe` and `Lkeep`, whose `Edit` moves it to the spacing written `feet` and
+/// gives its wires again, build in feet at X21 0.7945111, with no message at
+/// the Lines. Both oracles
+/// read those spacings as metres, X21 0.6503451 on r4133. A spacing whose unit
+/// code names no length unit is refused by the Line, which keeps what it had
+/// ([`a_line_refuses_a_spacing_whose_unit_code_names_no_length`]).
 #[test]
-fn a_line_refuses_a_spacing_without_a_unit() {
+fn a_line_on_a_spacing_with_a_refused_unit_builds_in_feet() {
     let mut dss = compile("s8_line_spacing_units.dss");
-    let refused = |line: &str, sp: &str| {
-        format!(
-            "Line.{line}.Spacing: LineSpacing.{sp} has no length unit (units=none), so the Line \
-             is left as it was. Give the spacing one of mi, kft, km, m, ft, in, cm, mm."
-        )
-    };
-    let no_spacing = |line: &str| {
-        format!("You must assign the LineSpacing before the Wires Property (\"Line.{line}\").")
-    };
     assert_eq!(
         errors(&dss),
         [
-            refused("ln", "sp_none"),
-            no_spacing("ln"),
-            refused("lfe", "sp_feet"),
-            no_spacing("lfe"),
-            refused("lkeep", "sp_feet"),
+            spacing_word_refused("sp_none", "none"),
+            spacing_word_refused("sp_feet", "feet"),
         ]
     );
     assert!(solved(&dss));
@@ -2985,16 +3054,1387 @@ fn a_line_refuses_a_spacing_without_a_unit() {
         phase(48.0, 336.0, "in"),
     ];
     assert_x(&dss, "Lin", &inches, &[(2, 1, 0.794_511_1)], "S8 in");
-    assert_x(&dss, "Lkeep", &row("ft"), &[(2, 1, 0.794_511_1)], "S8 kept");
-    assert_eq!(query(&mut dss, "Line.Lkeep.Spacing"), "sp_ft");
-    for line in ["Ln", "Lfe"] {
+    for line in ["Ln", "Lfe", "Lkeep"] {
+        assert_x(&dss, line, &row("ft"), &[(2, 1, 0.794_511_1)], line);
+    }
+    for (line, sp) in [("Ln", "sp_none"), ("Lfe", "sp_feet"), ("Lkeep", "sp_feet")] {
         assert_eq!(
             query(&mut dss, &format!("Line.{line}.Spacing")),
-            "",
+            sp,
             "{line}"
         );
-        assert_eq!(xmatrix(&dss, line), xmatrix(&dss, "Ldef"), "{line}");
     }
+}
+
+/// A Line's `spacing=` refuses a spacing whose unit code names no length unit
+/// (set directly, since the spacing's own `units=` refuses every word outside
+/// its list) at its token, naming the Line, the spacing and the code, and the
+/// Line keeps what it had: `Lkeep` keeps `sp_feet`, its three phases, its wires
+/// and X21 0.7945111 Ω/mi in feet. `sp2` has two phases, so a spacing applied
+/// anyway would change the Line's phases.
+#[test]
+fn a_line_refuses_a_spacing_whose_unit_code_names_no_length() {
+    use crate::elements::general::line_spacing::{LineSpacingObj, prop as spacing_prop};
+    let mut dss = compile("s8_line_spacing_units.dss");
+    assert!(solved(&dss));
+    dss.command("New LineSpacing.sp2 nconds=2 nphases=2 x=[-4 4] h=[28 28] units=ft");
+    let wires = "[acsr_556_5, acsr_556_5, acsr_556_5]";
+    assert_eq!(query(&mut dss, "Line.Lkeep.wires"), wires);
+    let row = [
+        phase(-4.0, 28.0, "ft"),
+        phase(0.0, 28.0, "ft"),
+        phase(4.0, 28.0, "ft"),
+    ];
+    for (code, written) in [(0, "none"), (9, "9")] {
+        let ci = dss.class_by_name["linespacing"];
+        let oi = dss.classes[ci].name_to_idx["sp2"];
+        dss.classes[ci]
+            .arena
+            .get_mut::<LineSpacingObj>(oi)
+            .expect("a LineSpacing")
+            .set_i32(spacing_prop::UNITS, code);
+        let before = dss.errors().len();
+        let cmd = "Edit Line.Lkeep spacing=sp2";
+        dss.command(cmd);
+        assert_eq!(
+            errors(&dss)[before..],
+            [format!(
+                "Line.lkeep.Spacing: LineSpacing.sp2 has no length unit (units={written}), so \
+                 the Line is left as it was. Give the spacing one of mi, kft, km, m, ft, in, cm, \
+                 mm."
+            )],
+            "{code}"
+        );
+        let underlined: Vec<&str> = dss.errors()[before..]
+            .iter()
+            .map(|d| {
+                let span = d.span.as_ref().expect("a span");
+                &cmd[span.offset()..span.offset() + span.len()]
+            })
+            .collect();
+        assert_eq!(underlined, ["sp2"], "{code}");
+        assert_eq!(query(&mut dss, "Line.Lkeep.Spacing"), "sp_feet", "{code}");
+        assert_eq!(query(&mut dss, "Line.Lkeep.phases"), "3", "{code}");
+        assert_eq!(query(&mut dss, "Line.Lkeep.wires"), wires, "{code}");
+        dss.command("Solve");
+        assert!(solved(&dss), "{code}");
+        assert_eq!(errors(&dss).len(), before + 1, "{code}");
+        assert_x(&dss, "Lkeep", &row, &[(2, 1, 0.794_511_1)], written);
+    }
+}
+
+/// A Line's `wires=` names one wire per open position of its spacing, so a
+/// wire with no position is refused, naming the Line and the count, and the
+/// Line keeps what it had. `z` (`nconds=0`) and `n` (`nconds=-5`, read as no
+/// position) have no conductor position, so `Lz` and `Ln` keep no wire, the
+/// rest of their line, and solve on the Line's default sequence impedances
+/// like `Ldef`, which names no spacing, after the message. On
+/// `s3` the three cable phases fill every position, so `Lc` refuses a bare
+/// neutral, keeps its three cables and solves like `Ld`, which writes no
+/// `wires=`. r4133 takes each wire with no message and drops it (`? wires`
+/// reads `w`, `Lz` and `Ln` solve on the default sequence impedances, xmatrix
+/// diagonal 0.2153, and `Lc` like `Ld`). The pinned dss_capi refuses `Lz` and
+/// `Lc` with "Unexpected number (1) of wires; expected 0 objects." and fails
+/// `nconds=-5` with 303 (measured 2026-10-23 with the epri-worker on the
+/// r4133 DLL and the pinned dss-python).
+#[test]
+fn a_line_refuses_a_wire_with_no_position() {
+    let mut dss = Dss::new();
+    for c in [
+        "New Circuit.nopos basekv=12.47 phases=3 bus1=src",
+        "New WireData.w GMRac=0.0244 GMRunits=ft Rac=0.306 Runits=mi Diam=0.721 Radunits=in",
+        "New CNData.cn k=13 DiaStrand=0.064 Rstrand=2.816666 epsR=2.3 InsLayer=0.220 \
+         DiaIns=1.06 DiaCable=1.16 Rac=0.076705 GMRac=0.20568 diam=0.573 Runits=kft \
+         Radunits=in GMRunits=in",
+        "New LineSpacing.z nconds=0 nphases=3 units=ft",
+        "New LineSpacing.n nconds=-5 nphases=3 units=ft",
+        "New LineSpacing.s3 nconds=3 nphases=3 x=[-0.5 0 0.5] h=[-4 -4 -4] units=ft",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    for c in [
+        "New Line.Lz bus1=src.1.2.3 bus2=bz.1.2.3 spacing=z wires=[w] length=1 units=mi",
+        "New Line.Ln bus1=src.1.2.3 bus2=bn.1.2.3 spacing=n wires=[w] length=1 units=mi",
+        "New Line.Lc bus1=src.1.2.3 bus2=bc.1.2.3 spacing=s3 cncables=[cn cn cn] wires=[w] \
+         length=1 units=mi",
+        "New Line.Ld bus1=src.1.2.3 bus2=bd.1.2.3 spacing=s3 cncables=[cn cn cn] length=1 \
+         units=mi",
+        "New Line.Ldef bus1=src.1.2.3 bus2=bdef.1.2.3 length=1 units=mi",
+    ] {
+        dss.command(c);
+    }
+    let refused =
+        |line: &str| format!("Line.{line}: Unexpected number (1) of wires; expected 0 objects.");
+    assert_eq!(errors(&dss), [refused("lz"), refused("ln"), refused("lc")]);
+    for (line, spacing) in [("Lz", "z"), ("Ln", "n")] {
+        for (prop, want) in [
+            ("wires", "[]"),
+            ("spacing", spacing),
+            ("phases", "3"),
+            ("length", "1"),
+            ("units", "mi"),
+        ] {
+            assert_eq!(
+                query(&mut dss, &format!("Line.{line}.{prop}")),
+                want,
+                "{line} {prop}"
+            );
+        }
+    }
+    for line in ["Lc", "Ld"] {
+        assert_eq!(
+            query(&mut dss, &format!("Line.{line}.wires")),
+            "[cn, cn, cn]",
+            "{line}"
+        );
+        assert_eq!(
+            query(&mut dss, &format!("Line.{line}.cncables")),
+            "[cn, cn, cn]",
+            "{line}"
+        );
+    }
+    for c in ["Set voltagebases=[12.47]", "CalcVoltageBases", "Solve"] {
+        dss.command(c);
+    }
+    assert!(solved(&dss));
+    assert_eq!(errors(&dss).len(), 3, "{:?}", errors(&dss));
+    for real in [false, true] {
+        assert_eq!(zpart(&dss, "Lc", real), zpart(&dss, "Ld", real), "{real}");
+        for line in ["Lz", "Ln"] {
+            assert_eq!(
+                zpart(&dss, line, real),
+                zpart(&dss, "Ldef", real),
+                "{line} {real}"
+            );
+        }
+    }
+}
+
+/// A refused `wires=` list changes nothing on the Line, whichever refusal it
+/// meets, no open position or a count other than the open positions: a
+/// geometry, a line code or ratings written before it stay, and `wires`
+/// enters no set order. `Bg` keeps its geometry and solves like `Bgg`, which
+/// names no spacing, at X11 1.42425544092922 Ω/mi. `Bl` keeps its line code
+/// and solves like `Bl0`, which writes no `wires=`. `Br` (cables on every
+/// position) and `Lo` (a list of two, then four, for three positions) keep
+/// their typed `normamps` and `emergamps` through the solve, the Save and the
+/// JSON export, where the spacing model would reset them from the conductors.
+/// `Lz` exports no conductor list, so its JSON record imports back with no
+/// message. A wire list on a Line with no spacing is refused the same way:
+/// `Lns` keeps no wire, exports no conductor list and imports back with no
+/// message. r4133 takes every list on a spacing with no message and switches
+/// the Line to its spacing model: `Bg` and `Bl` lose their geometry and line
+/// code, `Bg` solves on the default sequence impedances (xmatrix diagonal
+/// 0.2153), and `Br` and `Lo` read `normamps` and `emergamps` -1 after the
+/// solve. It faults on `Lns`'s `New` line with an access violation (303),
+/// keeping `w` and losing the rest of the line. The pinned dss_capi refuses
+/// every list (`Bg` and `Bl` with 18102 "You must
+/// assign the LineSpacing before the Wires Property") and keeps the geometry
+/// and the line code, but `Br` and `Lo` read -1 after the solve too (measured
+/// 2026-10-23 with the epri-worker on the r4133 DLL and the pinned
+/// dss-python).
+#[test]
+fn a_refused_wire_list_changes_nothing_on_the_line() {
+    use crate::report::export::json::JsonOpts;
+    let wire = "New WireData.w GMRac=0.0244 GMRunits=ft Rac=0.306 Runits=mi Diam=0.721 \
+                Radunits=in";
+    let mut dss = Dss::new();
+    for c in [
+        "New Circuit.keep basekv=12.47 phases=3 bus1=src",
+        wire,
+        "New CNData.cn k=13 DiaStrand=0.064 Rstrand=2.816666 epsR=2.3 InsLayer=0.220 \
+         DiaIns=1.06 DiaCable=1.16 Rac=0.076705 GMRac=0.20568 diam=0.573 Runits=kft \
+         Radunits=in GMRunits=in",
+        "New LineSpacing.z nconds=0 nphases=3 units=ft",
+        "New LineSpacing.c3 nconds=3 nphases=3 x=[-0.5 0 0.5] h=[-4 -4 -4] units=ft",
+        "New LineSpacing.s3 nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft",
+        "New LineGeometry.g3 nconds=3 nphases=3 units=ft cond=1 wire=w x=-4 h=28 cond=2 \
+         wire=w x=0 h=28 cond=3 wire=w x=4 h=28",
+        "New LineCode.lc nphases=3 r1=0.3 x1=0.6 r0=0.3 x0=0.6 c1=0 c0=0 units=km",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    for c in [
+        "New Line.Bg bus1=src.1.2.3 bus2=bg.1.2.3 spacing=z geometry=g3 wires=[w] length=1 \
+         units=mi",
+        "New Line.Bgg bus1=src.1.2.3 bus2=bgg.1.2.3 geometry=g3 length=1 units=mi",
+        "New Line.Bl bus1=src.1.2.3 bus2=bl.1.2.3 spacing=z linecode=lc wires=[w] length=1 \
+         units=km",
+        "New Line.Bl0 bus1=src.1.2.3 bus2=bl0.1.2.3 spacing=z linecode=lc length=1 units=km",
+        "New Line.Br bus1=src.1.2.3 bus2=br.1.2.3 spacing=c3 cncables=[cn cn cn] normamps=999 \
+         emergamps=1999 wires=[w] length=1 units=mi",
+        "New Line.Lo bus1=src.1.2.3 bus2=lo.1.2.3 spacing=s3 wires=[w w w] normamps=500 \
+         emergamps=700 length=1 units=mi",
+        "Edit Line.Lo wires=[w w]",
+        "Edit Line.Lo wires=[w w w w]",
+        "New Line.Lz bus1=src.1.2.3 bus2=bz.1.2.3 spacing=z wires=[w] length=1 units=mi",
+        "New Line.Lns bus1=src.1.2.3 bus2=bns.1.2.3 wires=[w] length=1 units=mi",
+    ] {
+        dss.command(c);
+    }
+    let count = |line: &str, n: usize, open: usize| {
+        format!("Line.{line}: Unexpected number ({n}) of wires; expected {open} objects.")
+    };
+    assert_eq!(
+        errors(&dss),
+        [
+            count("bg", 1, 0),
+            count("bl", 1, 0),
+            count("br", 1, 0),
+            count("lo", 2, 3),
+            count("lo", 4, 3),
+            count("lz", 1, 0),
+            "You must assign the LineSpacing before the Wires Property (\"Line.lns\").".to_string(),
+        ]
+    );
+    assert_eq!(query(&mut dss, "Line.Bg.geometry"), "g3");
+    assert_eq!(query(&mut dss, "Line.Bl.linecode"), "lc");
+    assert_eq!(query(&mut dss, "Line.Lo.wires"), "[w, w, w]");
+    assert_eq!(query(&mut dss, "Line.Lns.wires"), "[]");
+
+    // The set order: `Lz` and `Lns` export no conductor list and import back
+    // clean.
+    let records: Vec<String> = ["Lz", "Lns"]
+        .iter()
+        .map(|line| {
+            let record = dss
+                .obj_to_json(&format!("Line.{line}"), JsonOpts::NONE)
+                .expect("a Line");
+            assert!(!record.contains("\"Conductors\""), "{record}");
+            record
+        })
+        .collect();
+    let json = format!(
+        r#"{{"Name":"keepjson","PreCommands":["{wire}","New LineSpacing.z nconds=0 nphases=3 units=ft"],"Line":[{}]}}"#,
+        records.join(",")
+    );
+    let mut back = Dss::new();
+    assert_eq!(back.circuit_from_json(&json), Ok(()));
+    assert!(back.errors().is_empty(), "{:?}", errors(&back));
+    for (prop, want) in [
+        ("Lz.spacing", "z"),
+        ("Lns.wires", "[]"),
+        ("Lns.units", "mi"),
+    ] {
+        assert_eq!(query(&mut back, &format!("Line.{prop}")), want, "{prop}");
+    }
+
+    for c in ["Set voltagebases=[12.47]", "CalcVoltageBases", "Solve"] {
+        dss.command(c);
+    }
+    assert!(solved(&dss));
+    assert_eq!(errors(&dss).len(), 7, "{:?}", errors(&dss));
+    for real in [false, true] {
+        assert_eq!(zpart(&dss, "Bg", real), zpart(&dss, "Bgg", real), "{real}");
+        assert_eq!(zpart(&dss, "Bl", real), zpart(&dss, "Bl0", real), "{real}");
+    }
+    let x11 = xmatrix(&dss, "Bg")[0][0];
+    assert!((x11 - 1.424_255_440_929_22).abs() <= X_BAND, "{x11}");
+
+    let scratch = Scratch::new("refused_wires");
+    let dir = scratch.dir("save");
+    dss.command(&format!("save circuit dir=\"{}\"", slash(&dir)));
+    let saved = read(&dir, "Line.dss");
+    let number = |record: &str, key: &str| -> f64 {
+        let at = record
+            .find(&format!("\"{key}\":"))
+            .unwrap_or_else(|| panic!("no {key} in {record}"))
+            + key.len()
+            + 3;
+        let text = record[at..].split([',', '}']).next().unwrap_or_default();
+        text.parse()
+            .unwrap_or_else(|e| panic!("{key} {text} in {record}: {e}"))
+    };
+    for (line, norm, emerg, row) in [
+        (
+            "Br",
+            999.0,
+            1999.0,
+            "New \"Line.br\" Bus1=src.1.2.3 Bus2=br.1.2.3 Spacing=c3 CNCables=[cn, cn, cn] \
+             NormAmps=999 EmergAmps=1999 Length=1 Units=mi",
+        ),
+        (
+            "Lo",
+            500.0,
+            700.0,
+            "New \"Line.lo\" Bus1=src.1.2.3 Bus2=lo.1.2.3 Spacing=s3 Wires=[w, w, w] \
+             NormAmps=500 EmergAmps=700 Length=1 Units=mi",
+        ),
+    ] {
+        assert_eq!(
+            query(&mut dss, &format!("Line.{line}.normamps")),
+            norm.to_string(),
+            "{line}"
+        );
+        assert_eq!(
+            query(&mut dss, &format!("Line.{line}.emergamps")),
+            emerg.to_string(),
+            "{line}"
+        );
+        assert!(saved.lines().any(|l| l == row), "{row} in {saved}");
+        let record = dss
+            .obj_to_json(&format!("Line.{line}"), JsonOpts::NONE)
+            .expect("a Line");
+        assert_eq!(number(&record, "NormAmps"), norm, "{record}");
+        assert_eq!(number(&record, "EmergAmps"), emerg, "{record}");
+    }
+}
+
+/// A refused `conductors=` list changes nothing either: `Lq`'s list names no
+/// class, `Lf`'s a wire that is not found and `Lv`'s a class other than
+/// WireData, CNData and TSData, so each is refused at its token, the Line
+/// keeps its spacing with no conductor model, and a `wires=` of three
+/// overhead wires after it fills the three positions and solves like `Lw`,
+/// which gives the wires at once. A LineGeometry's refused `conductors=` logs
+/// its refusal alone, writes no conductor and seeds no rating: `gd`, whose
+/// conductor 2 holds a wire rated 530/800 A, keeps its wires `[, w2, ]` and
+/// both ratings not set through a list that names no class, one that names a
+/// wire not found, and two that start with a valid wire and go on with an
+/// item that names no class or another class. An item with no class or
+/// another class is refused with code 10103. r4133 logs the Lines' lists
+/// (181023, 181025 and 181024) and keeps each as written (`? conductors`
+/// echoes it), and the `wires=[w w w]` after it, which `? wires` reads back,
+/// leaves them faulting at `CalcVoltageBases` (303) and `Solve` (482) with an
+/// access violation, where `Lw` with the same wires solves at X11 1.424255
+/// Ω/mi. On a LineGeometry r4133 keeps the items before the first item with
+/// no class and logs 10103 there. Given to `gd` as defined here, `[w w w]`
+/// keeps nothing (`? wires` reads `[ w2  ]` before and after it), and
+/// `[WireData.w w WireData.w]` writes `w` to conductor 1 (`[w w2  ]`). It
+/// writes the wires of a list with an item not found and logs 10103 for the
+/// missing one: `[WireData.nosuch WireData.w WireData.w]` reads
+/// `[nosuch w w ]`, and conductor 2 becomes `w`. It reads an item of another
+/// class after a valid item, in silence, as the previous wire under the
+/// item's name: `[WireData.w Foo.w WireData.w]` logs nothing and reads
+/// `[w w w ]`. The ratings stay at the not-set 0 through every list. It
+/// computes with what it kept. On a geometry of three `w2`,
+/// `[WireData.w WireData.nosuch WireData.w]` reads `[w nosuch w ]`, and a
+/// Line on it reads X11 and X33 1.424255 Ω/mi, the `w` value, and X22
+/// 1.399185, the `w2` value kept under the missing name.
+/// `[WireData.w Foo.w2 WireData.w]` reads `[w w2 w ]` there, and a Line on it
+/// reads X22 1.424255, the `w` value under the name `w2`. The pinned dss_capi
+/// has no `conductors` property (110) (measured 2026-10-23 with the
+/// epri-worker on the r4133 DLL and the pinned dss-python, one process per
+/// list).
+#[test]
+fn a_refused_conductor_list_changes_nothing() {
+    let mut dss = Dss::new();
+    for c in [
+        "New Circuit.cond basekv=12.47 phases=3 bus1=src",
+        "New WireData.w GMRac=0.0244 GMRunits=ft Rac=0.306 Runits=mi Diam=0.721 Radunits=in",
+        "New WireData.w2 GMRac=0.03 GMRunits=ft Rac=0.2 Runits=mi Diam=0.8 Radunits=in \
+         normamps=530 emergamps=800",
+        "New LineSpacing.s3 nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft",
+        "New Line.Lq bus1=src.1.2.3 bus2=bq.1.2.3 spacing=s3 conductors=[w w w] length=1 \
+         units=mi",
+        "Edit Line.Lq wires=[w w w]",
+        "New Line.Lf bus1=src.1.2.3 bus2=bf.1.2.3 spacing=s3 \
+         conductors=[WireData.nosuch WireData.nosuch WireData.nosuch] length=1 units=mi",
+        "Edit Line.Lf wires=[w w w]",
+        "New Line.Lv bus1=src.1.2.3 bus2=bv.1.2.3 spacing=s3 conductors=[Foo.w Foo.w Foo.w] \
+         length=1 units=mi",
+        "Edit Line.Lv wires=[w w w]",
+        "New Line.Lw bus1=src.1.2.3 bus2=bw.1.2.3 spacing=s3 wires=[w w w] length=1 units=mi",
+        "New LineGeometry.gq nconds=3 nphases=3 conductors=[w w w]",
+        "New LineGeometry.gd nconds=3 nphases=3 units=ft cond=2 wire=w2 x=0 h=28",
+    ] {
+        dss.command(c);
+    }
+    let ratings = |dss: &mut Dss| {
+        ["normamps", "emergamps"].map(|p| query(dss, &format!("LineGeometry.gd.{p}")))
+    };
+    assert_eq!(ratings(&mut dss), ["none", "none"]);
+    assert_eq!(query(&mut dss, "LineGeometry.gd.wires"), "[, w2, ]");
+    for list in [
+        "[w w w]",
+        "[WireData.nosuch WireData.w WireData.w]",
+        "[WireData.w w WireData.w]",
+        "[WireData.w Foo.w WireData.w]",
+    ] {
+        dss.command(&format!("Edit LineGeometry.gd conductors={list}"));
+        assert_eq!(ratings(&mut dss), ["none", "none"], "{list}");
+        assert_eq!(
+            query(&mut dss, "LineGeometry.gd.wires"),
+            "[, w2, ]",
+            "{list}"
+        );
+    }
+    assert_eq!(
+        errors(&dss),
+        [
+            "Line.lq.Conductors: You must define the Conductor class for all the valid items \
+             in the array.",
+            "Line.lf.Conductors: WireData object \"WireData.nosuch\" not found.",
+            "Line.lv.Conductors: Invalid class (foo) for item. Valid classes: \
+             (WireData|CNData|TSData)",
+            "LineGeometry.gq.Conductors: You must define the Conductor class for all the valid \
+             items in the array.",
+            "LineGeometry.gd.Conductors: You must define the Conductor class for all the valid \
+             items in the array.",
+            "LineGeometry.gd.Conductors: WireData object \"WireData.nosuch\" not found.",
+            "LineGeometry.gd.Conductors: You must define the Conductor class for all the valid \
+             items in the array.",
+            "LineGeometry.gd.Conductors: Invalid class (foo) for item. Valid classes: \
+             (WireData|CNData|TSData)",
+        ]
+    );
+    let codes: Vec<Option<u32>> = dss.errors().iter().map(|d| d.code).collect();
+    assert_eq!(
+        codes,
+        [
+            Some(10103),
+            None,
+            Some(10103),
+            Some(10103),
+            Some(10103),
+            None,
+            Some(10103),
+            Some(10103)
+        ]
+    );
+    for line in ["Lq", "Lf", "Lv"] {
+        assert_eq!(
+            query(&mut dss, &format!("Line.{line}.wires")),
+            "[w, w, w]",
+            "{line}"
+        );
+    }
+    for c in ["Set voltagebases=[12.47]", "CalcVoltageBases", "Solve"] {
+        dss.command(c);
+    }
+    assert!(solved(&dss));
+    assert_eq!(errors(&dss).len(), 8, "{:?}", errors(&dss));
+    for real in [false, true] {
+        for line in ["Lq", "Lf", "Lv"] {
+            assert_eq!(
+                zpart(&dss, line, real),
+                zpart(&dss, "Lw", real),
+                "{line} {real}"
+            );
+        }
+    }
+}
+
+/// A list refused because an object is not found, and a `cncables=` or
+/// `tscables=` list on a Line with no conductor position, change nothing
+/// either: the list writes nothing, enters no set order and runs no side
+/// effect, on the Line and on a LineGeometry, whose `wires=` shares the
+/// parse. `Ng` keeps its geometry and solves like `Ngg`, at X11
+/// 1.42425544092922 Ω/mi, and `Nl` keeps its line code and solves like
+/// `Nl0`. `Nr` keeps its wires and its typed `normamps` and `emergamps`
+/// through the solve, the Save and the JSON export. `Kg` exports no conductor
+/// list, so its JSON record imports back with no message. `Kc`, `Kt` and `Kl`
+/// keep their geometry and line code (402, as a `conductors=` list with no
+/// position). `Kn`'s cables are not found, so no conductor model is set and
+/// its overhead wires fill the spacing like `Lw`'s. `gw` keeps its wires and
+/// the zero ratings typed after them, which a conductor would fill, and its
+/// JSON record writes no `Wires`. The pinned dss_capi refuses these lists
+/// (40303 for a wire not found, 402 for `Kc`, `Kt` and `Kl`) and keeps what
+/// was there: `Ng`, `Kg` and `Kt` keep `g3`, `Nl` and `Kl` keep `lc`, `Nr`
+/// reads 500, 700 and `[w, w, w]` after the solve, and `gw` its ratings and
+/// wires. It refuses `Kn`'s wires "expected 0 objects" after its cables are
+/// not found and faults at `CalcVoltageBases`. r4133 logs 18103 for the
+/// wires of `Ng` and `Nl` (none for `Nr`'s), keeps them by name (`? wires`
+/// reads `nosuch nosuch nosuch`) and drops the geometry and the line code,
+/// so `Ng` and `Nl` fault at `CalcVoltageBases` and `Solve` with an access
+/// violation, where the same Lines without the list solve. So does `Kn`,
+/// whose cables it first logs as not defined (18105) and keeps by name
+/// (`? cncables` reads `nosuch nosuch nosuch`). `Nr` reads -1 for both ratings
+/// after the solve. r4133 faults on the `New` line of `Kg`, `Kc`, `Kt` and
+/// `Kl`, which read no geometry or line code after it (measured 2026-10-23
+/// with the epri-worker on the r4133 DLL and the pinned dss-python, one
+/// process per Line).
+#[test]
+fn a_missing_object_or_a_cable_list_with_no_position_changes_nothing() {
+    use crate::report::export::json::JsonOpts;
+    let wire = "New WireData.w GMRac=0.0244 GMRunits=ft Rac=0.306 Runits=mi Diam=0.721 \
+                Radunits=in";
+    let geometry = "New LineGeometry.g3 nconds=3 nphases=3 units=ft cond=1 wire=w x=-4 h=28 \
+                    cond=2 wire=w x=0 h=28 cond=3 wire=w x=4 h=28";
+    let mut dss = Dss::new();
+    for c in [
+        "New Circuit.missing basekv=12.47 phases=3 bus1=src",
+        wire,
+        "New WireData.w2 GMRac=0.03 GMRunits=ft Rac=0.2 Runits=mi Diam=0.8 Radunits=in \
+         normamps=530 emergamps=800",
+        "New CNData.cn k=13 DiaStrand=0.064 Rstrand=2.816666 epsR=2.3 InsLayer=0.220 \
+         DiaIns=1.06 DiaCable=1.16 Rac=0.076705 GMRac=0.20568 diam=0.573 Runits=kft \
+         Radunits=in GMRunits=in",
+        "New TSData.ts DiaShield=0.88 TapeLayer=0.005 TapeLap=20 EpsR=2.3 InsLayer=0.22 \
+         DiaIns=0.8 DiaCable=0.95 Rac=0.97 Runits=mi GMRac=0.1332 GMRunits=in Diam=0.368 \
+         Radunits=in",
+        "New LineSpacing.s3 nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft",
+        geometry,
+        "New LineCode.lc nphases=3 r1=0.3 x1=0.6 r0=0.3 x0=0.6 c1=0 c0=0 units=km",
+        "New LineGeometry.gw nconds=3 nphases=3 units=ft cond=1 wire=w2 x=-4 h=28 cond=2 \
+         wire=w2 x=0 h=28 cond=3 wire=w2 x=4 h=28 normamps=0 emergamps=0",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    for c in [
+        "New Line.Ng bus1=src.1.2.3 bus2=ng.1.2.3 spacing=s3 geometry=g3 \
+         wires=[nosuch nosuch nosuch] length=1 units=mi",
+        "New Line.Ngg bus1=src.1.2.3 bus2=ngg.1.2.3 geometry=g3 length=1 units=mi",
+        "New Line.Nl bus1=src.1.2.3 bus2=nl.1.2.3 spacing=s3 linecode=lc \
+         wires=[nosuch nosuch nosuch] length=1 units=km",
+        "New Line.Nl0 bus1=src.1.2.3 bus2=nl0.1.2.3 spacing=s3 linecode=lc length=1 units=km",
+        "New Line.Nr bus1=src.1.2.3 bus2=nr.1.2.3 spacing=s3 wires=[w w w] normamps=500 \
+         emergamps=700 length=1 units=mi",
+        "Edit Line.Nr wires=[w nosuch w]",
+        "New Line.Kg bus1=src.1.2.3 bus2=kg.1.2.3 geometry=g3 wires=[nosuch nosuch nosuch] \
+         length=1 units=mi",
+        "New Line.Kc bus1=src.1.2.3 bus2=kc.1.2.3 geometry=g3 cncables=[cn cn cn] length=1 \
+         units=mi",
+        "New Line.Kt bus1=src.1.2.3 bus2=kt.1.2.3 geometry=g3 tscables=[ts ts ts] length=1 \
+         units=mi",
+        "New Line.Kl bus1=src.1.2.3 bus2=kl.1.2.3 linecode=lc cncables=[cn cn cn] length=1 \
+         units=km",
+        "New Line.Kl0 bus1=src.1.2.3 bus2=kl0.1.2.3 linecode=lc length=1 units=km",
+        "New Line.Kn bus1=src.1.2.3 bus2=kn.1.2.3 spacing=s3 cncables=[nosuch nosuch nosuch] \
+         wires=[w w w] length=1 units=mi",
+        "New Line.Lw bus1=src.1.2.3 bus2=lw.1.2.3 spacing=s3 wires=[w w w] length=1 units=mi",
+        "Edit LineGeometry.gw wires=[w nosuch w]",
+    ] {
+        dss.command(c);
+    }
+    let not_found =
+        |line: &str| format!("Line.{line}.Wires: WireData object \"nosuch\" not found.");
+    let no_position = |line: &str, prop: &str| {
+        format!(
+            "Line.{line}.{prop}: No objects are expected! Check if the order of property \
+             assignments is correct."
+        )
+    };
+    assert_eq!(
+        errors(&dss),
+        [
+            not_found("ng"),
+            not_found("nl"),
+            not_found("nr"),
+            not_found("kg"),
+            no_position("kc", "CNCables"),
+            no_position("kt", "TSCables"),
+            no_position("kl", "CNCables"),
+            "Line.kn.CNCables: CNData object \"nosuch\" not found.".to_string(),
+            "LineGeometry.gw.Wires: WireData object \"nosuch\" not found.".to_string(),
+        ]
+    );
+    let codes: Vec<Option<u32>> = dss.errors().iter().map(|d| d.code).collect();
+    assert_eq!(codes[4..7], [Some(402); 3]);
+    for (prop, want) in [
+        ("Line.Ng.geometry", "g3"),
+        ("Line.Nl.linecode", "lc"),
+        ("Line.Nr.wires", "[w, w, w]"),
+        ("Line.Kg.geometry", "g3"),
+        ("Line.Kc.geometry", "g3"),
+        ("Line.Kt.geometry", "g3"),
+        ("Line.Kl.linecode", "lc"),
+        ("Line.Kn.wires", "[w, w, w]"),
+        ("LineGeometry.gw.wires", "[w2, w2, w2]"),
+        ("LineGeometry.gw.normamps", "0"),
+        ("LineGeometry.gw.emergamps", "0"),
+    ] {
+        assert_eq!(query(&mut dss, prop), want, "{prop}");
+    }
+
+    // The set order: `Kg` exports no conductor list and imports back clean.
+    let kg = dss.obj_to_json("Line.Kg", JsonOpts::NONE).expect("Kg");
+    assert!(!kg.contains("\"Conductors\""), "{kg}");
+    let json =
+        format!(r#"{{"Name":"missingjson","PreCommands":["{wire}","{geometry}"],"Line":[{kg}]}}"#);
+    let mut back = Dss::new();
+    assert_eq!(back.circuit_from_json(&json), Ok(()));
+    assert!(back.errors().is_empty(), "{:?}", errors(&back));
+    assert_eq!(query(&mut back, "Line.Kg.geometry"), "g3");
+
+    for c in ["Set voltagebases=[12.47]", "CalcVoltageBases", "Solve"] {
+        dss.command(c);
+    }
+    assert!(solved(&dss));
+    assert_eq!(errors(&dss).len(), 9, "{:?}", errors(&dss));
+    for real in [false, true] {
+        for (line, like) in [
+            ("Ng", "Ngg"),
+            ("Kg", "Ngg"),
+            ("Kc", "Ngg"),
+            ("Kt", "Ngg"),
+            ("Nl", "Nl0"),
+            ("Kl", "Kl0"),
+            ("Kn", "Lw"),
+        ] {
+            assert_eq!(
+                zpart(&dss, line, real),
+                zpart(&dss, like, real),
+                "{line} {real}"
+            );
+        }
+    }
+    let x11 = xmatrix(&dss, "Ng")[0][0];
+    assert!((x11 - 1.424_255_440_929_22).abs() <= X_BAND, "{x11}");
+
+    let gw = dss
+        .obj_to_json("LineGeometry.gw", JsonOpts::NONE)
+        .expect("gw");
+    assert!(!gw.contains("\"Wires\""), "{gw}");
+
+    let scratch = Scratch::new("missing_objects");
+    let dir = scratch.dir("save");
+    dss.command(&format!("save circuit dir=\"{}\"", slash(&dir)));
+    assert_eq!(errors(&dss).len(), 9, "{:?}", errors(&dss));
+    let saved = read(&dir, "Line.dss");
+    let row = "New \"Line.nr\" Bus1=src.1.2.3 Bus2=nr.1.2.3 Spacing=s3 Wires=[w, w, w] \
+               NormAmps=500 EmergAmps=700 Length=1 Units=mi";
+    assert!(saved.lines().any(|l| l == row), "{row} in {saved}");
+    for (prop, want) in [("normamps", "500"), ("emergamps", "700")] {
+        assert_eq!(query(&mut dss, &format!("Line.Nr.{prop}")), want, "{prop}");
+    }
+    let record = dss.obj_to_json("Line.Nr", JsonOpts::NONE).expect("Nr");
+    for (key, want) in [("NormAmps", 500.0), ("EmergAmps", 700.0)] {
+        let at = record
+            .find(&format!("\"{key}\":"))
+            .unwrap_or_else(|| panic!("no {key} in {record}"))
+            + key.len()
+            + 3;
+        let text = record[at..].split([',', '}']).next().unwrap_or_default();
+        assert_eq!(text.parse::<f64>(), Ok(want), "{key} in {record}");
+    }
+}
+
+/// A Line command logs its refusals in token order, each at its token. `Kw`'s
+/// `cncables=` comes before its spacing, so it is refused (402) and the
+/// overhead wires after the spacing fill its three positions like `Lw`'s.
+/// `Kw2` gives two wires for those three positions, refused after the cables.
+/// In `Kp`'s edit the phase change a geometry Line refuses comes before the
+/// wires it refuses for want of a spacing. The pinned dss_capi drops the rest
+/// of the `Kw` command at its 402 (`? spacing` `''`, `units` none) and r4133
+/// faults on it with an access violation (measured 2026-10-23 with the
+/// epri-worker on the r4133 DLL and the pinned dss-python).
+#[test]
+fn a_line_logs_its_refusals_in_token_order() {
+    let mut dss = Dss::new();
+    for c in [
+        "New Circuit.order basekv=12.47 phases=3 bus1=src",
+        "New WireData.w GMRac=0.0244 GMRunits=ft Rac=0.306 Runits=mi Diam=0.721 Radunits=in",
+        "New CNData.cn k=13 DiaStrand=0.064 Rstrand=2.816666 epsR=2.3 InsLayer=0.220 \
+         DiaIns=1.06 DiaCable=1.16 Rac=0.076705 GMRac=0.20568 diam=0.573 Runits=kft \
+         Radunits=in GMRunits=in",
+        "New LineSpacing.s3 nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft",
+        "New LineGeometry.g3 nconds=3 nphases=3 units=ft cond=1 wire=w x=-4 h=28 cond=2 \
+         wire=w x=0 h=28 cond=3 wire=w x=4 h=28",
+        "New Line.Kp bus1=src.1.2.3 bus2=kp.1.2.3 geometry=g3 length=1 units=mi",
+        "New Line.Lw bus1=src.1.2.3 bus2=lw.1.2.3 spacing=s3 wires=[w w w] length=1 units=mi",
+    ] {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    for c in [
+        "New Line.Kw bus1=src.1.2.3 bus2=kw.1.2.3 cncables=[cn cn cn] spacing=s3 \
+         wires=[w w w] length=1 units=mi",
+        "New Line.Kw2 bus1=src.1.2.3 bus2=kw2.1.2.3 cncables=[cn cn cn] spacing=s3 \
+         wires=[w w] length=1 units=mi",
+    ] {
+        dss.command(c);
+    }
+    let cables = |line: &str| {
+        format!(
+            "Line.{line}.CNCables: No objects are expected! Check if the order of property \
+             assignments is correct."
+        )
+    };
+    assert_eq!(
+        errors(&dss),
+        [
+            cables("kw"),
+            cables("kw2"),
+            "Line.kw2: Unexpected number (2) of wires; expected 3 objects.".to_string(),
+        ]
+    );
+    assert_eq!(query(&mut dss, "Line.Kw.wires"), "[w, w, w]");
+
+    let before = dss.errors().len();
+    let cmd = "Edit Line.Kp phases=2 wires=[w]";
+    dss.command(cmd);
+    assert_eq!(
+        errors(&dss)[before..],
+        [
+            "Illegal change of number of phases for \"Line.kp\"",
+            "You must assign the LineSpacing before the Wires Property (\"Line.kp\")."
+        ]
+    );
+    let span = dss.errors()[before].span.as_ref().expect("a span");
+    assert_eq!(&cmd[span.offset()..span.offset() + span.len()], "2");
+    for (prop, want) in [("phases", "3"), ("geometry", "g3")] {
+        assert_eq!(query(&mut dss, &format!("Line.Kp.{prop}")), want, "{prop}");
+    }
+
+    for c in ["Set voltagebases=[12.47]", "CalcVoltageBases", "Solve"] {
+        dss.command(c);
+    }
+    assert!(solved(&dss));
+    assert_eq!(errors(&dss).len(), before + 2, "{:?}", errors(&dss));
+    for real in [false, true] {
+        assert_eq!(zpart(&dss, "Kw", real), zpart(&dss, "Lw", real), "{real}");
+    }
+}
+
+/// A JSON record logs a Line's queued message after the object, while the
+/// command logs it at its token. `Line.cl` on a three-phase line code asks for
+/// `phases=2`, which the Line refuses through the queue, and `normamps=abc`,
+/// refused at once. The command logs the phase refusal first, in token order,
+/// and the JSON record of the same Line logs it behind the `NormAmps`
+/// refusal. A command of another class logs a queued message after the edit:
+/// a one-phase LineCode's `kron=y` is refused behind the `normamps=abc` that
+/// follows it. Both Lines keep their 3 phases.
+#[test]
+fn a_json_record_logs_a_queued_message_after_the_object() {
+    let lcm = "New LineCode.lcm nphases=3 rmatrix=[0.3 |0.1 0.3 |0.1 0.1 0.3] \
+               xmatrix=[0.6 |0.2 0.6 |0.2 0.2 0.6] units=km";
+    let phases = "Illegal change of number of phases for \"Line.cl\"";
+    let amps = "Invalid inline math entry: \"abc\"";
+    let mut cmd = Dss::new();
+    for c in [
+        "New Circuit.qo basekv=12.47 phases=3 bus1=src",
+        lcm,
+        "New Line.cl bus1=src.1.2.3 bus2=b.1.2.3 linecode=lcm phases=2 normamps=abc length=1 \
+         units=km",
+    ] {
+        cmd.command(c);
+    }
+    assert_eq!(errors(&cmd), [phases, amps]);
+    assert_eq!(query(&mut cmd, "Line.cl.phases"), "3");
+
+    let json = format!(
+        r#"{{"Name":"qo","PreCommands":["{lcm}"],"Line":[{{"Name":"cl","Bus1":"src.1.2.3","Bus2":"b.1.2.3","LineCode":"lcm","Phases":2,"NormAmps":"abc","Length":1,"Units":"km"}}]}}"#
+    );
+    let mut record = Dss::new();
+    assert_eq!(record.circuit_from_json(&json), Ok(()));
+    assert_eq!(errors(&record), [amps, phases]);
+    assert_eq!(query(&mut record, "Line.cl.phases"), "3");
+
+    let mut code = Dss::new();
+    for c in [
+        "New Circuit.kr basekv=12.47 phases=3 bus1=src",
+        "New LineCode.k1 nphases=1 rmatrix=[0.1] xmatrix=[0.2] cmatrix=[3] kron=y normamps=abc",
+    ] {
+        code.command(c);
+    }
+    assert_eq!(
+        errors(&code),
+        [
+            amps,
+            "Cannot perform Kron Reduction on a 1-phase LineCode: LineCode.k1"
+        ]
+    );
+}
+
+/// A LineSpacing coordinate list holds the values given, in order: a
+/// conductor the list does not reach has no position (`short` gives two x for
+/// three conductors, `one` a height and no x, `noh` no height, and `r` a full
+/// x list replaced by a list of one). `?` reads the values given, `''` when
+/// none. A geometry or a Line built on the spacing copies each gap, so rule 7
+/// names the conductor at calculation. r4133 solves every one in silence, on
+/// memory nobody wrote (on `r`, the rest of the earlier list). The pinned
+/// dss_capi places a missing coordinate at 0: it solves `short` and `one` in
+/// silence and refuses `noh` (a zero height) and `r` (two conductors at one
+/// point). The geometry reads `x` empty for the conductor and its Save writes
+/// no `X=` for it. The spacing's Save, JSON records (default and full) and CIM
+/// `WirePosition`s write only the values given, and the Save and the default
+/// record reload to the same gaps. An empty JSON `X` list gives no x either.
+/// With the gaps filled every Line solves at the simple Carson reactance of the
+/// positions given ([`carson_x`]), and the equivalent spacing `eq`, which holds
+/// no position, at its distances ([`carson_x_equivalent`]).
+#[test]
+fn a_short_spacing_list_keeps_its_gaps() {
+    use crate::report::export::json::JsonOpts;
+    let scratch = Scratch::new("short_lists");
+    let mut dss = compile("ls2_short_spacing_lists.dss");
+    let all = "LineGeometry.gs: conductor 3 has no x. Line.ls (spacing=short): conductor 3 has \
+               no x. LineGeometry.g1: conductor 1 has no x. Line.lo (spacing=one): conductor 1 \
+               has no x. LineGeometry.gh: conductors 1, 2 and 3 have no h. Line.lsh \
+               (spacing=noh): conductors 1, 2 and 3 have no h. LineGeometry.gr: conductors 2 \
+               and 3 have no x.";
+    assert_eq!(
+        errors(&dss),
+        [format!("Error Encountered in CalcVoltageBases: {all}")]
+    );
+    assert!(!solved(&dss));
+
+    for (prop, want) in [
+        ("short.x", "[ -4 4]"),
+        ("short.h", "[ 28 28 28]"),
+        ("one.x", ""),
+        ("one.h", "[ 28]"),
+        ("noh.x", "[ -4 0 4]"),
+        ("noh.h", ""),
+        ("r.x", "[ 9]"),
+        ("r.h", "[ 28 28 28]"),
+        ("eq.x", ""),
+        ("eq.h", ""),
+    ] {
+        assert_eq!(
+            query(&mut dss, &format!("LineSpacing.{prop}")),
+            want,
+            "{prop}"
+        );
+    }
+    let gs = conductors(&dss, "gs");
+    assert_eq!((gs[2].x, gs[2].h), (None, Some(28.0)));
+    let gr = conductors(&dss, "gr");
+    assert_eq!(
+        gr.iter().map(|c| c.x).collect::<Vec<_>>(),
+        [Some(9.0), None, None]
+    );
+    dss.command("Edit LineGeometry.gs cond=3");
+    assert_eq!(query(&mut dss, "LineGeometry.gs.x"), "");
+    assert_eq!(query(&mut dss, "LineGeometry.gs.h"), "28");
+
+    // Save: the geometry writes no x for conductor 3, the spacings only the
+    // values given, and the reload holds the same gaps.
+    let dir = scratch.dir("save");
+    let (rows, _) = saved_rows(&save(&mut dss, &dir, "gs"));
+    assert_eq!(rows[2][2], "", "{rows:?}");
+    assert_eq!(rows[2][3], "h=28", "{rows:?}");
+    let spacings = read(&dir, "LineSpacing.dss");
+    let saved = |name: &str| -> String {
+        let head = format!("New \"LineSpacing.{name}\"");
+        spacings
+            .lines()
+            .find(|l| l.starts_with(&head))
+            .unwrap_or_else(|| panic!("no {head} line in {spacings}"))
+            .to_string()
+    };
+    assert!(saved("short").contains(" X=[ -4 4] "), "{}", saved("short"));
+    assert!(!saved("one").contains(" X="), "{}", saved("one"));
+    assert!(!saved("noh").contains(" H="), "{}", saved("noh"));
+    assert!(!saved("eq").contains(" X=") && !saved("eq").contains(" H="));
+    let mut back = reload_unsolved(&dir);
+    for (prop, want) in [
+        ("short.x", "[ -4 4]"),
+        ("one.x", ""),
+        ("noh.h", ""),
+        ("r.x", "[ 9]"),
+    ] {
+        assert_eq!(
+            query(&mut back, &format!("LineSpacing.{prop}")),
+            want,
+            "reload {prop}"
+        );
+    }
+
+    // JSON: the record holds the values given and imports back with the gaps.
+    // The full record leaves out a list with no value given too.
+    for (name, x, h) in [
+        ("short", "[ -4 4]", "[ 28 28 28]"),
+        ("one", "", "[ 28]"),
+        ("noh", "[ -4 0 4]", ""),
+    ] {
+        let full = dss
+            .obj_to_json(&format!("LineSpacing.{name}"), JsonOpts::FULL)
+            .expect("a spacing");
+        assert_eq!(full.contains("\"X\""), !x.is_empty(), "{full}");
+        assert_eq!(full.contains("\"H\""), !h.is_empty(), "{full}");
+        let record = dss
+            .obj_to_json(&format!("LineSpacing.{name}"), JsonOpts::NONE)
+            .expect("a spacing");
+        assert!(
+            record.starts_with(&format!(r#"{{"Name":"{name}","NConds":"#)),
+            "{record}"
+        );
+        assert_eq!(record.contains("\"X\""), !x.is_empty(), "{record}");
+        assert_eq!(record.contains("\"H\""), !h.is_empty(), "{record}");
+        let json = format!(r#"{{"Name":"lgjson","LineSpacing":[{record}]}}"#);
+        let mut imported = Dss::new();
+        assert_eq!(imported.circuit_from_json(&json), Ok(()), "{record}");
+        assert!(
+            imported.errors().is_empty(),
+            "{record}: {:?}",
+            errors(&imported)
+        );
+        assert_eq!(
+            query(&mut imported, &format!("LineSpacing.{name}.x")),
+            x,
+            "{record}"
+        );
+        assert_eq!(
+            query(&mut imported, &format!("LineSpacing.{name}.h")),
+            h,
+            "{record}"
+        );
+        assert_eq!(
+            query(&mut imported, &format!("LineSpacing.{name}.nconds")),
+            query(&mut dss, &format!("LineSpacing.{name}.nconds")),
+            "{record}"
+        );
+    }
+    // An empty JSON list gives no coordinate: `?` reads empty and neither
+    // record writes an `X`, though the list is in the set order.
+    let mut cleared = Dss::new();
+    let json = r#"{"Name":"lgcleared","LineSpacing":[
+        {"Name":"z","NConds":3,"NPhases":3,"X":[],"H":[28,28,28],"Units":"ft"}]}"#;
+    assert_eq!(cleared.circuit_from_json(json), Ok(()));
+    assert!(cleared.errors().is_empty(), "{:?}", errors(&cleared));
+    assert_eq!(query(&mut cleared, "LineSpacing.z.x"), "");
+    for opts in [JsonOpts::NONE, JsonOpts::FULL] {
+        let record = cleared.obj_to_json("LineSpacing.z", opts).expect("z");
+        let z: serde_json::Value = serde_json::from_str(&record).expect("a JSON record");
+        assert!(z.get("X").is_none(), "{opts:?}: {record}");
+        assert_eq!(
+            z["H"],
+            serde_json::json!([28.0, 28.0, 28.0]),
+            "{opts:?}: {record}"
+        );
+    }
+    let short: serde_json::Value = serde_json::from_str(
+        &dss.obj_to_json("LineSpacing.short", JsonOpts::NONE)
+            .expect("short"),
+    )
+    .expect("a JSON record");
+    assert_eq!(short["NConds"], serde_json::json!(3), "{short}");
+    assert_eq!(short["X"], serde_json::json!([-4.0, 4.0]), "{short}");
+
+    // The gaps filled and each Line given its geometry again, every Line
+    // solves.
+    for c in [
+        "Edit LineGeometry.gs cond=3 x=0",
+        "Edit LineGeometry.g1 cond=1 x=0",
+        "Edit LineGeometry.gh cond=1 h=28 cond=2 h=28 cond=3 h=28",
+        "Edit LineGeometry.gr cond=2 x=13 cond=3 x=17",
+        "Edit Line.Lg geometry=gs",
+        "Edit Line.L1 geometry=g1",
+        "Edit Line.Lh geometry=gh",
+        "Edit Line.Lr geometry=gr",
+        "Edit Line.Ls geometry=gf",
+        "Edit Line.Lo geometry=g1",
+        "Edit Line.Lsh geometry=gf",
+        "Solve",
+    ] {
+        dss.command(c);
+    }
+    assert_eq!(dss.errors().len(), 1, "{:?}", errors(&dss));
+    assert!(solved(&dss));
+    let row = |a: f64, b: f64, c: f64| {
+        [
+            phase(a, 28.0, "ft"),
+            phase(b, 28.0, "ft"),
+            phase(c, 28.0, "ft"),
+        ]
+    };
+    let four_ft = 0.794_511_1;
+    assert_x(
+        &dss,
+        "Lg",
+        &row(-4.0, 4.0, 0.0),
+        &[(3, 1, four_ft), (3, 2, four_ft)],
+        "gs",
+    );
+    for line in ["Lf", "Ls", "Lh", "Lsh"] {
+        assert_x(&dss, line, &row(-4.0, 0.0, 4.0), &[(2, 1, four_ft)], line);
+    }
+    assert_x(&dss, "Lr", &row(9.0, 13.0, 17.0), &[(2, 1, four_ft)], "gr");
+    for line in ["L1", "Lo"] {
+        assert_x(&dss, line, &[phase(0.0, 28.0, "ft")], &[], line);
+    }
+    let eq = carson_x_equivalent(&[GMR_P, GMR_P, GMR_P, GMR_N], 3, 1.2, 1.5);
+    assert_x_is(&dss, "La", &eq, &[(2, 1, 0.796_437_2)], "ga");
+
+    // CIM: a coordinate never given is not written, and `isCable` only from a
+    // first height given.
+    dss.command(&format!("Set DataPath=\"{}\"", slash(&scratch.dir("cim"))));
+    dss.command("Export CIM100");
+    assert_eq!(dss.errors().len(), 1, "{:?}", errors(&dss));
+    let xml = read(&scratch.0.join("cim"), "lgrules_CIM100x.xml");
+    let block = |tag: &str, name: &str| -> String {
+        xml.split(&format!("<cim:{tag} "))
+            .find(|b| b.contains(&format!(">{name}<")))
+            .and_then(|b| b.split(&format!("</cim:{tag}>")).next())
+            .unwrap_or_else(|| panic!("no {tag} {name}"))
+            .to_string()
+    };
+    let (x, y) = ("<cim:WirePosition.xCoord>", "<cim:WirePosition.yCoord>");
+    let cable = "<cim:WireSpacingInfo.isCable>";
+    let short3 = block("WirePosition", "WP_short_3");
+    assert!(
+        !short3.contains(x) && short3.contains(&format!("{y}8.5344<")),
+        "{short3}"
+    );
+    let one1 = block("WirePosition", "WP_one_1");
+    assert!(!one1.contains(x) && one1.contains(y), "{one1}");
+    for i in 1..=3 {
+        let noh = block("WirePosition", &format!("WP_noh_{i}"));
+        assert!(noh.contains(x) && !noh.contains(y), "{noh}");
+    }
+    assert!(!block("WireSpacingInfo", "noh").contains(cable));
+    assert!(block("WireSpacingInfo", "short").contains(&format!("{cable}false<")));
+}
+
+/// An empty value inside a LineSpacing coordinate list is refused, naming its
+/// place, and the spacing keeps the list it had: a gap in the middle has no
+/// notation in `?`, Save or JSON. A trailing comma ends the list. A `null` or
+/// a blank string inside a list of the JSON import is the same empty value,
+/// refused with the same message, so no later position moves up into its
+/// place, and a trailing `null` or blank string ends the list. Each JSON item
+/// is one position: a string holding one number is that number, and an item
+/// holding several values or none (`"0 4"`, `"1,2"`, a list, an object,
+/// `true`) is refused, naming its place, where a split or dropped item would
+/// move the later values to other conductors. Only a list is a list: an
+/// object, `true`, `false`, a number or a string as the whole value is
+/// refused. A record without `NConds` meets the refusal before `nconds=`
+/// first. The pinned dss_capi refuses each of these too ("Invalid float value
+/// : 0 4", "Cannot convert data from object value", "Expected an array of
+/// numbers, not an object", and 5021 "Invalid type cast" for `true`, `false`,
+/// `4` and `"1 2 3"` as the whole value) except the item `true`, which it
+/// reads as 1. It also refuses a trailing blank string, 5021 "Invalid float
+/// value", which the end-of-list rule drops here like a trailing `null`
+/// (measured 2026-10-23 with the pinned dss-python).
+#[test]
+fn a_spacing_list_with_an_empty_value_is_refused() {
+    let mut dss = Dss::new();
+    dss.command("new circuit.lgempty");
+    dss.command("New LineSpacing.d nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft");
+    dss.command("Edit LineSpacing.d x=[1,,3]");
+    dss.command("Edit LineSpacing.d h=[ ,28 28]");
+    assert_eq!(
+        errors(&dss),
+        [
+            "LineSpacing.d.X: value 2 of the list is empty, so the list is not applied.",
+            "LineSpacing.d.H: value 1 of the list is empty, so the list is not applied."
+        ]
+    );
+    assert_eq!(query(&mut dss, "LineSpacing.d.x"), "[ -4 0 4]");
+    assert_eq!(query(&mut dss, "LineSpacing.d.h"), "[ 28 28 28]");
+    dss.command("Edit LineSpacing.d x=[1 2,]");
+    assert_eq!(dss.errors().len(), 2, "{:?}", errors(&dss));
+    assert_eq!(query(&mut dss, "LineSpacing.d.x"), "[ 1 2]");
+
+    let mut imported = Dss::new();
+    let json = r#"{"Name":"lgemptyjson","LineSpacing":[
+        {"Name":"j","NConds":3,"NPhases":3,"X":[-4,null,4],"H":[null,28,28],"Units":"ft"}]}"#;
+    assert_eq!(imported.circuit_from_json(json), Ok(()));
+    assert_eq!(
+        errors(&imported),
+        [
+            "LineSpacing.j.X: value 2 of the list is empty, so the list is not applied.",
+            "LineSpacing.j.H: value 1 of the list is empty, so the list is not applied."
+        ]
+    );
+    assert_eq!(query(&mut imported, "LineSpacing.j.x"), "");
+    assert_eq!(query(&mut imported, "LineSpacing.j.h"), "");
+
+    let mut trailing = Dss::new();
+    let json = r#"{"Name":"lgemptyjson","LineSpacing":[
+        {"Name":"t","NConds":3,"NPhases":3,"X":[-4,0,null],"H":[28,28,28],"Units":"ft"}]}"#;
+    assert_eq!(trailing.circuit_from_json(json), Ok(()));
+    assert!(trailing.errors().is_empty(), "{:?}", errors(&trailing));
+    assert_eq!(query(&mut trailing, "LineSpacing.t.x"), "[ -4 0]");
+    assert_eq!(query(&mut trailing, "LineSpacing.t.h"), "[ 28 28 28]");
+
+    let import_x = |x: &str| -> Dss {
+        let mut dss = Dss::new();
+        let json = format!(
+            r#"{{"Name":"lgitems","LineSpacing":[
+            {{"Name":"i","NConds":3,"NPhases":3,"X":{x},"H":[28,28,28],"Units":"ft"}}]}}"#
+        );
+        assert_eq!(dss.circuit_from_json(&json), Ok(()), "{x}");
+        dss
+    };
+    for (x, why) in [
+        (r#"[-4,"0 4",8]"#, "value 2 of the list is not a number"),
+        (r#"["1,2",3]"#, "value 1 of the list is not a number"),
+        (r#"[1,"2 3"]"#, "value 2 of the list is not a number"),
+        (r#"[-4,"abc",4]"#, "value 2 of the list is not a number"),
+        (r#"[-4,0,{"a":1}]"#, "value 3 of the list is not a number"),
+        (r#"[[1],0,4]"#, "value 1 of the list is not a number"),
+        (r#"[true,0,4]"#, "value 1 of the list is not a number"),
+        (r#"{"a":1}"#, "the value is not a list of numbers"),
+        ("true", "the value is not a list of numbers"),
+        ("false", "the value is not a list of numbers"),
+        ("4", "the value is not a list of numbers"),
+        (r#""1 2 3""#, "the value is not a list of numbers"),
+    ] {
+        let mut dss = import_x(x);
+        assert_eq!(
+            errors(&dss),
+            [format!(
+                "LineSpacing.i.X: {why}, so the list is not applied."
+            )],
+            "{x}"
+        );
+        assert_eq!(query(&mut dss, "LineSpacing.i.x"), "", "{x}");
+        assert_eq!(query(&mut dss, "LineSpacing.i.h"), "[ 28 28 28]", "{x}");
+    }
+    let mut blank = import_x(r#"[-4," ",4]"#);
+    assert_eq!(
+        errors(&blank),
+        ["LineSpacing.i.X: value 2 of the list is empty, so the list is not applied."]
+    );
+    assert_eq!(query(&mut blank, "LineSpacing.i.x"), "");
+    assert_eq!(query(&mut blank, "LineSpacing.i.h"), "[ 28 28 28]");
+    let mut trailing_blank = import_x(r#"[-4,0," "]"#);
+    assert!(
+        trailing_blank.errors().is_empty(),
+        "{:?}",
+        errors(&trailing_blank)
+    );
+    assert_eq!(query(&mut trailing_blank, "LineSpacing.i.x"), "[ -4 0]");
+    assert_eq!(query(&mut trailing_blank, "LineSpacing.i.h"), "[ 28 28 28]");
+    let mut numbers = import_x(r#"["-4"," 0 ","1e1"]"#);
+    assert!(numbers.errors().is_empty(), "{:?}", errors(&numbers));
+    assert_eq!(query(&mut numbers, "LineSpacing.i.x"), "[ -4 0 10]");
+
+    let mut no_count = Dss::new();
+    let json = r#"{"Name":"lgitems","LineSpacing":[{"Name":"i","X":[-4,"0 4",8]}]}"#;
+    assert_eq!(no_count.circuit_from_json(json), Ok(()));
+    assert_eq!(errors(&no_count), [spacing_before_nconds("i", "X")]);
+    assert_eq!(query(&mut no_count, "LineSpacing.i.x"), "");
+}
+
+/// A LineSpacing coordinate is a finite length, so a value that is infinite,
+/// NaN or past the f64 range is refused, naming its place, and the spacing
+/// keeps the list it had: an infinite position places no conductor, and
+/// every distance to another conductor and every mutual reactance on it is
+/// infinite. The text form refuses `1e400`, `inf` and `nan` in `x=` and
+/// `h=`, and the JSON import refuses the items `"inf"`, `"NaN"`, `"1e400"`
+/// and the number `1e400`, naming such an item ahead of an empty item before
+/// it (`[-4,null,1e400]`). The pinned
+/// dss_capi stores each of them with no message: the four JSON items read
+/// `[ -4 +Inf 4]`, `[ -4 Nan 4]`, `[ -4 +Inf 4]` and `[ -4 +Inf 4]`, and the
+/// text `x=[-4 1e400 4]`, `inf` and `nan` read `[ -4 +Inf 4]`, `[ -4 +Inf 4]`
+/// and `[ -4 Nan 4]`. r4133 stops the command at the text `inf` or `nan` with
+/// 303, a floating-point conversion error, keeping the values before it (a
+/// new spacing given `x=[-4 inf 4] h=[28 28 28]` reads `x` `[-4,0,0]` and `h`
+/// `[0,0,0]`), and stores `1e400` as `[-4,INF,4]` (measured 2026-10-23 with
+/// the epri-worker on the r4133 DLL and the pinned dss-python).
+#[test]
+fn a_spacing_coordinate_is_a_finite_length() {
+    let mut dss = Dss::new();
+    dss.command("new circuit.lgfinite");
+    dss.command("New LineSpacing.t nconds=3 nphases=3 x=[-4 0 4] h=[28 28 28] units=ft");
+    assert!(dss.errors().is_empty(), "{:?}", errors(&dss));
+    for (edit, prop, at) in [
+        ("x=[-4 1e400 4]", "X", 2),
+        ("x=[-4 inf 4]", "X", 2),
+        ("x=[-4 nan 4]", "X", 2),
+        ("h=[28 28 1e400]", "H", 3),
+    ] {
+        let before = dss.errors().len();
+        dss.command(&format!("Edit LineSpacing.t {edit}"));
+        assert_eq!(
+            errors(&dss)[before..],
+            [format!(
+                "LineSpacing.t.{prop}: value {at} of the list is not a finite number, so the \
+                 list is not applied."
+            )],
+            "{edit}"
+        );
+        assert_eq!(query(&mut dss, "LineSpacing.t.x"), "[ -4 0 4]", "{edit}");
+        assert_eq!(query(&mut dss, "LineSpacing.t.h"), "[ 28 28 28]", "{edit}");
+    }
+    for (x, at) in [
+        (r#"[-4,"inf",4]"#, 2),
+        (r#"[-4,"NaN",4]"#, 2),
+        (r#"[-4,"1e400",4]"#, 2),
+        ("[-4,1e400,4]", 2),
+        ("[-4,null,1e400]", 3),
+    ] {
+        let mut imported = Dss::new();
+        let json = format!(
+            r#"{{"Name":"lgfinite","LineSpacing":[
+            {{"Name":"i","NConds":3,"NPhases":3,"X":{x},"H":[28,28,28],"Units":"ft"}}]}}"#
+        );
+        assert_eq!(imported.circuit_from_json(&json), Ok(()), "{x}");
+        assert_eq!(
+            errors(&imported),
+            [format!(
+                "LineSpacing.i.X: value {at} of the list is not a finite number, so the list is \
+                 not applied."
+            )],
+            "{x}"
+        );
+        assert_eq!(query(&mut imported, "LineSpacing.i.x"), "", "{x}");
+        assert_eq!(
+            query(&mut imported, "LineSpacing.i.h"),
+            "[ 28 28 28]",
+            "{x}"
+        );
+    }
+}
+
+/// A LineSpacing property before its first `nconds=` is refused, naming it,
+/// and writes nothing: the spacing holds the documented default of 3 wires,
+/// but a list or a unit given ahead of the count would be read against a
+/// count the deck has not stated. `a` takes no `nconds=` and holds no
+/// position, `b` keeps feet, and `h` refuses an `Edit` before any `nconds=`.
+/// A `like=` copy of a spacing with `nconds=` and a second `New` of one take
+/// data at once. A spacing with no `nconds=` exports its name only, and a
+/// refusal and a unit-word refusal in one command are logged in token order,
+/// each underlining its own value. `q` writes its phases and its equivalent
+/// spacing ahead of `nconds=4`: each of the six is refused by name, so the
+/// spacing keeps 3 phases and no equivalent spacing, where an accepted one
+/// would be dropped in silence by the `nconds=` after it.
+#[test]
+fn a_spacing_property_before_nconds_is_refused() {
+    use crate::report::export::json::JsonOpts;
+    let mut dss = compile("ls1_spacing_order.dss");
+    let want: Vec<String> = [
+        ("a", "X"),
+        ("a", "H"),
+        ("a", "Units"),
+        ("b", "Units"),
+        ("h", "X"),
+    ]
+    .iter()
+    .map(|(sp, p)| spacing_before_nconds(sp, p))
+    .collect();
+    assert_eq!(errors(&dss), want);
+    for (i, e) in dss.errors().iter().enumerate() {
+        assert_eq!(e.code, None, "{i}: {}", e.message);
+    }
+    for (prop, want) in [
+        ("a.nconds", "3"),
+        ("a.x", ""),
+        ("a.h", ""),
+        ("a.units", "ft"),
+        ("b.units", "ft"),
+        ("b.x", "[ -5 0 5]"),
+        ("b.h", "[ 28 28 28]"),
+        ("h.x", ""),
+        ("k.nconds", "3"),
+        ("k.x", "[ -1 0 1]"),
+        ("k.h", "[ 28 28 28]"),
+    ] {
+        assert_eq!(
+            query(&mut dss, &format!("LineSpacing.{prop}")),
+            want,
+            "{prop}"
+        );
+    }
+    for opts in [JsonOpts::NONE, JsonOpts::FULL] {
+        let record = dss.obj_to_json("LineSpacing.a", opts).expect("a");
+        assert_eq!(record, r#"{"Name":"a"}"#, "{opts:?}");
+    }
+
+    let before = dss.errors().len();
+    let cmd = "New LineSpacing.m x=[1 2 3] nconds=3 units=miles";
+    dss.command(cmd);
+    assert_eq!(
+        errors(&dss)[before..],
+        [
+            spacing_before_nconds("m", "X"),
+            "LineSpacing.m.Units: \"miles\" is not one of the length units mi, kft, km, m, ft, \
+             in, cm, mm."
+                .to_string()
+        ]
+    );
+    let underlined: Vec<&str> = dss.errors()[before..]
+        .iter()
+        .map(|d| {
+            let span = d.span.as_ref().expect("a span");
+            &cmd[span.offset()..span.offset() + span.len()]
+        })
+        .collect();
+    assert_eq!(underlined, ["1 2 3", "miles"]);
+    assert_eq!(query(&mut dss, "LineSpacing.m.x"), "");
+    assert_eq!(query(&mut dss, "LineSpacing.m.units"), "ft");
+
+    let before = dss.errors().len();
+    dss.command(
+        "New LineSpacing.q nphases=2 detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 \
+         AvgPhaseHeight=8.5 AvgNeutralHeight=7.3 nconds=4",
+    );
+    let want: Vec<String> = [
+        "NPhases",
+        "Detailed",
+        "EqDistPhPh",
+        "EqDistPhN",
+        "AvgPhaseHeight",
+        "AvgNeutralHeight",
+    ]
+    .iter()
+    .map(|p| spacing_before_nconds("q", p))
+    .collect();
+    assert_eq!(errors(&dss)[before..], want);
+    for (prop, want) in [
+        ("q.nconds", "4"),
+        ("q.nphases", "3"),
+        ("q.detailed", "Yes"),
+        ("q.eqdistphph", "0"),
+    ] {
+        assert_eq!(
+            query(&mut dss, &format!("LineSpacing.{prop}")),
+            want,
+            "{prop}"
+        );
+    }
+}
+
+/// Each `nconds=` of a LineSpacing keeps no position, returns the unit to
+/// feet and drops the equivalent spacing (`detailed` Yes, every distance 0).
+/// A position or a distance kept would be re-read in feet, 3.28 times shorter
+/// than written: X21 of `p` at 1.2 ft is not X21 at 1.2 m ([`carson_x`]), and
+/// zero distances kept under `detailed=no` would give `ln(De/0)`. So a
+/// geometry on a re-set spacing gets rule 7 naming every conductor, and with
+/// the data given again, now in feet, each Line solves at the reactance of
+/// feet.
+#[test]
+fn a_spacing_nconds_keeps_no_position_and_returns_to_feet() {
+    let mut dss = compile("ls3_nconds_starts_over.dss");
+    let all = "LineGeometry.gp: conductors 1, 2 and 3 have no x and no h. LineGeometry.ge: \
+               conductors 1, 2, 3 and 4 have no x and no h.";
+    assert_eq!(
+        errors(&dss),
+        [format!("Error Encountered in CalcVoltageBases: {all}")]
+    );
+    assert!(!solved(&dss));
+    for (prop, want) in [
+        ("p.x", ""),
+        ("p.h", ""),
+        ("p.units", "ft"),
+        ("e.detailed", "Yes"),
+        ("e.eqdistphph", "0"),
+        ("e.eqdistphn", "0"),
+        ("e.avgphaseheight", "0"),
+        ("e.avgneutralheight", "0"),
+        ("e.units", "ft"),
+    ] {
+        assert_eq!(
+            query(&mut dss, &format!("LineSpacing.{prop}")),
+            want,
+            "{prop}"
+        );
+    }
+
+    for c in [
+        "Edit LineSpacing.p x=[-1.2 0 1.2] h=[8.5 8.5 8.5]",
+        "Edit LineSpacing.e detailed=no EqDistPhPh=1.2 EqDistPhN=1.5 AvgPhaseHeight=8.5 \
+         AvgNeutralHeight=7.3",
+        "Edit LineGeometry.gp spacing=p",
+        "Edit LineGeometry.ge spacing=e",
+        "Edit Line.Lp geometry=gp",
+        "Edit Line.Le geometry=ge",
+        "Solve",
+    ] {
+        dss.command(c);
+    }
+    assert_eq!(dss.errors().len(), 1, "{:?}", errors(&dss));
+    assert!(solved(&dss));
+    let row = |unit| {
+        [
+            phase(-1.2, 8.5, unit),
+            phase(0.0, 8.5, unit),
+            phase(1.2, 8.5, unit),
+        ]
+    };
+    assert_x(&dss, "Lp", &row("ft"), &[], "p");
+    let (in_ft, in_m) = (carson_x(&row("ft")), carson_x(&row("m")));
+    assert!(
+        (in_ft[1][0] - in_m[1][0]).abs() > 0.04,
+        "{in_ft:?} {in_m:?}"
+    );
+    let ft = metres("ft");
+    let eq = carson_x_equivalent(&[GMR_P, GMR_P, GMR_P, GMR_N], 3, 1.2 * ft, 1.5 * ft);
+    assert_x_is(&dss, "Le", &eq, &[], "e");
 }
 
 /// A refusal is logged at its token, in token order, underlining the value it
@@ -3041,8 +4481,9 @@ fn json_record_of_an_existing_geometry_selects_nothing() {
 /// `nconds=` shows for a record without `NConds`. A new geometry's record
 /// `{"Name":"j","NPhases":2}` is refused naming `NPhases`, and the exported
 /// record of a complete geometry with `"Units":"metre"` added is refused
-/// naming the word, its conductors keeping feet. The import returns `Ok` and
-/// the refusals are in the error log, as the text path logs them.
+/// naming the word, its conductors keeping feet. A LineSpacing record without
+/// `NConds` is refused the same way. The import returns `Ok` and the refusals
+/// are in the error log, as the text path logs them.
 #[test]
 fn json_import_refuses_what_the_text_refuses() {
     use crate::report::export::json::JsonOpts;
@@ -3086,6 +4527,12 @@ fn json_import_refuses_what_the_text_refuses() {
         ]
     );
     assert_eq!(units(&back, "g"), ["ft"; 3]);
+
+    let mut spacing = Dss::new();
+    let json = r#"{"Name":"lgjson","LineSpacing":[{"Name":"s","X":[1,2,3]}]}"#;
+    assert_eq!(spacing.circuit_from_json(json), Ok(()));
+    assert_eq!(errors(&spacing), [spacing_before_nconds("s", "X")]);
+    assert_eq!(query(&mut spacing, "LineSpacing.s.x"), "");
 }
 
 /// The JSON export of a geometry with no conductor selected (after a second
@@ -3727,8 +5174,10 @@ fn a_line_constants_report_changes_no_line() {
 /// `LineConstantsCode.dss`: Deri by [`deri_z21_c0`], simple Carson by
 /// R21 = π² f 10⁻⁷ Ω/m (0.0953015 Ω/mi) and X21 by [`carson_x`] (0.7945111
 /// Ω/mi). The file prints six significant digits, so each value holds within
-/// half a unit of its sixth digit beside [`X_BAND`]. Both oracles print the
-/// Deri values of the first report or of the Line under the Carson header.
+/// half a unit of its sixth digit beside [`X_BAND`]. Both engines are script
+/// C up to its Line `L`, so no Line computed the geometry before the reports.
+/// On that setup both oracles print the Deri values of the first report or of
+/// the Line under the Carson header (R21 0.0937284, X21 0.805478 Ω/mi).
 #[test]
 fn a_line_constants_report_prints_the_model_it_names() {
     let scratch = Scratch::new("report_model");
@@ -3757,12 +5206,12 @@ fn a_line_constants_report_prints_the_model_it_names() {
         (model, entry_21("Rmatrix="), entry_21("Xmatrix="))
     };
 
-    let mut two = compile("c0_cond_in_order.dss");
+    let mut two = replay_until("c0_cond_in_order.dss", "New Line.L");
     two.command("Set EarthModel=Deri");
     let first = report(&mut two, "deri");
     two.command("Set EarthModel=Carson");
     let second = report(&mut two, "carson");
-    let mut line = compile("c0_cond_in_order.dss");
+    let mut line = replay_until("c0_cond_in_order.dss", "New Line.L");
     line.command("Set EarthModel=Carson");
     line.command(
         "New Line.Lx bus1=src.1.2.3.0 bus2=bx.1.2.3.0 geometry=g length=1 units=mi \

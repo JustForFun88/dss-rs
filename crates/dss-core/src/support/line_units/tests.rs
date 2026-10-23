@@ -1,21 +1,61 @@
 use super::*;
 
 #[test]
-fn parse_all_unit_spellings() {
-    assert_eq!(LineUnits::parse("none"), LineUnits::None);
-    assert_eq!(LineUnits::parse("mi"), LineUnits::Miles);
-    assert_eq!(LineUnits::parse("MILES"), LineUnits::Miles);
-    assert_eq!(LineUnits::parse("kft"), LineUnits::Kft);
-    assert_eq!(LineUnits::parse("km"), LineUnits::Km);
-    assert_eq!(LineUnits::parse("m"), LineUnits::Meter);
-    assert_eq!(LineUnits::parse("meters"), LineUnits::Meter);
-    assert_eq!(LineUnits::parse("ft"), LineUnits::Ft);
-    assert_eq!(LineUnits::parse("feet"), LineUnits::None); // "fe" unknown, like Pascal
-    assert_eq!(LineUnits::parse("in"), LineUnits::Inch);
-    assert_eq!(LineUnits::parse("cm"), LineUnits::Cm);
-    assert_eq!(LineUnits::parse("mm"), LineUnits::Mm);
-    assert_eq!(LineUnits::parse(""), LineUnits::None);
-    assert_eq!(LineUnits::parse("zz"), LineUnits::None);
+fn from_word_reads_a_listed_word_whole() {
+    let codes = [
+        ("none", LineUnits::None),
+        ("mi", LineUnits::Miles),
+        ("kft", LineUnits::Kft),
+        ("km", LineUnits::Km),
+        ("m", LineUnits::Meter),
+        ("me", LineUnits::Meter),
+        ("ft", LineUnits::Ft),
+        ("in", LineUnits::Inch),
+        ("cm", LineUnits::Cm),
+        ("mm", LineUnits::Mm),
+    ];
+    for (word, unit) in codes {
+        assert_eq!(LineUnits::from_word(word, CODE_WORDS), Some(unit), "{word}");
+    }
+    assert_eq!(
+        LineUnits::from_word("MI", CODE_WORDS),
+        Some(LineUnits::Miles)
+    );
+    assert_eq!(
+        LineUnits::from_word("Ft", POSITION_WORDS),
+        Some(LineUnits::Ft)
+    );
+    assert_eq!(
+        LineUnits::from_word(" km ", LENGTH_WORDS),
+        Some(LineUnits::Km)
+    );
+    for word in [
+        "MILES", "meters", "meter", "fe", "feet", "", "zz", "k", "mils",
+    ] {
+        assert_eq!(LineUnits::from_word(word, CODE_WORDS), None, "{word}");
+    }
+    assert_eq!(LineUnits::from_word("me", LENGTH_WORDS), None);
+    assert_eq!(LineUnits::from_word("me", POSITION_WORDS), None);
+    assert_eq!(LineUnits::from_word("none", POSITION_WORDS), None);
+    assert_eq!(
+        LineUnits::from_word("none", LENGTH_WORDS),
+        Some(LineUnits::None)
+    );
+}
+
+#[test]
+fn the_word_lists_hold_the_documented_words() {
+    assert_eq!(POSITION_WORD_LIST, POSITION_WORDS.join(", "));
+    assert_eq!(LENGTH_WORDS[1..], *POSITION_WORDS);
+    assert_eq!(
+        CODE_WORDS.iter().filter(|w| **w != "me").count(),
+        LENGTH_WORDS.len()
+    );
+    for words in [POSITION_WORDS, LENGTH_WORDS, CODE_WORDS] {
+        for word in words {
+            assert!(LineUnits::from_word(word, words).is_some(), "{word}");
+        }
+    }
 }
 
 #[test]

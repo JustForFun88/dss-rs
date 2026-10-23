@@ -27,6 +27,7 @@ use crate::obj::base::DssObjData;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags, prop_index};
 use crate::support::cmatrix::CMatrix;
+use crate::support::line_units::CODE_WORDS;
 
 /// Pascal line type (`Set LineType=`, `LineTypeEnum`; shared by `LineCode`,
 /// `LineGeometry` and `Line`). Discriminants are user-visible and frozen
@@ -132,7 +133,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("C0")
             .scale(1.0e-9)
             .flags(conditional | PropFlags::UNITS_NF_PER_LENGTH),
-        PropDef::mapped_string_enum("Units", enums.units),
+        PropDef::mapped_string_enum("Units", enums.units).unit_words(CODE_WORDS),
         PropDef::sym_matrix_real("RMatrix", NPHASES)
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_OHM_PER_LENGTH),
         PropDef::sym_matrix_imag("XMatrix", NPHASES)

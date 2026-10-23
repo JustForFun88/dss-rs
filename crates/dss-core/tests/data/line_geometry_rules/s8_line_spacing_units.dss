@@ -1,7 +1,7 @@
 ! A Line's own spacing= reads its LineSpacing's unit: feet, metres and inches
-! are converted. A spacing with no length unit (units=none, or a word outside
-! the list such as feet) is refused and leaves the Line as it was: Ln and Lfe
-! stay default Lines like Ldef, and Lkeep keeps the spacing in feet it had.
+! are converted. A LineSpacing refuses units=none and a word outside its list
+! such as feet and keeps feet, so Ln, Lfe and Lkeep build in feet like Lft.
+! Lkeep moves to the spacing written feet and is given its wires again.
 Clear
 Set DefaultBaseFrequency=60
 New Circuit.lgrules basekv=12.47 phases=3 bus1=src
@@ -19,7 +19,7 @@ New Line.Ln bus1=src.1.2.3 bus2=bn.1.2.3 spacing=sp_none wires=[ACSR_556_5 ACSR_
 New Line.Lfe bus1=src.1.2.3 bus2=bfe.1.2.3 spacing=sp_feet wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
 New Line.Ldef bus1=src.1.2.3 bus2=bdef.1.2.3 length=1 units=mi
 New Line.Lkeep bus1=src.1.2.3 bus2=bkeep.1.2.3 spacing=sp_ft wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5] length=1 units=mi
-Edit Line.Lkeep spacing=sp_feet
+Edit Line.Lkeep spacing=sp_feet wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
 New Load.ld bus1=bft phases=3 kv=12.47 kw=1000 pf=0.95
 Set voltagebases=[12.47]
 CalcVoltageBases

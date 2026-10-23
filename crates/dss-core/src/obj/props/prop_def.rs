@@ -97,6 +97,12 @@ pub struct PropDef {
     /// pins the carrier set (the mechanism *removes* the unified diagnostic, so
     /// the population is an equality, not a floor).
     pub ref_miss_message: Option<RefMissMessage>,
+    /// The words a length-unit property accepts, each written whole, in any
+    /// case, blanks around it ignored:
+    /// [`ClassProps::parse_into`](super::ClassProps::parse_into) stores the
+    /// unit the word names and refuses any other text, naming it. Empty for
+    /// every other property.
+    pub unit_words: &'static [&'static str],
 }
 
 /// One `DoSimpleMsg` a [`PropFlags::UPSTREAM_STUB`] property emits on write:
@@ -165,6 +171,7 @@ impl PropDef {
             json_ref_class: None,
             stub_message: None,
             ref_miss_message: None,
+            unit_words: &[],
         }
     }
 
@@ -433,6 +440,13 @@ impl PropDef {
     /// `StringListToString`); e.g. an EnergyMeter `Option`/`ZoneList`.
     pub fn string_list(name: &'static str) -> Self {
         Self::base(name, PropType::StringList)
+    }
+
+    /// Builder: the words this length-unit property accepts (see
+    /// [`Self::unit_words`]).
+    pub fn unit_words(mut self, words: &'static [&'static str]) -> Self {
+        self.unit_words = words;
+        self
     }
 
     pub fn flags(mut self, flags: PropFlags) -> Self {

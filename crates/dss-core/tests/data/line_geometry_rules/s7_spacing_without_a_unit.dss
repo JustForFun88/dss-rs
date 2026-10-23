@@ -1,4 +1,5 @@
-! A spacing= whose LineSpacing has no length unit is refused and not kept.
+! A LineSpacing refuses units=none and units=feet and keeps feet, so the
+! geometries on those spacings copy them in feet and build like gft.
 Clear
 Set DefaultBaseFrequency=60
 New Circuit.lgrules basekv=12.47 phases=3 bus1=src
@@ -11,6 +12,8 @@ New LineGeometry.gnone nconds=3 nphases=3 spacing=sp_none wires=[ACSR_556_5 ACSR
 New LineGeometry.gfeet nconds=3 nphases=3 spacing=sp_feet wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
 New LineGeometry.gft nconds=3 nphases=3 spacing=sp_ft wires=[ACSR_556_5 ACSR_556_5 ACSR_556_5]
 New Line.L bus1=src.1.2.3 bus2=b.1.2.3 geometry=gft length=1 units=mi
+New Line.Lnone bus1=src.1.2.3 bus2=bnone.1.2.3 geometry=gnone length=1 units=mi
+New Line.Lfeet bus1=src.1.2.3 bus2=bfeet.1.2.3 geometry=gfeet length=1 units=mi
 New Load.ld bus1=b phases=3 kv=12.47 kw=1000 pf=0.95
 Set voltagebases=[12.47]
 CalcVoltageBases

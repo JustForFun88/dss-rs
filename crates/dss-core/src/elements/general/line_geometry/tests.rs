@@ -6,6 +6,7 @@ use crate::obj::arena::{ClassArena, ResolvedObj};
 use crate::obj::base::DssObject;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropEngine};
+use crate::support::line_units::{POSITION_WORD_LIST, POSITION_WORDS};
 use dss_parser::{Parser, ParserVars};
 
 /// Apply a scalar property edit through the property engine (no foreign view
@@ -17,7 +18,15 @@ use dss_parser::{Parser, ParserVars};
 /// `line_geometry_undefined_wire_in_array_aborts`. (The plural `cncables=`/
 /// `tscables=` forms are not yet golden-pinned — see STATUS: the oracle's
 /// post-plural active-conductor value diverges and is under investigation.)
-fn scalar(
+/// The edit must be accepted: any message it logs fails the test.
+fn scalar(cls: &ClassProps, obj: &mut dyn DssObject, name: &str, value: &str) {
+    let errors = try_scalar(cls, obj, name, value);
+    assert!(errors.is_empty(), "{name}={value}: {:?}", errors.texts());
+}
+
+/// [`scalar`] for an edit that may be refused: returns what it logged, the
+/// refusal included.
+fn try_scalar(
     cls: &ClassProps,
     obj: &mut dyn DssObject,
     name: &str,
@@ -37,7 +46,9 @@ fn scalar(
 
         was_quoted: false,
     };
-    cls.edit_property(obj, idx, value, &mut eng).unwrap();
+    if let Err(e) = cls.edit_property(obj, idx, value, &mut eng) {
+        errors.push(e);
+    }
     errors.extend(obj.data_mut().take_errors());
     errors
 }
@@ -223,7 +234,7 @@ fn spacing_copies_coordinates() {
     assert!(g.data_mut().take_errors().is_empty());
     assert_eq!(get(&cls, &g, "spacing"), "sp");
     assert_eq!(get(&cls, &g, "cond"), "0"); // neither form selects a conductor
-    let errs = scalar(&cls, &mut g, "cond", "3");
+    let errs = try_scalar(&cls, &mut g, "cond", "3");
     assert!(errs.is_empty(), "{errs:?}");
     assert_eq!(get(&cls, &g, "x"), "1.2909"); // cond 3 from spacing
     assert_eq!(get(&cls, &g, "h"), "28.6");
@@ -1182,7 +1193,7 @@ fn cond_out_of_range_is_refused_and_selects_nothing() {
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "nphases", "3");
     scalar(&cls, &mut g, "cond", "2");
-    let errs = scalar(&cls, &mut g, "cond", "99");
+    let errs = try_scalar(&cls, &mut g, "cond", "99");
     assert_eq!(
         errs.texts(),
         [
@@ -1193,7 +1204,7 @@ fn cond_out_of_range_is_refused_and_selects_nothing() {
     assert_eq!(errs[0].code, Some(10102));
     assert_eq!(get(&cls, &g, "cond"), "0");
     scalar(&cls, &mut g, "cond", "2");
-    let errs = scalar(&cls, &mut g, "cond", "0");
+    let errs = try_scalar(&cls, &mut g, "cond", "0");
     assert_eq!(
         errs.texts(),
         [
@@ -1233,7 +1244,7 @@ fn cond_that_is_not_a_number_selects_nothing() {
     assert_eq!(err.message(), "Invalid inline math entry: \"abc\"");
     assert!(errors.is_empty(), "{:?}", errors.texts());
     assert_eq!(get(&cls, &g, "cond"), "0");
-    let errs = scalar(&cls, &mut g, "x", "9");
+    let errs = try_scalar(&cls, &mut g, "x", "9");
     assert_eq!(
         errs.texts(),
         [
@@ -1258,7 +1269,7 @@ fn like_side_effect_selects_nothing_without_a_copy() {
     let like = cls.property_index("like").expect("known property");
     g.side_effects(like, 0);
     assert_eq!(get(&cls, &g, "cond"), "0");
-    let errs = scalar(&cls, &mut g, "x", "9");
+    let errs = try_scalar(&cls, &mut g, "x", "9");
     assert_eq!(
         errs.texts(),
         [
@@ -1292,7 +1303,7 @@ fn units_refusal_names_the_written_word() {
         "meter",
         "miles",
     ] {
-        let errs = scalar(&cls, &mut g, "units", word);
+        let errs = try_scalar(&cls, &mut g, "units", word);
         assert_eq!(
             errs.texts(),
             [format!(
@@ -1320,23 +1331,56 @@ fn units_refusal_names_the_written_word() {
 }
 
 #[test]
+fn cond_set_directly_out_of_range_selects_nothing() {
+    // A `cond` set directly, past the check of the written value (the typed
+    // setters do so), is refused outside 1 to `nconds` with code 10102 and
+    // selects no conductor. A number in range selects its conductor.
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut g = LineGeometryObj::new("g1");
+    scalar(&cls, &mut g, "nconds", "3");
+    scalar(&cls, &mut g, "nphases", "3");
+    for value in [5, 0, -1] {
+        scalar(&cls, &mut g, "cond", "2");
+        g.set_i32(prop::COND, value);
+        let mut errs = crate::diag::ErrorLog::new();
+        errs.extend(g.data_mut().take_errors());
+        assert_eq!(
+            errs.texts(),
+            [format!(
+                "LineGeometry.g1.Cond: cond={value} is out of range, the geometry has 3 \
+                 conductors. No conductor is selected."
+            )],
+            "{value}"
+        );
+        assert_eq!(errs[0].code, Some(10102), "{value}");
+        assert_eq!(get(&cls, &g, "cond"), "0", "{value}");
+    }
+    g.set_i32(prop::COND, 3);
+    let mut errs = crate::diag::ErrorLog::new();
+    errs.extend(g.data_mut().take_errors());
+    assert!(errs.is_empty(), "{:?}", errs.texts());
+    assert_eq!(get(&cls, &g, "cond"), "3");
+}
+
+#[test]
 fn units_must_be_one_exact_word() {
     // `units=` takes exactly one of mi, kft, km, m, ft, in, cm and mm, in any
     // case, for the selected conductor and the default. Every other word is
     // refused naming it, a prefix or a longer spelling of a unit included, and
     // the conductor and the default keep their unit. The refusal lists
     // exactly the words accepted.
-    assert_eq!(LENGTH_UNITS, accessors::UNIT_WORDS.join(", "));
+    assert_eq!(POSITION_WORD_LIST, POSITION_WORDS.join(", "));
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut g = LineGeometryObj::new("g1");
     scalar(&cls, &mut g, "nconds", "3");
     scalar(&cls, &mut g, "cond", "2");
-    for (code, word) in (1..).zip(accessors::UNIT_WORDS) {
+    for (code, word) in (1..).zip(POSITION_WORDS) {
         let mut mixed = word.to_string();
         mixed[..1].make_ascii_uppercase();
         for written in [word.to_string(), word.to_ascii_uppercase(), mixed] {
-            let errs = scalar(&cls, &mut g, "units", &written);
+            let errs = try_scalar(&cls, &mut g, "units", &written);
             assert!(errs.texts().is_empty(), "{written}: {:?}", errs.texts());
             assert_eq!(g.funits[1], code, "{written}");
             assert_eq!(g.flast_unit, code, "{written}");
@@ -1346,7 +1390,7 @@ fn units_must_be_one_exact_word() {
     for word in [
         "metre", "meter", "meters", "miles", "min", "mil", "f", "me", "kf", "c", "i", "k", "feet",
     ] {
-        let errs = scalar(&cls, &mut g, "units", word);
+        let errs = try_scalar(&cls, &mut g, "units", word);
         assert_eq!(
             errs.texts(),
             [format!(
@@ -1391,9 +1435,9 @@ fn every_nconds_starts_from_feet() {
 
 #[test]
 fn a_spacing_whose_unit_code_names_no_length_is_refused() {
-    // A spacing whose unit code is 0 or outside 1 to 8 (set directly, which
-    // the text path cannot do) is refused like `units=none`: one error naming
-    // it, no coordinate copied and no spacing kept.
+    // A spacing whose unit code is 0 or outside 1 to 8 (set directly, since
+    // the spacing's own `units=` refuses any word outside its list) is
+    // refused: one error naming it, no coordinate copied and no spacing kept.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let units = crate::elements::general::line_spacing::class_props(&enums)

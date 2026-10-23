@@ -284,7 +284,7 @@ fn renumber_field(s: &str, marker: &str, removed: &[i64]) -> String {
 /// documented r4133 divergences (`schema_divergences.json`). Fails on any
 /// unexplained byte diff AND on a stale inventory entry (a divergence whose
 /// occurrence count no longer matches — i.e. the divergence is gone, or spread
-/// further than recorded). Two divergence `kind`s are understood:
+/// further than recorded). These divergence `kind`s are understood:
 /// - `port_extra_line`: a single line (or embedded-CRLF block) the port emits
 ///   that the 0.14.5 oracle lacks; removed `count` times.
 /// - `port_extra_property`: a whole port-only property block (keyed by
@@ -296,6 +296,10 @@ fn renumber_field(s: &str, marker: &str, removed: &[i64]) -> String {
 ///   in the port (renders no block) but occupies a `$dssPropertyIndex` ordinal
 ///   (`index`); only the following props' `$dssPropertyIndex` are renumbered down
 ///   (it is absent from `AltPropertyOrder`, so `$dssPropertyOrder` is untouched).
+/// - `port_shown_property`: a property the oracle registers but leaves out of
+///   its JSON (it holds its `$dssPropertyIndex` and renders no block), which the
+///   port renders at `index`/`order`. The block is removed `count` times and only
+///   the following `$dssPropertyOrder` ordinals are renumbered down.
 /// - `port_changed_line`: the port emits a different value for one line (`from`)
 ///   than the oracle (`to`) — an r4133-adopted default/semantics change; each of
 ///   `count` occurrences is rewritten to the oracle's line before comparing.
@@ -369,6 +373,20 @@ fn apply_divergences(mut rendered: String, name: &str, divergences: &[Value]) ->
                 );
                 removed_indices.push(d["index"].as_i64().expect("port_extra_property index"));
                 removed_orders.push(d["order"].as_i64().expect("port_extra_property order"));
+            }
+            Some("port_shown_property") => {
+                // The oracle holds this property's index too, so only the order
+                // shifts.
+                let key = d["prop_key"]
+                    .as_str()
+                    .expect("port_shown_property prop_key");
+                let found = remove_property_blocks(&mut rendered, key);
+                assert_eq!(
+                    found, count,
+                    "stale port_shown_property for {name}.{key}: expected {count} block(s), \
+                     found {found} — update schema_divergences.json"
+                );
+                removed_orders.push(d["order"].as_i64().expect("port_shown_property order"));
             }
             Some("port_hidden_property") => {
                 // A port-only property hidden from the schema output — either
@@ -894,7 +912,8 @@ const RANK_FIELDS: [(&str, &str); 2] = [
     ("order", "$dssPropertyOrder"),
 ];
 
-/// The `port_hidden_property` / `port_extra_property` rows of the inventory.
+/// The `port_hidden_property` / `port_extra_property` / `port_shown_property`
+/// rows of the inventory.
 fn inventoried_property_rows(inv: &Value) -> Vec<&Value> {
     inv["divergences"]
         .as_array()
@@ -903,10 +922,18 @@ fn inventoried_property_rows(inv: &Value) -> Vec<&Value> {
         .filter(|d| {
             matches!(
                 d["kind"].as_str(),
-                Some("port_hidden_property" | "port_extra_property")
+                Some("port_hidden_property" | "port_extra_property" | "port_shown_property")
             )
         })
         .collect()
+}
+
+/// Whether the inventory entry `d` is a property block the port renders.
+fn renders_block(d: &Value) -> bool {
+    matches!(
+        d["kind"].as_str(),
+        Some("port_extra_property" | "port_shown_property")
+    )
 }
 
 /// The classes those rows name, each once, in first-seen order.
@@ -957,11 +984,11 @@ fn rendered_ranks(def: &Value, marker: &str) -> BTreeMap<String, i64> {
         .collect()
 }
 
-/// Every `port_hidden_property` / `port_extra_property` row records the
-/// `$dssPropertyIndex` and `$dssPropertyOrder` the engine's class table gives
-/// the property ([`ClassProps::schema_property_order`]); a row without `order`
-/// is a property outside the JSON order. An extra property's rendered block
-/// carries the same two ranks, and every rendered block's index names the
+/// Every `port_hidden_property` / `port_extra_property` / `port_shown_property`
+/// row records the `$dssPropertyIndex` and `$dssPropertyOrder` the engine's
+/// class table gives the property ([`ClassProps::schema_property_order`]). A
+/// row without `order` is a property outside the JSON order. An extra or shown
+/// property's rendered block carries the same two ranks, and every rendered block's index names the
 /// property of the same key in the table, which ties the table to the render.
 #[test]
 fn inventoried_property_ranks_match_the_class_table() {
@@ -1020,7 +1047,7 @@ fn inventoried_property_ranks_match_the_class_table() {
                 "{class}.{key}: schema_divergences.json `order` is not the class table's \
                  (a row without `order` stands for -1, outside the JSON order)"
             );
-            if d["kind"] == "port_extra_property" {
+            if renders_block(d) {
                 let block = &def["properties"][key];
                 assert_eq!(
                     (
@@ -1043,7 +1070,9 @@ fn inventoried_property_ranks_match_the_class_table() {
 /// renders the two neighbours adjacent every slot between them is port-only, so
 /// the rows' ranks are those slots exactly. Where the oracle leaves its own
 /// slots in the gap (Transformer's BH run) the goldens fix only the count, and
-/// [`inventoried_property_ranks_match_the_class_table`] places the run.
+/// [`inventoried_property_ranks_match_the_class_table`] places the run. A shown
+/// property's index is a slot the oracle holds too, so only its order counts
+/// as port-only.
 #[test]
 fn hidden_property_ranks_fill_the_free_slots_of_the_port_document() {
     let port: Value =
@@ -1064,12 +1093,15 @@ fn hidden_property_ranks_fill_the_free_slots_of_the_port_document() {
                 let Some(rank) = d[field].as_i64() else {
                     continue;
                 };
+                if d["kind"] == "port_shown_property" && field == "index" {
+                    continue;
+                }
                 assert!(
                     !inventoried.contains(&rank),
                     "{class}.{key}: {field} {rank} is recorded twice"
                 );
                 inventoried.push(rank);
-                if d["kind"] == "port_extra_property" {
+                if renders_block(d) {
                     assert_eq!(
                         port_ranks.get(key),
                         Some(&rank),

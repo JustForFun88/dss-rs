@@ -1,0 +1,15 @@
+! A wire's GMR in feet, then GMRunits=meter, a word outside the list: the
+! wire keeps feet and a geometry on it reads the GMR in feet.
+Clear
+Set DefaultBaseFrequency=60
+New Circuit.unitwords basekv=12.47 phases=3 bus1=src
+Set EarthModel=Carson
+New WireData.w GMRac=0.0244 GMRunits=ft Rac=0.306 Runits=mi Diam=0.721 Radunits=in
+Edit WireData.w GMRunits=meter
+New LineGeometry.g nconds=3 nphases=3
+~ cond=1 wire=w x=-4 h=28 units=ft
+~ cond=2 wire=w x=0 h=28
+~ cond=3 wire=w x=4 h=28
+New Line.L bus1=src.1.2.3 bus2=b.1.2.3 geometry=g length=1 units=mi
+Set voltagebases=[12.47]
+CalcVoltageBases

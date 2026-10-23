@@ -38,38 +38,44 @@ fn get(cls: &ClassProps, obj: &dyn DssObject, name: &str) -> String {
 
 #[test]
 fn defaults() {
-    // Pascal Create: nconds=3, nphases=3, units=ft, x/h all zero.
+    // Three conductors and three phases in feet, no position given.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let obj = LineSpacingObj::new("ls");
     assert_eq!(get(&cls, &obj, "nconds"), "3");
     assert_eq!(get(&cls, &obj, "nphases"), "3");
     assert_eq!(get(&cls, &obj, "units"), "ft");
-    assert_eq!(get(&cls, &obj, "x"), "[ 0 0 0]");
-    assert_eq!(get(&cls, &obj, "h"), "[ 0 0 0]");
+    assert_eq!(get(&cls, &obj, "x"), "");
+    assert_eq!(get(&cls, &obj, "h"), "");
 }
 
 #[test]
 fn nconds_resizes_arrays_and_resets_units() {
-    // Setting nconds reallocates X/H to the new length and resets Units to
-    // ft; X/H read with the new count (zero-filled here).
+    // The data after `nconds=` is applied, and a second `nconds=` empties the
+    // lists and resets Units to ft.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = LineSpacingObj::new("ls");
-    let errs = apply(&cls, &mut obj, &[("units", "m"), ("nconds", "2")]);
+    let errs = apply(
+        &cls,
+        &mut obj,
+        &[("nconds", "3"), ("units", "m"), ("x", "1 2 3")],
+    );
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(get(&cls, &obj, "units"), "m");
+    assert_eq!(get(&cls, &obj, "x"), "[ 1 2 3]");
+    let errs = apply(&cls, &mut obj, &[("nconds", "2")]);
     assert!(errs.is_empty(), "{errs:?}");
     assert_eq!(get(&cls, &obj, "nconds"), "2");
-    assert_eq!(get(&cls, &obj, "units"), "ft"); // reset by the nconds side effect
-    assert_eq!(get(&cls, &obj, "x"), "[ 0 0]");
+    assert_eq!(get(&cls, &obj, "units"), "ft");
+    assert_eq!(get(&cls, &obj, "x"), "");
 }
 
 #[test]
-fn nconds_grow_preserves_leading_and_zero_fills_tail() {
-    // Growing `nconds` re-runs the realloc side effect: the leading entries
-    // are preserved and the grown tail reads as zero. Pascal's `ReAllocmem`
-    // leaves that tail uninitialized (nondeterministic heap), so this is a
-    // Rust-only invariant — not oracle-pinnable — locking the zero-fill
-    // choice documented on `realloc_conductors`. The grow also resets units.
+fn nconds_keeps_no_position_and_returns_to_feet() {
+    // Each `nconds=` keeps no position, whatever the count: X and H read
+    // empty and Units ft. A count of 2000000000 is stored with no buffer, and
+    // a list given after it keeps the values written.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = LineSpacingObj::new("ls");
@@ -87,17 +93,24 @@ fn nconds_grow_preserves_leading_and_zero_fills_tail() {
     let errs = apply(&cls, &mut obj, &[("nconds", "5")]);
     assert!(errs.is_empty(), "{errs:?}");
     assert_eq!(get(&cls, &obj, "nconds"), "5");
-    assert_eq!(get(&cls, &obj, "x"), "[ 1 2 3 0 0]"); // leading kept, tail zeroed
-    assert_eq!(get(&cls, &obj, "h"), "[ 10 11 12 0 0]");
-    assert_eq!(get(&cls, &obj, "units"), "ft"); // realloc side effect resets units
+    assert_eq!(get(&cls, &obj, "x"), "");
+    assert_eq!(get(&cls, &obj, "h"), "");
+    assert_eq!(get(&cls, &obj, "units"), "ft");
+
+    let errs = apply(&cls, &mut obj, &[("nconds", "2000000000")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(get(&cls, &obj, "nconds"), "2000000000");
+    assert_eq!(get(&cls, &obj, "x"), "");
+    let errs = apply(&cls, &mut obj, &[("x", "1 2")]);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(get(&cls, &obj, "x"), "[ 1 2]");
+    assert_eq!(obj.xcoord(), [1.0, 2.0]);
 }
 
 #[test]
 fn nconds_zero_reads_empty_string() {
-    // `nconds=0` frees the coordinate buffers (Pascal `ReAllocmem(FX, 0)`
-    // nils the pointer), so X/H read as the empty string `''`, not `'[]'`.
-    // Oracle-confirmed and pinned by the `linespacing_zero_nconds` golden;
-    // kept here as a unit-level guard on the empty-array → nil mapping.
+    // `nconds=0` keeps no coordinate, so X/H read as the empty string `''`,
+    // not `'[]'`, as the `linespacing_zero_nconds` golden reads.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = LineSpacingObj::new("ls");
@@ -110,12 +123,8 @@ fn nconds_zero_reads_empty_string() {
 
 #[test]
 fn nconds_negative_clamps_to_empty() {
-    // Pascal's `ReAllocmem(FX, FNConds)` *raises an exception* for a negative
-    // `nconds` (the oracle reports DSSException 303), so the degenerate path
-    // cannot be oracle-pinned. We clamp the allocation size to zero rather
-    // than panic: NConds reads back the raw negative value, the coordinate
-    // buffers are empty, and X/H therefore read `''`. Rust-only invariant
-    // locking that graceful clamp.
+    // A negative `nconds` (dss_capi raises 303 on it) keeps no
+    // coordinate: NConds reads back the raw negative value and X/H read `''`.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = LineSpacingObj::new("ls");
@@ -127,9 +136,42 @@ fn nconds_negative_clamps_to_empty() {
 }
 
 #[test]
+fn nconds_past_the_integer_range_is_stored_as_converted() {
+    // A count past the integer range is stored with no message and keeps no
+    // coordinate: the coordinates and the unit given before it are dropped.
+    // The default lane's integer conversion saturates at 2147483647, the
+    // parity lane's wraps the count modulo 2^32 to 1215752191, the value the
+    // pinned dss-python stores (measured 2026-10-23).
+    let enums = EnumRegistry::new();
+    let cls = class_props(&enums);
+    let mut obj = LineSpacingObj::new("ls");
+    let errs = apply(
+        &cls,
+        &mut obj,
+        &[
+            ("nconds", "3"),
+            ("x", "1 2 3"),
+            ("h", "4 5 6"),
+            ("units", "m"),
+            ("nconds", "99999999999"),
+        ],
+    );
+    assert!(errs.is_empty(), "{errs:?}");
+    let stored = if crate::compat::ORACLE_PARITY {
+        "1215752191"
+    } else {
+        "2147483647"
+    };
+    assert_eq!(get(&cls, &obj, "nconds"), stored);
+    assert_eq!(get(&cls, &obj, "x"), "");
+    assert_eq!(get(&cls, &obj, "h"), "");
+    assert_eq!(get(&cls, &obj, "units"), "ft");
+}
+
+#[test]
 fn x_h_arrays_sized_by_nconds() {
-    // X/H are DoubleVArray sized by FNConds: extra tokens are dropped and
-    // missing tokens zero-fill (Pascal `InterpretDblArray`).
+    // X/H take at most nconds values: extra tokens are dropped, and a short
+    // list keeps the values given, nothing padded.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let mut obj = LineSpacingObj::new("ls");
@@ -140,13 +182,15 @@ fn x_h_arrays_sized_by_nconds() {
             ("nconds", "3"),
             ("nphases", "3"),
             ("x", "-1.2 0 1.2 9.9"), // 4 tokens, only 3 kept
-            ("h", "28"),             // 1 token, rest zero-filled
+            ("h", "28"),             // 1 token, conductors 2 and 3 have none
             ("units", "ft"),
         ],
     );
     assert!(errs.is_empty(), "{errs:?}");
     assert_eq!(get(&cls, &obj, "x"), "[ -1.2 0 1.2]");
-    assert_eq!(get(&cls, &obj, "h"), "[ 28 0 0]");
+    assert_eq!(obj.xcoord(), [-1.2, 0.0, 1.2]);
+    assert_eq!(get(&cls, &obj, "h"), "[ 28]");
+    assert_eq!(obj.ycoord(), [28.0]);
 }
 
 #[test]
@@ -166,12 +210,29 @@ fn make_like_copies_geometry() {
         ],
     );
     let mut dst = LineSpacingObj::new("s2");
+    assert!(dst.refuse_property(prop::X, "X").is_some());
     dst.make_like(&src);
+    // The copy holds the source's given `nconds=`, so it takes data at once.
+    assert_eq!(dst.refuse_property(prop::X, "X"), None);
     assert_eq!(get(&cls, &dst, "nconds"), "4");
     assert_eq!(get(&cls, &dst, "nphases"), "3");
     assert_eq!(get(&cls, &dst, "units"), "m"); // Other.Units overrides the ft reset
     assert_eq!(get(&cls, &dst, "x"), "[ -1.2 0 1.2 0]");
     assert_eq!(get(&cls, &dst, "h"), "[ 28 28 28 24]");
+
+    // A short list is copied as given, and a list never given stays empty.
+    let mut short = LineSpacingObj::new("s3");
+    apply(
+        &cls,
+        &mut short,
+        &[("nconds", "4"), ("x", "-1.2 0"), ("units", "m")],
+    );
+    let mut dst = LineSpacingObj::new("s4");
+    dst.make_like(&short);
+    assert_eq!(get(&cls, &dst, "x"), "[ -1.2 0]");
+    assert_eq!(get(&cls, &dst, "h"), "");
+    assert_eq!(dst.xcoord(), [-1.2, 0.0]);
+    assert!(dst.ycoord().is_empty());
 }
 
 /// `Like=` copies the equivalent-spacing block, pinned by expected value in

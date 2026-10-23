@@ -2,6 +2,7 @@
 //! TapeLap), then the CableData block, then ConductorData.
 
 use super::*;
+use crate::support::line_units::LENGTH_WORDS;
 
 define_properties! {
     class "TSData", abbrev true, enums enums;
@@ -21,13 +22,16 @@ define_properties! {
     8  RDC       => PropDef::double("RDC")
         .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_OHM_PER_LENGTH);
     9  RAC       => PropDef::double("RAC").flags(PropFlags::DYNAMIC_DEFAULT);
-    10 RUNITS    => PropDef::mapped_string_enum("RUnits", enums.units);
+    10 RUNITS    => PropDef::mapped_string_enum("RUnits", enums.units)
+        .unit_words(LENGTH_WORDS);
     11 GMRAC     => PropDef::double("GMRAC")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    12 GMRUNITS  => PropDef::mapped_string_enum("GMRUnits", enums.units);
+    12 GMRUNITS  => PropDef::mapped_string_enum("GMRUnits", enums.units)
+        .unit_words(LENGTH_WORDS);
     13 RADIUS    => PropDef::double("Radius")
         .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::DYNAMIC_DEFAULT);
-    14 RADUNITS  => PropDef::mapped_string_enum("RadUnits", enums.units);
+    14 RADUNITS  => PropDef::mapped_string_enum("RadUnits", enums.units)
+        .unit_words(LENGTH_WORDS);
     15 NORMAMPS  => PropDef::rating("NormAmps").flags(PropFlags::DYNAMIC_DEFAULT);
     16 EMERGAMPS => PropDef::rating("EmergAmps").flags(PropFlags::DYNAMIC_DEFAULT);
     17 DIAM      => PropDef::double("Diam").scale(0.5)
