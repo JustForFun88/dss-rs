@@ -11,7 +11,7 @@ use crate::elements::meter::monitor::Monitor;
 use crate::elements::pc::storage::Storage;
 use crate::elements::pd::capacitor::Capacitor;
 use crate::elements::pd::transformer::{ControlledTransformer, Transformer};
-use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqLeg, PosSeqPlan};
 use crate::obj::Rating;
 use crate::obj::arena::{ArenaClass, ClassArena};
 use crate::solution::{LoadSolutionModel, SolveMode};
@@ -1189,22 +1189,44 @@ pub trait CktElement: Send {
         (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO)
     }
 
-    /// Pascal `TDSSCktElement.MakePosSequence` (virtual): convert this element
-    /// to its positive-sequence equivalent (`TExecHelper.DoMakePosSeq` calls it
-    /// on every circuit element, in creation order, after setting
-    /// `PositiveSequence := TRUE`). The element mutates its own direct fields
-    /// here and returns the ordered property-system mutations the exec applier
-    /// must replay through the typed setter helpers (see [`PosSeqPlan`]).
+    /// Convert this element to its positive-sequence equivalent. The command
+    /// calls it after its analysis accepted the circuit, on every source, PD
+    /// and PC element in creation order, then on every control and meter. The
+    /// element mutates its own direct fields here and returns the ordered
+    /// property-system mutations the exec applier replays through the typed
+    /// setter helpers (see [`PosSeqPlan`]).
     ///
     /// The default is the base behavior: no property sets, run the base bus
-    /// rename ([`CktElementData::make_pos_sequence_base`]) — every element
-    /// without a `MakePosSequence` override in Pascal inherits exactly this.
+    /// rename ([`CktElementData::make_pos_sequence_base`]), which every
+    /// element that does not override this method runs.
     ///
     /// [`PosSeqPlan`]: crate::elements::pos_seq::PosSeqPlan
     /// [`CktElementData::make_pos_sequence_base`]: crate::elements::ckt::CktElementData::make_pos_sequence_base
     fn make_pos_sequence(&mut self, ctx: &PosSeqCtx) -> PosSeqPlan {
         let _ = ctx;
         PosSeqPlan::default()
+    }
+
+    /// The message the element's own solve refuses it with, read by the
+    /// MakePosSequence analysis before the command edits anything. Default
+    /// `None`: the solve takes the element.
+    fn pos_seq_refusal(&self) -> Option<String> {
+        None
+    }
+
+    /// The legs of the element in its present state (see [`PosSeqLeg`]),
+    /// read by the MakePosSequence analysis. Default `None`: the class gives
+    /// no legs.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        None
+    }
+
+    /// The unit phasors, in conductor order, that the model of an element
+    /// whose model depends on the phase order puts on its phase conductors in
+    /// a balanced positive-sequence state. Default `None`: the model does not
+    /// depend on the order.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        None
     }
 
     /// Pascal `TLineObj` length in kilometres (`Len · <units→km>`). `None` for

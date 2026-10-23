@@ -262,18 +262,23 @@ impl Line {
         }
     }
 
-    /// Pascal `TLineObj.FetchLineSpacing` (r4133 `Line.pas:1826-1838`): adopt
-    /// the (already stored) `LineSpacing` — drop LineCode/geometry, size the Line
-    /// to the spacing's phase count, and allocate the empty `LineWireData` array
-    /// of `NWires` slots that a following `wires=`/`cncables=`/`tscables=` fills.
-    /// The sizing and the allocation are 0.14.5's (`src/PDElements/
-    /// Line.pas:1838-1853`): r4133's routine only takes the object, clears the
-    /// LineCode flag, kills the geometry and stores `SpacingCode`, and allocates
-    /// in the wire/cable/conductor fetchers instead — which is why
-    /// `SpacingSpecified` is raised there and not here (see `side_effects`).
-    pub(super) fn fetch_line_spacing(&mut self) {
+    /// Adopt the stored `LineSpacing`: drop the LineCode and the geometry, size
+    /// the Line to the spacing's phase count and hold one conductor slot per
+    /// position of the spacing. A Line whose slots already number the
+    /// spacing's positions keeps its conductors in them, so a spacing named
+    /// again after a miss, or another spacing with as many positions, keeps
+    /// the wires the Line was given, as
+    /// `exec::tests::make_pos_seq::line_data::a_spacing_named_again_after_a_miss_keeps_the_wires`
+    /// pins, and [`Line::order_kept_spacing_marks`] then writes the spacing
+    /// before those wires in Save and the JSON dump. Otherwise the slots start
+    /// empty for the `wires=`, `cncables=`, `tscables=` or `conductors=` that
+    /// follows, as
+    /// `line_data::a_spacing_with_other_positions_leaves_the_line_no_conductors`
+    /// pins. Returns whether the conductors were kept. The Line takes the
+    /// spacing model once its conductors are given (see `side_effects`).
+    pub(super) fn fetch_line_spacing(&mut self) -> bool {
         let Some(spc) = self.line_spacing_obj.as_ref() else {
-            return;
+            return false;
         };
         let nphases = spc.nphases();
         let nwires = spc.nwires().max(0) as usize;
@@ -281,13 +286,53 @@ impl Line {
         self.kill_line_code_specified();
         self.kill_geometry_specified();
 
-        // need to establish Yorder before FMakeZFromSpacing
+        // The phase count sets the Y order the impedance build needs.
         self.cd.nphases = nphases.max(0) as usize;
         let n = self.cd.nphases;
-        self.cd.set_nconds(n); // force reallocation of terminal info
-        self.cd.yprim_invalid = true; // force rebuild of Y matrix
+        self.cd.set_nconds(n);
+        self.cd.yprim_invalid = true;
 
-        self.line_wire_data = (0..nwires).map(|_| None).collect();
+        if self.line_wire_data.len() != nwires {
+            self.line_wire_data = (0..nwires).map(|_| None).collect();
+            return false;
+        }
+        true
+    }
+
+    /// Order the set-order marks of a `spacing=` whose fetch kept the Line's
+    /// conductors, so Save and the JSON dump write the spacing before the
+    /// lists that filled its slots and the save loads back this Line. When
+    /// the spacing gives the Line its model (`takes_model`), the lists move
+    /// after the spacing, so what was set before them, a `switch=yes` or a
+    /// matrix say, replays first and the spacing and its conductors take the
+    /// model last, as
+    /// `exec::tests::make_pos_seq::line_data::a_spacing_that_gives_the_line_its_model_saves_after_what_came_before`
+    /// pins. Otherwise the Line was on its spacing already and the spacing
+    /// moves before the lists, so ratings given after them still follow
+    /// them, as `line_data::a_spacing_named_again_after_a_miss_keeps_the_wires`
+    /// pins.
+    pub(super) fn order_kept_spacing_marks(&mut self, takes_model: bool) {
+        const LISTS: [usize; 4] = [
+            prop::WIRES,
+            prop::CNCABLES,
+            prop::TSCABLES,
+            prop::CONDUCTORS,
+        ];
+        if takes_model {
+            self.cd.obj.move_seq_after(prop::SPACING, &LISTS);
+        } else {
+            self.cd.obj.move_seq_before(prop::SPACING, &LISTS);
+        }
+    }
+
+    /// Whether every phase position of the spacing holds a conductor.
+    pub(super) fn holds_every_phase_conductor(&self) -> bool {
+        let n = self.cd.nphases;
+        n > 0
+            && self
+                .line_wire_data
+                .get(..n)
+                .is_some_and(|slots| slots.iter().all(Option::is_some))
     }
 
     /// The open spacing positions a `wires=` list fills, 1-based: from the

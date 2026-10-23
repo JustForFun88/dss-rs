@@ -15,7 +15,9 @@ use crate::elements::pc::dyneq_pce::DynEqHost;
 use crate::elements::pc::inv_based_pce::{
     Connection, InvBasedPce, InvBasedPceData, InvDynamicVars, NUM_INV_DYN_VARS,
 };
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject, UserModelLoad};
@@ -31,6 +33,35 @@ impl CktElement for PVSystem {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// Wye or delta legs by the connection, rated at `kV`, each drawing what
+    /// its power-flow stamp puts on it: `-Yeq` on a wye leg, `-Yeq/3` on a
+    /// delta leg. A grid-forming system stamps a source impedance, which holds
+    /// no nominal power, so its legs draw nothing.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let n = self.cd.nphases;
+        let delta = self.base.connection == Connection::Delta;
+        let v = legs::v_leg_of(self.kv_pvsystem_base, n, delta);
+        let y = if self.base.gfm_mode {
+            Complex64::ZERO
+        } else if delta {
+            -self.base.yeq / 3.0
+        } else {
+            -self.base.yeq
+        };
+        Some(legs::connected(
+            n,
+            delta,
+            PosSeqLegKind::Lumped,
+            v,
+            legs::s_leg_of(v, y),
+        ))
+    }
+
+    /// `(1, a², a)` for a three-phase system with `Balanced=yes`.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        (self.cd.nphases == 3 && self.base.force_balanced).then(|| legs::abc().to_vec())
     }
 
     /// Pascal `TPVsystemObj.MakePosSequence` (`PVsystem.pas:2638`). Single

@@ -36,7 +36,9 @@ use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::matrix_order_refusal;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan, pos_seq_self_term};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs, pos_seq_self_term,
+};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::dss_enum::EnumRegistry;
@@ -276,19 +278,38 @@ impl CktElement for Fault {
         &mut self.cd
     }
 
-    /// A multi-phase fault collapses to `Phases := 1` (a bare single edit),
+    /// The conductor pairs from terminal 1 to terminal 2, given by
+    /// resistance.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let cd = &self.cd;
+        Some(legs::branch(
+            cd.nphases,
+            0,
+            cd.nconds,
+            PosSeqLegKind::Lumped,
+            0.0,
+            Complex64::ZERO,
+        ))
+    }
+
+    fn pos_seq_refusal(&self) -> Option<String> {
+        self.refusal()
+    }
+
+    /// A multi-phase fault collapses to `phases=1` (a bare single edit),
     /// then the base bus rename. A `gmatrix` fault also writes `R`, in ohms,
     /// as `1 / S(G)` with `S` the positive-sequence self term
     /// [`pos_seq_self_term`] of its nodal conductance, so it keeps its power
     /// under a balanced voltage (pinned by
     /// `elements::pd::fault::tests::make_pos_sequence_gmatrix_fault_keeps_its_current`
-    /// and `make_pos_sequence_two_phase_gmatrix_fault_keeps_its_power`).
+    /// and `makeposseq_refuses_a_two_phase_gmatrix_fault_and_keeps_its_power`).
     /// A matrix with no positive-sequence conductance (`S(G) <= 0`, no
     /// resistance network but the zero matrix) only gets the bare
-    /// `Phases := 1` (pinned for the zero matrix by
+    /// `phases=1` (pinned for the zero matrix by
     /// `make_pos_sequence_gmatrix_fault_with_no_conductance_draws_nothing`).
     /// A 1-phase fault only runs the base rename, and so does a fault the solve
-    /// refuses.
+    /// refuses. The command refuses a one- or two-phase fault before it calls
+    /// this method, so the two-phase arm runs only on a direct call.
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         let nphases = self.cd.nphases;
         if nphases <= 1 || self.refusal().is_some() {
@@ -437,6 +458,28 @@ impl Fault {
         }
         let full = format!("Fault.{}", self.cd.obj.name());
         matrix_order_refusal(&full, nphases, "gmatrix", len, "gmatrix")
+    }
+
+    /// The `n × n` conductance the stamp holds, row-major, `n` the phase
+    /// count, and the property the fault was given by (`"gmatrix"` or `"r"`).
+    /// A `gmatrix` fault reads its first `n²` entries, so a one-phase fault
+    /// holding a larger matrix reads its `G11`. An `r` fault holds `1/r` on
+    /// the diagonal. The MakePosSequence analysis tests it for passivity.
+    pub(crate) fn pos_seq_conductance(&self) -> (Vec<f64>, &'static str) {
+        let n = self.cd.nphases;
+        if self.spec_type == 2 {
+            let gm = self.gmatrix.as_deref().unwrap_or_default();
+            let g = (0..n * n)
+                .map(|k| gm.get(k).copied().unwrap_or(0.0))
+                .collect();
+            (g, "gmatrix")
+        } else {
+            let mut g = vec![0.0; n * n];
+            for d in g.iter_mut().step_by(n + 1) {
+                *d = self.g;
+            }
+            (g, "r")
+        }
     }
 
     /// Pascal `TFaultObj.MakeLike`.

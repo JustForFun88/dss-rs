@@ -1139,7 +1139,56 @@
    ],
    "pending": false,
    "wp": "WPG.21",
-   "note": "MakePosSequence PC coverage: Load wye/delta+xfkVA/1ph (ld_wye kv 12.47->7.19956, kw 400->44.444), Generator x4 exercising the PrpSequence reads (g_plain kW+pf; g_kva kVA=250 kept; g_mva MVA=; g_kvar maxkvar 120->40 / minkvar -60->-20, ALL /phases), PVSystem, Storage, 2nd VSource, Isource. Ends with a SECOND makeposseq+solve (idempotency + the \u00f73-again quirk). VSConverter DELIBERATELY EXCLUDED (its upstream GetCurrents state-mutating bug forbids a live full-model compare, CLAUDE.md known-bugs); its MakePosSequence override is NOT a no-op (it forces Phases:=2, Ndc:=1 when nphases!=2) and is covered by the pos_seq_tests unit test in pc/vs_converter/accessors.rs. Oracle-validated (dss-python 0.15.7, two processes bit-identical; converged 3 iters, 4 nodes); feature-sensitive. Pending until WPG.21 A2."
+   "note": "MakePosSequence PC coverage: Load wye/delta+xfkVA/1ph (ld_wye kv 12.47->7.19956, kw 400->133.333), Generator x4, one per set of given ratings (g_plain kW+pf, g_kva kVA=250 kept, g_mva MVA=, g_kvar maxkvar 120->40 and minkvar -60->-20, ALL /phases), PVSystem, Storage, 2nd VSource, Isource. VSConverter DELIBERATELY EXCLUDED: an upstream read of its currents changes its state, which forbids a live full-model compare. Its MakePosSequence override is NOT a no-op (it sets 2 phases and 1 DC conductor when nphases!=2) and is covered by the pos_seq_tests unit test in pc/vs_converter/accessors.rs. Oracle-validated (dss-python 0.15.7, two processes bit-identical, converged 2 iters, 4 nodes), feature-sensitive. Pending until WPG.21 A2."
+  },
+  {
+   "path": "makeposseq/makeposseq_pc_repeat.dss",
+   "engines": "capi_v0145",
+   "ad": "off:non-3ph-cut-only",
+   "kind": "micro",
+   "n_steps": 1,
+   "selected_elements": [
+    "*"
+   ],
+   "probes": [
+    {
+     "element": "Load.ld_wye",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "conn"
+     ]
+    },
+    {
+     "element": "Generator.g_kva",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "kva"
+     ]
+    },
+    {
+     "element": "Generator.g_kvar",
+     "props": [
+      "phases",
+      "kv",
+      "kw",
+      "maxkvar",
+      "minkvar"
+     ]
+    },
+    {
+     "element": "PVSystem.pv1",
+     "props": [
+      "phases",
+      "kv"
+     ]
+    }
+   ],
+   "pending": false,
+   "note": "MakePosSequence on a circuit that is already positive-sequence: the PC deck (makeposseq_pc.dss) converted, solved, converted a second time and solved. Same circuit, probes and channel as the PC deck, so its cells read what the second makeposseq does to the Load kW/kvar/xfkVA, the Vsources' basekV and every solved quantity (dss-python 0.15.7: converged 3 iters, 4 nodes)."
   },
   {
    "path": "makeposseq/makeposseq_ctrl.dss",

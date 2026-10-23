@@ -344,26 +344,13 @@ impl CktElementData {
         self.complex_buffer.resize(self.yorder, Complex64::ZERO);
     }
 
-    /// Pascal `Set_NConds` (r4133 `Common/CktElement.pas:349-361`): changing the
-    /// conductor count flags `BusNameRedefined` and re-runs
-    /// [`Self::set_nterms`], whose own guard decides whether the terminals are
-    /// reallocated.
-    ///
-    /// `Set_Nterms(FNterms)` is passed the *unchanged* terminal count on
-    /// purpose: the reallocation test inside it is
-    /// `(value <> FNterms) OR (Value * Fnconds <> Yorder)`
-    /// (`CktElement.pas:386`), and `Yorder` still holds the OLD
-    /// `nterms * nconds` product, so a real `nconds` change reallocates while a
-    /// no-op set does nothing at all. Forcing the reallocation here instead
-    /// (`self.nterms = 0` before the call, this port until 2026-09-04) wiped
-    /// every terminal's `bus_ref`, `term_node_ref`, `conductors_closed` and
-    /// `terminals_checked` on a set that changed nothing — and, precisely
-    /// because nothing changed, `signal_bus_name_redefined` stayed false, so no
-    /// later `ReProcessBusDefs` ever restored them. A second `MakePosSequence`
-    /// on an already-converted circuit (`Phases=1` re-set on a 1-phase element)
-    /// hit exactly that and left the whole model bus-unresolved: the topology
-    /// walk then reported every element isolated
-    /// (`exec::tests::topology::a_second_makeposseq_keeps_the_circuit_connected`).
+    /// Sets the conductor count. A change flags the bus names for
+    /// reprocessing and lets [`Self::set_nterms`] reallocate the terminals,
+    /// since `yorder` still holds the old `nterms * nconds` product. A set
+    /// that changes nothing leaves every terminal's `bus_ref`,
+    /// `term_node_ref`, `conductors_closed` and `terminals_checked` as they
+    /// were and asks for no bus-list rebuild, as the unit pin
+    /// `tests::a_no_op_set_nconds_keeps_the_terminal_state` holds.
     pub fn set_nconds(&mut self, value: usize) {
         if value == 0 {
             return; // Pascal records error 749 and exits
@@ -734,17 +721,10 @@ mod tests {
         assert!(!cd.conductor_closed(1, 5));
     }
 
-    /// **Pascal `Set_NTerms`' reallocation guard, seen through `Set_NConds`**
-    /// (r4133 `Common/CktElement.pas:386`, `IF (value <> FNterms) OR (Value *
-    /// Fnconds <> Yorder)`): a `set_nconds` that changes nothing must leave the
-    /// terminals — bus refs, node refs, open conductors, checked flags —
-    /// exactly as they were, while a real change reallocates them.
-    ///
-    /// The port used to force the reallocation (`self.nterms = 0` before
-    /// `set_nterms`), which silently unresolved every bus reference on a no-op
-    /// set *and* left `signal_bus_name_redefined` false, so nothing restored
-    /// them; `a_second_makeposseq_keeps_the_circuit_connected`
-    /// (`exec::tests::topology`) is the end-to-end witness.
+    /// A `set_nconds` that changes nothing leaves the terminals (bus refs,
+    /// node refs, open conductors, checked flags) exactly as they were and
+    /// asks for no bus-list rebuild, while a real change reallocates them.
+    /// This pin holds the no-op path.
     #[test]
     fn a_no_op_set_nconds_keeps_the_terminal_state() {
         let mut cd = CktElementData::new("e", 0);

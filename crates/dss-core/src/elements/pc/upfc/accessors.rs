@@ -8,7 +8,7 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqLeg, PosSeqPlan, legs};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
@@ -23,6 +23,11 @@ impl CktElement for Upfc {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// The conductor pairs from terminal 1 to terminal 2.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        Some(legs::through(self.cd.nphases, self.cd.nconds))
     }
 
     /// Pascal `TUPFCObj.MakePosSequence` (UPFC.pas:1058-1060): an EMPTY body

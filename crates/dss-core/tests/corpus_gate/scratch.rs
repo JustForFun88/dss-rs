@@ -294,7 +294,8 @@ mod tests {
                     .or_default() += 1;
             }
         }
-        assert_eq!(decks.len(), 526, "the manifest population");
+        // 527 since `modes:makeposseq/makeposseq_pc_repeat.dss` joined the modes family.
+        assert_eq!(decks.len(), 527, "the manifest population");
         assert_eq!(
             roots
                 .iter()

@@ -237,7 +237,7 @@ pwsh -File tools/lanes/lane_diff.ps1 -SkipDump  # re-diff existing dumps
 
 It builds `crates/dss-core/examples/lane_dump.rs` once per lane (each into its
 own target dir under `target/lanes/`, so re-runs do not thrash the other lane's
-cache), walks **all 526 manifest cases** on each engine — solving the 522 that
+cache), walks **all 527 manifest cases** on each engine — solving the 523 that
 are not abort-by-design — and writes one record per compared quantity: engine
 error *count* (not the message text; the corpus gate reconciles that), per-step
 convergence flag and iteration count, every node voltage, every element's
@@ -427,8 +427,8 @@ One scheduler-driven `#[test]` — `corpus_gate_all_cases_match_engines` — run
 the union of all four case manifests live: the vendored family
 `tests/corpus/manifests/solvable_now.json` (294 decks from the
 `tests/corpus/electricdss-tst` mirror) plus the synthetic families
-`asymmetric` (53) / `controls` (107) / `modes` (72) — 526 cases. Each case's
-**`engines`** field names its gating channel(s): `"capi_v0145"` (59), `"r4133"`
+`asymmetric` (53) / `controls` (107) / `modes` (73) — 527 cases. Each case's
+**`engines`** field names its gating channel(s): `"capi_v0145"` (60), `"r4133"`
 (101), or `"both"` (the default; 366 cases gate on both channels). Case key = the gate
 label `solvable_now:<path>` / `<family>:<path>`. The test fails iff any case
 failed **or any ledger entry is stale**, printing the complete failure list
@@ -519,14 +519,14 @@ and would quantize exactly what that deck exists to compare. Evidence:
 `GOLDEN_REBASE_PLAN.md` WP-G1 widens the live gate to fastdss parity one surface
 at a time, and each surface is opt-in per case. All ten flags were declared in
 **one** commit (sub-step G1.0, 2026-09-04) rather than one per sub-step, because
-each addition to the rigor fingerprint rewrites all 526 rows of
+each addition to the rigor fingerprint rewrites all 527 rows of
 `population.lock.json`, and a flag that is *not* in that fingerprint can be
 switched off later with no lock diff at all:
 
 | manifest flag | rigor token | owning sub-step | surface |
 | --- | --- | --- | --- |
-| `compare_derived` | `derived=` | G1.3a–c | per-element `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`, `SeqCurrents`/`SeqVoltages`/`SeqPowers`, `CplxSeq*`, `TotalPowers`. **Wired since G1.3a (2026-09-04)** — `Enabled` plus the three polar channels — extended by **G1.3b (2026-09-05)** with the three sequence surfaces over the same forced population (`FORCED_DERIVED_POPULATION` = (445, 314, 87, 44); each sub-step widened the flag's *fields*, not its population), and **completed by G1.3c (2026-09-06)** with `CplxSeqCurrents`, `CplxSeqVoltages` and `TotalPowers` over the same cases — all **thirteen** fields compare on both channels |
-| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors`. **Complete since G1.3d(ii) (2026-09-05)**: G1.3d(i) landed the index/name scalars (the three counts, `NodeOrder`, `EnergyMeter`), G1.3d(ii) `PhaseLosses` and the five control-derived scalars — all ten fields compare on both channels, over the same **443** forced cases — `FORCED_ELEMENT_EXTRAS_POPULATION` = (443, 312, 87, 44), the population G1.3d(i) already had (the sub-step widened the flag's *fields*, not its population; the lane measured it at 440 before G1.4a/G1.5/G1.6(i)'s corpus moves reached it at this merge) |
+| `compare_derived` | `derived=` | G1.3a–c | per-element `CurrentsMagAng`/`VoltagesMagAng`/`Residuals`, `SeqCurrents`/`SeqVoltages`/`SeqPowers`, `CplxSeq*`, `TotalPowers`. **Wired since G1.3a (2026-09-04)** — `Enabled` plus the three polar channels — extended by **G1.3b (2026-09-05)** with the three sequence surfaces over the same forced population (`FORCED_DERIVED_POPULATION` = (446, 314, 87, 45); each sub-step widened the flag's *fields*, not its population), and **completed by G1.3c (2026-09-06)** with `CplxSeqCurrents`, `CplxSeqVoltages` and `TotalPowers` over the same cases — all **thirteen** fields compare on both channels |
+| `compare_element_extras` | `elemx=` | G1.3d | `PhaseLosses`, `NodeOrder`, `EnergyMeter`, `OCPDevType`/`OCPDevIndex`, `HasVoltControl`/`HasSwitchControl`, `NumControls`, `NumTerminals`/`NumPhases`/`NumConductors`. **Complete since G1.3d(ii) (2026-09-05)**: G1.3d(i) landed the index/name scalars (the three counts, `NodeOrder`, `EnergyMeter`), G1.3d(ii) `PhaseLosses` and the five control-derived scalars — all ten fields compare on both channels, over the same **444** forced cases — `FORCED_ELEMENT_EXTRAS_POPULATION` = (444, 312, 87, 45), the population G1.3d(i) already had (the sub-step widened the flag's *fields*, not its population; the lane measured it at 440 before G1.4a/G1.5/G1.6(i)'s corpus moves reached it at this merge) |
 | `compare_bus` | `bus=` | G1.4a–d | **live (G1.4a):** `Nodes`/`kVBase`, `puVoltages`/`puVmagAngle`/`VMagAngle`, `AllBusVmagPu`; **live (G1.4c):** `SeqVoltages`/`CplxSeqVoltages`, `VLL`/`puVLL`; **live (G1.4b, 2026-09-05):** `Distance`/`AllBusDistances`/`AllNodeDistances`; **live (G1.4d, 2026-09-06):** `AllPCEatBus`/`AllPDEatBus` |
 | `compare_zsc` | `zsc=` | G1.5 | **live (G1.5):** `Zsc1`/`Zsc0`/`ZscMatrix`/`YscMatrix`/`Isc`/`Voc`, per bus, on the same walk as `compare_bus` |
 | `compare_reliability` | `rel=` | G1.6 | meter extras + the per-bus reliability columns; also drives the executive `RelCalc` |
@@ -534,7 +534,7 @@ switched off later with no lock diff at all:
 | `compare_topology` | `topo=` | G1.7 | `NumLoops`/`NumIsolated*`/`AllLoopedPairs`/`AllIsolated*` |
 | `compare_inc_matrix` | `incm=` | G1.8 | `IncMatrix`/`IncMatrixCols`/`IncMatrixRows`/`Laplacian` |
 | `compare_run_files` | `runf=` | G1.10a–b | the SET of filesystem entries the run creates under DataPath (names, incl. created directories) — **wired 2026-09-06**; the CONTENTS of the selected non-monitor exports + the Storage `DebugTrace` wired **2026-09-12 (G1.10b)**; the DI tree is `compare_di` below |
-| `compare_di` | `di=` | G1.10c | the CONTENTS of every CSV the run creates under `<OutputDirectory><CaseName>/DI_yr_<year>/` — file set, header, row/field counts and every cell at its quantity's calibrated tier — on the five decks that enable `Set DemandInterval=`; **wired 2026-09-12**, forced on **every** live case (`FORCED_DI_POPULATION` = (522, 366, 101, 55)), the one forced surface that is not the shared live-non-`large` population |
+| `compare_di` | `di=` | G1.10c | the CONTENTS of every CSV the run creates under `<OutputDirectory><CaseName>/DI_yr_<year>/` — file set, header, row/field counts and every cell at its quantity's calibrated tier — on the five decks that enable `Set DemandInterval=`; **wired 2026-09-12**, forced on **every** live case (`FORCED_DI_POPULATION` = (523, 366, 101, 56)), the one forced surface that is not the shared live-non-`large` population |
 
 **G1.9 — circuit aggregates + solution scalars (unflagged, universal).** G1.9
 deliberately gets **no** flag — it is universal and cheap — so nobody adds an
@@ -594,7 +594,7 @@ choice: re-stating the arm against the oracle's own aggregate with the accepted
 divergence added to the envelope is a tautology (triangle inequality), so once
 the ledger owns every summand no bound on their sum carries oracle content the
 entries do not already own. What the G1.9 audit settlement adds is **visibility**
-— the 14 (case, channel) pairs where that happens are recorded and asserted
+— the 13 (case, channel) pairs where that happens are recorded and asserted
 exactly by
 `corpus_gate::ledger::the_aggregate_value_arms_inherit_exactly_the_recorded_element_scopes`,
 so a new deck-wide element scope reds until its author acknowledges that it also
@@ -1082,20 +1082,13 @@ and the machine quiet before triaging it, exactly as D13 prescribes for the
 `ckt24` oracle-budget reds below.
 
 **`Lines.Yprim` is already witnessed; `LineGeometries.Rmatrix/Xmatrix/Zmatrix`
-leaves the parity claim** (the two G1.3d documentation verdicts). `Lines_Get_Yprim`
-(`CAPI/CAPI_Lines.pas:777-796`) and `CktElement_Get_Yprim`
-(`CAPI/CAPI_CktElement.pas:583-599`) are the same two statements —
-`GetYprimValues(ALL_YPRIM)` and a bulk `Move` of `2·Yorder²` doubles
-(`Move(cValues[1], …)` and `Move(cValues^, …)` are the same address for a 1-based
-`pComplexArray`) — and r4133's `LinesV` mode 7 (`DDLL/DLines.pas:771-796`) and
-`CktElementV` mode 12 (`DDLL/DCktElement.pas:856-883`) likewise copy `SQR(Yorder)`
-complexes out of one such call; on the capi channel the two are exactly
-equivalent modulo the `Lines` path's `IsLine()` type filter, and on r4133 they
-differ only in bookkeeping outside the payload — mode 12 `Exit`s on a nil
-`cValues` (`DCktElement.pas:869-872`) *before* assigning `myPointer`/`mySize`
-(`:882-883`), while mode 7 keeps its one-element `CZero` array and assigns them
-regardless (`DLines.pas:794-795`). Whenever there is a YPrim at all, both arms
-copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and compares
+leaves the parity claim**. On both channels `Lines.Yprim` and `CktElement.Yprim`
+return the same n² complexes of the active element's YPrim, n its Y order. On the
+capi channel the two differ only in the `Lines` path's type filter (a Line only).
+On r4133 they differ in the same filter, the `Lines` path answering one zero for an
+element that is not a Line, and when the element holds no YPrim, where the `Lines`
+path returns one zero and the `CktElement` path nothing. For a Line that holds a
+YPrim, both return the same block. The gate already captures and compares
 `CktElement.Yprim` live on both channels (`tools/oracle/oracle_server.py::run_case`,
 `crates/dss-epri/src/capture.rs::run_case` over `Engine::element_yprim`
 (`crates/dss-epri/src/dss.rs::Engine::element_yprim`), Rust side `compare_yprim` at
@@ -1103,8 +1096,8 @@ copy the same `GetYprimValues(ALL_YPRIM)` block. The gate already captures and c
 (`crates/dss-test-harness/src/harness/mod.rs::compare_yprim`)), so a
 second `Lines`-shaped capture would add no information. **The honest residual is
 coverage, not spelling:** YPrim is compared only for a case's
-`selected_elements`, and over the four manifests **238 of 526** cases declare a
-non-empty list (195 `["*"]`, 43 explicit) while the other **288** compare no YPrim
+`selected_elements`, and over the four manifests **239 of 527** cases declare a
+non-empty list (196 `["*"]`, 43 explicit) while the other **288** compare no YPrim
 at all — that gap closes by flipping `selected_elements` on more cases, never by a
 Lines-specific capture. `LineGeometries.Rmatrix/Xmatrix/Zmatrix` are dropped from
 the parity target on two independent kills: in fastdss they are computing
@@ -1112,11 +1105,10 @@ the parity target on two independent kills: in fastdss they are computing
 `dss/ILineGeometries.py:84`/`:88`/`:92`), so `adjust_to_json` raises
 `StopIteration` on them (`tests/save_outputs.py:140-141`) and the caller swallows
 it (`:277-279`) — they are skipped in *every* fastdss run and are therefore not in
-the surface this gate is reaching parity with; and the r4133 DLL has no
-`LineGeometr*` family at all (no `DDLL/DLineGeometries.pas`, and
-`OpenDSSDirect.dpr`'s `exports` clause carries only `LinesI/F/S/V`), so the
-surface is capi-only by capability. Neither is captured; neither costs a ledger
-row.
+the surface this gate is reaching parity with. And the r4133 DLL exports no
+`LineGeometr*` family at all (its line exports are `LinesI/F/S/V` and
+`LineCodesI/F/S/V`), so the surface is capi-only by capability. Neither is
+captured. Neither costs a ledger row.
 
 **Capture order is contractual on the capi channel** (`GOLDEN_REBASE_PLAN.md`
 §1.1(a), restated 2026-09-04). Per element, in three groups:
@@ -1374,7 +1366,7 @@ knowing:
 
 * **The gate reads what the deck's own solve populated; it never runs a study.**
   `Zsc`/`Ysc` exist only after a fault study or a `ZscRefresh`, so a gate that
-  refreshed them would be self-fulfilling on the great majority of the 443
+  refreshed them would be self-fulfilling on the great majority of the 444
   forced cases, whose decks run none (five run one). The capture-order test
   asserts that the short-circuit segment calls no refresh on either transport
   (`the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports`,
@@ -1469,7 +1461,7 @@ knowing:
 
 * **It rides `compare_bus` — no flag of its own, no force rule, no lock *flag* cell** (the one `population.lock.json` cell that moved is a `ledger=` digest).
   The three reads join the per-bus walk `compare_bus` already pays for, so the
-  population is that flag's 443 forced live non-`large` cases.
+  population is that flag's 444 forced live non-`large` cases.
 * **It is compared EXACTLY (`rel = abs = 0`) and takes no `Tolerances` at all.**
   `DistFromMeter` is a zone-build output, not a solve output: a running sum of
   `len · ConvertLineUnits(units, UNITS_KM)` over the same breadth-first walk on
@@ -1488,7 +1480,7 @@ knowing:
   ~370 meterless cases green, because both sides would then report the meterless
   `0.0`; `population.lock.json` cannot see it either, since it fingerprints the
   manifest FLAG and this surface sets none. (For scale, not for gating: a static
-  scan following `Redirect`/`Compile` finds **70** of the 443 forced cases
+  scan following `Redirect`/`Compile` finds **70** of the 444 forced cases
   instantiating an EnergyMeter. The R part's "40 metered cases" was an undercount
   — its probe reached only 369 of the 442 cases it meant to cover.)
 * **It is the live observable of the `MakeBusList` zone fix (D9).** The two decks
@@ -1716,8 +1708,9 @@ it asserts the capture is already at the fixpoint, so a transport that stops
 normalizing fails there instead of comparing a phantom entry as if it were empty.
 
 **Population.** `compare_topology` is forced on **every live non-`large` case** —
-443 of the 522 live cases (312 `both`, 87 `r4133`, 44 `capi_v0145`; 442 =
-311/87/44 before G1.5's `faultstudy_micro` deck reached it at the G1.5 merge, 441 =
+444 of the 523 live cases (312 `both`, 87 `r4133`, 45 `capi_v0145`; 443 =
+312/87/44 before `modes:makeposseq/makeposseq_pc_repeat.dss` joined on
+2026-10-17, 442 = 311/87/44 before G1.5's `faultstudy_micro` deck reached it at the G1.5 merge, 441 =
 310/87/44 before G1.6(i)'s `midi_relcalc` deck reached it at the G1.6(i) merge,
 440 = 313/83/44 before G1.4a's D12/D14 corpus flips reached it at the G1.7 merge) — the
 same population `force_properties` uses, which
@@ -1896,7 +1889,7 @@ and `::a_disabled_series_reactor_is_still_a_row`, and registered as teardown can
 in `GOLDEN_REBASE_PLAN.md` §WP-G2 with the same upstream report.
 
 **Population, flag, lock and contamination.** `compare_inc_matrix` (`incm=`) is forced on
-every live non-`large` case — the same 443 (312 `both`, 87 `r4133`, 44 `capi_v0145`) that
+every live non-`large` case — the same 444 (312 `both`, 87 `r4133`, 45 `capi_v0145`) that
 carry the property and topology surfaces, which
 `scheduler::the_inc_matrix_forcing_rule_is_every_live_non_large_case` re-derives from the
 four manifests and pins as `FORCED_INC_MATRIX_POPULATION`, asserting equality with both
@@ -2239,7 +2232,7 @@ tolerance has no envelope a `divergence` could re-assert, and the per-value list
 dead `name_re` report as stale.
 
 **Population, flag and lock.** `compare_run_files` (`runf=`) is forced on every live non-`large`
-case — the same 443 (312 `both`, 87 `r4133`, 44 `capi_v0145`) that carry the property, topology and
+case — the same 444 (312 `both`, 87 `r4133`, 45 `capi_v0145`) that carry the property, topology and
 incidence surfaces, re-derived by
 `scheduler::the_run_files_forcing_rule_is_every_live_non_large_case` as
 `FORCED_RUN_FILES_POPULATION` and asserted equal to all three sibling constants. Six decks also
@@ -2250,7 +2243,7 @@ files, `Show`+`Dump`, two circuits in one deck), `NEVTestCase/Run_NEV.dss` (7 na
 scratch `.dbl`), `StoCtrl_SeasonTarget/Run_example.dss` (the created **directory** tree
 `ieee13nodecktmod/di_yr_0/` + 6 CSVs — G1.10c's hook), `Test/DistanceRelayTest.DSS` (the `r4133`-only
 witness, 1 file), `HarmonicsTMode/IEEE_519.DSS` (the `capi_v0145`-only witness, an honest **empty**
-set: its two writers overwrite *vendored* files, and it is the only candidate — of the 44 capi-only
+set: its two writers overwrite *vendored* files, and it is the only candidate — of the 45 capi-only
 live cases only three reach a file-writing command) and `Examples/CIM/IEEE13_CDPSM.dss`
 (`kind=large`, so the declaration is the ONLY thing that reaches it). The lock moved by exactly six
 `runf=0 → runf=1` tokens plus the YgD row's `ledger=` digest, and no family manifest declares the
@@ -3093,27 +3086,27 @@ link `corpus_gate`; recording the effective flag would mean a second copy of
 exists to prevent. The effective set is instead pinned where it is computed, and
 more strongly than a lock column could be: `corpus_gate/scheduler.rs` re-derives
 the forced population from the four manifests on **every** run and asserts it
-against `FORCED_PROPS_POPULATION` = (443, 312, 87, 44), which also pins the
+against `FORCED_PROPS_POPULATION` = (444, 312, 87, 45), which also pins the
 per-`engines` split. G1.3a added the second such rule and its own pin:
 `force_derived` turns `compare_derived` on for every live case except
 `kind=large*` on the `solvable_now` arm, and `FORCED_DERIVED_POPULATION` =
-(445, 314, 87, 44) — the same 443 plus the two `Test/AutoTrans/{Auto3bus,AutoHLT}`
+(446, 314, 87, 45) — the same 444 plus the two `Test/AutoTrans/{Auto3bus,AutoHLT}`
 manifest opt-ins, both `engines: "both"` — is re-derived on every run by
 `the_derived_forcing_rule_is_every_live_non_large_case_plus_the_opt_ins`. The two
 opt-ins are listed in Rust as `DERIVED_MANIFEST_OPT_INS`, each required to be a
 live case the rule would not already cover. G1.4a added the third such rule and
 its own pin: `force_bus` turns `compare_bus` on over the same live non-`large*`
-population, and `FORCED_BUS_POPULATION` = (443, 312, 87, 44) is re-derived by
+population, and `FORCED_BUS_POPULATION` = (444, 312, 87, 45) is re-derived by
 `the_bus_forcing_rule_is_every_live_non_large_case` on every run — the manifests
-set the flag on no case (`bus=0` on all 526), so this const is the only guard
+set the flag on no case (`bus=0` on all 527), so this const is the only guard
 the lock cannot supply. G1.3d(i) added the fourth:
 `force_element_extras` (`crates/dss-core/tests/corpus_gate/scheduler.rs::force_element_extras`)
 turns `compare_element_extras` on for every live case except `kind=large*` on the
 `solvable_now` arm — no opt-in table, because fastdss's `KNOWN_COM_DIFF` carries
 no row for any of the five fields — and `FORCED_ELEMENT_EXTRAS_POPULATION` =
-(443, 312, 87, 44) (`scheduler.rs::FORCED_ELEMENT_EXTRAS_POPULATION`) is re-derived on every run by
+(444, 312, 87, 45) (`scheduler.rs::FORCED_ELEMENT_EXTRAS_POPULATION`) is re-derived on every run by
 `the_element_extras_forcing_rule_is_every_live_non_large_case` (`scheduler.rs::the_element_extras_forcing_rule_is_every_live_non_large_case`). It is the
-same 443 as `FORCED_PROPS_POPULATION`, which is the same rule without opt-ins.
+same 444 as `FORCED_PROPS_POPULATION`, which is the same rule without opt-ins.
 **Cost (G1.3d(i)):** the five extra reads per element bought **no measurable gate
 time** — `cargo test -p dss-core --test corpus_gate` measured 218.7 s / 179.3 s /
 180.6 s / 180.9 s (parity) / 164.8 s across five drives, plus the post-D19
@@ -3448,7 +3441,7 @@ compare on every live non-`large` case whatever its `engines` key, and all three
 synthetic families force it on for their live cases. That population is pinned,
 not described: `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
 walks the four manifests with no oracle and asserts the forced set is exactly the
-live non-`large` one — **443** cases = 312 `both` + 87 r4133-only + 44 capi-only
+live non-`large` one — **444** cases = 312 `both` + 87 r4133-only + 45 capi-only
 (`FORCED_PROPS_POPULATION`) — which is what makes a *partial* re-mask loud;
 `props_norm::assert_r4133_props_compare_ran` only sees a wholesale one. The
 guard's cost is that the **54** `kind=large*` `both` decks (and 14 r4133-only,
@@ -3632,7 +3625,7 @@ skipped on capi only, because their Rust tables are r4133-shaped
 so a wholesale re-mask reports as one line instead of 19 stale-row messages; a
 *partial* re-mask is caught instead by the forcing-rule lock
 `scheduler::the_property_forcing_rule_is_every_live_non_large_case`
-(`corpus_gate/scheduler.rs::the_property_forcing_rule_is_every_live_non_large_case`, `FORCED_PROPS_POPULATION` = (443, 312, 87, 44)
+(`corpus_gate/scheduler.rs::the_property_forcing_rule_is_every_live_non_large_case`, `FORCED_PROPS_POPULATION` = (444, 312, 87, 45)
 at `scheduler.rs::FORCED_PROPS_POPULATION`).
 
 **Where the rest of the machinery is documented:** the measurement knob
@@ -4422,13 +4415,13 @@ sub-step's population is five and not the six the plan's split originally named.
 
 **The force rule is the one forced surface that is not the shared live-non-`large`
 population.** `force_di` arms every live case with **no `kind` test**
-(`FORCED_DI_POPULATION` = (522, 366, 101, 55), re-derived per run and fail-on-stale in both
+(`FORCED_DI_POPULATION` = (523, 366, 101, 56), re-derived per run and fail-on-stale in both
 directions), deliberately *not* folded into the four-way equality the property / topology /
-incidence / run-file populations share (443): **three** of the five DI producers are
+incidence / run-file populations share (444): **three** of the five DI producers are
 `kind=large`, which that rule excludes (the other two are `feeder` and already inside it;
 the count read "four of five" until the G1.10c audit settlement, findings AC3-1 / AT2-2 —
 that counted the DI-free `Run_Demo1.dss`). On the two oracle transports the cost is one
-`contains("/di_yr_")` per created name on the other 517 cases; on the PORT side the rule
+`contains("/di_yr_")` per created name on the other 518 cases; on the PORT side the rule
 newly brackets the ~79 live `large*` decks with a directory snapshot and a
 classification + sweep (measured at +5…9 s per lane, D42(9)'s threshold being ~60 s), so a
 port-side leak on those decks now fails the case loudly instead of being swept by the
@@ -4495,11 +4488,11 @@ only their index column in the header while their rows have 68 fields (r4133 wri
 `RegisterNames` loop under `if Assigned(mtr)`), and 123Bus's `Min Bus`/`Max Bus` cells are
 numeric-looking names (`11`, `83`, `610`).
 
-**The census.** The gate epilogue re-derives `DI_TREE_CENSUS` = **(5, 883, 72, 9 793 064)**
+**The census.** The gate epilogue re-derives `DI_TREE_CENSUS` = **(5, 884, 72, 9 793 064)**
 — producing cases, (case, channel) comparisons, files, cells — fail-on-stale in both
 directions, and refuses a label that is neither a manifest case nor a `unit:` fixture. Each
-number is derivable: **883** = the 888 live (case, channel) pairs of `FORCED_DI_POPULATION`
-(366 × 2 `both` + 101 + 55) minus the **5** channel-level `skip` entries the ledger carries;
+number is derivable: **884** = the 889 live (case, channel) pairs of `FORCED_DI_POPULATION`
+(366 × 2 `both` + 101 + 56) minus the **5** channel-level `skip` entries the ledger carries;
 **72** = 36 files per channel (ckt5 7, ckt7 7, peak-shave 8, season-target 6, 123Bus 8) × 2
 channels; **9 793 064** = the 9 845 624 cells the class table covers minus the **52 560**
 cells of the three ledger-excluded ckt7 columns (2 × 8 760 `kvarh` + 8 760 `min lv bus`, per

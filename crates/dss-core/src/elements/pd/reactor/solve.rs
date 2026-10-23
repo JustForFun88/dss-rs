@@ -6,7 +6,9 @@ use num_complex::Complex64;
 use super::{Reactor, ReactorSpecType};
 use crate::elements::ckt::CktElementData;
 use crate::elements::pd::matrix_order_refusal;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan, pos_seq_self_term};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs, pos_seq_self_term,
+};
 use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::support::mathutil::etk_invert;
@@ -300,6 +302,29 @@ impl CktElement for Reactor {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// Wye as branches from terminal 1 to terminal 2, delta as delta legs,
+    /// rated at `kV`. A `kvar` reactor draws `+j 1000 kvar / N` VA a leg, one
+    /// given by impedance nothing.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let cd = &self.cd;
+        let n = cd.nphases;
+        let delta = self.connection == 1;
+        let v = legs::v_leg_of(self.kvrating, n, delta);
+        let s = match self.spec_type {
+            ReactorSpecType::Kvar => Complex64::new(0.0, 1000.0 * self.kvarrating / n as f64),
+            _ => Complex64::ZERO,
+        };
+        Some(if delta {
+            legs::delta(n, PosSeqLegKind::Lumped, v, s)
+        } else {
+            legs::branch(n, 0, cd.nconds, PosSeqLegKind::Lumped, v, s)
+        })
+    }
+
+    fn pos_seq_refusal(&self) -> Option<String> {
+        self.refusal()
     }
 
     /// Pascal `TPDElement.CalcFltRate` (base): `Faultrate · pctperm · 0.01`.

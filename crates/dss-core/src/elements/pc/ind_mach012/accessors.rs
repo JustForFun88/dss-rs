@@ -8,7 +8,7 @@ use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::generator::Connection;
-use crate::elements::pos_seq::{PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
@@ -22,6 +22,37 @@ impl CktElement for IndMach012 {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// Its legs over its phases, as its Y stamp joins its conductors. A delta
+    /// machine joins conductor `k` to `k + 1` and wraps to conductor 0 past
+    /// its last conductor, so one or two phases end on the extra conductor and
+    /// three close the ring. A wye machine has no neutral: three phases draw
+    /// no zero-sequence current, so the star floats and the legs are the
+    /// line-to-line pairs, while one or two phases draw each conductor's
+    /// current against earth at the rated phase voltage. Its Y stamp holds no
+    /// nominal power.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let (n, kv) = (self.cd.nphases, self.kv_generator_base);
+        let kind = PosSeqLegKind::Lumped;
+        if self.connection == Connection::Wye && n < 3 {
+            return Some(legs::to_earth(
+                n,
+                kind,
+                legs::v_leg_of(kv, n, false),
+                Complex64::ZERO,
+            ));
+        }
+        let mut pairs = legs::delta(n, kind, legs::v_leg_of(kv, n, true), Complex64::ZERO);
+        for leg in &mut pairs {
+            leg.minus = leg.minus.map(|m| if m < self.cd.nconds { m } else { 0 });
+        }
+        Some(pairs)
+    }
+
+    /// `(1, a², a)` for a three-phase machine.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        (self.cd.nphases == 3).then(|| legs::abc().to_vec())
     }
 
     /// Pascal `TIndMach012Obj.MakePosSequence` (IndMach012.pas:1424-1426): an

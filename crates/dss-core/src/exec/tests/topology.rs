@@ -12,6 +12,7 @@
 //! the state the port answers from on every call. The two channels agreed byte
 //! for byte on all six decks used here.
 
+use crate::elements::pos_seq::balance;
 use crate::exec::*;
 
 /// Compile a corpus deck by absolute path and return the live engine.
@@ -573,28 +574,21 @@ fn a_gictransformer_is_a_tree_branch_and_can_close_a_loop() {
     assert_eq!(t.num_isolated_loads, 0);
 }
 
-/// **Pin 9 — a SECOND `MakePosSequence` must not unwire the circuit**
-/// (the port gap G1.7's live topology compare exposed, 2026-09-04).
+/// **Pin 9 — a SECOND `MakePosSequence` must not unwire the circuit.**
 ///
-/// `modes:makeposseq/makeposseq_pc.dss` converts, solves, converts a second time
-/// and solves again — the deck's own idempotency check. The second pass re-sets
-/// `Phases=1` on elements that are already 1-phase, which reaches
-/// `CktElementData::set_nconds` with the value it already holds. Pascal's
-/// `Set_NTerms` reallocates only when `(value <> FNterms) OR (Value * Fnconds <>
-/// Yorder)` (r4133 `Common/CktElement.pas:386`), so upstream does nothing there;
-/// the port used to force the reallocation, which reset every terminal's
-/// `bus_ref` to "unwired" without raising `BusNameRedefined`, so no later
-/// `ReProcessBusDefs` restored it. The topology walk then started at the source,
-/// found no bus for its terminals and reported the whole circuit isolated.
-///
-/// Both numbers, measured on the gating channel (dss-python 0.15.7, this deck is
-/// `engines: "capi_v0145"`; `tmp/g17/capi_topo_merged.json`): the oracle reports
-/// `NumIsolatedBranches = 0` and `NumIsolatedLoads = 0`; the port reported
-/// **3** and **10** (all three `Line`s plus every `Load`/`Generator`/`PVSystem`/
-/// `Storage`) before the fix and reports 0 / 0 now.
+/// `modes:makeposseq/makeposseq_pc_repeat.dss` converts, solves, converts a
+/// second time and solves again. The second `makeposseq` finds the circuit
+/// positive-sequence and changes nothing, so the walk starts at the source,
+/// reaches every terminal and answers 0 isolated branches and 0 isolated
+/// loads, as the gating oracle (dss-python 0.15.7, this deck is
+/// `engines: "capi_v0145"`) does on the same deck. A third conversion leaves
+/// the saved circuit byte-identical, which the guard alone ensures. The no-op
+/// `set_nconds` path, which a first conversion reaches through a meter on an
+/// element that keeps its conductor count, is held by the unit pin
+/// `elements::ckt::tests::a_no_op_set_nconds_keeps_the_terminal_state`.
 #[test]
 fn a_second_makeposseq_keeps_the_circuit_connected() {
-    let mut dss = compile_corpus_deck("modes/makeposseq/makeposseq_pc.dss");
+    let mut dss = compile_corpus_deck("modes/makeposseq/makeposseq_pc_repeat.dss");
     dss.command("solve");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     let t = dss.topology_view();
@@ -609,7 +603,7 @@ fn a_second_makeposseq_keeps_the_circuit_connected() {
         t.isolated_loads
     );
     // Not vacuous: the deck really does hold the three lines and the ten PC
-    // elements that used to be reported isolated, and they are all reached.
+    // elements, and they are all reached.
     let names: Vec<String> = dss
         .snapshot_elements()
         .iter()
@@ -626,10 +620,16 @@ fn a_second_makeposseq_keeps_the_circuit_connected() {
     }
     assert_eq!(t.num_loops, 0, "the feeder is radial on both engines");
 
-    // The mechanism, in isolation: a third conversion changes nothing, and the
-    // walk still answers the same — the `set_nconds` no-op path
-    // (`CktElementData::a_no_op_set_nconds_keeps_the_terminal_state`).
+    // A third conversion changes nothing either: the saved circuit stays
+    // byte-identical and the walk answers the same.
+    let saved = balance::saved_circuit(&mut dss, "topology_repeat");
     dss.command("makeposseq");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    assert_eq!(
+        balance::saved_circuit(&mut dss, "topology_repeat"),
+        saved,
+        "the saved circuit"
+    );
     dss.command("solve");
     assert!(dss.errors().is_empty(), "{:?}", dss.errors());
     let t2 = dss.topology_view();

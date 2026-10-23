@@ -9,7 +9,9 @@ use crate::elements::ckt::{CktElementData, ElemFlags};
 use crate::elements::general::growth_shape::GrowthShapeObj;
 use crate::elements::general::load_shape::LoadShapeObj;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
@@ -26,27 +28,33 @@ impl CktElement for Load {
         &mut self.cd
     }
 
+    /// Wye or delta legs by the connection, rated at `kV`, each drawing
+    /// `1000 (kW + j kvar) / N` VA, its rated power before the load
+    /// multiplier, growth and shape factors that scale its Y stamp.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let n = self.cd.nphases;
+        let delta = self.connection == Connection::Delta;
+        let v = legs::v_leg_of(self.kv_load_base, n, delta);
+        let s = Complex64::new(self.kw_base, self.kvar_base) * (1000.0 / n as f64);
+        Some(legs::connected(n, delta, PosSeqLegKind::Lumped, v, s))
+    }
+
     fn load_num_customers(&self) -> Option<i32> {
         Some(self.num_customers)
     }
 
-    /// Pascal `TLoadObj.MakePosSequence` (`Load.pas:2215`). Convert to a single
-    /// phase, line-neutral wye load carrying one third of the total power.
+    /// Convert to a single-phase, line-neutral wye load carrying a third of the
+    /// total power.
     ///
-    /// The power divisor is a hard-coded `3.0`, not `Fnphases` — and unlike the
-    /// sibling PC classes (Generator/PVSystem/Storage all divide by the phase
-    /// count) that is **upstream's stated intent, not a slip**, so both lanes
-    /// keep it: `Load.pas:2230` carries the decision and its date in the source
-    /// — "New Method: Assume load is distributed equally among the 3 phases --
-    /// works better // 1-5-2016 RCD" — replacing an earlier `/Fnphases` the
-    /// comment still shows. `MakePosSequence` is a one-shot model conversion,
-    /// not an idempotent one, so a second call divides again (400 → 133.33 →
-    /// 44.44); `tests/corpus/modes/makeposseq/makeposseq_pc.dss` runs it twice
-    /// and pins exactly that against both gating oracles.
-    ///
-    /// Stage F disposition (`DE_PASCALIZE_PLAN.md` IV.1): permanent semantics,
-    /// documented rather than split — a lane that "fixed" this would be
-    /// changing a modelling choice, not repairing a defect.
+    /// The divisor is 3 whatever the phase count, where the Generator, the
+    /// PVSystem and the Storage divide by theirs. The reduced circuit is one
+    /// phase of a balanced three-phase circuit, and a load of one or two phases
+    /// is read as spread over the three, so the phase holds a third of it. This
+    /// is a modelling choice, in both lanes, that the corpus case
+    /// `modes/makeposseq/makeposseq_pc.dss` holds on its one-phase load. A
+    /// second `MakePosSequence` on the reduced circuit changes nothing, so the
+    /// load keeps its third (pinned by
+    /// `exec::tests::make_pos_seq::refusals::a_second_makeposseq_changes_nothing`).
     fn make_pos_sequence(&mut self, _ctx: &PosSeqCtx) -> PosSeqPlan {
         use super::prop;
 

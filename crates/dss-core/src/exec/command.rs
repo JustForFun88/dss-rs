@@ -346,9 +346,8 @@ impl Dss {
             cmd::CALC_INC_MATRIX_O => self.do_calc_inc_matrix(true),
             cmd::REFINE_BUSLEVELS => self.do_refine_bus_levels(),
             cmd::CALC_LAPLACIAN => self.do_calc_laplacian(),
-            // Pascal `TExecHelper.DoMakePosSeq` (ExecHelper.pas:3035): flip the
-            // circuit to positive-sequence and convert every element in creation
-            // order (`exec/make_pos_seq.rs`).
+            // Analyse the circuit, then reduce it (`Dss::do_make_pos_seq` in
+            // `exec::make_pos_seq`).
             cmd::MAKE_POS_SEQ => self.do_make_pos_seq(),
             _ => self.not_ported_command(pointer),
         }
@@ -2086,10 +2085,10 @@ impl Dss {
 
         // The post-`end_edit` signal tail (deferred errors/abort, circuit
         // signal-flag propagation, deferred ref-actions). Shared verbatim with
-        // the MakePosSequence applier (`exec/make_pos_seq.rs`), which replays
-        // the identical property mutations through the typed setters. The split
-        // active-class borrows above are dead by here (last used at `end_edit`),
-        // so the full `classes` slice is free for the ref-action targets.
+        // the MakePosSequence applier (`exec::make_pos_seq::apply::apply_pos_seq_plan`),
+        // which replays the identical property mutations through the typed setters.
+        // The split active-class borrows above are dead by here (last used at
+        // `end_edit`), so the full `classes` slice is free for the ref-action targets.
         apply_edit_signal_tail(classes, circuit, errors, ci, oi);
         // …and, for a control, the `Set_ControlledElement` re-attach that ends
         // its `RecalcElementData`. Outside the shared tail on purpose — the
@@ -2122,14 +2121,15 @@ fn attach_source(
     }
 }
 
-/// The tail every property edit runs after `EndEdit` (Pascal: the property
-/// setters write `ActiveCircuit.BusNameRedefined`/`Solution.SystemYChanged`
-/// immediately; here they queue signal flags drained once the edit finishes).
-/// Factored out of [`Dss::edit_active_inner`] so the MakePosSequence applier
-/// (`exec/make_pos_seq.rs`) runs the byte-identical tail after replaying an
-/// element's [`PosSeqPlan`] — no duplicated logic. `ci`/`oi` name the class /
-/// object just edited; `classes` is the full registry (for ref-action targets),
-/// each class reaching its objects through `class.arena` (R1 ownership flip).
+/// The tail every property edit runs after `EndEdit`: the property setters
+/// queue the signal flags of the circuit (a bus list to rebuild, a system Y
+/// to rebuild), drained here once the edit finishes, with the deferred errors
+/// and ref-actions. Shared with [`Dss::edit_active_inner`] so the
+/// MakePosSequence applier (`exec::make_pos_seq::apply::apply_pos_seq_plan`)
+/// runs the same tail after replaying an element's [`PosSeqPlan`]. `ci`/`oi`
+/// name the class and object just edited, and `classes` is the full registry
+/// (for ref-action targets), each class reaching its objects through
+/// `class.arena`.
 pub(super) fn apply_edit_signal_tail(
     classes: &mut [DssClass],
     circuit: &mut Option<Circuit>,
@@ -2253,34 +2253,24 @@ pub(super) fn apply_edit_signal_tail(
     }
 }
 
-/// The control half of Pascal `RecalcElementData`: it ends by re-assigning
-/// `ControlledElement`, which is the property setter
-/// `TControlElem.Set_ControlledElement` (r4133 `Controls/ControlElem.pas:113-131`):
-/// remove self from the previous target's `ControlElementList`, append to the new
-/// target's. r4133 runs it on EVERY edit (`Controls/Relay.pas:955` from `:626`;
-/// `Recloser.pas:702`, `SwtControl.pas:332`, `CapControl.pas:580`,
-/// `RegControl.pas:693`, `Controls/fuse.pas`), so a re-edited control moves to the
-/// end of its element's list. capi 0.14.5 instead makes `ControlledElement` a
-/// property-write target (`Controls/Relay.pas:439-441`) and leaves the order alone
-/// on a re-edit — r4133 is the behavioral authority (`DIVERGENCES.md`).
+/// The control half of an edit's recalc: it assigns the controlled element
+/// again, which takes the control off the previous element's control list and
+/// appends it to the new one's, so a re-edited control moves to the end of its
+/// element's list. r4133 does so on every edit of a control, while DSS C-API
+/// 0.14.5 leaves the order alone on a re-edit, as
+/// `exec::tests::element_extras::ocp_dev_type_follows_the_last_attach_order`
+/// pins with the two readings (`OCPDevType` 3 then 1 on r4133, 3 on DSS C-API).
 ///
-/// Call it where the edit is over (`end_edit` = `RecalcElementData` has run, and
-/// so have the deferred ref-actions of [`apply_edit_signal_tail`]), so
-/// `controlled_element()` is the control's final target for this edit. Guarded on
-/// the class kind — only a `TControlElem` has a `ControlElementList` membership to
-/// maintain.
+/// Call it where the edit is over (`end_edit` has run its recalc, and the
+/// deferred ref-actions of [`apply_edit_signal_tail`] have run), so
+/// `controlled_element()` is the control's final target for this edit. Guarded
+/// on the class kind, since only a control holds a place in a control list.
 ///
-/// **Deliberately not part of [`apply_edit_signal_tail`]** (G1.3d(ii) audit
-/// settlement, 2026-09-05): the MakePosSequence applier
-/// (`exec/make_pos_seq.rs`) shares that tail, and r4133's `MakePosSequence` never
-/// re-runs `RecalcElementData` on a control — every control override mutates its
-/// own fields and ends with `inherited`, the base bus rename
-/// (`Common/CktElement.pas:1352`): `Controls/Relay.pas:1008`, `Recloser.pas:738`,
-/// `SwtControl.pas:367`, `CapControl.pas:656`, `RegControl.pas:1491`, and `Fuse`
-/// has no override at all. `DoMakePosSeq` calls nothing else
-/// (`Executive/ExecHelper.pas:3069-3086`), so a `MakePosSeq` leaves every
-/// `ControlElementList` order untouched. Pinned by
-/// `exec::tests::element_extras::makeposseq_does_not_reattach_controls`.
+/// It is not part of [`apply_edit_signal_tail`]: the MakePosSequence applier
+/// (`exec::make_pos_seq::apply::apply_pos_seq_plan`) shares that tail, and a
+/// reduction edits no control's target, so `MakePosSeq` leaves every control
+/// list in its order, the Fuse first after the re-edited Relay as on r4133.
+/// Pinned by `exec::tests::element_extras::makeposseq_does_not_reattach_controls`.
 pub(super) fn reattach_edited_control(
     classes: &mut [DssClass],
     circuit: &mut Option<Circuit>,

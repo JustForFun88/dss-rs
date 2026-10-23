@@ -713,9 +713,9 @@ fn dispatch_ctx() -> SysCtx {
 }
 
 /// Apply a `MakePosSequence` action list exactly like the executive's applier
-/// (`exec/make_pos_seq.rs`): `BeginEdit` suppresses the per-write `end_edit`,
-/// `EndEdit` always runs one. Returns how many `end_edit`
-/// (= `RecalcElementData`) calls the list costs — the quantity this row moves.
+/// (`exec::make_pos_seq::apply::apply_pos_seq_actions`): `BeginEdit` suppresses the
+/// per-write `end_edit`, `EndEdit` always runs one. Returns how many `end_edit`
+/// recalcs the list costs, the quantity this row moves.
 fn apply_pos_seq(st: &mut Storage, actions: &[PosSeqAction], sys: &SysCtx) -> usize {
     let enums = EnumRegistry::new();
     let cls = super::class_props(&enums);

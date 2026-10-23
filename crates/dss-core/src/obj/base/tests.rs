@@ -17,6 +17,67 @@ fn set_as_next_seq_tracks_order() {
     assert_eq!(d.next_property_set(Some(3)), None);
 }
 
+/// `move_seq_before` puts a property just before the earliest set one of a
+/// list, keeps the order of every other property and the counter, and keeps
+/// each mark on its side of the edit boundary but the moved one.
+#[test]
+fn move_seq_before_keeps_every_other_order() {
+    let mut d = DssObjData::new("t", 6);
+    d.set_as_next_seq(1); // 1
+    d.set_as_next_seq(2); // 2
+    d.set_as_next_seq(3); // 3
+    d.begin_edit_boundary(); // boundary 3
+    d.set_as_next_seq(4); // 4
+    d.set_as_next_seq(5); // 5
+    d.move_seq_before(5, &[6, 3, 2]);
+    let order: Vec<usize> =
+        std::iter::successors(d.next_property_set(None), |&i| d.next_property_set(Some(i)))
+            .collect();
+    assert_eq!(order, [1, 5, 2, 3, 4]);
+    assert_eq!(d.prp_sequence[0], 5, "the counter");
+    assert!(!d.prop_edited_since_boundary(3));
+    assert!(d.prop_edited_since_boundary(4));
+    assert!(!d.prop_edited_since_boundary(5));
+
+    let before = d.prp_sequence.clone();
+    d.move_seq_before(5, &[3]); // already first
+    d.move_seq_before(5, &[6]); // nothing of the list set
+    d.move_seq_before(6, &[1]); // unset
+    assert_eq!(d.prp_sequence, before);
+}
+
+/// `move_seq_after` puts the set properties of a list that come before a
+/// property just after it, in their order, keeps the order of every other
+/// property and the counter, and keeps each mark that does not move on its
+/// side of the edit boundary.
+#[test]
+fn move_seq_after_keeps_every_other_order() {
+    let mut d = DssObjData::new("t", 7);
+    d.set_as_next_seq(1); // 1
+    d.set_as_next_seq(2); // 2
+    d.set_as_next_seq(3); // 3
+    d.begin_edit_boundary(); // boundary 3
+    d.set_as_next_seq(4); // 4
+    d.set_as_next_seq(6); // 5
+    d.set_as_next_seq(5); // 6
+    d.move_seq_after(5, &[7, 4, 2]);
+    let order: Vec<usize> =
+        std::iter::successors(d.next_property_set(None), |&i| d.next_property_set(Some(i)))
+            .collect();
+    assert_eq!(order, [1, 3, 6, 5, 2, 4]);
+    assert_eq!(d.prp_sequence[0], 6, "the counter");
+    assert!(!d.prop_edited_since_boundary(1));
+    assert!(!d.prop_edited_since_boundary(3));
+    assert!(d.prop_edited_since_boundary(6));
+    assert!(d.prop_edited_since_boundary(5));
+
+    let before = d.prp_sequence.clone();
+    d.move_seq_after(5, &[4]); // already after
+    d.move_seq_after(5, &[7]); // nothing of the list set
+    d.move_seq_after(7, &[1]); // unset
+    assert_eq!(d.prp_sequence, before);
+}
+
 #[test]
 fn make_like_copies_prp_slots_but_not_the_edit_boundary() {
     // Pascal `TDSSObject.MakeLike` (DSSObject.pas:133) copies

@@ -8,7 +8,9 @@ use num_complex::Complex64;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::general::xy_curve::XyCurveObj;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{
+    PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqLegKind, PosSeqPlan, legs,
+};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
@@ -22,6 +24,17 @@ impl CktElement for Vccs {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// One leg per conductor to earth at its rated phase voltage. Its Y stamp
+    /// holds no admittance.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        Some(legs::to_earth(
+            self.cd.nphases,
+            PosSeqLegKind::Lumped,
+            self.base_volt,
+            Complex64::ZERO,
+        ))
     }
 
     /// Pascal `TVCCSObj.MakePosSequence` (vccs.pas:495-500): a multi-phase VCCS

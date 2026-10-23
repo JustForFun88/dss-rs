@@ -8,7 +8,7 @@ use super::Isource;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
 use crate::elements::pc::source_seq::{ScanType, SequenceType};
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqPlan, legs};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::cmatrix::CMatrix;
@@ -157,6 +157,22 @@ impl CktElement for Isource {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// The conductor pairs from terminal 1 to terminal 2 when terminal 2
+    /// reaches a node other than earth, else none.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        let cd = &self.cd;
+        legs::reaches_a_live_node(cd.get_bus(2), cd.nphases, cd.nconds)
+            .then(|| legs::through(cd.nphases, cd.nconds))
+    }
+
+    /// `(1, a², a)`, `(1, a²)` or `(1)` by the phase count.
+    fn pos_seq_pattern(&self) -> Option<Vec<Complex64>> {
+        match self.cd.nphases {
+            n @ 1..=3 => Some(legs::abc()[..n].to_vec()),
+            _ => None,
+        }
     }
 
     /// Pascal `TIsourceObj.MakePosSequence` (Isource.pas:500-505): a multi-phase

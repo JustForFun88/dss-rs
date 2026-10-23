@@ -291,9 +291,8 @@ impl DssObject for Line {
                 }
             }
             super::prop::SPACING => {
-                // Pascal stores the `LineSpacingObj` pointer; `FetchLineSpacing`
-                // runs from `PropertySideEffects(spacing)`. Snapshot-clone it here
-                // (the resolved view is parse-time only); `side_effects` fetches.
+                // A snapshot clone, since the resolved view lives only while the
+                // edit parses. `side_effects` fetches it.
                 self.line_spacing_obj = resolved.and_then(|o| o.cloned::<LineSpacingObj>());
             }
             _ => unreachable!("Line has no resolved object-ref property {idx}"),
@@ -696,35 +695,51 @@ impl DssObject for Line {
             _ => {}
         }
 
-        // Pascal block 2 — r4133's `21..22, 24..25, 34` side effect
-        // (`Line.pas:704-713`): `spacing=` fetches first; once both the spacing
-        // and the conductor array exist, raise `SpacingSpecified`, switch to the
-        // spacing impedance model and clear the marks it supersedes.
-        //
-        // r4133 tests `Assigned (FLineSpacingObj) and Assigned (FLineWireData)`,
-        // and only `FetchWireList`/`FetchCNCableList`/`FetchTSCableList`/
-        // `FetchConductorList` — properties 22, 24, 25 and 34 — ever allocate
-        // `FLineWireData`; its `FetchLineSpacing` (`:1826-1838`) does not. The
-        // port allocates the array one property earlier, in
-        // [`Line::fetch_line_spacing`] (0.14.5's shape, `src/PDElements/
-        // Line.pas:1850-1852`), so `idx != SPACING` restates r4133's test in the
-        // port's representation. Measured on the r4133 DLL, 2026-08-29: a line
-        // with `spacing=` and no conductors keeps `SymComponentsModel` and
-        // renders its default `r1 = '0.058'`, where 0.14.5 and the pre-fix port
-        // rendered `'----'`.
+        // New conductors, or a `spacing=` that leaves the Line no spacing, make
+        // the impedance built from the old data stale, so the next build makes
+        // it afresh, as
+        // `exec::tests::make_pos_seq::line_data::a_wires_edit_gives_the_line_of_those_wires`,
+        // `line_data::a_conductor_list_edit_after_a_solve_gives_the_line_of_those_conductors`
+        // and `refusals::a_line_left_without_its_spacing_stops_makeposseq` pin.
+        if matches!(idx, WIRES | CNCABLES | TSCABLES | CONDUCTORS)
+            || (idx == SPACING && self.line_spacing_obj.is_none())
+        {
+            self.fz_frequency = -1.0;
+        }
+
+        // `spacing=` fetches first. A conductor list given while the Line holds
+        // a spacing gives it the spacing model, and so does a `spacing=` whose
+        // fetch keeps a conductor at every phase position of a Line not on its
+        // spacing (after a `linecode=`, say), since its data then define a
+        // spacing Line, as
+        // `exec::tests::make_pos_seq::line_data::a_spacing_after_a_linecode_gives_the_spacing_line`
+        // pins. The model switch raises the flag, drops any impedance held
+        // from another model, takes the ratings from the conductors again and
+        // clears the marks of what the spacing supersedes. A `spacing=` that
+        // leaves the slots empty keeps the model the Line had: a Line given a
+        // spacing and no conductors reads its default `r1` 0.058 (measured on
+        // the r4133 DLL, 2026-08-29).
         if matches!(idx, SPACING | WIRES | CNCABLES | TSCABLES | CONDUCTORS) {
-            if idx == SPACING {
-                self.fetch_line_spacing();
+            let kept = idx == SPACING && self.fetch_line_spacing();
+            let takes_spacing = if idx == SPACING {
+                kept && !self.spacing_specified && self.holds_every_phase_conductor()
+            } else {
+                self.line_spacing_obj.is_some() && !self.line_wire_data.is_empty()
+            };
+            if kept {
+                self.order_kept_spacing_marks(takes_spacing);
             }
-            if idx != SPACING && self.line_spacing_obj.is_some() && !self.line_wire_data.is_empty()
-            {
+            if takes_spacing {
+                if !self.spacing_specified {
+                    self.fz_frequency = -1.0;
+                }
                 self.spacing_specified = true;
                 self.sym_components_model = false;
                 self.sym_components_changed = false;
                 self.kill_geometry_specified();
                 self.got_ratings_after_spacing_conds = false;
-                // Pascal `if phaseChoice = Unknown then phaseChoice := Overhead`
-                // (0.15.x, the `Conductors=` all-`none`/wire-only fallback).
+                // A `conductors=` list with no phase conductor is taken as an
+                // overhead set.
                 if idx == CONDUCTORS && self.fphase_choice == ConductorChoice::Unknown {
                     self.fphase_choice = ConductorChoice::Overhead;
                 }

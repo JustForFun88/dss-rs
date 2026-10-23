@@ -12,7 +12,7 @@
   "family_counts": {
     "asymmetric": 53,
     "controls": 107,
-    "modes": 72
+    "modes": 73
   },
   "family_rigor": {
     "asymmetric": {
@@ -198,7 +198,8 @@
       "makeposseq/makeposseq_ctrl.dss": "kind=micro steps=1 sel=1 mm=0 probes=3 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=1 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:swtcontrol-per-phase-state-makeposseq-capi-props@ecc899f2fa481da4",
       "makeposseq/makeposseq_gic.dss": "kind=micro steps=1 sel=1 mm=0 probes=3 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=r4133 isolate=0 defer=0 ledger=r4133:r4133-posseq-seqpowers-slot-gic@aca2dcfcd014cf8a",
       "makeposseq/makeposseq_line.dss": "kind=micro steps=1 sel=1 mm=0 probes=3 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
-      "makeposseq/makeposseq_pc.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:capi-generator-makeposseq-rating@3cc4f90bb9c0aa61",
+      "makeposseq/makeposseq_pc.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:capi-generator-makeposseq-rating@9991c1a89bc56387",
+      "makeposseq/makeposseq_pc_repeat.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:capi-generator-makeposseq-rating-repeat@4c6808886ee7a840,makeposseq-repeat-capi-props@2f9aa712579854a4,makeposseq-repeat-capi@b2fc062ff3d616e5",
       "makeposseq/makeposseq_report.dss": "kind=micro steps=1 sel=1 mm=1 probes=2 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",
       "makeposseq/makeposseq_shunt.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=capi_v0145:makeposseq-cuf-applied-capi-props@dfd9920a149804fc,makeposseq-cuf-applied-capi@6b5b4fd65b8e4618,makeposseq-matrix-average-capi-props@cce12421f1eb0d47,makeposseq-matrix-average-capi@9796294543c2a839,reactor-one-phase-z1-capi@a0f45531d4890b57",
       "makeposseq/makeposseq_xfmr.dss": "kind=micro steps=1 sel=1 mm=0 probes=4 vars=0 evlog=0 ctrlq=0 props=0 gresult=0 aalog=0 derived=0 elemx=0 bus=0 zsc=0 rel=0 pde=0 topo=0 incm=0 runf=0 di=0 pending=0 abort=0 engines=capi_v0145 isolate=0 defer=0 ledger=",

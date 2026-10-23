@@ -7,7 +7,7 @@ use num_complex::Complex64;
 use super::GicLine;
 use crate::elements::ckt::CktElementData;
 use crate::elements::general::spectrum::SpectrumObj;
-use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqPlan};
+use crate::elements::pos_seq::{PosSeqAction, PosSeqCtx, PosSeqLeg, PosSeqPlan, legs};
 use crate::elements::traits::{CktElement, InjComputeCtx, SysCtx};
 use crate::support::cmatrix::CMatrix;
 use crate::util::EPSILON;
@@ -47,6 +47,11 @@ impl CktElement for GicLine {
     }
     fn cd_mut(&mut self) -> &mut CktElementData {
         &mut self.cd
+    }
+
+    /// The conductor pairs from terminal 1 to terminal 2.
+    fn pos_seq_legs(&self) -> Option<Vec<PosSeqLeg>> {
+        Some(legs::through(self.cd.nphases, self.cd.nconds))
     }
 
     /// Pascal `TGICLineObj.MakePosSequence` (`GICLine.pas:660`). Single phase,

@@ -23,6 +23,9 @@ pub use line::Line;
 pub use reactor::Reactor;
 pub use transformer::Transformer;
 
+/// The sentence that ends the solve's refusal of an element.
+pub(crate) const ABORTING_SOLUTION: &str = " Aborting solution.";
+
 /// The solve's refusal of the element `full` when its matrix property `prop`
 /// holds `len` entries where its `nphases` phases need `nphases²`, as a
 /// `phases=` edit after the matrix leaves it. `None` when the order fits.
@@ -45,6 +48,6 @@ pub(crate) fn matrix_order_refusal(
     };
     Some(format!(
         "{full} has {nphases} phases but its {prop} has {held} entries. Specify {respecify} \
-         for {nphases} phases. Aborting solution."
+         for {nphases} phases.{ABORTING_SOLUTION}"
     ))
 }

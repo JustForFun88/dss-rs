@@ -91,7 +91,7 @@ fn elem<'a>(snaps: &'a [ElementSnapshot], name: &str) -> &'a ElementSnapshot {
 /// This is the deck both oracles were probed on for the numbers pinned below
 /// (dss-python 0.15.7 / dss_capi 0.14.5 and the EPRI r4133 DLL through
 /// `crates/dss-epri`, 2026-09-05). It is deliberately NOT a corpus case: the
-/// arm is already gated live on the six `modes/makeposseq/*` decks, which are
+/// arm is already gated live on the `modes/makeposseq/*` decks that are
 /// `capi_v0145`-gated — the channel whose slot layout is right — and adding a
 /// corpus deck is another sub-step's business (the G1.2 precedent).
 fn posseq_fixture() -> Dss {
@@ -189,19 +189,17 @@ fn the_seq_arm_follows_nphases_and_the_circuit_model() {
     assert_eq!(src.seq_arm, SeqArm::ThreePhase);
 }
 
-// Expected-value pin — the positive-sequence slot: on the 1-phase
+// Expected-value pin, the positive-sequence slot: on the one-phase
 // positive-sequence arm the terminal's single conductor is reported as that
-// terminal's POSITIVE-sequence component, i.e. slot `3t+1` of a zero-based
-// `(0, +, −)` array, with `3t` and `3t+2` exactly zero. dss_capi 0.14.5 does
-// that (`CAPI_Alt.pas:555` `iCount := 1`, `:562` `inc(icount, 3)`), and so do
-// all four `Calc*` helpers on BOTH engines on their one-based buffers (r4133
-// `:50`/`:55`, `:97`/`:102`; capi `:255`/`:261`, `:312`/`:318`). r4133's
-// `SeqPowers` (mode 9) transplanted the one-based `2` into a zero-based dynamic
-// array and kept a stride of 1 (`DCktElement.pas:760` `Count := 2`, `:768`
-// `inc(count)`), so it writes slots `2, 3, 4, …` — one slot late and walking
-// through the following terminals' slots. The port emits the correct layout;
-// the defect is reported upstream and the layout is oracle-gated live on the
-// `capi_v0145` channel (the six `modes/makeposseq/*` decks), which has it right.
+// terminal's positive-sequence component, slot `3t+1` of a zero-based
+// `(0, +, −)` array, with `3t` and `3t+2` exactly zero. DSS C-API 0.14.5 reads
+// so, while r4133's `SeqPowers` writes the power of terminal `t` in slot
+// `t+2` (slots `2, 3, 4, …`): one slot late for the first terminal, one slot
+// early for the second (its own zero-sequence slot) and in an earlier
+// terminal's triple from the third on (the readings below, 2026-09-05). The
+// port emits the correct layout, the defect is reported upstream, and the
+// layout is gated live on the `capi_v0145` channel (the
+// `modes/makeposseq/*` decks), which has it right.
 /// `SeqPowers` puts each terminal's power in that terminal's positive-sequence
 /// slot — `Load.ld` `[0, 812.167…, 0]`, not r4133's `[0, 0, 812.167…]`.
 #[test]
@@ -304,7 +302,7 @@ fn seq_powers_positive_sequence_lands_in_the_positive_slot_of_each_terminal() {
 // D12/D14 — the pinned capi 0.14.5 oracle is nondeterministic on any deck that
 // instantiates a `GICTransformer`), and the deck's `solve → makeposseq → solve`
 // tail leaves all four of its elements 1-phase in a positive-sequence circuit.
-// So r4133 reports every one of their powers one slot late, which is the defect
+// So r4133 reports every one of their powers in slot `t+2`, which is the defect
 // the pin above states on a synthetic fixture — here it is stated on the gated
 // deck itself, against numbers read from the EPRI r4133 DLL on this very deck,
 // so that the ledger entry `r4133-posseq-seqpowers-slot-gic` (which excludes
