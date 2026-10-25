@@ -702,3 +702,31 @@ pub trait InvBasedPce {
         false
     }
 }
+
+/// The input a harmonics solve names when the Thevenin admittance
+/// `1/(Rthev + j Xthev)` of a PVSystem or Storage is not a finite number,
+/// from the values `?` reads for `[kV, kVA, %R, %X]` and the impedance
+/// `thev` in ohms: the first input that is not a finite number, else a `kV`
+/// whose square is zero, else `%R` and `%X` together when the impedance is
+/// finite and has no finite inverse, else the one whose product with the
+/// impedance base overflows, else the kVA rating it divides by (pinned by
+/// `exec::tests::rating_refusals::a_mode_specific_input_is_refused_only_in_its_mode`).
+pub(crate) fn harmonic_refused_input(inputs: [f64; 4], thev: Complex64) -> String {
+    use crate::elements::ckt::input_text;
+    let names = ["kV", "kVA", "%R", "%X"];
+    if let Some(i) = inputs.iter().position(|v| !v.is_finite()) {
+        return input_text(names[i], inputs[i]);
+    }
+    let [kv, kva, pct_r, pct_x] = inputs;
+    if kv.powi(2) == 0.0 {
+        return input_text("kV", kv);
+    }
+    if thev.re.is_finite() && thev.im.is_finite() {
+        return format!("{} {}", input_text("%R", pct_r), input_text("%X", pct_x));
+    }
+    let base = 0.01 * kv.powi(2) / kva * 1000.0;
+    [("%R", pct_r), ("%X", pct_x)]
+        .into_iter()
+        .find(|&(_, pu)| base.is_finite() && !(pu * base).is_finite())
+        .map_or_else(|| input_text("kVA", kva), |(name, pu)| input_text(name, pu))
+}

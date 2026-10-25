@@ -99,8 +99,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kVAC"),
-        PropDef::double("kVDC"),
+        PropDef::double("kVAC").flags(PropFlags::FINITE_BASE),
+        PropDef::double("kVDC").flags(PropFlags::FINITE_BASE),
         PropDef::double("kW"),
         PropDef::integer("NDC"),
         // Rac/Xac: Units_ohm (`VSConverter.pas:197,200`).

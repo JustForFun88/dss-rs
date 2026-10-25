@@ -7,9 +7,69 @@ use num_complex::Complex64;
 use crate::elements::traits::SysCtx;
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 
-use super::WindGen;
+use super::{WindGen, prop};
 
 const PI: f64 = std::f64::consts::PI;
+
+/// The powers the `kW`, `kvar` and `PF` side effects derive at their token,
+/// as the last recalc that built the WindGen left them.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(super) struct HeldPowers {
+    kvar: f64,
+    pf: f64,
+    kva: f64,
+    q_per_phase: f64,
+}
+
+impl HeldPowers {
+    /// The powers `g` holds now.
+    pub(super) fn of(g: &WindGen) -> Self {
+        Self {
+            kvar: g.kvar_base,
+            pf: g.pf_nominal,
+            kva: g.kva_rating,
+            q_per_phase: g.q_nominal_per_phase,
+        }
+    }
+
+    /// After a refused edit, give `g` back each power that a spoiled token of
+    /// the edit derived and no property of the edit set. A token is spoiled
+    /// when its input, or a power it derives, is not a finite number: a `PF`
+    /// or `kW` that is not a number, or a `PF` of `1e-310` whose `kvar`
+    /// overflows, leaves the `kvar` and the kVA rating as they were, a `kvar`
+    /// of `+Inf` the `PF`. The powers finite tokens derive as finite numbers
+    /// are kept, so the edit that makes the refused input valid builds the
+    /// WindGen its twin builds (pinned by
+    /// `exec::tests::rating_refusals::a_refusal_names_the_input_that_is_not_finite_or_overflows`,
+    /// `::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`
+    /// and `::a_refused_edit_keeps_the_powers_its_valid_tokens_derive`).
+    fn restore_untyped(self, g: &mut WindGen) {
+        use prop::*;
+        let typed = |i: usize| g.cd.obj.prop_edited_since_boundary(i);
+        let (kw, kvar, pf) = (typed(KW), typed(KVAR), typed(PF));
+        if !(kw || kvar || pf) {
+            return;
+        }
+        let kva = typed(KVA) || typed(MVA);
+        let bad = |x: f64| !x.is_finite();
+        // The `kW` and `PF` tokens derive the `kvar` and an untyped kVA
+        // rating, the `kvar` token the `PF`. A token is spoiled when its
+        // input or a power it derives is not finite.
+        let sync = (kw || pf)
+            && ((kw && bad(g.kw_base)) || (pf && bad(g.pf_nominal)) || (!kvar && bad(g.kvar_base)));
+        let kvar_token = kvar && (bad(g.kvar_base) || (!pf && bad(g.pf_nominal)));
+        if !kvar && (sync || bad(g.kvar_base)) {
+            g.kvar_base = self.kvar;
+        }
+        if !pf && (kvar_token || bad(g.pf_nominal)) {
+            g.pf_nominal = self.pf;
+        }
+        if !kva && (sync || bad(g.kva_rating)) {
+            g.kva_rating = self.kva;
+        }
+        g.q_nominal_per_phase = self.q_per_phase;
+    }
+}
 
 impl WindGen {
     /// Pascal `CalcDailyMult`: the shape value is the **wind speed** (m/s), not a
@@ -341,8 +401,155 @@ impl WindGen {
         }
     }
 
-    /// Pascal `TWindGenObj.RecalcElementData`.
+    /// Recompute the derived values, refused when an input makes
+    /// the power-flow admittance or the derived kVA rating not a finite number:
+    /// the edit logs the refusal, every derived value keeps what it held, the
+    /// powers its tokens derived included, and the stamp is refused until a
+    /// recalc finds them finite (pinned by
+    /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
     pub fn recalc(&mut self, sys: &SysCtx) {
+        let mut held = self.clone();
+        self.derive(sys);
+        let (yeq, p, q) = self.power_flow_admittance(sys);
+        let finite = |z: Complex64| z.re.is_finite() && z.im.is_finite();
+        let curve = self.curve_refused_input().is_some();
+        let quantity = if !finite(yeq) || !self.yq_fixed.is_finite() || curve {
+            Some("admittance")
+        } else if !(self.kva_rating.is_finite()
+            && self.kw_base.is_finite()
+            && self.kvar_base.is_finite())
+        {
+            Some("kVA rating")
+        } else {
+            None
+        };
+        let Some(quantity) = quantity else {
+            self.cd.recalc_refusal = None;
+            self.held_powers = HeldPowers::of(self);
+            // The user-written model is updated before the WTG3 recalc.
+            self.update_user_models(sys);
+            self.wind_model_dyn
+                .recalc_element_data(sys.dyna_h, sys.dyna_t);
+            return;
+        };
+        // An admittance whose numerators are finite overflows on its divisor.
+        let divisor =
+            quantity == "admittance" && [p, q, self.var_base].iter().all(|x| x.is_finite());
+        held.user_model = self.user_model.take();
+        *self = held;
+        let input = self.refused_input(divisor);
+        let powers = self.held_powers;
+        powers.restore_untyped(self);
+        self.cd.refuse_recalc("WindGen", &input, quantity);
+    }
+
+    /// The admittance and the per-phase power a power-flow solve computes from
+    /// the present inputs. Dynamics and harmonics keep the values the element
+    /// held, so there they are computed on a copy and an edit in either mode
+    /// is checked as in a power flow
+    /// (`exec::tests::rating_refusals::a_refusal_holds_after_a_dynamics_or_harmonics_solve`).
+    fn power_flow_admittance(&self, sys: &SysCtx) -> (Complex64, f64, f64) {
+        if !(sys.is_dynamic_model || sys.is_harmonic_model) {
+            return (self.yeq, self.p_nominal_per_phase, self.q_nominal_per_phase);
+        }
+        let mut flow = self.clone();
+        let power_flow = SysCtx {
+            is_dynamic_model: false,
+            is_harmonic_model: false,
+            ..sys.clone()
+        };
+        flow.set_nominal_generation(&power_flow, &[]);
+        (flow.yeq, flow.p_nominal_per_phase, flow.q_nominal_per_phase)
+    }
+
+    /// The first curve the WindGen holds that has a point that is not a finite
+    /// number, as the input text a refusal names: `PLoss`, read at the wind
+    /// speed of each step, and `VV_Curve`, read at the voltage of each solve
+    /// under the volt-var `QMode=2`. Any point can be read, and `Set StateVar`
+    /// changes the `QMode` with no recalc, so every point of every held curve
+    /// is an input whatever the mode (pinned by
+    /// `exec::tests::rating_refusals::a_curve_point_that_is_not_a_number_refuses_its_element`).
+    fn curve_refused_input(&self) -> Option<String> {
+        [
+            ("PLoss", &self.loss_curve, &self.loss_curve_obj),
+            ("VV_Curve", &self.vv_curve, &self.vv_curve_obj),
+        ]
+        .into_iter()
+        .find(|(_, _, c)| c.as_ref().is_some_and(|c| c.has_point_not_finite()))
+        .map(|(prop, name, _)| format!("{prop}={name}"))
+    }
+
+    /// The input a refused recalc names: the first, in property order, of the
+    /// inputs the power-flow output computes with that is not a finite number,
+    /// else a curve [`Self::curve_refused_input`] names, else a zero `kV`,
+    /// else the `kW` or the `kvar` whose per-phase power is
+    /// not finite, with a typed `PF` where the `kvar` it derives overflows on
+    /// `1/PF²`, else a zero `PF` where it divides, else `kV` for an admittance
+    /// that overflows on the voltage base, else the typed `kVA`, else `kW`. A
+    /// power a side effect derived is never named: the `PF` and the `kvar` are
+    /// inputs only when typed last of the two.
+    fn refused_input(&self, divisor: bool) -> String {
+        use super::prop::*;
+        use crate::obj::base::DssObject;
+        let v = |i: usize| self.get_f64(i);
+        let typed = |i: usize| self.cd.obj.prp_specified(i);
+        let pf = typed(PF).then_some(("PF", v(PF)));
+        let kvar = typed(KVAR).then_some(("kvar", v(KVAR)));
+        let mut inputs = vec![("kV", v(KV)), ("kW", v(KW))];
+        inputs.extend(pf);
+        inputs.extend(kvar);
+        inputs.extend([
+            ("kVA", v(KVA)),
+            ("VWind", v(VWIND)),
+            ("Cp", v(CP)),
+            ("pd", v(PD)),
+            ("Rad", v(RAD)),
+        ]);
+        // A power that overflows per phase comes before the zero power factor
+        // a `kvar` that large derives.
+        let per_phase = |x: f64| (1000.0 * x / self.cd.nphases as f64).is_finite();
+        let derived_kvar = || {
+            let pf_overflows =
+                self.pf_nominal != 0.0 && !(1.0 / self.pf_nominal.powi(2)).is_finite();
+            (kvar.is_none() && !per_phase(self.kvar_base)).then(|| {
+                if pf.is_some() && pf_overflows {
+                    ("PF", v(PF))
+                } else {
+                    ("kW", v(KW))
+                }
+            })
+        };
+        let overflow = std::iter::once(("kW", v(KW)))
+            .chain(kvar)
+            .find(|&(_, x)| !per_phase(x))
+            .or_else(derived_kvar);
+        // The power factor divides the kW into a kVA rating that is not typed,
+        // and the generated kW into its kvar under the power-factor mode.
+        let pf_divides = self.kva_not_set || self.wind_model_dyn.q_mode == 1;
+        let zeros: Vec<(&str, f64)> = match pf {
+            Some(pf) if pf_divides && overflow.is_none() => vec![("kV", v(KV)), pf],
+            _ => vec![("kV", v(KV))],
+        };
+        let fallback = if let Some(power) = overflow {
+            power
+        } else if divisor {
+            ("kV", v(KV))
+        } else if !self.kva_not_set {
+            ("kVA", v(KVA))
+        } else {
+            ("kW", v(KW))
+        };
+        if inputs.iter().all(|(_, x)| x.is_finite())
+            && let Some(text) = self.curve_refused_input()
+        {
+            return text;
+        }
+        crate::elements::ckt::refused_input_text(&inputs, &zeros, fallback)
+    }
+
+    /// The body of [`Self::recalc`], bar the user-model update and the WTG3
+    /// recalc.
+    fn derive(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases as f64;
         self.v_base95 = self.vminpu * self.v_base;
         self.v_base105 = self.vmaxpu * self.v_base;
@@ -382,13 +589,5 @@ impl WindGen {
         }
 
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
-
-        // `:1418` — `If Usermodel.Exists Then UserModel.FUpdateModel` (the
-        // `ShaftModel` twin at `:1419` is unreachable, module doc), *before* the
-        // WTG3 recalc at `:1422`.
-        self.update_user_models(sys);
-
-        self.wind_model_dyn
-            .recalc_element_data(sys.dyna_h, sys.dyna_t);
     }
 }

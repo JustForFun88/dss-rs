@@ -121,16 +121,21 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let pct = 0.01;
     let mut defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
-        PropDef::integer("Windings")
-            .flags(PropFlags::NON_ZERO | PropFlags::NON_NEGATIVE | PropFlags::SUPPRESS_JSON),
+        // An auto has a series and a common winding at least, as a Transformer
+        // has two windings.
+        PropDef::integer("Windings").flags(PropFlags::GREATER_THAN_ONE | PropFlags::SUPPRESS_JSON),
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
         PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.autotrans_connection),
         // `AutoTrans.pas:415` kV = Required + Units_kV + NonNegative.
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
-        PropDef::double("kVA"),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::REQUIRED
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
+        PropDef::double("kVA").flags(PropFlags::FINITE_BASE),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
         PropDef::double("RDCOhms"),
@@ -141,8 +146,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
             .flags(PropFlags::REQUIRED | PropFlags::DYNAMIC_DEFAULT),
         PropDef::enum_array_on_struct("Conns", enums.autotrans_connection, WINDINGS),
         PropDef::double_array_on_struct("kVs", WINDINGS)
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED),
-        PropDef::double_array_on_struct("kVAs", WINDINGS),
+            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::FINITE_BASE),
+        PropDef::double_array_on_struct("kVAs", WINDINGS).flags(PropFlags::FINITE_BASE),
         PropDef::double_array_on_struct("Taps", WINDINGS),
         PropDef::double("XHX")
             .scale(pct)
@@ -160,8 +165,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("HSRise").flags(PropFlags::UNITS_DEGC),
         PropDef::double("%LoadLoss"),
         PropDef::double("%NoLoadLoss"),
-        PropDef::double("NormHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
-        PropDef::double("EmergHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
+        PropDef::double("NormHkVA")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA | PropFlags::FINITE_RATING),
+        PropDef::double("EmergHkVA")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA | PropFlags::FINITE_RATING),
         PropDef::boolean("Sub"),
         PropDef::double("MaxTap"),
         PropDef::double("MinTap"),
@@ -221,8 +228,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // TPDClass tail. Unlike Transformer, AutoTrans does NOT flag NormAmps/
         // EmergAmps `SuppressJSON` (`AutoTrans.pas` has no such override), so both
         // are emitted in the schema/JSON exactly as the pinned oracle shows.
-        PropDef::rating("NormAmps"),
-        PropDef::rating("EmergAmps"),
+        // Both are derived from the kVA ratings and read only.
+        PropDef::rating("NormAmps").flags(PropFlags::READ_ONLY_RATING),
+        PropDef::rating("EmergAmps").flags(PropFlags::READ_ONLY_RATING),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -286,6 +294,12 @@ pub struct AutoTrans {
     /// Short-circuit / one-volt / terminal admittance matrices (Pascal `ZB`,
     /// `Y_1Volt`, `Y_1Volt_NL`, `Y_Term`, `Y_Term_NL`).
     zb: CMatrix,
+    /// Whether the last short-circuit impedance built could not be told from
+    /// a singular one, so the element has no admittance to stamp.
+    zb_singular: bool,
+    /// The first winding the last dc build found with no dc conductance, a
+    /// short at dc, `None` after a build at another frequency.
+    dc_short: Option<usize>,
     y_1volt: CMatrix,
     y_1volt_nl: CMatrix,
     y_term: CMatrix,
@@ -323,6 +337,10 @@ pub struct AutoTrans {
     xhx_changed: bool,
     norm_max_hkva: f64,
     emerg_max_hkva: f64,
+    /// Whether the normal and the emergency kVA rating last derived from
+    /// winding 1's kVA overflowed, until a typed rating replaces it: the
+    /// recalc refuses the element while one is set.
+    hkva_overflow: [bool; 2],
     thermal_time_const: f64,
     n_thermal: f64,
     m_thermal: f64,
@@ -408,6 +426,8 @@ impl AutoTrans {
             xsc: Vec::new(),
             term_ref: TermRef::default(),
             zb: CMatrix::new(0),
+            zb_singular: false,
+            dc_short: None,
             y_1volt: CMatrix::new(0),
             y_1volt_nl: CMatrix::new(0),
             y_term: CMatrix::new(0),
@@ -429,6 +449,7 @@ impl AutoTrans {
             xhx_changed: true,
             norm_max_hkva: 0.0,
             emerg_max_hkva: 0.0,
+            hkva_overflow: [false; 2],
             thermal_time_const: 2.0,
             n_thermal: 0.8,
             m_thermal: 0.8,

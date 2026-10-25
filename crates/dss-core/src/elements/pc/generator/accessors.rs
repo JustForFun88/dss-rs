@@ -118,10 +118,37 @@ impl CktElement for Generator {
 
     /// Pascal `TGeneratorObj.CalcYPrim`.
     fn calc_yprim(&mut self, sys: &SysCtx) {
+        if self.cd.refuse_yprim_on_recalc() {
+            return;
+        }
         let yorder = self.cd.yorder;
         let mut yp_shunt = CMatrix::new(yorder);
 
         self.set_nominal_generation(sys);
+        let harmonic = sys.is_harmonic_model;
+        let finite = |y: Complex64| y.re.is_finite() && y.im.is_finite();
+        // The dynamics and harmonics admittances are checked where their mode
+        // computes them (pinned by
+        // `exec::tests::rating_refusals::a_mode_specific_input_is_refused_only_in_its_mode`).
+        let refused = if (sys.is_dynamic_model || harmonic) && !finite(self.yeq) {
+            Some(if harmonic {
+                (prop::XDPP, "harmonic admittance")
+            } else {
+                (prop::XDP, "dynamic admittance")
+            })
+        } else if sys.is_dynamic_model
+            && self.dynamics_reads_xdpp()
+            && !finite(Complex64::new(0.0, self.xdpp).inv())
+        {
+            Some((prop::XDPP, "dynamic admittance"))
+        } else {
+            None
+        };
+        if let Some((reactance, quantity)) = refused {
+            let msg = self.mode_refusal(reactance, quantity);
+            self.cd.refuse_yprim(msg);
+            return;
+        }
         self.calc_yprim_matrix(&mut yp_shunt, sys);
 
         let mut yp_series = CMatrix::new(yorder);
@@ -531,6 +558,8 @@ impl Generator {
         self.rneut_text = other.rneut_text.clone();
         self.xneut_text = other.xneut_text.clone();
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+        // A refusal later in the same edit keeps the powers the copy took.
+        self.held_powers = super::nominal::HeldPowers::of(self);
     }
 }
 

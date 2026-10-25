@@ -97,7 +97,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // parse (Fuse-local; Recloser/Relay keep the not-found path until U2.2/U2.3).
         // Supersedes the WP-U1.1 item-4 capi015 no-op decision. Delta row D1/E3.
         PropDef::object_ref_class("TCC_Curve", "FuseCurve").flags(PropFlags::ALLOW_NONE_REF),
-        PropDef::double("RatedCurrent"),
+        PropDef::double("RatedCurrent").flags(PropFlags::FINITE_RATING),
         PropDef::double("Delay").flags(PropFlags::UNITS_S),
         // Deprecated StringEnumActionProperty (close/open → DoAction); the getter
         // always dumps empty. (Pascal's `Deprecated` flag is JSON-schema only —
@@ -114,7 +114,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // HIDE flag. `compare_all_properties` still excludes them from the 0.14.5
         // property-table walk via the name-based `PROPS_015X` allowlist.
         PropDef::double("CurveMultiplier"),
-        PropDef::double("InterruptingRating"),
+        PropDef::double("InterruptingRating").flags(PropFlags::FINITE_RATING),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

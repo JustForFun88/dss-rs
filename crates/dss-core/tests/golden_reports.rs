@@ -611,6 +611,16 @@ fn dump_script_policy() -> ExportPolicy {
 /// output (which renders the correct, non-garbage values — a genuinely
 /// different line, not comparable) before the byte-exact compare.
 fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
+    run_deck_dump_exact_masked_expected(stem, mask_prefixes, str::to_string);
+}
+
+/// [`run_deck_dump_exact_masked`] against the oracle text as `expected`
+/// rewrites it.
+fn run_deck_dump_exact_masked_expected(
+    stem: &str,
+    mask_prefixes: &[&str],
+    expected: impl Fn(&str) -> String,
+) {
     let dir = reports_dir();
     let meta: DeckMeta = {
         let p = dir.join(format!("{stem}.meta.json"));
@@ -620,7 +630,9 @@ fn run_deck_dump_exact_masked(stem: &str, mask_prefixes: &[&str]) {
     };
     let oracle = {
         let p = dir.join(format!("{stem}.txt"));
-        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+        expected(
+            &std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display())),
+        )
     };
 
     let scratch = scratch_dir(stem);
@@ -5946,16 +5958,22 @@ fn dump_fault_gmatrix_matches_oracle() {
     });
 }
 
-/// `Dump capacitor.cm1 debug` (a `CMatrix`-spec bank) — `TCapacitorObj.
-/// DumpProperties`: generic props then the bare `SpecType=<int>` line (no
-/// `~`/`//` prefix). The three ASLR-garbage lines (`~ CMatrix=(`/
-/// `~ FaultRate=`/`~ pctPerm=`) are masked on both sides — see
-/// `run_deck_dump_exact_masked` and `investigations/`.
+/// `Dump` of a `cmatrix` Capacitor matches the oracle bar the lines whose
+/// memory the oracle garbles, masked on both sides by
+/// `run_deck_dump_exact_masked`. A bank without kvar derives a zero rating,
+/// which is not set, so the engine prints `none` where the oracle prints zero.
 #[test]
 fn dump_capacitor_cmatrix_matches_oracle() {
-    run_deck_dump_exact_masked(
+    run_deck_dump_exact_masked_expected(
         "dump_capacitor_cmatrix",
         &["~ CMatrix=(", "~ FaultRate=", "~ pctPerm="],
+        |oracle| {
+            not_set_rating_dump_expected(
+                oracle,
+                &not_set_amps("\"Capacitor.cm1\""),
+                "dump_capacitor_cmatrix",
+            )
+        },
     );
 }
 
@@ -7089,29 +7107,10 @@ fn query_indmach012_pf_renders_the_live_power_factor() {
 // EXPECTED-VALUE-PIN(SEQ_CURRENTS_PRINTS_RAW_NONPOSITIVE_RATING): an undefined
 // rating renders as 0 % in both lanes, and a defined one still renders its
 // loading.
-/// `Export SeqCurrents` prints `0` in the `%Normal`/`%Emergency` columns of an
-/// element without a positive rating: a rating that is not set, or a zero or
-/// negative one, on every class but the Transformer and the AutoTrans (their
-/// derived ratings load against the magnitude, pinned by
-/// [`export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`]
-/// and [`export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`]).
-///
-/// Both gating oracles print the rating itself where it is not positive, so a
-/// column headed "percent" reports `normamps=-1` as a loading of −1 %.
-/// `Line.bad` carries `normamps=-1 emergamps=-2`: the `-1` is a rating that is
-/// not set and the `-2` a negative rating, and both columns print `0`. The
-/// positively rated control line proves the normal percentage path is
-/// untouched.
-///
-/// No gating channel compares `Export SeqCurrents` text. The nine `wires=`
-/// lines of `Test/IEEE13_LineSpacing.dss`, `Test/IEEE13_LineAndCableSpacing.dss`
-/// and `Test/CapControlFollow.dss` take a rating that is not set from a
-/// WireData that sets none, and print `0` here, where the pinned dss-python
-/// prints `-1` and `-1` and the r4133 DLL stops the three decks on error #303
-/// before they solve. `AutoTrans.at` of `modes/makeposseq/makeposseq_xfmr.dss`
-/// derives the negative `normamps` −152.848446716868 and `emergamps`
-/// −208.429700068457 and loads against their magnitude
-/// ([`export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`]).
+/// `Export SeqCurrents` prints zero in the percentage columns of a rating that
+/// is not set, typed zero, negative or never given, while a derived negative
+/// rating loads by its magnitude on every class. A positively rated control
+/// line keeps the normal percentage path.
 #[test]
 fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
     let scratch = scratch_dir("seqcurrents_rating");
@@ -7129,16 +7128,16 @@ fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
         "new line.good bus1=b bus2=c length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
          c1=0 c0=0 normamps=400 emergamps=600",
     );
-    // The boundary: an unset (zero) rating is the input on which the upstream
-    // reading and the fixed one coincide, and this line sits in series ahead of
-    // the load, so it carries current. That is what makes it the line which
-    // kills a guard relaxed to `>=` or dropped altogether — either one divides
-    // by the undefined rating and renders an infinity where `0` is asserted.
-    // `Line.bad` kills the complementary mutation, a sign-blind rewrite such as
-    // `rating.abs()`: its normal column is not set and has no number to take the
-    // magnitude of, but its `-2` emergency column would print `I1 / 2 · 100`,
-    // about 1219 % (and the mutation passes on this line, since `abs(0)` is
-    // still not `> 0`).
+    // The boundary: a typed zero rating is not set, and it is the input on
+    // which the oracles' reading (the rating itself) and this one coincide.
+    // This line sits in series ahead of the load, so it carries current. That
+    // is what makes it the line which kills a guard relaxed to `>=` or dropped
+    // altogether — either one divides by the undefined rating and renders an
+    // infinity where `0` is asserted. `Line.bad` kills the complementary
+    // mutation, a sign-blind rewrite such as `rating.abs()`: its normal column
+    // is not set and has no number to take the magnitude of, but its `-2`
+    // emergency column would print `I1 / 2 · 100`, about 1219 % (and the
+    // mutation passes on this line, since `abs(0)` is still not `> 0`).
     dss.command(
         "new line.zero bus1=c bus2=d length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
          c1=0 c0=0 normamps=0 emergamps=0",
@@ -7176,15 +7175,15 @@ fn export_seqcurrents_prints_zero_for_an_undefined_rating() {
     assert_eq!(
         (bad_n, bad_e),
         (0.0, 0.0),
-        "a non-positive Line rating means no rating, so its loading column prints 0 — \
-         printing the rating itself is the upstream quirk (ExportResults.pas:409-414)"
+        "a typed non-positive Line rating is not set, so its loading column prints 0 \
+         where both oracles print the rating itself"
     );
 
     let (zero_n, zero_e) = row("Line.zero");
     assert_eq!(
         (zero_n, zero_e),
         (0.0, 0.0),
-        "an unset rating prints 0 — the reading both the quirk and the fix share"
+        "a typed zero rating is not set and prints 0, the reading both oracles share"
     );
 
     // Control: a positively-rated element still prints a real percentage.
@@ -8156,29 +8155,13 @@ fn negative_winding_kv_is_refused_and_the_rating_stays_positive() {
     }
 }
 
-/// A Line rated −2/−3 keeps the oracles' reading at every loading site, where
-/// the Transformer and the AutoTrans take the magnitude. With both ratings
-/// negative, as in this deck, every site but `Export Capacity` reads them as no
-/// rating. `Export Capacity` guards only a zero rating and divides by the
-/// signed one. Beside a positive rating a negative one reads as exceeded at
-/// every overload test instead
-/// ([`a_negative_line_rating_beside_a_positive_one_reads_as_exceeded`]). A
-/// rating that is not set (`-1`, or a Line built from a WireData without one)
-/// reads `none` and prints 0 % there
-/// ([`export_capacity_prints_zero_for_a_rating_that_is_not_set`]).
-///
-/// `Line.bad` (1 km, `normamps=-2 emergamps=-3`) feeds a 500 kW load under
-/// `EnergyMeter.m` and carries `I1 = 24.3839` A. `Show Currents` prints `0.00`
-/// and `0.00` in its loading columns, `Export Capacity` divides by the signed
-/// rating (`-1219.20` = 24.3839 / −2 · 100, `-812.80` = 24.3839 / −3 · 100),
-/// `Export Overloads`, `Show Overloads` and `DI_Overloads` write no row for it,
-/// `Export Powers` prints the excess kVA as `0.0` four times, and after one
-/// daily 1 h step `Overload kWh Normal`, `Overload kWh Emerg`, `Load EEN` and
-/// `Load UE` stay 0. Both gating oracles print every one of these readings
-/// (2026-10-04, this deck then each report, on the pinned dss-python and on the
-/// r4133 DLL through `epri-worker`).
+/// A typed negative Line rating names no rating, so it reads `none` and no
+/// loading site measures against it: the loading columns, `Export Capacity` and
+/// `Export SeqCurrents` print zero, no overload report writes a row and the
+/// overload and energy-not-served registers stay zero. Beside a positive rating
+/// the negative one is not set either.
 #[test]
-fn nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site() {
+fn a_nonpositive_line_rating_is_not_set_at_every_loading_site() {
     let deck: Vec<String> = [
         "clear",
         "new circuit.rating basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000",
@@ -8195,6 +8178,16 @@ fn nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site() {
     .collect();
     let report = |tag: &str, cmd: &str, needle: &str| deck_report(tag, &deck, &[cmd], needle);
 
+    let mut dss = Dss::new();
+    for c in &deck {
+        dss.command(c);
+    }
+    for prop in ["normamps", "emergamps"] {
+        dss.command(&format!("? line.bad.{prop}"));
+        assert_eq!(dss.result(), "none", "a typed negative {prop} is not set");
+    }
+    drop(dss);
+
     let currents = report("line_showcur", "show currents", "Curr_Seq");
     let t = show_row(&currents, "\"line.bad\"")
         .unwrap_or_else(|| panic!("no Line.bad row in:\n{currents}"));
@@ -8208,8 +8201,8 @@ fn nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site() {
     let f = csv_row(&capacity, "Line.bad");
     assert_eq!(
         f[1..4],
-        ["24.3839", "-1219.20", "-812.80"],
-        "Export Capacity divides by the signed rating: {f:?}"
+        ["24.3839", "0.00", "0.00"],
+        "Export Capacity: a typed negative rating is not set: {f:?}"
     );
 
     let powers = report("line_powers", "export powers", "EXP_POWERS");
@@ -8218,6 +8211,14 @@ fn nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site() {
         f[1..8],
         ["1", "500.2", "164.9", "0.0", "0.0", "0.0", "0.0"],
         "Export Powers: a non-positive Line rating carries no excess kVA: {f:?}"
+    );
+
+    let seq = report("line_seqcur", "export seqcurrents", "EXP_SEQCURRENTS");
+    let f = csv_row(&seq, "Line.bad");
+    assert_eq!(
+        f[1..5],
+        ["1", "24.3839", "0", "0"],
+        "Export SeqCurrents: a typed negative rating is not set: {f:?}"
     );
 
     for text in [
@@ -8257,23 +8258,260 @@ fn nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site() {
     }
 }
 
-/// A negative Line rating beside a positive one reads as exceeded at every
-/// overload test, on every engine: the positive rating opens the report and
-/// any current exceeds the negative one. Whether a typed negative rating is a
-/// rating at all is the open question Q1 of the `DIVERGENCES.md` row on
-/// ratings that are not set, and this test records its narrow path.
-///
-/// `Line.mix` (1 km, `normamps=-2 emergamps=600`) feeds a balanced 500 kW load
-/// and a 100 kW load on phase 2 alone, so phase 2 carries the largest current,
-/// 6.5 % of its emergency rating, and the Line is written as an overload:
-/// `Export Overloads` `"Line.MIX", 1, 29.27, , 0.0, 6.5, 4.9, 16.7, 4.9, 16.7`,
-/// `Show Overloads` `1 29.3 0.0 0.0 6.5 …` and in `DI_Overloads` `-2, 600, 0`
-/// and as `% Emerg` the largest phase current over 600 A, 6.50660447496537 on
-/// dss_capi 0.14.5 and 6.50660447496594 on r4133 from an `I2` of
-/// 39.0396268497922 and 39.0396268497956 A (2026-10-10, this deck then each
-/// report, on the pinned dss-python and on the r4133 DLL through `epri-worker`).
+/// The series banks behind
+/// [`a_derived_negative_rating_loads_by_its_magnitude_at_every_loading_site`]:
+/// a 115 kV feeder `Line.feed` under `EnergyMeter.m`, `Capacitor.sc`
+/// (`kv=12.47 kvar=-300`) from `a` to `b`, a 3.8 MW load at `b`, `Reactor.sr`
+/// (`kv=12.47 kvar=-300`) from `b` to `c` and a 4.5 MW load at `c`. Each bank
+/// is about 518 ohm per phase, so only a circuit of this voltage drives a
+/// current past its ratings through it.
+fn derived_negative_series_deck() -> Vec<String> {
+    [
+        "clear",
+        "new circuit.sb basekv=115 phases=3 bus1=src mvasc3=20000 mvasc1=21000",
+        "new line.feed bus1=src bus2=a length=1 units=km r1=0.1 x1=0.3 r0=0.3 x0=0.9 \
+         c1=0 c0=0",
+        "new capacitor.sc bus1=a bus2=b kv=12.47 kvar=-300",
+        "new load.lb bus1=b phases=3 kv=115 kw=3800 pf=0.95 model=1",
+        "new reactor.sr bus1=b bus2=c kv=12.47 kvar=-300",
+        "new load.lc bus1=c phases=3 kv=115 kw=4500 pf=0.95 model=1",
+        "new energymeter.m element=line.feed terminal=1",
+        "set voltagebases=[115]",
+        "calcvoltagebases",
+        "solve",
+    ]
+    .iter()
+    .map(|c| c.to_string())
+    .collect()
+}
+
+/// The largest terminal-1 phase current (A) and the terminal-1 kW of `name`
+/// in `snap`.
+fn terminal_one_loading(snap: &[dss_core::exec::ElementSnapshot], name: &str) -> (f64, f64) {
+    let e = snap
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case(name))
+        .unwrap_or_else(|| panic!("no element {name}"));
+    let imax = e.currents[..3].iter().map(|c| c.norm()).fold(0.0, f64::max);
+    let kw = e.powers[..3].iter().map(|s| s.re).sum();
+    (imax, kw)
+}
+
+/// A derived negative Capacitor or Reactor rating loads by its magnitude at
+/// every site that measures a current against a rating, as a bank of negative
+/// kvar carries the current of its size whatever the sign. Every expected
+/// number is derived from the solved currents and powers and the rating
+/// magnitudes.
 #[test]
-fn a_negative_line_rating_beside_a_positive_one_reads_as_exceeded() {
+fn a_derived_negative_rating_loads_by_its_magnitude_at_every_loading_site() {
+    let deck = derived_negative_series_deck();
+    let banks = [
+        ("Capacitor.sc", ["-18.7511514853086", "-25.0015353137448"]),
+        ("Reactor.sr", ["-13.8897418409693", "-18.7511514853086"]),
+    ];
+    let mut dss = Dss::new();
+    for c in &deck {
+        dss.command(c);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let snap = dss.snapshot_elements();
+    let mut rated = Vec::new();
+    for (elem, stored) in banks {
+        let read: Vec<String> = ["normamps", "emergamps"]
+            .iter()
+            .map(|p| {
+                dss.command(&format!("? {elem}.{p}"));
+                dss.result().to_string()
+            })
+            .collect();
+        assert_eq!(
+            read, stored,
+            "{elem}: the derived ratings, as both oracles read them"
+        );
+        let [norm, emerg] = stored.map(|s| -s.parse::<f64>().expect("a number"));
+        let (imax, _) = terminal_one_loading(&snap, elem);
+        rated.push((elem, norm, emerg, imax));
+    }
+    drop(dss);
+    let pct = |i: f64, r: f64, digits: usize| format!("{:.*}", digits, i / r * 100.0);
+    let report = |tag: &str, cmd: &str, needle: &str| deck_report(tag, &deck, &[cmd], needle);
+
+    let capacity = report("dneg_capacity", "export capacity", "EXP_CAPACITY");
+    for (&(elem, norm, emerg, imax), oracle_imax) in rated.iter().zip(["43.1097", "24.0328"]) {
+        let f = csv_row(&capacity, elem);
+        assert_eq!(
+            (f[1].as_str(), [f[2].as_str(), f[3].as_str()]),
+            (
+                oracle_imax,
+                [pct(imax, norm, 2).as_str(), pct(imax, emerg, 2).as_str()]
+            ),
+            "Export Capacity: {elem} carries the oracles' current and loads by the \
+             magnitudes: {f:?}"
+        );
+    }
+
+    let seq = report("dneg_seqcur", "export seqcurrents", "EXP_SEQCURRENTS");
+    // Four significant digits, as the report prints them.
+    let sig4 = |x: f64| -> f64 {
+        let decimals = (3 - x.log10().floor() as i32).max(0) as usize;
+        format!("{x:.decimals$}").parse().expect("a number")
+    };
+    for &(elem, norm, emerg, imax) in &rated {
+        let f = csv_row(&seq, elem);
+        let printed: Vec<f64> = f[3..5]
+            .iter()
+            .map(|s| s.parse().expect("a number"))
+            .collect();
+        assert_eq!(
+            (f[1].as_str(), printed),
+            (
+                "1",
+                vec![sig4(imax / norm * 100.0), sig4(imax / emerg * 100.0)]
+            ),
+            "Export SeqCurrents: {elem} loads by the magnitudes: {f:?}"
+        );
+    }
+
+    let currents = report("dneg_showcur", "show currents", "Curr_Seq");
+    // Show Currents leaves every Capacitor out of its loading columns.
+    for (i, &(elem, norm, emerg, imax)) in rated.iter().enumerate() {
+        let t = show_row(&currents, &format!("\"{elem}\""))
+            .unwrap_or_else(|| panic!("no {elem} row in:\n{currents}"));
+        let want = if i == 0 {
+            ["0.00".to_string(), "0.00".to_string()]
+        } else {
+            [pct(imax, norm, 2), pct(imax, emerg, 2)]
+        };
+        assert_eq!(
+            t[t.len() - 2..],
+            want,
+            "Show Currents: {elem} loads by the magnitudes: {t:?}"
+        );
+    }
+
+    let (_, rnorm, remerg, rimax) = rated[1];
+    let exported = report("dneg_expovl", "export overloads", "EXP_OVERLOADS");
+    assert!(
+        !exported.to_ascii_lowercase().contains("capacitor"),
+        "Export Overloads leaves out every Capacitor:\n{exported}"
+    );
+    let f = csv_row(&exported, "Reactor.sr");
+    assert_eq!(
+        (f[1].as_str(), [f[5].as_str(), f[6].as_str()]),
+        (
+            "1",
+            [
+                pct(rimax, rnorm, 1).as_str(),
+                pct(rimax, remerg, 1).as_str()
+            ]
+        ),
+        "Export Overloads: the Reactor's overload against the magnitudes: {f:?}"
+    );
+    let shown = report("dneg_showovl", "show overloads", "Overload");
+    assert!(
+        !shown.to_ascii_lowercase().contains("capacitor"),
+        "Show Overloads leaves out every Capacitor:\n{shown}"
+    );
+    let t = show_row(&shown, "\"reactor.sr\"").unwrap_or_else(|| panic!("no row:\n{shown}"));
+    assert_eq!(
+        t[4..6],
+        [pct(rimax, rnorm, 1), pct(rimax, remerg, 1)],
+        "Show Overloads: the Reactor's overload against the magnitudes: {t:?}"
+    );
+
+    let di = di_overloads("dneg_di", &deck);
+    for (&(elem, norm, emerg, _), (_, stored)) in rated.iter().zip(banks) {
+        let quoted = format!("\"{}\"", elem.to_ascii_lowercase());
+        let row: Vec<String> = di
+            .lines()
+            .skip(1)
+            .find(|l| l.to_ascii_lowercase().contains(&quoted))
+            .unwrap_or_else(|| panic!("no {elem} row in DI_Overloads:\n{di}"))
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+        // Hour, Element, Normal Amps, Emerg Amps, % Normal, % Emerg, kVBase, I1, I2, I3
+        assert_eq!(
+            row[2..4],
+            stored,
+            "DI_Overloads prints {elem}'s ratings as stored: {row:?}"
+        );
+        let field = |i: usize| -> f64 {
+            row[i]
+                .parse()
+                .unwrap_or_else(|_| panic!("DI_Overloads field {i} of {row:?}"))
+        };
+        let cmax = field(7).max(field(8)).max(field(9));
+        for (i, r) in [(4, norm), (5, emerg)] {
+            let want = cmax / r * 100.0;
+            // Each value is printed to 15 significant digits.
+            assert!(
+                ((field(i) - want) / want).abs() < 1e-12,
+                "DI_Overloads {elem} field {i} = {}: {cmax} A over {r} A is {want}: {row:?}",
+                field(i)
+            );
+        }
+    }
+
+    let mut dss = Dss::new();
+    for c in &deck {
+        dss.command(c);
+    }
+    dss.command("set mode=daily stepsize=1h number=1");
+    dss.command("solve");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let snap = dss.snapshot_elements();
+    let registers = dss.meter_registers("m").expect("EnergyMeter.m");
+    let reg = |name: &str| {
+        registers
+            .iter()
+            .find(|(n, _)| n == name)
+            .unwrap_or_else(|| panic!("no register {name}"))
+            .1
+    };
+    // Per bank and rating: the excess kW over the rating magnitude and the
+    // overload factor.
+    let excess = |elem: &str, r: f64| -> (f64, f64) {
+        let (imax, kw) = terminal_one_loading(&snap, elem);
+        let factor = imax / r - 1.0;
+        if factor > 0.0 {
+            (kw.abs() * (1.0 - r / imax), factor)
+        } else {
+            (0.0, 0.0)
+        }
+    };
+    let (cap_n, cap_e) = (
+        excess("Capacitor.sc", rated[0].1),
+        excess("Capacitor.sc", rated[0].2),
+    );
+    let (rea_n, rea_e) = (excess("Reactor.sr", rnorm), excess("Reactor.sr", remerg));
+    let (_, kw_b) = terminal_one_loading(&snap, "Load.lb");
+    let (_, kw_c) = terminal_one_loading(&snap, "Load.lc");
+    // The register forms the excess as `kVA · (1 - 1 / (factor + 1))`, this
+    // derivation as `|kW| · (1 - r / I)`: they differ in rounding only.
+    let want = [
+        ("Overload kWh Normal", cap_n.0.max(rea_n.0)),
+        ("Overload kWh Emerg", cap_e.0.max(rea_e.0)),
+        // The load at `c` takes the larger of its own branch's factor and the
+        // one above it.
+        ("Load EEN", kw_b * cap_n.1 + kw_c * cap_n.1.max(rea_n.1)),
+        ("Load UE", kw_b * cap_e.1 + kw_c * cap_e.1.max(rea_e.1)),
+    ];
+    for (name, w) in want {
+        let got = reg(name);
+        assert!(
+            w > 0.0 && ((got - w) / w).abs() < 1e-12,
+            "{name} = {got}: the overload against the magnitudes is {w}"
+        );
+    }
+}
+
+/// A typed negative Line rating beside a positive one is not set, so the
+/// positive rating alone opens an overload report and is the only one a current
+/// can exceed. Loaded past its emergency rating, the Line is written by every
+/// overload report from the emergency rating alone.
+#[test]
+fn a_negative_line_rating_beside_a_positive_one_is_not_set() {
     let deck: Vec<String> = [
         "clear",
         "new circuit.rating basekv=12.47 phases=3 bus1=src mvasc3=20000 mvasc1=21000",
@@ -8289,60 +8527,80 @@ fn a_negative_line_rating_beside_a_positive_one_reads_as_exceeded() {
     .iter()
     .map(|c| c.to_string())
     .collect();
-    let q1 = "open question Q1: a typed negative rating beside a positive one";
+    let light = [
+        deck_report("mix_expovl", &deck, &["export overloads"], "EXP_OVERLOADS"),
+        deck_report("mix_showovl", &deck, &["show overloads"], "Overload"),
+        di_overloads("mix_di", &deck),
+    ];
+    for text in &light {
+        assert!(
+            !text.to_ascii_lowercase().contains("line.mix"),
+            "39 A under a 600 A emergency rating is no overload, the typed -2 is not set:\n{text}"
+        );
+    }
 
-    let exported = deck_report("mix_expovl", &deck, &["export overloads"], "EXP_OVERLOADS");
-    assert_eq!(
-        csv_row(&exported, "Line.MIX")[1..],
-        ["1", "29.27", "", "0.0", "6.5", "4.9", "16.7", "4.9", "16.7"],
-        "{q1}: Export Overloads"
-    );
-    let shown = deck_report("mix_showovl", &deck, &["show overloads"], "Overload");
-    let t = show_row(&shown, "\"line.mix\"").unwrap_or_else(|| panic!("{q1}: no row:\n{shown}"));
-    assert_eq!(
-        t[1..6],
-        ["1", "29.3", "0.0", "0.0", "6.5"],
-        "{q1}: Show Overloads: {t:?}"
-    );
-    let di = di_overloads("mix_di", &deck);
+    let heavy: Vec<String> = deck
+        .iter()
+        .map(|c| {
+            c.replace("kw=500 pf=0.95", "kw=12000 pf=0.95").replace(
+                "bus1=c.2 phases=1 kv=7.2 kw=100",
+                "bus1=c.3 phases=1 kv=7.2 kw=1000",
+            )
+        })
+        .collect();
+    assert_ne!(heavy, deck, "the heavy twin loads phase 3 past 600 A");
+    let di = di_overloads("mix_di_heavy", &heavy);
     let row: Vec<String> = di
         .lines()
         .skip(1)
         .find(|l| l.to_ascii_lowercase().contains("\"line.mix\""))
-        .unwrap_or_else(|| panic!("{q1}: no DI_Overloads row:\n{di}"))
+        .unwrap_or_else(|| panic!("no DI_Overloads row:\n{di}"))
         .split(',')
         .map(|s| s.trim().to_string())
         .collect();
-    assert_eq!(row[2..5], ["-2", "600", "0"], "{q1}: DI_Overloads: {row:?}");
+    assert_eq!(row[2..5], ["none", "600", "0"], "DI_Overloads: {row:?}");
     let field = |i: usize| -> f64 {
         row[i]
             .parse()
-            .unwrap_or_else(|_| panic!("{q1}: DI_Overloads field {i} of {row:?}"))
+            .unwrap_or_else(|_| panic!("DI_Overloads field {i} of {row:?}"))
     };
     let pct_emerg = field(5);
     // Hour, Element, Normal Amps, Emerg Amps, % Normal, % Emerg, kVBase, I1, I2, I3
     let (i1, i2, i3) = (field(7), field(8), field(9));
     assert!(
-        i2 > 1.5 * i1 && i2 > 1.5 * i3,
-        "{q1}: the phase-2 load makes I2 the largest phase current: {row:?}"
+        i3 > i1 && i3 > i2 && i3 > 600.0 && i1.max(i2) < 600.0,
+        "the phase-3 load makes I3 the only phase current past 600 A: {row:?}"
     );
-    let cmax = i1.max(i2).max(i3);
-    let want = cmax / 600.0 * 100.0;
+    let want = i3 / 600.0 * 100.0;
     // Both values are printed to 15 significant digits.
     assert!(
         ((pct_emerg - want) / want).abs() < 1e-12,
-        "{q1}: DI_Overloads % Emerg = {pct_emerg}: the largest phase current {cmax} A over \
-         600 A, {want}: {row:?}"
+        "DI_Overloads % Emerg = {pct_emerg}: I3 {i3} A over 600 A, {want}: {row:?}"
     );
-    assert!(
-        (pct_emerg - 6.50660447496537).abs() < 1e-9,
-        "{q1}: DI_Overloads % Emerg = {pct_emerg}: capi 0.14.5 prints 6.50660447496537, r4133 \
-         6.50660447496594"
+    let one_decimal = format!("{want:.1}");
+    let exported = deck_report(
+        "mix_expovl_heavy",
+        &heavy,
+        &["export overloads"],
+        "EXP_OVERLOADS",
+    );
+    let f = csv_row(&exported, "Line.MIX");
+    assert_eq!(
+        f[3..6],
+        ["", "0.0", one_decimal.as_str()],
+        "Export Overloads: no normal rating, % Emerg from I3: {f:?}"
+    );
+    let shown = deck_report("mix_showovl_heavy", &heavy, &["show overloads"], "Overload");
+    let t = show_row(&shown, "\"line.mix\"").unwrap_or_else(|| panic!("no row:\n{shown}"));
+    assert_eq!(
+        t[3..6],
+        ["0.0", "0.0", one_decimal.as_str()],
+        "Show Overloads: no normal rating, % Emerg from I3: {t:?}"
     );
 }
 
 /// Six lines whose ratings exercise every reading of a rating that is not set:
-/// `l1` on a spacing whose middle phase wire `w1` has no rating, `l2` typed
+/// `l1` on a spacing of unrated phase wires `w1`, `l2` typed
 /// `-1`/`-1`, `l3` typed `0`/`600`, `l4` on a geometry of unrated wires, `l5`
 /// typed `-1`/`600` and `l6` on rated wires, each feeding 9 MW, and a 1000 ohm
 /// fault on `b6`.
@@ -8355,7 +8613,7 @@ fn unrated_lines_deck() -> Vec<String> {
         format!("new wiredata.w2 {wire} normamps=530"),
         format!("new wiredata.w3 {wire} normamps=-1"),
         "new linespacing.sp nconds=3 nphases=3 units=ft x=[-4 0 4] h=[28 28 28]".to_string(),
-        "new line.l1 bus1=src bus2=b1 spacing=sp wires=[w2 w1 w2] length=1 units=mi".to_string(),
+        "new line.l1 bus1=src bus2=b1 spacing=sp wires=[w1 w1 w1] length=1 units=mi".to_string(),
         "new line.l2 bus1=src bus2=b2 normamps=-1 emergamps=-1 length=1 units=mi".to_string(),
         "new line.l3 bus1=src bus2=b3 normamps=0 emergamps=600 length=1 units=mi".to_string(),
         "new linegeometry.g nconds=3 nphases=3 cond=1 wire=w1 x=-4 h=28 units=ft cond=2 wire=w1 \
@@ -8373,24 +8631,9 @@ fn unrated_lines_deck() -> Vec<String> {
     deck
 }
 
-/// `Export Capacity` prints 0 % in the column of a rating that is not set, so
-/// an unrated Line reads 0 % (user decision 2026-10-04), and a set emergency
+/// `Export Capacity` prints zero percent in the column of a rating that is not
+/// set, so an unrated Line reads zero (user decision), and a set emergency
 /// rating beside an unset normal one still prints its loading.
-///
-/// On [`unrated_lines_deck`]: `l1` (normal and emergency not set, from `w1`)
-/// and `l2` (typed `-1`) print `0.00, 0.00`, where both gating oracles divide by
-/// the `-1` sentinel (`l2`: `-48783.79, -48783.79`; `l1` on r4133:
-/// `-49366.35, -49366.35`). `l5` prints `0.00, 81.31`, the emergency loading
-/// 487.838 / 600 · 100 both oracles print beside their `-48783.79`. `l3`
-/// (typed `0`) and `l4` (a geometry of unrated wires, `0` on both oracles) print
-/// `0.00, 0.00` as both oracles do, and `l6` the rated `93.37, 62.25` both
-/// print (2026-10-04, this deck, on the pinned dss-python and on the r4133 DLL
-/// through `epri-worker`).
-///
-/// The `l3` leg records the narrow path of open question Q1 of the
-/// `DIVERGENCES.md` row on ratings that are not set, not a rule: its typed `0`
-/// stays the number 0, and a zero beside a set rating prints `0.00` in both
-/// columns, which hides the 81.31 % its only positive rating carries.
 #[test]
 fn export_capacity_prints_zero_for_a_rating_that_is_not_set() {
     let capacity = deck_report(
@@ -8399,12 +8642,15 @@ fn export_capacity_prints_zero_for_a_rating_that_is_not_set() {
         &["export capacity"],
         "EXP_CAPACITY",
     );
-    let q1 = "open question Q1: a typed 0 stays the number 0 and zeroes both columns beside a set \
-              rating";
     for (line, imax, pct, reading) in [
         ("Line.L1", "493.663", ["0.00", "0.00"], "not set"),
         ("Line.L2", "487.838", ["0.00", "0.00"], "not set"),
-        ("Line.L3", "487.838", ["0.00", "0.00"], q1),
+        (
+            "Line.L3",
+            "487.838",
+            ["0.00", "81.31"],
+            "typed 0, normal not set",
+        ),
         ("Line.L4", "493.663", ["0.00", "0.00"], "not set"),
         ("Line.L5", "487.838", ["0.00", "81.31"], "normal not set"),
         ("Line.L6", "494.863", ["93.37", "62.25"], "rated"),
@@ -8420,41 +8666,9 @@ fn export_capacity_prints_zero_for_a_rating_that_is_not_set() {
 
 /// A rating that is not set takes no part in an overload report: it neither
 /// opens the report nor counts as exceeded, and its columns print the report's
-/// "no rating" layout.
-///
-/// On [`unrated_lines_deck`] (487.8 A on `l5`, rated `-1`/`600`) no report
-/// writes a row for `l5` or `l2`, where both gating oracles write `l5`'s row
-/// because 487.8 A exceeds their `-1`. `l3` (typed `0` beside `600`) keeps the
-/// row both oracles write, `"Line.L3", 1, 487.80, , 0.0, 81.3, …`. That leg
-/// records the narrow path of open question Q1 of the `DIVERGENCES.md` row on
-/// ratings that are not set, not a rule: the typed `0` stays the number 0,
-/// which any current exceeds, so a line at 81 % of its only positive rating
-/// reads as an overload. `Export Powers` gives `l1` and `l2`, rated neither
-/// way, no excess kVA (`0.0` four times, as on both oracles). Rated `none` and
-/// `0` (the zero twin), `l5` opens no report, since neither rating is positive,
-/// and no report writes its row. Both oracles write no row for their `-1`/`0`
-/// twin and keep the `l3` row in all three reports (2026-10-05, on the pinned
-/// dss-python and on the r4133 DLL through `epri-worker`).
-///
-/// Loaded past its emergency rating (13 MW, 694.78 A) `l5` writes the row both
-/// oracles write: `"Line.L5", 1, 694.78, , 0.0, 115.8, 0.0, 0.0, 0.0, 0.0` in
-/// `Export Overloads`, `1 694.8 0.0 0.0 115.8 …` in `Show Overloads`, and in
-/// `DI_Overloads` `none` for the normal rating where both oracles print `-1`,
-/// then `600`, `0` % normal and as % emergency the row's largest phase current
-/// over 600 A, measured 2026-10-04 on the pinned dss-python and on the r4133
-/// DLL through `epri-worker`. The `DI_Overloads` row read again 2026-10-05:
-/// `I3` is the largest phase current on both, 694.777780918029 A, and
-/// `% Emerg` prints 115.796296819672 (115.796296819671 on r4133). `Export
-/// Powers` prints no excess over the normal rating and the share of the flow
-/// above 600 A as the emergency excess,
-/// `"Line.L5", 1, 13083.6, 7190.9, 0.0, 0.0, 1784.8, 980.9` (13083.6 · (1 −
-/// 600 / 694.78)). After one daily 1 h step `Overload kWh Normal` and `Load
-/// EEN` stay 0, `Overload kWh Emerg` holds the hour at that excess and `Load
-/// UE` is positive (1785 and 2054 in `Export Meters`). Rated the other way
-/// round (`600`/`none`), `l5` swaps the two: `1784.8, 980.9, 0.0, 0.0`, and
-/// 1785 and 2054 in `Overload kWh Normal` and `Load EEN`. Both oracles print
-/// the same rows and registers, the twin typed `-1` for `none` (2026-10-05,
-/// measured the same way).
+/// no-rating layout. Loaded past the rating that is set, the Line writes its
+/// row from that rating alone in `Export Overloads`, `Show Overloads`,
+/// `DI_Overloads`, `Export Powers` and the meter registers.
 #[test]
 fn export_overloads_ignores_a_rating_that_is_not_set() {
     let deck = unrated_lines_deck();
@@ -8466,18 +8680,15 @@ fn export_overloads_ignores_a_rating_that_is_not_set() {
     );
     let shown = deck_report("unrated_showovl", &deck, &["show overloads"], "Overload");
     let di = di_overloads("unrated_di", &deck);
-    let q1 = "open question Q1: the typed 0 of l3 stays the number 0, which any current exceeds";
     for text in [&exported, &shown, &di] {
         let lower = text.to_ascii_lowercase();
         assert!(!lower.contains("line.l5"), "l5 is no overload:\n{text}");
         assert!(!lower.contains("line.l2"), "l2 is no overload:\n{text}");
-        assert!(lower.contains("line.l3"), "{q1}: l3 keeps its row:\n{text}");
+        assert!(
+            !lower.contains("line.l3"),
+            "l3 (typed 0 beside 600) is no overload:\n{text}"
+        );
     }
-    assert_eq!(
-        csv_row(&exported, "Line.L3")[2..6],
-        ["487.80", "", "0.0", "81.3"],
-        "{q1}: Export Overloads keeps the typed-zero row"
-    );
     let powers = deck_report("unrated_powers", &deck, &["export powers"], "EXP_POWERS");
     for line in ["Line.L1", "Line.L2"] {
         let f = csv_row(&powers, line);
@@ -8529,8 +8740,8 @@ fn export_overloads_ignores_a_rating_that_is_not_set() {
     );
     for (report, text) in &reports {
         assert!(
-            text.to_ascii_lowercase().contains("line.l3"),
-            "{report}: {q1}: l3 keeps its row:\n{text}"
+            !text.to_ascii_lowercase().contains("line.l3"),
+            "{report}: l3 (typed 0 beside 600) is no overload:\n{text}"
         );
     }
 
@@ -8684,15 +8895,8 @@ fn export_overloads_ignores_a_rating_that_is_not_set() {
     }
 }
 
-/// `Show Currents` prints `0.00` in the loading column of a rating that is not
-/// set, as for a zero rating.
-///
-/// On [`unrated_lines_deck`]: `l1`, `l2` and `l4` print `0.00 0.00`, `l3` and
-/// `l5` `0.00 81.31` (487.8 / 600 · 100), and `l6` the rated `93.37 62.25`.
-/// Both gating oracles print the same columns for `l2` to `l6`, and r4133 for
-/// `l1` too, where capi 0.14.5 takes the first wire's `530`/`795` and prints
-/// `93.14 62.10` (2026-10-04, this deck, on the pinned dss-python and on the
-/// r4133 DLL through `epri-worker`).
+/// `Show Currents` prints zero in the loading column of a rating that is not
+/// set, as for a zero rating, beside the loading of a set rating.
 #[test]
 fn show_currents_prints_zero_for_a_rating_that_is_not_set() {
     let text = deck_report(
@@ -8714,8 +8918,8 @@ fn show_currents_prints_zero_for_a_rating_that_is_not_set() {
     }
 }
 
-/// `Show Ratings` prints `none` for a rating that is not set, where both gating
-/// oracles print the stored `-1` (`"Line.l2", normamps=-1,  -1  !Amps`).
+/// `Show Ratings` prints `none` for a rating that is not set, typed `none` or
+/// zero.
 #[test]
 fn show_ratings_prints_none() {
     let text = deck_report(
@@ -8727,7 +8931,7 @@ fn show_ratings_prints_none() {
     for want in [
         "\"Line.l1\", normamps=none,  none  !Amps",
         "\"Line.l2\", normamps=none,  none  !Amps",
-        "\"Line.l3\", normamps=0,  600  !Amps",
+        "\"Line.l3\", normamps=none,  600  !Amps",
         "\"Line.l4\", normamps=none,  none  !Amps",
         "\"Line.l5\", normamps=none,  600  !Amps",
         "\"Line.l6\", normamps=530,  795  !Amps",

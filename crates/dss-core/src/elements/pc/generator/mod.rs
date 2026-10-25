@@ -156,8 +156,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         // Pascal `[Required, Units_kV, NonNegative]` (`Generator.pas:625`).
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::REQUIRED
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
         // Pascal `[RequiredInSpecSet, Units_kW]` (`Generator.pas:630`). Units_kW is
         // a vendored-newer-than-0.14.5 addition (see schema_divergences.json).
         PropDef::double("kW")
@@ -213,14 +217,15 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("PVFactor"),
         PropDef::boolean("ForceOn"),
         // Pascal `[DynamicDefault]` (`Generator.pas:615`) — derived from kW/PF.
-        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO | PropFlags::DYNAMIC_DEFAULT),
+        PropDef::double("kVA")
+            .flags(PropFlags::REPLACE_ZERO | PropFlags::DYNAMIC_DEFAULT | PropFlags::FINITE_BASE),
         // `MVA` (prop 27) uses plain `DblValue * 1000` in r4133 (`generator.pas:664`)
         // — NOT `DblValueNZ`: no zero-clamp, unlike `kVA` (prop 26). Reproduce the
         // upstream asymmetry (only WindGen's MVA clamps, via `DblValueNZ * 1000`, at
         // WP-U1.8). See `docs/upgrade/DIVERGENCES.md` L2.
         PropDef::double("MVA")
             .scale(1000.0)
-            .flags(PropFlags::REDUNDANT),
+            .flags(PropFlags::REDUNDANT | PropFlags::FINITE_BASE),
         PropDef::double("Xd"),
         PropDef::double("Xdp"),
         PropDef::double("Xdpp"),
@@ -319,6 +324,8 @@ pub struct Generator {
     pub v_target: f64,
     pub p_nominal_per_phase: f64,
     pub q_nominal_per_phase: f64,
+    /// The powers the last accepted recalc left, given back by a refused one.
+    held_powers: nominal::HeldPowers,
 
     // Derived (RecalcElementData / SetNominalGeneration).
     pub v_base: f64,
@@ -512,6 +519,7 @@ impl Generator {
             v_target: 1000.0 * vpu * kv_generator_base / sqrt3(),
             p_nominal_per_phase: 0.0,
             q_nominal_per_phase: 0.0,
+            held_powers: nominal::HeldPowers::default(),
             v_base,
             v_base95: vminpu * v_base,
             v_base105: vmaxpu * v_base,
@@ -587,6 +595,7 @@ impl Generator {
         g.cd.obj.set_as_next_seq(prop::KW);
         g.cd.obj.set_as_next_seq(prop::PF);
         g.cd.inj_current = vec![Complex64::ZERO; g.cd.yorder];
+        g.held_powers = nominal::HeldPowers::of(&g);
         // Pascal `TGeneratorObj.Create` ends with `RecalcElementData`, which reads
         // the live `ActiveCircuit.Solution`. `new` has no circuit; the executive
         // runs that live recalc right after construction (`create_object_no_edit`)

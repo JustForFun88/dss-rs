@@ -32,7 +32,14 @@ fn update_all_storage(ckt: &mut Circuit, env: &mut SolveEnv) {
         if let Some(st) = env.store.typed_mut::<Storage>(r)
             && st.cd.enabled
         {
+            let refused = st.cd.recalc_refusal.is_some();
             st.update_storage(&sys, node_v, interval_hrs);
+            // A DC power the efficiency curve cannot give refuses the element
+            // from the next Y build on, logged here once, and this step's
+            // solution stands.
+            if !refused && let Some(msg) = &st.cd.recalc_refusal {
+                env.errors.push(msg.clone());
+            }
             // Pascal `UpdateStorage` ends with `if StateChanged then
             // YprimInvalid := TRUE` (Storage.pas:2559) and `Set_YprimInvalid`
             // ALSO raises `Solution.SystemYChanged` (CktElement.pas:245), so

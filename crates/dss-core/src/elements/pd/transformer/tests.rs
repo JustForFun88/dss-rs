@@ -551,3 +551,37 @@ fn core_type_pins_noncontiguous_enum_ordinals() {
     assert_eq!(CoreType::from_ordinal(6), None);
     assert_eq!(CoreType::from_ordinal(9), Some(CoreType::CoreOnePhase));
 }
+
+/// A short-circuit impedance the Y build finds singular at its frequency
+/// refuses the build with the message that names the short-circuit
+/// reactances, also where no recalc saw it.
+#[test]
+fn a_short_circuit_impedance_singular_at_the_y_build_refuses_it() {
+    let mut t = edited(&[
+        ("windings", "3"),
+        ("kvs", "12.47, 0.48, 0.48"),
+        ("kvas", "500, 500, 500"),
+        ("xhl", "6"),
+        ("xht", "6"),
+        ("xlt", "20"),
+        ("%rs", "0, 0, 0"),
+    ]);
+    assert!(t.cd.recalc_refusal.is_none(), "{:?}", t.cd.recalc_refusal);
+    t.xlt = 0.24;
+    t.xsc[2] = 0.24;
+    t.y_terminal_freqmult = 0.0;
+    t.calc_yprim(&test_sys());
+    assert!(t.cd.yprim_refused);
+    let messages: Vec<String> =
+        t.cd.obj
+            .take_errors()
+            .into_iter()
+            .map(|d| d.message)
+            .collect();
+    assert_eq!(
+        messages,
+        [
+            "Transformer.t: XHL=6 XHT=6 XLT=24 makes its admittance not a finite number, so it is not built."
+        ]
+    );
+}

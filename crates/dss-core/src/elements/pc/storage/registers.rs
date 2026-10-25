@@ -5,8 +5,8 @@
 
 use num_complex::Complex64;
 
+use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::{CktElement, SysCtx};
-use crate::util::quad_solver;
 
 use super::{
     NUM_STORAGE_REGISTERS, REG_HOURS, REG_KVARH, REG_KWH, REG_MAXKVA, REG_MAXKW, REG_PRICE,
@@ -56,59 +56,49 @@ impl Storage {
         self.kv_storage_base
     }
 
-    /// Pascal `ComputeDCkW`: the actual DC-side kW used to update the SOC. With
-    /// an ideal inverter (no efficiency curve) it is the signed AC terminal kW;
-    /// with a curve it solves the efficiency relation for the DC power.
-    fn compute_dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+    /// The DC-side kW that updates the state of charge: the signed AC terminal
+    /// kW of an ideal inverter (no efficiency curve), else the DC power
+    /// [`dc_power_on_curve`] solves from the AC power, false with the DC power
+    /// kept where no segment of the curve holds the solution. Only the time
+    /// step refuses the element for it ([`Self::update_storage`]), so a reader
+    /// of the DC power changes nothing else (pinned by
+    /// `exec::tests::rating_refusals::the_dc_power_of_an_efficiency_curve_is_solved_on_the_segment_that_holds_it`).
+    fn compute_dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> bool {
         let p1 = self.terminal_power(sys, node_v, 1).re * 0.001; // Power[1] in kW
-
-        if self.base.inverter_curve_obj.is_none() {
-            self.f_dckw = p1; // assume ideal inverter
-            // Make sure the sign is correct.
-            self.f_dckw = if self.f_state == StorageState::Idling {
-                -self.f_dckw.abs()
-            } else {
-                self.f_dckw.abs() * self.f_state.ordinal() as f64
-            };
-            return;
-        }
-
-        self.f_dckw = p1;
-        let kva = self.f_kva_rating;
-        // Pascal's loop condition is `(a≠guess.a AND b≠guess.b) OR (N>9)` — with
-        // FPC precedence the `OR (N>9)` only re-enters; for any locally-consistent
-        // (monotonic) efficiency curve the guess converges to the same segment
-        // (exact-float) within a couple of iterations, so the `N>9` arm is never
-        // reached. Ported verbatim.
-        let mut guess = (0.0_f64, 0.0_f64);
-        let mut coef = (1.0_f64, 1.0_f64);
-        let mut n_tentatives = 0;
-        while ((coef.0 != guess.0) && (coef.1 != guess.1)) || (n_tentatives > 9) {
-            n_tentatives += 1;
-            guess = self
-                .base
-                .inverter_curve_obj
-                .as_mut()
-                .unwrap()
-                .get_coefficients(self.f_dckw.abs() / kva);
-            self.f_dckw = match self.f_state {
-                StorageState::Discharging => quad_solver(guess.0 / kva, guess.1, -p1.abs()),
-                _ => self.f_dckw.abs() * guess.1 / (1.0 - (guess.0 * self.f_dckw.abs() / kva)),
-            };
-            coef = self
-                .base
-                .inverter_curve_obj
-                .as_mut()
-                .unwrap()
-                .get_coefficients(self.f_dckw.abs() / kva);
-        }
-
+        let dc = match &self.base.inverter_curve_obj {
+            None => Some(p1),
+            Some(curve) => dc_power_on_curve(
+                curve,
+                p1.abs(),
+                self.f_kva_rating,
+                self.f_state == StorageState::Discharging,
+            ),
+        };
+        let Some(dc) = dc else {
+            return false;
+        };
         // Make sure the sign is correct.
         self.f_dckw = if self.f_state == StorageState::Idling {
-            -self.f_dckw.abs()
+            -dc.abs()
         } else {
-            self.f_dckw.abs() * self.f_state.ordinal() as f64
+            dc.abs() * self.f_state.ordinal() as f64
         };
+        true
+    }
+
+    /// The DC power the time step updates the state of charge with, `None`
+    /// while the element is refused. Where no segment of the efficiency curve
+    /// holds it, the element is refused from the next Y build on, naming the
+    /// curve.
+    fn step_dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Option<f64> {
+        let solved = self.compute_dckw(sys, node_v);
+        if !solved && self.cd.recalc_refusal.is_none() {
+            let input = format!("EffCurve={}", self.base.inverter_curve);
+            let msg = self.cd.refusal_message("Storage", &input, "dc power");
+            self.cd.recalc_refusal = Some(msg);
+            self.cd.yprim_invalid = true;
+        }
+        (solved && self.cd.recalc_refusal.is_none()).then_some(self.f_dckw)
     }
 
     /// Pascal `Get_kWIdlingLosses`.
@@ -120,8 +110,9 @@ impl Storage {
         }
     }
 
-    /// `DCkW` property (recomputes `ComputeDCkW`, like the Pascal `Get_DCkW`). Used
-    /// by the InvControl Storage volt-watt `Calc_PBase` `%Available` base
+    /// The `DCkW` variable, recomputed from the present AC power, the DC power
+    /// kept where the efficiency curve holds none. Used by the InvControl
+    /// Storage volt-watt `Calc_PBase` `%Available` base
     /// (`InvDispEnv::der_storage_dckw`), hence `pub(crate)`.
     pub(crate) fn dckw(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
         self.compute_dckw(sys, node_v);
@@ -154,7 +145,9 @@ impl Storage {
                 } else {
                     true
                 };
-                let dckw = self.dckw(sys, node_v);
+                let Some(dckw) = self.step_dckw(sys, node_v) else {
+                    return;
+                };
                 let idle = self.kw_idling_losses(sys, node_v);
                 if update_st {
                     self.kwh_stored -= (dckw + idle) / self.discharge_eff * interval_hrs;
@@ -174,7 +167,9 @@ impl Storage {
                 }
             }
             StorageState::Charging => {
-                let dckw = self.dckw(sys, node_v);
+                let Some(dckw) = self.step_dckw(sys, node_v) else {
+                    return;
+                };
                 let idle = self.kw_idling_losses(sys, node_v);
                 if (dckw.abs() - idle) >= 0.0 {
                     // 99.9% of cases.
@@ -245,4 +240,104 @@ impl Storage {
             self.base.first_sample_after_reset = false;
         }
     }
+}
+
+/// The DC power an inverter rated `kva` exchanges for the AC power `p >= 0`
+/// on the efficiency curve, `None` where no segment of the curve holds its
+/// own solution. Each segment gives the efficiency `η = a x + b` at the per
+/// unit DC power `x = P / kva`, discharging delivers `p = η P` and charging
+/// (or idling) stores `P = η p`, so each segment is solved in closed form and
+/// the first one, in curve order, whose solution lies on it gives the power.
+/// A solution that rounding puts just past a knot of a segment across which
+/// the relation changes sign is taken at that knot. A curve of one point is
+/// its efficiency at every power, as every reader of a curve takes it.
+pub(super) fn dc_power_on_curve(
+    curve: &XyCurveObj,
+    p: f64,
+    kva: f64,
+    discharging: bool,
+) -> Option<f64> {
+    if p == 0.0 {
+        return Some(0.0);
+    }
+    if curve.num_points() == 1 {
+        let eta = curve.y_values()[0];
+        let dc = if discharging { p / eta } else { p * eta };
+        return (dc.is_finite() && dc >= 0.0).then_some(dc);
+    }
+    let segments = curve.num_points().checked_sub(1).filter(|&k| k > 0)?;
+    let (xs, ys) = (curve.x_values(), curve.y_values());
+    // The relation at a per-unit DC power `x` read at efficiency `eta`, zero
+    // at the solution and rising through it.
+    let residual = |x: f64, eta: f64| {
+        if discharging {
+            kva * x * eta - p
+        } else {
+            kva * x - eta * p
+        }
+    };
+    for k in 0..segments {
+        let (a, b) = curve.segment_line(k);
+        let lo = if k == 0 { 0.0 } else { xs[k].max(0.0) };
+        let hi = if k + 1 == segments {
+            f64::INFINITY
+        } else {
+            xs[k + 1]
+        };
+        if hi < lo {
+            continue;
+        }
+        let roots: Vec<f64> = if discharging {
+            let qa = a / kva;
+            if qa == 0.0 {
+                if b != 0.0 { vec![p / b] } else { Vec::new() }
+            } else {
+                let mid = (b * b - 4.0 * qa * -p).sqrt();
+                let (r1, r2) = ((-b + mid) / (2.0 * qa), (-b - mid) / (2.0 * qa));
+                vec![r1.min(r2), r1.max(r2)]
+            }
+        } else {
+            let den = 1.0 - a * p / kva;
+            if den != 0.0 {
+                vec![p * b / den]
+            } else {
+                Vec::new()
+            }
+        };
+        let roots: Vec<f64> = roots
+            .into_iter()
+            .filter(|r| r.is_finite() && *r >= 0.0)
+            .collect();
+        if let Some(&r) = roots.iter().find(|&&r| (lo..=hi).contains(&(r / kva))) {
+            return Some(r);
+        }
+        let r_lo = if k > 0 && xs[k] >= 0.0 {
+            residual(xs[k], ys[k])
+        } else {
+            residual(0.0, b)
+        };
+        let r_hi = if hi.is_finite() {
+            residual(xs[k + 1], ys[k + 1])
+        } else if discharging {
+            [a, b, -p].into_iter().find(|&c| c != 0.0).unwrap_or(0.0)
+        } else {
+            [kva - a * p, -b * p]
+                .into_iter()
+                .find(|&c| c != 0.0)
+                .unwrap_or(0.0)
+        };
+        if r_lo <= 0.0 && r_hi >= 0.0 {
+            let distance = |r: f64| {
+                let x = r / kva;
+                (lo - x).max(x - hi).max(0.0)
+            };
+            if let Some(r) = roots
+                .into_iter()
+                .min_by(|r, s| distance(*r).total_cmp(&distance(*s)))
+            {
+                return Some((r / kva).clamp(lo, hi) * kva);
+            }
+        }
+    }
+    None
 }

@@ -136,11 +136,18 @@ pub struct CktElementData {
     /// writes it straight through the `ActiveCircuit` global from a property
     /// side effect — e.g. adding a model-3 generator forces a DQDV re-init).
     pub signal_reset_solution_initialized: bool,
-    /// Signal to the Y build: the last `calc_yprim` found no defined stamp for
-    /// the element as it is specified (it queued a message naming the remedy),
-    /// so the build fails and the next solve builds and refuses again. Read
-    /// and cleared by `solution::ymatrix::build_y_matrix`.
+    /// Signal to the Y build: the last `calc_yprim` found that the element
+    /// cannot be stamped as it is specified (it queued a message naming the
+    /// cause), so the build fails and the next solve builds and refuses again.
+    /// Read and cleared by `solution::ymatrix::build_y_matrix`.
     pub yprim_refused: bool,
+    /// The message of the last recalc that found an input making a quantity
+    /// the element derives (a stamp quantity or a derived rating) not a finite
+    /// number, `None` once a recalc finds them all finite. While it is set the
+    /// element keeps the derived state of its last good recalc and its
+    /// `calc_yprim` refuses the build with this message
+    /// ([`CktElementData::refuse_recalc`]).
+    pub recalc_refusal: Option<String>,
 
     /// Pascal `Flags` (`TDSSObjectFlags`), element-level subset.
     pub flags: ElemFlags,
@@ -264,7 +271,87 @@ impl Phases<'_> {
     }
 }
 
+/// `name=value`, the value as `?` reads a number, for the message of a
+/// refused recalc.
+pub(crate) fn input_text(name: &str, v: f64) -> String {
+    format!("{name}={}", crate::util::float_to_str_ex(v))
+}
+
+/// `name=[ a b]`, as `?` reads an array of `scale`, for the message of a
+/// refused recalc.
+pub(crate) fn array_input_text(name: &str, vals: &[f64], scale: f64) -> String {
+    format!(
+        "{name}={}",
+        crate::util::get_dss_array_f64(vals.len(), Some(vals), scale)
+    )
+}
+
+/// The input a refused recalc names, from `inputs` in property order (name
+/// and value): the first that is not a finite number, else the first of
+/// `zeros` that is zero, else `fallback` (the divisor or the multiplied input
+/// of an overflow).
+pub(crate) fn refused_input_text(
+    inputs: &[(&str, f64)],
+    zeros: &[(&str, f64)],
+    fallback: (&str, f64),
+) -> String {
+    let (name, v) = inputs
+        .iter()
+        .find(|(_, v)| !v.is_finite())
+        .or_else(|| zeros.iter().find(|(_, v)| *v == 0.0))
+        .copied()
+        .unwrap_or(fallback);
+    input_text(name, v)
+}
+
 impl CktElementData {
+    /// The stamp of an element the solve refuses with `msg`: an enabled
+    /// element logs it and refuses the Y build, a disabled one is out of the
+    /// model, and either keeps a zero stamp.
+    pub fn refuse_yprim(&mut self, msg: impl Into<crate::diag::DssDiagnostic>) {
+        if self.enabled {
+            self.obj.push_error(msg);
+            self.yprim_refused = true;
+        }
+        let n = self.yorder;
+        self.yprim_series = Some(CMatrix::new(n));
+        self.yprim_shunt = Some(CMatrix::new(n));
+        self.yprim = Some(CMatrix::new(n));
+        self.yprim_invalid = false;
+    }
+
+    /// Refuse the stamp while the last recalc is refused, true when it did.
+    pub fn refuse_yprim_on_recalc(&mut self) -> bool {
+        match self.recalc_refusal.clone() {
+            Some(msg) => {
+                self.refuse_yprim(msg);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Refuse the element of class `class` whose `input` (`name=value`, the
+    /// value as `?` reads it) makes its `quantity` not a finite number: the
+    /// message is logged now and kept for the Y build, which it refuses while
+    /// the element is enabled. The stamp is marked invalid, so the next solve
+    /// builds the Y matrix again, also after an edit of a built element.
+    pub fn refuse_recalc(&mut self, class: &str, input: &str, quantity: &str) {
+        let msg = self.refusal_message(class, input, quantity);
+        self.obj.push_error(msg.clone());
+        self.recalc_refusal = Some(msg);
+        self.yprim_invalid = true;
+    }
+
+    /// The message that refuses the element of class `class` whose `input`
+    /// makes its `quantity` not a finite number.
+    pub fn refusal_message(&self, class: &str, input: &str, quantity: &str) -> String {
+        format!(
+            "{class}.{}: {input} makes its {quantity} not a finite number, so it is not built.",
+            self.obj.name()
+        )
+    }
+
     /// Base construction; concrete classes set phases/conds/terms right after
     /// (the Pascal constructors assign `FNphases`/`Fnconds`/`Nterms`).
     pub fn new(name: &str, num_props: usize) -> Self {
@@ -296,6 +383,7 @@ impl CktElementData {
             signal_bus_name_redefined: false,
             signal_reset_solution_initialized: false,
             yprim_refused: false,
+            recalc_refusal: None,
             flags: ElemFlags::NONE,
             // Pascal `TPDElement.Create`: `FromTerminal := 1` (0-based terminal 0).
             from_terminal: Some(0),

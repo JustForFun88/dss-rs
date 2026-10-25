@@ -64,6 +64,18 @@ impl CktElement for IndMach012 {
 
     /// Pascal `TIndMach012Obj.CalcYPrim`.
     fn calc_yprim(&mut self, sys: &SysCtx) {
+        if self.cd.refuse_yprim_on_recalc() {
+            return;
+        }
+        let y = self.yeq;
+        if sys.is_dynamic_model && self.machine_on && !(y.re.is_finite() && y.im.is_finite()) {
+            // The dynamic admittance, the inverse of the transient impedance,
+            // is checked where the dynamics solve computes it (pinned by
+            // `exec::tests::rating_refusals::a_mode_specific_input_is_refused_only_in_its_mode`).
+            let msg = self.dynamic_refusal();
+            self.cd.refuse_yprim(msg);
+            return;
+        }
         // Pascal `CalcYPrim` does not call `SetNominalPower` itself (unlike the
         // Generator); the nominal is set in `RecalcElementData` and `InjCurrents`.
         self.calc_yprim_impl(sys);

@@ -78,8 +78,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::REQUIRED
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
         PropDef::double("kW").flags(PropFlags::REQUIRED),
         // `pf` is read-only on both engines (writes silently ignored in
         // `set_f64`), but the two disagree on the TEXT RENDER, and r4133 is the
@@ -102,7 +106,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `readOnly`) are unchanged.
         PropDef::double("PF").flags(PropFlags::SILENT_READ_ONLY | PropFlags::RENDERS_LIVE_RESULT),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kVA").flags(PropFlags::REQUIRED),
+        PropDef::double("kVA").flags(PropFlags::REQUIRED | PropFlags::FINITE_BASE),
         PropDef::double("H"),
         PropDef::double("D"),
         PropDef::double("puRs"),
@@ -389,8 +393,116 @@ impl IndMach012 {
         };
     }
 
-    /// Pascal `TIndMach012Obj.RecalcElementData`.
+    /// Recompute the derived values, refused when an input makes
+    /// the power-flow admittance or the machine impedances not a finite
+    /// number: the edit logs the refusal, every derived value keeps what it
+    /// held and the stamp is refused until a recalc finds them finite (pinned by
+    /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
     pub fn recalc(&mut self, sys: &SysCtx) {
+        let held = self.clone();
+        self.derive(sys);
+        let finite = |z: Complex64| z.re.is_finite() && z.im.is_finite();
+        let quantity = if !finite(self.yeq) {
+            Some("admittance")
+        } else if ![self.zs, self.zm, self.zr].into_iter().all(finite) {
+            Some("impedance")
+        } else if self.model_current_input().is_some() {
+            Some("model current")
+        } else {
+            None
+        };
+        let Some(quantity) = quantity else {
+            self.cd.recalc_refusal = None;
+            return;
+        };
+        *self = held;
+        let input = self.refused_input(quantity);
+        self.cd.refuse_recalc("IndMach012", &input, quantity);
+    }
+
+    /// The input that makes the power-flow model current not a number: a
+    /// `kW` that is not one while the slip floats to match it (an infinite
+    /// `kW` only drives the slip to its limit), else a slip that is not one.
+    fn model_current_input(&self) -> Option<String> {
+        use crate::elements::ckt::input_text;
+        use crate::obj::base::DssObject;
+        use prop::*;
+        if !self.fixed_slip && self.kw_base.is_nan() {
+            Some(input_text("kW", self.get_f64(KW)))
+        } else if self.s1.is_nan() {
+            Some(input_text("Slip", self.get_f64(SLIP)))
+        } else {
+            None
+        }
+    }
+
+    /// The input a refused recalc names: the first that is not finite, else
+    /// a zero, else the cause of the overflow. The impedance base is the
+    /// square of `kV` over the kVA rating: a square that leaves the normal
+    /// range names `kV`, an impedance names the per-unit value whose product
+    /// with the base is not finite, and the rest name the kVA rating.
+    fn refused_input(&self, quantity: &str) -> String {
+        use crate::obj::base::DssObject;
+        use prop::*;
+        if quantity == "model current"
+            && let Some(input) = self.model_current_input()
+        {
+            return input;
+        }
+        let v = |i: usize| self.get_f64(i);
+        let inputs = [
+            ("kV", v(KV)),
+            ("kVA", v(KVA)),
+            ("puRs", v(PURS)),
+            ("puXs", v(PUXS)),
+            ("puRr", v(PURR)),
+            ("puXr", v(PUXR)),
+            ("puXm", v(PUXM)),
+        ];
+        let zeros = [("kV", v(KV)), ("kVA", v(KVA))];
+        let z_base = self.kv_generator_base.powi(2) / self.kva_rating * 1000.0;
+        let fallback = if !self.kv_generator_base.powi(2).is_normal() {
+            ("kV", v(KV))
+        } else if quantity == "impedance" && z_base.is_finite() {
+            inputs[2..]
+                .iter()
+                .copied()
+                .find(|&(_, pu)| !(pu * z_base).is_finite())
+                .unwrap_or(("kVA", v(KVA)))
+        } else {
+            ("kVA", v(KVA))
+        };
+        crate::elements::ckt::refused_input_text(&inputs, &zeros, fallback)
+    }
+
+    /// The refusal of the dynamics model's transient impedance
+    /// `Zsp = Rs + j (Xs + Xr Xm / (Xr + Xm))`: a `puXr` and `puXm` whose
+    /// parallel reactance is not a finite number (their sum is zero) make the
+    /// transient reactance not one, else an impedance with no finite inverse
+    /// makes the dynamic admittance not one, naming the per-unit values that
+    /// form it.
+    fn dynamic_refusal(&self) -> String {
+        use crate::elements::ckt::input_text;
+        use crate::obj::base::DssObject;
+        use prop::*;
+        let text = |name: &str, i: usize| input_text(name, self.get_f64(i));
+        let (input, quantity) = if !self.xp.is_finite() {
+            let pair = [text("puXr", PUXR), text("puXm", PUXM)];
+            (pair.join(" "), "transient reactance")
+        } else {
+            let parts = [
+                text("puRs", PURS),
+                text("puXs", PUXS),
+                text("puXr", PUXR),
+                text("puXm", PUXM),
+            ];
+            (parts.join(" "), "dynamic admittance")
+        };
+        self.cd.refusal_message("IndMach012", &input, quantity)
+    }
+
+    /// The body of [`Self::recalc`].
+    fn derive(&mut self, sys: &SysCtx) {
         let z_base = self.kv_generator_base.powi(2) / self.kva_rating * 1000.0;
 
         let rs = self.pu_rs * z_base;

@@ -249,5 +249,20 @@ impl Upfc {
         self.in_curr.resize(n, Complex64::ZERO);
         self.out_curr.resize(n, Complex64::ZERO);
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+        // The voltage-regulating modes scale the input current by the loss
+        // curve at the input voltage of each solve, and `Set StateVar` changes
+        // the mode with no recalc, so any point of it is an input whatever the
+        // mode (pinned by
+        // `exec::tests::rating_refusals::a_curve_point_that_is_not_a_number_refuses_its_element`).
+        let broken = self
+            .loss_curve_obj
+            .as_ref()
+            .is_some_and(XyCurveObj::has_point_not_finite);
+        if broken {
+            let input = format!("LossCurve={}", self.loss_curve_name);
+            self.cd.refuse_recalc("UPFC", &input, "input current");
+        } else {
+            self.cd.recalc_refusal = None;
+        }
     }
 }

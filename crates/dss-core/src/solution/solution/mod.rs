@@ -39,6 +39,7 @@ mod set_mode;
 mod state;
 mod time_series;
 
+pub(crate) use dispatch::clear_solved;
 pub use dispatch::{set_voltage_bases, solve};
 pub(crate) use power_flow::solve_snap;
 pub use power_flow::solve_zero_load_snapshot;

@@ -17,9 +17,11 @@ mod parse;
 mod typed;
 mod value;
 
+use crate::obj::TypedRating;
 use crate::obj::base::DssObject;
 use crate::obj::props::PropFlags;
 use crate::support::command_list::CommandList;
+use crate::util::{float_to_str, float_to_str_ex};
 use dss_parser::ParserError;
 
 use super::{PropDef, PropEngine, PropType};
@@ -152,22 +154,32 @@ impl ClassProps {
         self.command_list.get_command(name).map(|i| i + 1)
     }
 
-    /// Whether property `idx` is a rating that holds no set value: a
-    /// [`PropType::Rating`] that is not set, or a [`PropType::RatingArray`] none
-    /// of whose entries is set. `Save` omits such a property.
-    pub fn holds_no_rating(&self, obj: &dyn DssObject, idx: usize) -> bool {
-        let pd = &self.props[idx];
-        match pd.ptype {
-            PropType::Rating => !obj.get_rating(idx).is_set(),
-            PropType::RatingArray => {
-                let n = obj.get_i32(pd.size_prop).max(0) as usize;
-                !obj.get_rating_array(idx)
-                    .unwrap_or_default()
-                    .iter()
-                    .take(n)
-                    .any(|r| r.is_set())
+    /// Whether property `idx` is a rating: a [`PropType::Rating`] or a
+    /// [`PropType::RatingArray`].
+    pub fn is_rating(&self, idx: usize) -> bool {
+        matches!(
+            self.props[idx].ptype,
+            PropType::Rating | PropType::RatingArray
+        )
+    }
+
+    /// What `Save` writes for the rating property `idx`: the number the user
+    /// typed, `none` as `-1`, or for a [`PropType::RatingArray`] the typed
+    /// entries in the `?` array spelling (`[ 0 -3 400]`). `None` when the
+    /// rating was never typed or a later definition replaced it, which `Save`
+    /// leaves out (`save_writes_what_was_typed`).
+    pub fn saved_rating(&self, obj: &dyn DssObject, idx: usize) -> Option<String> {
+        match obj.data().typed_rating(idx)? {
+            TypedRating::Scalar(v) => Some(float_to_str_ex(*v)),
+            TypedRating::Array(vals) => {
+                let mut s = String::from("[");
+                for v in vals {
+                    s.push(' ');
+                    s.push_str(&float_to_str(*v));
+                }
+                s.push(']');
+                Some(s)
             }
-            _ => false,
         }
     }
 
@@ -199,7 +211,21 @@ impl ClassProps {
         };
         obj.data_mut().set_as_next_seq(idx);
         obj.side_effects(idx, prev_int);
+        self.cut_typed_seasons(obj, idx);
         Ok(())
+    }
+
+    /// After an edit of the season count `size_idx`, each typed seasonal
+    /// rating it sizes keeps only the seasons the object still holds, so a
+    /// season a smaller count dropped reads and saves not set when a later
+    /// count adds it back (`save_writes_what_was_typed`).
+    fn cut_typed_seasons(&self, obj: &mut dyn DssObject, size_idx: usize) {
+        for (idx, pd) in self.props.iter().enumerate() {
+            if pd.ptype == PropType::RatingArray && pd.size_prop == size_idx {
+                let seasons = usize::try_from(obj.get_i32(size_idx)).unwrap_or(0);
+                obj.data_mut().truncate_typed_rating(idx, seasons);
+            }
+        }
     }
 }
 

@@ -117,9 +117,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Wdg"),
         PropDef::bus_on_struct("Bus").flags(PropFlags::REQUIRED),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kVA"),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::UNITS_KV
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::FINITE_BASE,
+        ),
+        PropDef::double("kVA").flags(PropFlags::FINITE_BASE),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
         PropDef::double("RNeut").flags(PropFlags::UNITS_OHM),
@@ -128,9 +132,13 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::buses_on_struct("Buses", WINDINGS)
             .flags(PropFlags::REQUIRED | PropFlags::DYNAMIC_DEFAULT),
         PropDef::enum_array_on_struct("Conns", enums.connection, WINDINGS),
-        PropDef::double_array_on_struct("kVs", WINDINGS)
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double_array_on_struct("kVAs", WINDINGS),
+        PropDef::double_array_on_struct("kVs", WINDINGS).flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::UNITS_KV
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::FINITE_BASE,
+        ),
+        PropDef::double_array_on_struct("kVAs", WINDINGS).flags(PropFlags::FINITE_BASE),
         PropDef::double_array_on_struct("Taps", WINDINGS),
         PropDef::double("XHL").scale(pct).trap_zero(7.0),
         PropDef::double("XHT").scale(pct).trap_zero(35.0),
@@ -145,8 +153,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("HSRise").flags(PropFlags::UNITS_DEGC),
         PropDef::double("%LoadLoss"),
         PropDef::double("%NoLoadLoss"),
-        PropDef::double("NormHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
-        PropDef::double("EmergHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
+        PropDef::double("NormHkVA")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA | PropFlags::FINITE_RATING),
+        PropDef::double("EmergHkVA")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA | PropFlags::FINITE_RATING),
         PropDef::boolean("Sub"),
         PropDef::double("MaxTap"),
         PropDef::double("MinTap"),
@@ -172,7 +182,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::mapped_string_enum("Core", enums.core_type),
         PropDef::double("RDCOhms"),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double_array("Ratings", SEASONS),
+        PropDef::double_array("Ratings", SEASONS).flags(PropFlags::FINITE_RATING),
         // GICharm BH-curve data (r4064, 90962ae8): `Unused` props — parsed and
         // stored, never used in a solve. `BHpoints` reallocates the two arrays
         // (side effect below); `BHcurrent`/`BHflux` are `BHpoints`-sized. These
@@ -186,9 +196,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // TPDClass tail: Pascal sets `SuppressJSON` on these AFTER
         // `inherited DefineProperties` (`Transformer.pas:605-606`), so they stay in
         // `AltPropertyOrder` (occupy `$dssPropertyOrder` slots) but are excluded
-        // from the JSON/schema output — `SUPPRESS_JSON_LATE`.
-        PropDef::rating("NormAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
-        PropDef::rating("EmergAmps").flags(PropFlags::SUPPRESS_JSON_LATE),
+        // from the JSON/schema output — `SUPPRESS_JSON_LATE`. Both are derived
+        // from the kVA ratings and read only.
+        PropDef::rating("NormAmps")
+            .flags(PropFlags::SUPPRESS_JSON_LATE | PropFlags::READ_ONLY_RATING),
+        PropDef::rating("EmergAmps")
+            .flags(PropFlags::SUPPRESS_JSON_LATE | PropFlags::READ_ONLY_RATING),
         PropDef::double("FaultRate"),
         PropDef::double("pctPerm"),
         PropDef::double("Repair"),
@@ -300,6 +313,12 @@ pub struct Transformer {
     /// Short-circuit / one-volt / terminal admittance matrices (Pascal `ZB`,
     /// `Y_1Volt`, `Y_1Volt_NL`, `Y_Term`, `Y_Term_NL`).
     zb: CMatrix,
+    /// Whether the last short-circuit impedance built could not be told from
+    /// a singular one, so the element has no admittance to stamp.
+    zb_singular: bool,
+    /// The first winding the last dc build found with no dc conductance, a
+    /// short at dc, `None` after a build at another frequency.
+    dc_short: Option<usize>,
     y_1volt: CMatrix,
     y_1volt_nl: CMatrix,
     y_term: CMatrix,
@@ -331,6 +350,10 @@ pub struct Transformer {
     xhl_changed: bool,
     norm_max_hkva: f64,
     emerg_max_hkva: f64,
+    /// Whether the normal and the emergency kVA rating last derived from
+    /// winding 1's kVA overflowed, until a typed rating replaces it: the
+    /// recalc refuses the element while one is set.
+    hkva_overflow: [bool; 2],
     thermal_time_const: f64,
     n_thermal: f64,
     m_thermal: f64,
@@ -380,6 +403,8 @@ impl Transformer {
             xsc: Vec::new(),
             term_ref: TermRef::default(),
             zb: CMatrix::new(0),
+            zb_singular: false,
+            dc_short: None,
             y_1volt: CMatrix::new(0),
             y_1volt_nl: CMatrix::new(0),
             y_term: CMatrix::new(0),
@@ -401,6 +426,7 @@ impl Transformer {
             xhl_changed: true,
             norm_max_hkva: 0.0,
             emerg_max_hkva: 0.0,
+            hkva_overflow: [false; 2],
             thermal_time_const: 2.0,
             n_thermal: 0.8,
             m_thermal: 0.8,

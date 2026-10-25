@@ -8,6 +8,8 @@
 #[cfg(test)]
 mod tests;
 
+use crate::obj::TypedRating;
+
 /// Shared object state every DSS object carries (`TDSSObject` fields that
 /// matter to the port so far): its name and the property set-order tracker.
 ///
@@ -77,6 +79,13 @@ pub struct DssObjData {
     /// own `Mult`/`Hour`/`QMult` file directives never reach here (they are
     /// intercepted by `set_f64_array_raw` and queued as [`FileLoad`]s instead).
     pending_dbl_array_files: Vec<GenericDblArrayFile>,
+    /// The rating properties as the user typed them, by property index:
+    /// what `Save` writes for a rating ([`ClassProps::saved_rating`]). A
+    /// definition that replaces the ratings (a Line's `linecode=`,
+    /// `geometry=` or spacing conductors) drops its entries.
+    ///
+    /// [`ClassProps::saved_rating`]: crate::obj::props::ClassProps::saved_rating
+    typed_ratings: Vec<(usize, TypedRating)>,
 }
 
 impl DssObjData {
@@ -91,6 +100,7 @@ impl DssObjData {
             default_and_unedited: false,
             uuid: None,
             pending_dbl_array_files: Vec::new(),
+            typed_ratings: Vec::new(),
         }
     }
 
@@ -190,6 +200,28 @@ impl DssObjData {
     pub fn set_as_next_seq(&mut self, index: usize) {
         self.prp_sequence[0] += 1;
         self.prp_sequence[index] = self.prp_sequence[0];
+    }
+
+    /// The set-order mark of property `index`, `0` when it was never set.
+    pub fn seq_mark(&self, index: usize) -> u32 {
+        self.prp_sequence.get(index).copied().unwrap_or(0)
+    }
+
+    /// Put back a mark [`seq_mark`](Self::seq_mark) read, for an edit that is
+    /// refused after the property was written. A mark another property holds
+    /// now is not put back, so no two properties share a place in the set
+    /// order.
+    pub fn restore_seq_mark(&mut self, index: usize, mark: u32) {
+        let taken = mark != 0
+            && self
+                .prp_sequence
+                .iter()
+                .enumerate()
+                .skip(1)
+                .any(|(i, &m)| i != index && m == mark);
+        if let (false, Some(slot)) = (taken, self.prp_sequence.get_mut(index)) {
+            *slot = mark;
+        }
     }
 
     /// Whether property `index` was explicitly set (Pascal `PrpSpecified`).
@@ -317,6 +349,49 @@ impl DssObjData {
     /// [`edit_seq_boundary`]: Self::begin_edit_boundary
     pub fn copy_prp_sequence_from(&mut self, other: &DssObjData) {
         self.prp_sequence.clone_from(&other.prp_sequence);
+    }
+
+    /// Record the rating property `index` as typed.
+    pub fn set_typed_rating(&mut self, index: usize, value: TypedRating) {
+        match self.typed_ratings.iter_mut().find(|(i, _)| *i == index) {
+            Some((_, v)) => *v = value,
+            None => self.typed_ratings.push((index, value)),
+        }
+    }
+
+    /// Forget the typed value of the rating property `index`.
+    pub fn clear_typed_rating(&mut self, index: usize) {
+        self.typed_ratings.retain(|(i, _)| *i != index);
+    }
+
+    /// Keep the first `n` entries of the typed seasonal rating `index`.
+    pub fn truncate_typed_rating(&mut self, index: usize, n: usize) {
+        if let Some((_, TypedRating::Array(vals))) =
+            self.typed_ratings.iter_mut().find(|(i, _)| *i == index)
+        {
+            vals.truncate(n);
+        }
+    }
+
+    /// The typed value of the rating property `index`, `None` when it was
+    /// never typed or a later definition replaced it.
+    pub fn typed_rating(&self, index: usize) -> Option<&TypedRating> {
+        self.typed_ratings
+            .iter()
+            .find(|(i, _)| *i == index)
+            .map(|(_, v)| v)
+    }
+
+    /// `like=`: take `other`'s typed value of each rating property in `props`,
+    /// the ratings the class copies, and drop this object's own where `other`
+    /// has none.
+    pub fn copy_typed_ratings_from(&mut self, other: &DssObjData, props: &[usize]) {
+        for &p in props {
+            match other.typed_rating(p) {
+                Some(v) => self.set_typed_rating(p, v.clone()),
+                None => self.clear_typed_rating(p),
+            }
+        }
     }
 
     /// Pascal `GetNextPropertySet`: the property index whose set-order is the
@@ -547,6 +622,10 @@ pub struct GenericDblArrayFile {
     /// [`crate::obj::Rating::from_number`] and is written through
     /// [`DssObject::set_rating_array`].
     pub rating: bool,
+    /// The array is a kVA rating
+    /// ([`PropFlags::FINITE_RATING`](crate::obj::props::PropFlags::FINITE_RATING)):
+    /// a file holding a value that is not a finite number is refused.
+    pub finite_rating: bool,
 }
 
 impl FileLoad {
@@ -1036,6 +1115,16 @@ pub trait DssObject: Send {
         value: f64,
     ) -> Option<dss_parser::ParserError> {
         let _ = (idx, text, value);
+        None
+    }
+
+    /// The message refusing `values`, the numbers the entries `texts` written
+    /// to the double property `idx` read as (one for a scalar, one per struct
+    /// entry for an array on a struct, `None` for an entry not given), or
+    /// `None` to accept them. A refused value writes nothing and runs no side
+    /// effect. Accepts every value by default.
+    fn refuse_f64(&self, idx: usize, texts: &[&str], values: &[Option<f64>]) -> Option<String> {
+        let _ = (idx, texts, values);
         None
     }
 

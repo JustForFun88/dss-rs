@@ -94,10 +94,22 @@ impl CktElement for PVSystem {
 
     /// Pascal `TPVsystemObj.CalcYPrim`.
     fn calc_yprim(&mut self, sys: &SysCtx) {
+        if self.cd.refuse_yprim_on_recalc() {
+            return;
+        }
         let yorder = self.cd.yorder;
         let mut yp_shunt = CMatrix::new(yorder);
 
         self.set_nominal_der_output(sys);
+        let y = self.base.yeq;
+        if sys.is_harmonic_model && !(y.re.is_finite() && y.im.is_finite()) {
+            // The harmonic admittance is checked where the harmonics solve
+            // computes it (pinned by
+            // `exec::tests::rating_refusals::a_mode_specific_input_is_refused_only_in_its_mode`).
+            let msg = self.harmonic_refusal();
+            self.cd.refuse_yprim(msg);
+            return;
+        }
         self.calc_yprim_matrix(&mut yp_shunt, sys);
 
         // Dummy series Yprim from the shunt diagonal so CalcVoltages doesn't fail.

@@ -442,6 +442,14 @@
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/Master_Interconnected.dss",
    "engines": "capi_v0145",
    "kind": "feeder",
+   "expect_warnings": [
+    "Transformer.reg3c.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.reg3c.EmergAmps: read only, the emergency rating is set by EmergHkVA.",
+    "Transformer.reg4b.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.reg4b.EmergAmps: read only, the emergency rating is set by EmergHkVA.",
+    "Transformer.reg4c.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.reg4c.EmergAmps: read only, the emergency rating is set by EmergHkVA."
+   ],
    "post": ["Solve"],
    "expect_solve_abort": "Max Control Iterations Exceeded",
    "note": "CF2-R: #485 control-settling. This interconnected IEEE_123 model has no Solve of its own; the harness solve exceeds MaxControlIter=10 (a regulator hunts +/-1 tap at a band edge, never draining the control queue) and aborts with #485 on BOTH engines. Proven identical to the official r3723 (Oddie): all 7 RegControl taps + 4 cap states exact, node V to 8e-9 rel over 278 nodes, same 10 control iters / 30 total iters. The pinned oracle raises #485; Rust reproduces SolutionAbort + the same message 1:1. Not a bug (the earlier 'different trajectory' note was a measurement artifact: Rust first-solve vs oracle re-solve)."
@@ -450,6 +458,14 @@
    "path": "Version8/Distrib/Examples/ADiakoptics/IEEE_123_Bus-G/Torn_Circuit/zone_2/master.dss",
    "engines": "both",
    "kind": "feeder",
+   "expect_warnings": [
+    "Transformer.reg3c.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.reg3c.EmergAmps: read only, the emergency rating is set by EmergHkVA.",
+    "Transformer.reg4b.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.reg4b.EmergAmps: read only, the emergency rating is set by EmergHkVA.",
+    "Transformer.reg4c.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.reg4c.EmergAmps: read only, the emergency rating is set by EmergHkVA."
+   ],
    "n_steps": 1
   },
   {
@@ -1284,6 +1300,10 @@
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/IEEE13NodecktMOD.dss",
    "engines": "both",
    "kind": "feeder",
+   "expect_warnings": [
+    "Transformer.xfm1.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.xfm1.EmergAmps: read only, the emergency rating is set by EmergHkVA."
+   ],
    "n_steps": 1,
    "isolate": true,
    "note": "UNIFIED_GATE Phase D: EnergyMeter DI_Totals CSV file-handle contention — a persistent oracle worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits → handle released), serializing the writes (R2/§3.3)."
@@ -1292,6 +1312,10 @@
    "path": "Version8/Distrib/Examples/StoCtrl_SeasonTarget/Run_example.dss",
    "engines": "both",
    "kind": "feeder",
+   "expect_warnings": [
+    "Transformer.xfm1.NormAmps: read only, the normal rating is set by NormHkVA.",
+    "Transformer.xfm1.EmergAmps: read only, the emergency rating is set by EmergHkVA."
+   ],
    "n_steps": 1,
    "isolate": true,
    "note": "UNIFIED_GATE Phase D: EnergyMeter DI_Totals CSV file-handle contention — a persistent oracle worker keeps the meter output open past its reply, so the next same-dir engine write hits os-error-32. isolate runs each engine execution one-shot (process exits → handle released), serializing the writes (R2/§3.3).",

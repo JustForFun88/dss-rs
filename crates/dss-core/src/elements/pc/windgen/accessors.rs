@@ -85,6 +85,9 @@ impl CktElement for WindGen {
 
     /// Pascal `TWindGenObj.CalcYPrim`.
     fn calc_yprim(&mut self, sys: &SysCtx) {
+        if self.cd.refuse_yprim_on_recalc() {
+            return;
+        }
         let yorder = self.cd.yorder;
         let mut yp_shunt = CMatrix::new(yorder);
 
@@ -442,6 +445,8 @@ impl WindGen {
         // which is where `UserData` lives (it has no field of its own).
         self.user_data = other.user_data.clone();
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
+        // A refusal later in the same edit keeps the powers the copy took.
+        self.held_powers = super::nominal::HeldPowers::of(self);
     }
 }
 

@@ -191,7 +191,7 @@ fn round_trip(tag: &str, master: PathBuf) {
 /// control state (reg taps + cap banks) is always compared **exactly**, and
 /// every object's property list by [`assert_properties_round_trip`].
 fn round_trip_full(tag: &str, master: PathBuf, pre_only: &[&str], both: &[&str], vtol: f64) {
-    round_trip_watch(tag, master, pre_only, both, vtol, &[]);
+    round_trip_watch(tag, master, pre_only, both, vtol, &[], &[]);
 }
 
 /// A deck element whose sizing property and the arrays it sizes must come back
@@ -249,6 +249,8 @@ fn emitted_line(out: &std::path::Path, tag: &str, element: &str) -> String {
 /// contract on the emitted deck: the sizer token precedes each sized token on
 /// the element's `New` line, and the sizer and every sized array read back the
 /// pre-save `?` value (numeric-token compare, [`assert_prop_token_eq`]).
+/// `expected_errors` are the whole engine messages the deck's own commands log
+/// before the Save, in order. The reload follows a `clear` and must log none.
 fn round_trip_watch(
     tag: &str,
     master: PathBuf,
@@ -256,6 +258,7 @@ fn round_trip_watch(
     both: &[&str],
     vtol: f64,
     watch: &[SizedArrays],
+    expected_errors: &[&str],
 ) {
     assert!(master.is_file(), "missing master: {}", master.display());
     let out = scratch_dir(tag);
@@ -277,8 +280,9 @@ fn round_trip_watch(
     // sides.
     dss.command("solve");
     dss.command("solve");
-    assert!(
-        dss.errors().is_empty(),
+    assert_eq!(
+        dss.error_texts(),
+        expected_errors,
         "{tag}: pre-save errors: {:?}",
         dss.errors()
     );
@@ -302,8 +306,9 @@ fn round_trip_watch(
         "save circuit dir=\"{}\"",
         out.to_string_lossy().replace('\\', "/")
     ));
-    assert!(
-        dss.errors().is_empty(),
+    assert_eq!(
+        dss.error_texts(),
+        expected_errors,
         "{tag}: save errors: {:?}",
         dss.errors()
     );
@@ -656,26 +661,16 @@ fn save_roundtrip_capacitor_numsteps_hoist() {
                 behind: &[],
             },
         ],
+        &[],
     );
 }
 
-/// Sizing-property hoist, `Seasons → Ratings` (RF-D01-04, `RP|RP3.11|AT1|AT-1`)
-/// on the vendored seasonal-rating IEEE-13 feeder (`StoCtrl_SeasonTarget`:
-/// every LineCode and `Line.632670` carry `Seasons=2 Ratings=[..]`). The deck
-/// sets them in natural order; re-setting `Seasons` afterwards (an `Edit`, the
-/// shape a script that changes the season count takes) moves the sizer behind
-/// its `Ratings` in the set order, and r4133 parses `Ratings` at the live
-/// season count (`General/LineCode.pas:436`/`:442`,
-/// `PDElements/Line.pas:638-645`) — written in set order, both reload as
-/// `[ x 0]`. One generic-walk class (LineCode) and one override class (Line,
-/// whose `Seasons` must also stay behind its `LineCode=` reference, which
-/// re-fetches the season count on reload — r4133 `PDElements/Line.pas:420-421`).
-/// The watch asserts that order on the emitted line (`behind`): the reloaded
-/// values cannot show it here, because `mtx601` carries the line's own season
-/// count (`exec::tests::report::
-/// save_hoists_a_sizer_only_to_behind_the_reference_that_resets_it` pins a
-/// reference with a smaller one). Ratings move no solve observable, so only the
-/// property compare and the watch see them.
+/// A `Seasons` set again after its `Ratings` is saved ahead of them, on a
+/// LineCode of the generic walk and on a Line, whose `Seasons` also stays
+/// behind its `LineCode=`, and the watch asserts that order on the emitted line
+/// since the reloaded values cannot show it. The deck's transformer types its
+/// read-only current ratings, refused at compile with the two messages the
+/// round trip expects, and `Save` writes neither.
 #[test]
 fn save_roundtrip_seasons_ratings_hoist() {
     round_trip_watch(
@@ -700,6 +695,10 @@ fn save_roundtrip_seasons_ratings_hoist() {
                 arrays: &["Ratings"],
                 behind: &["LineCode"],
             },
+        ],
+        &[
+            "Transformer.xfm1.NormAmps: read only, the normal rating is set by NormHkVA.",
+            "Transformer.xfm1.EmergAmps: read only, the emergency rating is set by EmergHkVA.",
         ],
     );
 }

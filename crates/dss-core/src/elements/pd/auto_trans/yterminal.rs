@@ -6,7 +6,10 @@
 
 use num_complex::Complex64;
 
-use crate::elements::pd::winding::{Connection, TermRef, WdgTerms};
+use crate::elements::pd::winding::{
+    Connection, TermRef, WdgTerms, transformer_not_finite, winding_refused_input,
+};
+use crate::elements::pd::{array_input_text, input_text};
 use crate::support::cmatrix::CMatrix;
 use crate::util::{EPSILON, inv_sqrt3_x1000, sqrt3};
 
@@ -18,11 +21,115 @@ fn zero_tap_fix(tap: f64) -> f64 {
 }
 
 impl AutoTrans {
+    /// Derive the per-winding data, the current ratings and the terminal
+    /// admittance ([`Self::derive`]). When an input makes one of them, or a kVA
+    /// rating derived from winding 1's `kVA`, not a finite number nothing is
+    /// committed: the transformer keeps what its last good recalc derived and
+    /// refuses the build
+    /// ([`CktElementData::refuse_recalc`](crate::elements::ckt::CktElementData::refuse_recalc)).
+    pub(super) fn recalc(&mut self) {
+        self.recalc_logging(true);
+    }
+
+    /// [`Self::recalc`], logging a refusal only when `log` is true. An
+    /// `xfmrcode=` fetch derives without logging: it runs inside an edit whose
+    /// end logs the refusal of the state the edit leaves, once (pinned by
+    /// `exec::tests::rating_refusals::a_refusal_through_an_xfmrcode_is_logged_once_per_edit`).
+    pub(super) fn recalc_logging(&mut self, log: bool) {
+        let mut trial = self.clone();
+        trial.derive();
+        let finite = transformer_not_finite(
+            self.hkva_overflow,
+            &[trial.norm_amps, trial.emerg_amps],
+            &[],
+            &trial.windings,
+            &trial.xsc,
+            &[&trial.zb, &trial.y_term, &trial.y_term_nl],
+        );
+        let singular = finite.is_none() && trial.zb_singular;
+        let quantity = finite.or(singular.then_some("admittance"));
+        match quantity {
+            None => {
+                *self = trial;
+                self.cd.recalc_refusal = None;
+            }
+            Some(quantity) => {
+                let input = if singular {
+                    self.short_circuit_input()
+                } else {
+                    self.loadloss_refused().unwrap_or_else(|| {
+                        winding_refused_input(
+                            &trial.windings,
+                            trial.cd.nphases,
+                            &self.refusal_others(),
+                            quantity,
+                        )
+                    })
+                };
+                if log {
+                    self.cd.refuse_recalc("AutoTrans", &input, quantity);
+                } else {
+                    let msg = self.cd.refusal_message("AutoTrans", &input, quantity);
+                    self.cd.recalc_refusal = Some(msg);
+                }
+            }
+        }
+    }
+
+    /// A `%LoadLoss` typed in this edit that is not a finite number, named
+    /// before the `%R` of windings 1 and 2 it derives.
+    fn loadloss_refused(&self) -> Option<String> {
+        let typed = self
+            .cd
+            .obj
+            .prop_edited_since_boundary(super::prop::PCTLOADLOSS);
+        (typed && !self.pct_load_loss.is_finite())
+            .then(|| input_text("%LoadLoss", self.pct_load_loss))
+    }
+
+    /// The short-circuit reactances a refusal of a singular short-circuit
+    /// impedance names, in percent: `XHX`, with `XHT` and `XXT` on three windings, else
+    /// `XSCArray`.
+    pub(super) fn short_circuit_input(&self) -> String {
+        match self.num_windings {
+            2 => input_text("XHX", self.puxhx / 0.01),
+            3 => [
+                ("XHX", self.puxhx),
+                ("XHT", self.puxht),
+                ("XXT", self.puxxt),
+            ]
+            .map(|(name, v)| input_text(name, v / 0.01))
+            .join(" "),
+            _ => array_input_text("XSCArray", &self.xsc, 0.01),
+        }
+    }
+
+    /// The inputs besides the windings' that a refused recalc may name, in
+    /// property order, each with whether it is a finite number.
+    fn refusal_others(&self) -> Vec<(String, bool)> {
+        let scalar = |name: &str, v: f64| (input_text(name, v), v.is_finite());
+        let xsc = &self.xsc;
+        vec![
+            scalar("XHX", self.puxhx),
+            scalar("XHT", self.puxht),
+            scalar("XXT", self.puxxt),
+            (
+                array_input_text("XSCArray", xsc, 0.01),
+                xsc.iter().all(|v| v.is_finite()),
+            ),
+            scalar("%NoLoadLoss", self.pct_no_load_loss),
+            scalar("NormHkVA", self.norm_max_hkva),
+            scalar("EmergHkVA", self.emerg_max_hkva),
+            scalar("%IMag", self.pct_imag),
+            scalar("ppm_Antifloat", self.ppm_float_factor),
+        ]
+    }
+
     /// Pascal `TAutoTransObj.RecalcElementData` (`AutoTrans.pas:919`): derived
     /// per-winding data (`DeltaDirection`, `TermRef`, `puXSC` from XHX,
     /// per-winding `VBase` including the Series `kVSeries`, `Rdc`, anti-float,
     /// `NormAmps`/`EmergAmps`) then `CalcY_Terminal` at base frequency.
-    pub(super) fn recalc(&mut self) {
+    fn derive(&mut self) {
         // Determine Delta Direction (the Series arm is `Auto` → 1).
         if self.windings[0].connection == self.windings[1].connection {
             self.delta_direction = 1;
@@ -134,7 +241,7 @@ impl AutoTrans {
         };
         // The kVA ratings have no not-set state, so the current ratings derived
         // from them are set, `-1` A included: a negative one loads by its
-        // magnitude (`a_transformer_or_autotrans_derives_its_current_rating_whatever_is_typed`).
+        // magnitude (`a_transformer_current_rating_derived_as_minus_one_ampere_is_a_rating`).
         self.norm_amps = crate::obj::Rating::Set(self.norm_max_hkva / np as f64 / vfactor);
         self.emerg_amps = crate::obj::Rating::Set(self.emerg_max_hkva / np as f64 / vfactor);
 
@@ -156,10 +263,12 @@ impl AutoTrans {
         // matching Pascal's global read 1:1 on both paths.
         if frequency < 0.51 {
             self.gic_build_y_terminal();
+            self.zb_singular = false;
             self.y_terminal_freqmult = freq_mult;
             return;
         }
 
+        self.dc_short = None;
         let nw = self.num_windings.max(0) as usize;
         let rmult = if self.xrconst { freq_mult } else { 1.0 };
 
@@ -204,8 +313,19 @@ impl AutoTrans {
             zb.set(j, i, v);
         }
 
-        if zb.invert().is_err() {
-            // Pascal error 117: replace with a tiny conductance to ground.
+        // A finite short-circuit impedance that cannot be told from a singular
+        // one couples windings through no impedance, which the nodal stamp
+        // cannot carry, so the element is refused at its recalc and at the Y
+        // build. A tiny conductance keeps the terminal admittance it reports
+        // defined. One that is not finite is named by the recalc for the input
+        // that makes it so.
+        let finite = zb
+            .values()
+            .iter()
+            .all(|z| z.re.is_finite() && z.im.is_finite());
+        self.zb_singular = finite && zb.is_numerically_singular();
+        if self.zb_singular || zb.invert().is_err() {
+            self.zb_singular = finite;
             zb.clear();
             for i in 0..zb.order() {
                 zb.set(i, i, Complex64::new(EPSILON, 0.0));
@@ -328,8 +448,15 @@ impl AutoTrans {
         let mut yterm = CMatrix::new(n2);
         let yterm_nl = CMatrix::new(n2);
 
+        // A winding with no dc resistance is a short at dc: it is stamped
+        // with nothing and the Y build refuses the element (`dc_short`).
+        self.dc_short = None;
         for (iwind, w) in self.windings.iter().enumerate() {
             let yr = Complex64::new(1.0 / w.rdcohms, 0.0); // Siemens
+            if !yr.re.is_finite() {
+                self.dc_short.get_or_insert(iwind);
+                continue;
+            }
             let wt = WdgTerms::of(iwind);
             yterm.set(wt.plus, wt.plus, yr);
             yterm.set(wt.minus, wt.minus, yr);

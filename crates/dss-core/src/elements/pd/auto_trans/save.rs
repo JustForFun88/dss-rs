@@ -40,7 +40,7 @@ impl AutoTrans {
                         if done[ai] {
                             continue;
                         }
-                        let val = cx.cls.get_value(self, ai, cx.enums);
+                        let val = cx.cls.saved_value(self, ai, cx.enums);
                         out.push_str(&format!(" {}={}", cx.cls.property_name(ai), val));
                         done[ai] = true;
                     }
@@ -69,11 +69,12 @@ impl AutoTrans {
                 }
             } else if !done[ip] {
                 done[ip] = true;
-                // A rating that is not set is omitted.
-                let val = if cx.cls.holds_no_rating(self, ip) {
+                // The two current ratings are read only, derived from
+                // `NormHkVA` and `EmergHkVA`, and never written.
+                let val = if matches!(ip, NORMAMPS | EMERGAMPS) {
                     String::new()
                 } else {
-                    cx.cls.get_value(self, ip, cx.enums)
+                    cx.cls.saved_value(self, ip, cx.enums)
                 };
                 if !val.is_empty() {
                     out.push_str(&format!(

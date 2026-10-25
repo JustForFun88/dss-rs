@@ -66,8 +66,12 @@ pub fn class_props(_enums: &EnumRegistry) -> ClassProps {
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("PRated").flags(PropFlags::UNITS_KW),
-        PropDef::double("VRated")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO | PropFlags::UNITS_V),
+        PropDef::double("VRated").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::NON_ZERO
+                | PropFlags::UNITS_V
+                | PropFlags::FINITE_BASE,
+        ),
         PropDef::double("Ppct"),
         PropDef::object_ref_class("XYcurve", "BP1"),
         PropDef::object_ref_class("XYcurve", "BP2"),
@@ -290,7 +294,55 @@ impl Vccs {
     /// Pascal `TVCCSObj.RecalcElementData`. Recomputes the rated quantities + the
     /// pu↔physical scale factors, and (only when a filter is set) (re)allocates the
     /// ring buffers from the filter length and the one-cycle window length.
+    /// The recalc is refused when an input makes the rated current or a scale
+    /// factor not a finite number: the edit logs the refusal, every derived
+    /// value keeps what it held and the stamp is refused until a recalc finds
+    /// them finite (pinned by
+    /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
     pub(super) fn recalc(&mut self) {
+        let held = self.clone();
+        self.derive();
+        let finite = [self.irated, self.base_curr, self.fkv, self.fki]
+            .into_iter()
+            .all(f64::is_finite);
+        if finite {
+            self.cd.recalc_refusal = None;
+            return;
+        }
+        *self = held;
+        use crate::obj::base::DssObject;
+        let v = |i: usize| self.get_f64(i);
+        let inputs = [
+            ("PRated", v(prop::PRATED)),
+            ("VRated", v(prop::VRATED)),
+            ("Ppct", v(prop::PPCT)),
+        ];
+        let input =
+            crate::elements::ckt::refused_input_text(&inputs, &[], ("VRated", v(prop::VRATED)));
+        self.cd.refuse_recalc("VCCS", &input, "rated current");
+    }
+
+    /// The first of `BP1`, `BP2` and `Filter` that holds a point that is not
+    /// a finite number, as the input text a refusal names. Only the waveform
+    /// model of a dynamics solve reads them, at every step, so they are
+    /// checked at the Y build of that solve (pinned by
+    /// `exec::tests::rating_refusals::a_curve_point_that_is_not_a_number_refuses_its_element`).
+    pub(super) fn dynamics_curve_refused_input(&self) -> Option<String> {
+        if self.frms_mode {
+            return None;
+        }
+        [
+            ("BP1", &self.bp1_name, &self.fbp1),
+            ("BP2", &self.bp2_name, &self.fbp2),
+            ("Filter", &self.filter_name, &self.ffilter),
+        ]
+        .into_iter()
+        .find(|(_, _, c)| c.as_ref().is_some_and(XyCurveObj::has_point_not_finite))
+        .map(|(prop, name, _)| format!("{prop}={name}"))
+    }
+
+    /// The body of [`Self::recalc`].
+    fn derive(&mut self) {
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
 
         let nphases = self.cd.nphases as f64;

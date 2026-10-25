@@ -96,17 +96,10 @@ impl LineGeometryObj {
         }
 
         // Skip-NIL copy: contiguous conductor `j`, spacing coordinates indexed by
-        // the ORIGINAL position `i`. NormAmps and EmergAmps are each the lowest
-        // among the PHASE conductors' ratings of that kind, since the line
-        // current flows through every phase conductor, and not set when any
-        // phase conductor has none. The result does not depend on conductor
-        // order (`spacing_minimum_does_not_depend_on_conductor_order`,
-        // `spacing_ratings_are_each_the_weakest_phase_wires_in_any_order`).
+        // the ORIGINAL position `i`.
         let units = spc.spacing_units();
         let xs = spc.xcoord();
         let hs = spc.ycoord();
-        let nph = self.fnphases.max(0) as usize;
-        let (mut norm, mut emerg): (Option<Rating>, Option<Rating>) = (None, None);
         let mut j = 0usize; // 0-based contiguous conductor index (Pascal 1-based)
         for (i, o) in wires.iter().take(nwires).enumerate() {
             let Some(o) = o.as_ref() else { continue };
@@ -117,16 +110,15 @@ impl LineGeometryObj {
                 self.fy[j] = hs.get(i).copied();
                 self.funits[j] = units;
             }
-            let (cn, ce) = conductor_norm_emerg(o);
-            // 0-based `j < nph` == Pascal 1-based `(j+1) <= FNPhases`.
-            if j < nph {
-                norm = Some(weaker_rating(norm, cn));
-                emerg = Some(weaker_rating(emerg, ce));
-            }
             j += 1;
         }
-        self.norm_amps = norm.unwrap_or(Rating::NotSet);
-        self.emerg_amps = emerg.unwrap_or(Rating::NotSet);
+        // The weakest-phase reading of [`phase_ratings`]. It rates this
+        // temporary geometry only: the Line derives its own ratings when its
+        // edit ends.
+        let phases = &wires[..nwires.min(wires.len())];
+        let [norm, emerg] = phase_ratings(phases, spc_nphases.max(0) as usize);
+        self.norm_amps = norm.rating();
+        self.emerg_amps = emerg.rating();
         self.data_changed = true;
 
         // dss_capi 0.15.x (Line.pas:2111-2113): apply the consuming Line's
@@ -444,20 +436,57 @@ fn incomplete_conductors_message(subject: &str, incomplete: &[(usize, Lacks)]) -
     format!("{subject}: {}", sentences.join(" "))
 }
 
-/// `(NormAmps, EmergAmps)` of a conductor (Pascal `Wires[1].NormAmps/EmergAmps`),
-/// whichever concrete catalog type it is.
-fn conductor_norm_emerg(o: &ConductorObj) -> (Rating, Rating) {
-    let (n, e, _, _) = o.amps();
-    (n, e)
+/// How the phase conductors rate a Line or a LineGeometry in one of the
+/// normal and the emergency rating.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PhaseRating {
+    /// Every phase conductor has the rating: the lowest of them, since the
+    /// line current flows through every phase conductor.
+    All(f64),
+    /// No phase conductor has the rating.
+    Unrated,
+    /// Some phase conductors have the rating and some do not: `position`
+    /// (1-based) and `conductor` (`Class.name`) name the first one without it.
+    Partly { position: usize, conductor: String },
 }
 
-/// The weaker of the rating folded so far (`None` before the first phase
-/// conductor) and the next phase conductor's: a rating that is not set wins,
-/// else the lower number.
-fn weaker_rating(seen: Option<Rating>, next: Rating) -> Rating {
-    match (seen, next) {
-        (None, r) => r,
-        (Some(Rating::NotSet), _) | (_, Rating::NotSet) => Rating::NotSet,
-        (Some(Rating::Set(a)), Rating::Set(b)) => Rating::Set(if b < a { b } else { a }),
+impl PhaseRating {
+    /// The rating this reading gives: the lowest one when every phase
+    /// conductor has it, else not set.
+    pub fn rating(&self) -> Rating {
+        match self {
+            PhaseRating::All(v) => Rating::Set(*v),
+            PhaseRating::Unrated | PhaseRating::Partly { .. } => Rating::NotSet,
+        }
     }
+}
+
+/// The `[normal, emergency]` readings of the phase conductors among `slots`:
+/// the first `nphases` slots, an empty slot skipped. A neutral never takes
+/// part, as every loading reader compares the rating with the phase currents.
+/// The result does not depend on the conductor order
+/// (`spacing_ratings_are_each_the_weakest_phase_wires_in_any_order`).
+pub fn phase_ratings(slots: &[Option<ConductorObj>], nphases: usize) -> [PhaseRating; 2] {
+    let rated = |pick: fn(&ConductorObj) -> Rating| {
+        let mut lowest: Option<f64> = None;
+        let mut first_unrated: Option<(usize, &ConductorObj)> = None;
+        for (i, o) in slots.iter().take(nphases).enumerate() {
+            let Some(o) = o.as_ref() else { continue };
+            match pick(o) {
+                Rating::Set(v) => lowest = Some(lowest.map_or(v, |l| if v < l { v } else { l })),
+                Rating::NotSet => {
+                    first_unrated.get_or_insert((i + 1, o));
+                }
+            }
+        }
+        match (lowest, first_unrated) {
+            (Some(v), None) => PhaseRating::All(v),
+            (Some(_), Some((position, o))) => PhaseRating::Partly {
+                position,
+                conductor: format!("{}.{}", o.class_name(), o.name()),
+            },
+            (None, _) => PhaseRating::Unrated,
+        }
+    };
+    [rated(|o| o.amps().0), rated(|o| o.amps().1)]
 }

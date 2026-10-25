@@ -2,6 +2,7 @@ use super::*;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::obj::base::DssObject;
 use crate::solution::{LoadSolutionModel, SolveMode};
+use crate::util::sqrt3;
 
 fn test_sys() -> SysCtx {
     SysCtx {
@@ -1032,20 +1033,26 @@ fn scratch_datapath(dss: &mut crate::exec::Dss, what: &str) -> std::path::PathBu
     dir
 }
 
-/// A series matrix reactor whose impedance `R + jX` does not invert has no
-/// admittance: all-equal entries give a zero positive-sequence impedance (a
-/// short for balanced current) beside a zero-sequence impedance of
-/// `3 (1 + j10)` Ω, and no stamp is both. The solve refuses it with a message
-/// naming the reactor, at three and four phases alike, the reports after the
-/// refusal read the circuit as not solved, `makeposseq` leaves it as it is and
-/// the next solve refuses again.
+/// A series matrix Reactor whose impedance does not invert has no admittance,
+/// so its recalc refuses it with a message naming the Reactor and both
+/// matrices. The solve refuses on the same message, the reports read the
+/// circuit as not solved, `makeposseq` leaves it as it is and the next solve
+/// refuses again.
 #[test]
 fn a_singular_series_matrix_refuses_the_solve() {
     for phases in [3_usize, 4] {
         let name = format!("sing{phases}");
+        let lower = |v: &str| -> String {
+            (1..=phases)
+                .map(|i| vec![v; i].join(" "))
+                .collect::<Vec<_>>()
+                .join(" |")
+        };
         let message = format!(
-            "Reactor.{name}: the impedance rmatrix + j xmatrix is singular and has no \
-             admittance. Specify matrices that can be inverted. Aborting solution."
+            "Reactor.{name}: RMatrix=({} ) XMatrix=({} ) makes its admittance not a finite \
+             number, so it is not built.",
+            lower("1"),
+            lower("10")
         );
         let rows = |v: f64| -> String {
             (1..=phases)
@@ -1060,7 +1067,7 @@ fn a_singular_series_matrix_refuses_the_solve() {
             rows(1.0),
             rows(10.0)
         ));
-        assert!(dss.errors().is_empty(), "{name}: {:?}", dss.error_texts());
+        assert_eq!(dss.error_texts(), [message.as_str()], "{name} at the edit");
         dss.command("set voltagebases=[12.47]");
         dss.command("calcvoltagebases");
         dss.command("solve");
@@ -1083,40 +1090,33 @@ fn a_singular_series_matrix_refuses_the_solve() {
     }
 }
 
-/// A `Parallel=yes` reactor stamps `R⁻¹` beside `−X⁻¹`, so a given `rmatrix`
-/// or `xmatrix` that does not invert has no admittance. All-equal entries meet
-/// every current pattern that sums to zero, the balanced positive sequence
-/// included, with zero resistance or reactance: a short, where the zeroed
-/// matrix the edit reports would stamp an open branch.
-/// The solve refuses the reactor with a message naming it and the matrix, the
-/// reports after the refusal read the circuit as not solved, `makeposseq`
-/// leaves it as it is and the next solve refuses again. A matrix nobody gave
-/// stamps no branch (`make_pos_sequence_four_conductor_zero_self_term_stays_finite`).
+/// A `Parallel=yes` Reactor whose given `rmatrix` or `xmatrix` does not invert
+/// has no admittance, so its recalc refuses it with a message naming it and the
+/// matrix, the solve refuses on the same message and `makeposseq` leaves it as
+/// it is. A matrix nobody gave stamps no branch.
 #[test]
 fn a_singular_parallel_matrix_refuses_the_solve() {
-    for (name, prop, edit, def) in [
+    for (name, input, def) in [
         (
             "px",
-            "xmatrix",
-            "Error inverting X Matrix for \"px\" - B is zeroed.",
+            "XMatrix=(10 |10 10 |10 10 10 )",
             "rmatrix=[100 | 0 100 | 0 0 100] xmatrix=[10 | 10 10 | 10 10 10]",
         ),
         (
             "pr",
-            "rmatrix",
-            "Error inverting R Matrix for \"pr\" - G is zeroed.",
+            "RMatrix=(100 |100 100 |100 100 100 )",
             "rmatrix=[100 | 100 100 | 100 100 100] xmatrix=[10 | 0 10 | 0 0 10]",
         ),
     ] {
         let message = format!(
-            "Reactor.{name}: {prop} is singular, so the parallel reactor has no \
-             admittance. Specify an {prop} that can be inverted. Aborting solution."
+            "Reactor.{name}: {input} makes its admittance not a finite number, so it is \
+             not built."
         );
         let mut dss = balance::stiff_metered("rpsing");
         dss.command(&format!(
             "new reactor.{name} bus1=c phases=3 parallel=yes {def}"
         ));
-        assert_eq!(dss.error_texts(), [edit], "{name} at the edit");
+        assert_eq!(dss.error_texts(), [message.as_str()], "{name} at the edit");
         dss.command("set voltagebases=[12.47]");
         dss.command("calcvoltagebases");
         dss.command("solve");

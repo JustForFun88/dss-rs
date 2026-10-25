@@ -783,8 +783,8 @@ impl Dss {
             errors,
         };
         // Hard errors are recorded by the solve internals (the `do_solve_cmd`
-        // convention).
-        let _ = match pointer {
+        // convention), and a failed step is neither solved nor converged.
+        let result = match pointer {
             cmd::SOLVE_NO_CONTROL => crate::solution::solution::solve_circuit(ckt, &mut env),
             cmd::SAMPLE_CONTROLS => {
                 crate::solution::controls::sample_control_devices(ckt, &mut env)
@@ -794,6 +794,9 @@ impl Dss {
             cmd::SOLVE_PFLOW => crate::solution::solution::do_pflow_solution(ckt, &mut env),
             _ => unreachable!("dispatch covers the step-solution ordinals"),
         };
+        if result.is_err() {
+            crate::solution::solution::clear_solved(ckt);
+        }
     }
 
     /// Pascal `DoInterpolateCmd` (`ExecHelper.pas:3106`): interpolate bus

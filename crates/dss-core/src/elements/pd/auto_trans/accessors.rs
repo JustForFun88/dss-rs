@@ -48,14 +48,6 @@ impl CktElement for AutoTrans {
         self.emerg_amps
     }
 
-    /// The ratings derive from kVA and the series winding voltage base, which is
-    /// negative when winding 1 sits below winding 2, so a negative rating is
-    /// still a rating and a loading takes its magnitude. Pinned by
-    /// `export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`.
-    fn loading_rating(&self, rating: crate::obj::Rating) -> crate::obj::Rating {
-        rating.map(f64::abs)
-    }
-
     /// Pascal `TDSSCktElement.Get_Losses` **AUTOTRANS_ELEMENT special case**
     /// (`CktElement.pas:618`): sum complex power into only the *first* `Nphases`
     /// conductors of each terminal and **skip the second-half** conductors
@@ -178,6 +170,12 @@ impl CktElement for AutoTrans {
         let mut yprim = CMatrix::new(yorder);
 
         self.cd.yprim_freq = sys.frequency;
+        // The input the last recalc refused refuses the solve (pinned by
+        // `an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
+        if let Some(msg) = self.cd.recalc_refusal.clone() {
+            self.cd.refuse_yprim(msg);
+            return;
+        }
         // Pascal `CalcY_Terminal` reads the global `Solution.Frequency` for the
         // GIC gate; refresh the executive-synced copy so the (possible) rebuild
         // below and any later `RecalcElementData` see the live frequency.
@@ -185,6 +183,28 @@ impl CktElement for AutoTrans {
         let freq_mult = sys.frequency / self.cd.base_frequency;
         if freq_mult != self.y_terminal_freqmult {
             self.calc_y_terminal(freq_mult, sys.frequency);
+        }
+        // A short-circuit impedance singular at the solve frequency or whose
+        // inverse is not finite there, or a winding with no dc resistance at
+        // dc, refuses the build (pinned by
+        // `elements::pd::auto_trans::tests::a_short_circuit_impedance_singular_at_the_y_build_refuses_it`,
+        // `exec::tests::rating_refusals::a_singular_short_circuit_impedance_refuses_its_transformer`
+        // and `exec::tests::rating_refusals::a_winding_with_no_resistance_refuses_its_transformer_at_dc`).
+        let finite = |m: &CMatrix| {
+            m.values()
+                .iter()
+                .all(|z| z.re.is_finite() && z.im.is_finite())
+        };
+        let refused = if self.zb_singular || !(finite(&self.y_term) && finite(&self.y_term_nl)) {
+            Some(self.short_circuit_input())
+        } else {
+            self.dc_short
+                .map(|i| crate::elements::pd::winding::dc_short_input(&self.windings, i))
+        };
+        if let Some(input) = refused {
+            let msg = self.cd.refusal_message("AutoTrans", &input, "admittance");
+            self.cd.refuse_yprim(msg);
+            return;
         }
 
         Self::build_yprim_component(&mut yp_series, &self.y_term, &self.term_ref, nw, np);
@@ -349,6 +369,12 @@ impl AutoTrans {
         for i in 0..n {
             self.xsc[i] = o.xsc[i];
         }
+        // A reactance its source's refused recalc left underived is derived by
+        // the copy's recalc, so the copy is refused as its source is unless its
+        // own command types an `XSCArray` (pinned by
+        // `exec::tests::rating_refusals::a_singular_short_circuit_impedance_refuses_its_transformer`
+        // and `exec::tests::rating_refusals::a_typed_xscarray_replaces_refused_reactances`).
+        self.xhx_changed = o.xhx_changed;
         self.zb = o.zb.clone();
         self.y_1volt = o.y_1volt.clone();
         self.y_term = o.y_term.clone();
@@ -364,6 +390,11 @@ impl AutoTrans {
         self.pct_no_load_loss = o.pct_no_load_loss;
         self.norm_max_hkva = o.norm_max_hkva;
         self.emerg_max_hkva = o.emerg_max_hkva;
+        self.hkva_overflow = o.hkva_overflow;
+        // The current ratings derived from those kVA ratings, which a copy whose
+        // recalc is refused keeps.
+        self.norm_amps = o.norm_amps;
+        self.emerg_amps = o.emerg_amps;
         self.xrconst = o.xrconst;
 
         self.xfmr_bank = o.xfmr_bank.clone();
@@ -735,10 +766,13 @@ impl DssObject for AutoTrans {
                     for w in self.windings.iter_mut().skip(1) {
                         w.kva = k;
                     }
-                    self.norm_max_hkva = 1.1 * k;
-                    self.emerg_max_hkva = 1.5 * k;
+                    self.set_hkva_from(k);
                 } else if self.num_windings == 2 {
-                    self.windings[0].kva = self.windings[1].kva;
+                    // One kVA rates both windings of a two-winding unit, so
+                    // winding 1 takes it and its kVA ratings follow.
+                    let k = self.windings[1].kva;
+                    self.windings[0].kva = k;
+                    self.set_hkva_from(k);
                 }
             }
             PCTR | PCTRS => {
@@ -750,10 +784,10 @@ impl DssObject for AutoTrans {
                 let w = self.aw();
                 self.windings[w].rdc_specified = true;
             }
+            NORMHKVA => self.hkva_overflow[0] = false,
+            EMERGHKVA => self.hkva_overflow[1] = false,
             KVAS => {
-                let k = self.windings[0].kva;
-                self.norm_max_hkva = 1.1 * k;
-                self.emerg_max_hkva = 1.5 * k;
+                self.set_hkva_from(self.windings[0].kva);
             }
             XHX | XHT | XXT => {
                 // SpecSet1 {XHX,XHT,XXT} vs SpecSet2 {XSCArray}.
@@ -772,6 +806,10 @@ impl DssObject for AutoTrans {
                 for p in [XHX, XHT, XXT] {
                     self.cd.obj.clear_seq(p);
                 }
+                // The typed array is the short-circuit impedance now, so a
+                // pending reactance derivation (also one copied by `like=`)
+                // must not overwrite it.
+                self.xhx_changed = false;
             }
             // r4064 (90962ae8): BHpoints reallocates both BH arrays, zeroed.
             BHPOINTS => {
@@ -826,6 +864,21 @@ impl DssObject for AutoTrans {
             | crate::obj::base::RefAction::SetConductorsClosed { .. }
             | crate::obj::base::RefAction::SetOcpDevice { .. }
             | crate::obj::base::RefAction::SetElementBus { .. } => {}
+        }
+    }
+}
+
+impl AutoTrans {
+    /// Derive the kVA ratings from winding 1's `kva`
+    /// ([`hkva_from`](crate::elements::pd::winding::hkva_from)). When either
+    /// is not a finite number both keep what they held, and the one that is
+    /// not is flagged for the recalc, which refuses the element.
+    fn set_hkva_from(&mut self, kva: f64) {
+        let [norm, emerg] = crate::elements::pd::winding::hkva_from(kva);
+        self.hkva_overflow = [norm.is_none(), emerg.is_none()];
+        if let (Some(norm), Some(emerg)) = (norm, emerg) {
+            self.norm_max_hkva = norm;
+            self.emerg_max_hkva = emerg;
         }
     }
 }

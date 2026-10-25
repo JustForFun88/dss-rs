@@ -319,6 +319,147 @@ impl CMatrix {
         compat::invert(self)
     }
 
+    /// The singular values, largest first, `None` when an entry is not a
+    /// finite number. One-sided Jacobi rotations orthogonalise the columns of
+    /// a copy scaled by the power of two at or above its largest entry
+    /// magnitude, so no square overflows and the scaling rounds nothing, and
+    /// each value carries an absolute error of a few `ε` times the largest.
+    pub fn singular_values(&self) -> Option<Vec<f64>> {
+        let n = self.n;
+        let mut largest = 0.0_f64;
+        for z in &self.values {
+            if !(z.re.is_finite() && z.im.is_finite()) {
+                return None;
+            }
+            largest = largest.max(z.re.abs()).max(z.im.abs());
+        }
+        if largest == 0.0 {
+            return Some(vec![0.0; n]);
+        }
+        let shift = -(largest.log2().ceil() as i32);
+        let mut a: Vec<Complex64> = self.values.iter().map(|z| times_pow2(*z, shift)).collect();
+        for _sweep in 0..64 {
+            let mut rotated = false;
+            for p in 0..n {
+                for q in p + 1..n {
+                    let (mut alpha, mut beta, mut gamma) = (0.0_f64, 0.0_f64, Complex64::ZERO);
+                    for i in 0..n {
+                        let (x, y) = (a[p * n + i], a[q * n + i]);
+                        alpha += x.norm_sqr();
+                        beta += y.norm_sqr();
+                        gamma += x.conj() * y;
+                    }
+                    let g = gamma.norm();
+                    if g == 0.0 || g <= f64::EPSILON * (alpha * beta).sqrt() {
+                        continue;
+                    }
+                    rotated = true;
+                    // The rotation that zeroes the Gram term of columns `p`
+                    // and `q` once column `q` is turned by the phase of
+                    // `gamma`.
+                    let zeta = (beta - alpha) / (2.0 * g);
+                    let t = zeta.signum() / (zeta.abs() + (1.0 + zeta * zeta).sqrt());
+                    let c = 1.0 / (1.0 + t * t).sqrt();
+                    let s = c * t;
+                    let phase = (gamma / g).conj();
+                    for i in 0..n {
+                        let x = a[p * n + i];
+                        let y = a[q * n + i] * phase;
+                        a[p * n + i] = x * c - y * s;
+                        a[q * n + i] = x * s + y * c;
+                    }
+                }
+            }
+            if !rotated {
+                break;
+            }
+        }
+        let mut values: Vec<f64> = (0..n)
+            .map(|j| {
+                let sum: f64 = a[j * n..(j + 1) * n].iter().map(|z| z.norm_sqr()).sum();
+                times_pow2(Complex64::new(sum.sqrt(), 0.0), -shift).re
+            })
+            .collect();
+        values.sort_by(|x, y| y.total_cmp(x));
+        Some(values)
+    }
+
+    /// Whether the matrix cannot be told from a singular one in f64: an
+    /// entry is not a finite number, a row or a column is zero, or the matrix
+    /// after Ruiz's equilibration has a smallest singular value at most `n ε`
+    /// times its largest (`ε` = [`f64::EPSILON`]). The equilibration scales
+    /// each row and each column by the power of two nearest the reciprocal
+    /// square root of its largest entry until every row and column maximum is
+    /// within a factor of two of one, which leaves well-conditioned a matrix
+    /// whose rows only span many decades. An exact scaling of the rows and
+    /// columns keeps the rounding
+    /// of each stored entry, at most `ε / 2` of itself, so a matrix singular
+    /// as typed scales to one whose smallest singular value is at most
+    /// `√n ε / 2` of its largest.
+    pub fn is_numerically_singular(&self) -> bool {
+        let n = self.n;
+        if self
+            .values
+            .iter()
+            .any(|z| !(z.re.is_finite() && z.im.is_finite()))
+        {
+            return true;
+        }
+        // The exponent of each entry's size, `None` for a zero entry, and the
+        // power of two each row and column is scaled by.
+        let size = |z: Complex64| z.re.abs().max(z.im.abs());
+        let log: Vec<Option<f64>> = self
+            .values
+            .iter()
+            .map(|&z| (size(z) > 0.0).then(|| size(z).log2()))
+            .collect();
+        let (mut row, mut col) = (vec![0_i32; n], vec![0_i32; n]);
+        let at = |row: &[i32], col: &[i32], i: usize, j: usize| {
+            log[self.idx(i, j)].map(|l| l + f64::from(row[i] + col[j]))
+        };
+        // The power of two that takes a maximum `2^m` to within a factor of
+        // two of one in halves, so a maximum in `[1/2, 2)` stays.
+        let step = |m: f64| -((0.5 * m + 0.5).floor() as i32);
+        for _sweep in 0..128 {
+            let mut row_step = vec![0_i32; n];
+            for (i, s) in row_step.iter_mut().enumerate() {
+                let Some(m) = (0..n).filter_map(|j| at(&row, &col, i, j)).reduce(f64::max) else {
+                    return true;
+                };
+                *s = step(m);
+            }
+            let mut col_step = vec![0_i32; n];
+            for (j, s) in col_step.iter_mut().enumerate() {
+                let Some(m) = (0..n).filter_map(|i| at(&row, &col, i, j)).reduce(f64::max) else {
+                    return true;
+                };
+                *s = step(m);
+            }
+            if row_step.iter().chain(&col_step).all(|&s| s == 0) {
+                break;
+            }
+            for (e, s) in row.iter_mut().zip(&row_step) {
+                *e += s;
+            }
+            for (e, s) in col.iter_mut().zip(&col_step) {
+                *e += s;
+            }
+        }
+        let mut scaled = CMatrix::new(n);
+        for j in 0..n {
+            for i in 0..n {
+                scaled[(i, j)] = times_pow2(self[(i, j)], row[i] + col[j]);
+            }
+        }
+        let Some(values) = scaled.singular_values() else {
+            return true;
+        };
+        match (values.first(), values.last()) {
+            (Some(&largest), Some(&smallest)) => smallest <= n as f64 * f64::EPSILON * largest,
+            _ => false,
+        }
+    }
+
     /// Kron reduction: eliminate row/column `elim` (0-based) and return the
     /// reduced matrix; `None` when the order is 1 or `elim` is out of range
     /// (Pascal returned `NIL`).
@@ -398,4 +539,17 @@ impl IndexMut<(usize, usize)> for CMatrix {
         let i = self.idx(row, col);
         &mut self.values[i]
     }
+}
+
+/// `z · 2^e`, exact while each part of the result is a normal number: the
+/// factor is applied in steps of at most `2^±1000`, each a normal power of
+/// two, and the steps move monotonically from `z` to the result.
+fn times_pow2(z: Complex64, mut e: i32) -> Complex64 {
+    let mut z = z;
+    while e != 0 {
+        let step = e.clamp(-1000, 1000);
+        z *= f64::from_bits(((1023 + step) as u64) << 52);
+        e -= step;
+    }
+    z
 }

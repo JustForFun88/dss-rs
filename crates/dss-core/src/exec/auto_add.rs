@@ -330,6 +330,7 @@ impl Dss {
                 ));
                 if let Some(ckt) = self.circuit.as_mut() {
                     ckt.solution.solution_abort = true;
+                    crate::solution::solution::clear_solved(ckt);
                 }
                 return;
             }
@@ -423,6 +424,7 @@ impl Dss {
                     Some(482),
                 ));
                 ckt.solution.solution_abort = true;
+                crate::solution::solution::clear_solved(ckt);
             }
         }
 

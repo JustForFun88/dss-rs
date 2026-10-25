@@ -14,6 +14,30 @@ use crate::util::{
 use super::ClassProps;
 
 impl ClassProps {
+    /// The text Save writes for property `idx`: the `?` text, with each number
+    /// that is not a number written `Nan` as the reader parses it, where `?`
+    /// reads `----`. The conditional-value sentinel stays `----`, the token
+    /// Save skips (pinned by
+    /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
+    pub fn saved_value(&self, obj: &dyn DssObject, idx: usize, enums: &EnumRegistry) -> String {
+        let pd = &self.props[idx];
+        let text = self.get_value(obj, idx, enums);
+        let hidden = pd.flags.contains(PropFlags::CONDITIONAL_VALUE) && !obj.prop_conditional(idx);
+        let numbers = matches!(
+            pd.ptype,
+            PropType::Double
+                | PropType::DoubleSymMatrix
+                | PropType::DoubleArrayOnStruct
+                | PropType::Complex
+                | PropType::SymMatrixReal
+                | PropType::SymMatrixImag
+        );
+        if hidden || !numbers {
+            return text;
+        }
+        text.replace("----", &float_to_str(f64::NAN))
+    }
+
     /// Pascal `GetObjPropertyValue`: render property `idx` as the string the
     /// `?` query and `DumpProperties` emit.
     pub fn get_value(&self, obj: &dyn DssObject, idx: usize, enums: &EnumRegistry) -> String {

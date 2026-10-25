@@ -13,16 +13,29 @@ use crate::elements::traits::{CktElement, ReliabilityData, SysCtx};
 use crate::support::cmatrix::{CMatrix, StampBl};
 use crate::util::sqrt3;
 
+/// What a refused recalc derived, read to name the input of an overflow.
+struct Trial<'a> {
+    /// The capacitance of each step.
+    fc: &'a [f64],
+    /// The angular frequency.
+    w: f64,
+    phase_kv: f64,
+}
+
 impl Capacitor {
-    /// Pascal `RecalcElementData`: derive `FC`/`FTotalkvar` from the spec, run
-    /// the optional harmonic-filter recomputation, and (unless overridden) the
-    /// default Norm/Emerg current ratings.
+    /// Derive the capacitance of each step, the total kvar, the filter
+    /// impedance of each tuned step and (unless typed) the normal and
+    /// emergency current ratings. When an input makes one of them not a finite
+    /// number, in that order, nothing is committed: the bank keeps what its last good recalc
+    /// derived and refuses the build ([`CktElementData::refuse_recalc`]).
     pub(super) fn recalc(&mut self) {
+        use crate::obj::Rating;
         let two_pi = 2.0 * std::f64::consts::PI;
         let w = two_pi * self.cd.base_frequency;
         let nphases = self.cd.nphases as f64;
         let n = self.n_steps();
-        self.ftotalkvar = 0.0;
+        let mut fc = self.fc.clone();
+        let mut ftotalkvar = 0.0;
         let mut phase_kv = 1.0;
 
         match self.spec_type {
@@ -34,47 +47,164 @@ impl Capacitor {
                 // is one factor, `w * (kv*kv)`, which `Cuf` renders to the bit
                 // (`derived_cuf_kvar_wye_matches_oracle_bit_exactly`).
                 let kv_sq = phase_kv.powi(2);
-                for (c, &kvar) in self.fc.iter_mut().zip(&self.fkvarrating) {
+                for (c, &kvar) in fc.iter_mut().zip(&self.fkvarrating) {
                     *c = 1.0 / (w * kv_sq * 1000.0 / (kvar / nphases));
                 }
                 for &k in self.fkvarrating.iter().take(n) {
-                    self.ftotalkvar += k;
+                    ftotalkvar += k;
                 }
             }
             CapacitorSpecType::Cuf => {
                 phase_kv = self.phase_kv();
-                for &c in self.fc.iter().take(n) {
-                    // `Ftotalkvar + w * FC[i] * SQR(PhasekV) / 1000.0` — same
-                    // `SQR`-binds-first rule; observable through the derived
-                    // Norm/Emerg amps below.
-                    self.ftotalkvar += w * c * phase_kv.powi(2) / 1000.0;
+                for &c in fc.iter().take(n) {
+                    // The square binds first, as the derived normal and
+                    // emergency ratings below show.
+                    ftotalkvar += w * c * phase_kv.powi(2) / 1000.0;
                 }
             }
-            // Pascal's `case` has no `3:` arm (`Capacitor.pas:623-660`): with a
-            // CMatrix there is nothing to derive, and `PhasekV` keeps its 1.0
-            // pre-case seeding — which the Norm/Emerg amps below then divide by.
+            // A `cmatrix` bank derives nothing, and its ratings divide by a
+            // phase voltage of 1.
             CapacitorSpecType::CMatrix => {}
         }
 
+        let mut fxl = self.fxl.clone();
+        let mut fr = self.fr.clone();
         if self.do_harmonic_recalc {
             for i in 0..n {
-                self.fxl[i] = if self.fharm[i] != 0.0 {
-                    (1.0 / (w * self.fc[i])) / (self.fharm[i] * self.fharm[i])
+                // A step of no size is an open branch with no filter
+                // (`a_zero_kvar_reactor_is_an_open_device`), and harmonic 0
+                // means no filter.
+                fxl[i] = if self.fharm[i] != 0.0 && fc[i] != 0.0 {
+                    (1.0 / (w * fc[i])) / (self.fharm[i] * self.fharm[i])
                 } else {
-                    0.0 // 0 harmonic means no filter
+                    0.0
                 };
-                if self.fr[i] == 0.0 {
-                    self.fr[i] = self.fxl[i] / 1000.0;
+                if fr[i] == 0.0 {
+                    fr[i] = fxl[i] / 1000.0;
                 }
             }
         }
 
-        let kvar_per_phase = self.ftotalkvar / nphases;
-        if !self.norm_amps_specified {
-            self.norm_amps = crate::obj::Rating::from_number(kvar_per_phase / phase_kv * 1.35);
+        let kvar_per_phase = ftotalkvar / nphases;
+        let derive = |specified: bool, held: Rating, factor: f64| {
+            if specified {
+                Ok(held)
+            } else {
+                Rating::derived(kvar_per_phase / phase_kv * factor)
+            }
+        };
+        let norm = derive(self.norm_amps_specified, self.norm_amps, 1.35);
+        let emerg = derive(self.emerg_amps_specified, self.emerg_amps, 1.8);
+
+        let finite = |v: &[f64]| v.iter().take(n).all(|x| x.is_finite());
+        let stamp_finite = match self.spec_type {
+            CapacitorSpecType::CMatrix => self
+                .cmatrix
+                .as_ref()
+                .is_none_or(|m| m.iter().all(|x| x.is_finite())),
+            _ => finite(&fc),
+        };
+        let quantity = if !stamp_finite {
+            "capacitance"
+        } else if !(finite(&fxl) && finite(&fr)) {
+            "filter impedance"
+        } else if !ftotalkvar.is_finite() {
+            "total kvar"
+        } else if norm.is_err() {
+            "normal current rating"
+        } else if emerg.is_err() {
+            "emergency current rating"
+        } else {
+            ""
+        };
+        match (norm, emerg) {
+            (Ok(norm), Ok(emerg)) if quantity.is_empty() => {
+                self.cd.recalc_refusal = None;
+                self.fc = fc;
+                self.ftotalkvar = ftotalkvar;
+                self.fxl = fxl;
+                self.fr = fr;
+                self.norm_amps = norm;
+                self.emerg_amps = emerg;
+            }
+            _ => {
+                let trial = Trial {
+                    fc: &fc,
+                    w,
+                    phase_kv,
+                };
+                let input = self.refused_input(quantity, &trial);
+                self.cd.refuse_recalc("Capacitor", &input, quantity);
+            }
         }
-        if !self.emerg_amps_specified {
-            self.emerg_amps = crate::obj::Rating::from_number(kvar_per_phase / phase_kv * 1.8);
+    }
+
+    /// The input a refused recalc names: the first input the bank's form
+    /// reads that is not a finite number, else a zero `kV`, else the cause of
+    /// the overflow. A filter reactance `1/(w C)` that overflows names the
+    /// input that sizes the step (`Cuf`, or `kvar`), a finite one divided by
+    /// a harmonic that overflows names `Harm`. A total kvar that overflows
+    /// names the steps' `kvar` or `Cuf`, or `kV` when its square overflows.
+    /// Any other overflow names `kV`, the divisor.
+    fn refused_input(&self, quantity: &str, trial: &Trial) -> String {
+        use crate::elements::pd::{array_input_text, input_text, sym_matrix_input_text};
+        let n = self.n_steps();
+        let steps = |v: &[f64]| v[..n.min(v.len())].to_vec();
+        let not_finite = |v: &[f64]| v.iter().take(n).any(|x| !x.is_finite());
+        let uses_kv = self.spec_type != CapacitorSpecType::CMatrix;
+        if self.spec_type == CapacitorSpecType::Kvar && not_finite(&self.fkvarrating) {
+            return array_input_text("kvar", &steps(&self.fkvarrating), 1.0);
+        }
+        if uses_kv && !self.kvrating.is_finite() {
+            return input_text("kV", self.kvrating);
+        }
+        if let Some(m) = self
+            .cmatrix
+            .as_ref()
+            .filter(|m| !uses_kv && m.iter().any(|x| !x.is_finite()))
+        {
+            return sym_matrix_input_text("CMatrix", m, self.cd.nphases, CUF_SCALE);
+        }
+        if self.spec_type == CapacitorSpecType::Cuf && not_finite(&self.fc) {
+            return array_input_text("Cuf", &steps(&self.fc), CUF_SCALE);
+        }
+        for (name, v) in [("R", &self.fr), ("XL", &self.fxl), ("Harm", &self.fharm)] {
+            if not_finite(v) {
+                return array_input_text(name, &steps(v), 1.0);
+            }
+        }
+        let kv = input_text("kV", self.kvrating);
+        if uses_kv && self.kvrating == 0.0 {
+            return kv;
+        }
+        let step_size = || match self.spec_type {
+            CapacitorSpecType::Cuf => array_input_text("Cuf", &steps(&self.fc), CUF_SCALE),
+            _ => array_input_text("kvar", &steps(&self.fkvarrating), 1.0),
+        };
+        match quantity {
+            "filter impedance" => {
+                let reactance_overflows = trial
+                    .fc
+                    .iter()
+                    .zip(&self.fharm)
+                    .take(n)
+                    .any(|(&c, &h)| h != 0.0 && c != 0.0 && !(1.0 / (trial.w * c)).is_finite());
+                if reactance_overflows {
+                    step_size()
+                } else {
+                    array_input_text("Harm", &steps(&self.fharm), 1.0)
+                }
+            }
+            "total kvar" => {
+                // A `Cuf` step's kvar is `w C kV²`: the voltage overflows it
+                // when its square alone is not finite.
+                if self.spec_type == CapacitorSpecType::Cuf && !trial.phase_kv.powi(2).is_finite() {
+                    kv
+                } else {
+                    step_size()
+                }
+            }
+            _ => kv,
         }
     }
 
@@ -91,10 +221,14 @@ impl Capacitor {
         }
     }
 
-    /// Why the solve refuses this `cmatrix` bank, if it does: a nodal matrix
-    /// has no defined delta stamp for two or more phases, and the matrix must
-    /// be `nphases × nphases`.
+    /// Why the solve refuses this bank, if it does: the input its last recalc
+    /// refused, and for a `cmatrix` bank a delta of two or more phases (a
+    /// nodal matrix has no defined delta stamp) or a matrix of another order
+    /// than `nphases × nphases`.
     fn refusal(&self) -> Option<String> {
+        if let Some(msg) = &self.cd.recalc_refusal {
+            return Some(msg.clone());
+        }
         if self.spec_type != CapacitorSpecType::CMatrix {
             return None;
         }
@@ -115,6 +249,18 @@ impl Capacitor {
         self.connection == 1 && self.cd.nphases == 3 && self.cd.nconds == 3
     }
 
+    /// The series filter of each step, `R` and `XL`, as `?` reads them.
+    fn filter_input_text(&self) -> String {
+        use crate::elements::pd::array_input_text;
+        let n = self.n_steps();
+        let steps = |v: &[f64]| v[..n.min(v.len())].to_vec();
+        format!(
+            "{} {}",
+            array_input_text("R", &steps(&self.fr), 1.0),
+            array_input_text("XL", &steps(&self.fxl), 1.0)
+        )
+    }
+
     /// Build one energized step's admittance into `ywork`, cleared first, so
     /// the steps of a bank add as capacitors in parallel in every connection
     /// (pinned by `a_multistep_delta_bank_draws_the_sum_of_its_steps`).
@@ -127,6 +273,10 @@ impl Capacitor {
         let nphases = self.cd.nphases;
         let nconds = self.cd.nconds;
 
+        // A step of no size is an open branch: it stamps nothing.
+        if self.spec_type != CapacitorSpecType::CMatrix && self.fc[i_step] == 0.0 {
+            return;
+        }
         let has_zl = (self.fr[i_step] + self.fxl[i_step].abs()) > 0.0;
         let zl = Complex64::new(self.fr[i_step], self.fxl[i_step] * freq_multiple);
 
@@ -296,6 +446,21 @@ impl CktElement for Capacitor {
                     temp.add_from(&ywork);
                 }
             }
+        }
+
+        // A filter in series resonance at the solve frequency with no
+        // resistance is a short the stamp cannot carry (pinned by
+        // `exec::tests::rating_refusals::a_series_filter_at_its_resonance_refuses_its_capacitor`).
+        let stamp = if self.is_shunt { &yp_shunt } else { &yp_series };
+        if !stamp
+            .values()
+            .iter()
+            .all(|z| z.re.is_finite() && z.im.is_finite())
+        {
+            let input = self.filter_input_text();
+            let msg = self.cd.refusal_message("Capacitor", &input, "admittance");
+            self.cd.refuse_yprim(msg);
+            return;
         }
 
         // Set YPrim_Series from the shunt diagonals so CalcVoltages doesn't fail.

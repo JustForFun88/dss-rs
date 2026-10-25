@@ -186,6 +186,25 @@ impl PropFlags {
     /// followed by another value, or a value that is not a finite number, is
     /// refused, naming its place. Carried by LineSpacing `X` and `H`.
     pub const GIVEN_PREFIX: Self = Self(1 << 21);
+    /// Not a Pascal flag: a current rating the element derives from its kVA
+    /// rating, read only by the documentation. Writing it is refused whatever
+    /// the value, naming the property that sets the rating, and the derived
+    /// rating stays. Carried by the `NormAmps` and `EmergAmps` of Transformer
+    /// and AutoTrans. The schema walk and the JSON writer do not read it.
+    pub const READ_ONLY_RATING: Self = Self(1 << 22);
+    /// Not a Pascal flag: a kVA or device rating held as a plain number. A
+    /// value that is not a finite number is refused at its token, naming the
+    /// rating, and the property keeps what it held. Carried by the
+    /// `NormHkVA`, `EmergHkVA` and `Ratings` of the transformer classes and
+    /// the `RatedCurrent` and `InterruptingRating` of the protective devices
+    /// (`a_typed_non_finite_kva_or_device_rating_is_refused`).
+    pub const FINITE_RATING: Self = Self(1 << 23);
+    /// Not a Pascal flag: a rated voltage or kVA base, which the
+    /// documentation gives as a positive number. A value that is not a finite
+    /// number (an array with any such entry) is refused at its token and the
+    /// property keeps what it held
+    /// (`a_typed_non_finite_rated_voltage_or_kva_base_is_refused_at_its_token`).
+    pub const FINITE_BASE: Self = Self(1 << 24);
     // Metadata-only in Phase 2 (inert, kept for fidelity / future phases):
     pub const SUPPRESS_JSON: Self = Self(1 << 32);
     pub const REDUNDANT: Self = Self(1 << 33);

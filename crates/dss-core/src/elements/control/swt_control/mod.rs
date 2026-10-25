@@ -170,7 +170,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // to its full r4133 9-prop shape (self-referential golden), so it no longer
         // hides from the full-enum surface; `compare_all_properties` still excludes
         // it from the 0.14.5 property-table walk via the name-based PROPS_015X row.
-        PropDef::double("RatedCurrent"),
+        PropDef::double("RatedCurrent").flags(PropFlags::FINITE_RATING),
         // TCktElementClass tail:
         PropDef::double("BaseFreq").flags(
             PropFlags::DYNAMIC_DEFAULT

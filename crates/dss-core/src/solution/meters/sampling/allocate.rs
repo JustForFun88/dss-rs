@@ -1,39 +1,56 @@
-//! Load allocation — Pascal `TExecHelper.DoAllocateLoadsCmd` (ExecHelper.pas
-//! l.2605) and the per-zone `CalcAllocationFactors` / `AllocateLoad` it drives.
-//! Split out of `sampling/mod.rs` (no behavioral change).
+//! Load allocation: the `AllocateLoads` loop, the allocation factors each
+//! EnergyMeter and Sensor computes against its measured peak, and the scaling
+//! of every meter zone's loads by them.
 
 use crate::circuit::Circuit;
 use crate::elements::meter::energymeter::EnergyMeter;
 use crate::elements::meter::sensor::Sensor;
-use crate::elements::pc::load::Load;
+use crate::elements::pc::load::{AllocationCommand, Load};
 use crate::elements::traits::{ElemId, ElemStore, SysCtx, TypedStore};
 use crate::solution::SolveEnv;
 use crate::solution::solution::{solve, sys_ctx};
 
 use super::super::meter_mut;
 
-/// Pascal `TExecHelper.DoAllocateLoadsCmd` allocation loop (ExecHelper.pas
-/// l.2605). The caller has already forced `LoadMultiplier = 1.0`. Solve a guess
-/// from the present factors, then iterate: recompute every meter/sensor
-/// allocation factor, run each meter's zone load adjustment, and re-solve.
+/// The `AllocateLoads` loop. The caller has already forced
+/// `LoadMultiplier = 1.0`. Solve a guess from the present factors, then
+/// iterate: recompute every meter and sensor allocation factor, adjust each
+/// meter's zone loads, and re-solve. A pass whose factor for a load is not a
+/// finite number, or would leave the load unbuilt, changes no load and ends
+/// the command, naming the first such load (pinned by
+/// `exec::tests::rating_refusals::an_allocation_factor_set_outside_an_edit_is_refused_where_its_load_would_not_build`).
+/// A load refused as it stands keeps the factor it holds, logged once.
 pub(crate) fn allocate_loads(ckt: &mut Circuit, env: &mut SolveEnv, max_iters: usize) {
     let _ = solve(ckt, env); // guess based on present allocation factors
+    let mut skipped: Vec<String> = Vec::new();
     for _ in 0..max_iters {
         let sys = sys_ctx(ckt);
         calc_allocation_factors_all(ckt, env.store, &sys);
-        allocate_load_all(ckt, env.store);
+        match allocate_load_all(ckt, env.store, &sys) {
+            Ok(skips) => {
+                for msg in skips {
+                    if !skipped.contains(&msg) {
+                        env.errors.push(msg.clone());
+                        skipped.push(msg);
+                    }
+                }
+            }
+            Err(msg) => {
+                env.errors.push(msg);
+                return;
+            }
+        }
         let _ = solve(ckt, env); // update the solution
     }
 }
 
-/// `CalcAllocationFactors` over every EnergyMeter then every Sensor (Pascal
-/// order). Each reads its metered element's currents vs the measured peak.
+/// Compute the allocation factors of every enabled EnergyMeter, then of every
+/// enabled Sensor, each from its metered element's currents against its
+/// measured peak.
 fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &SysCtx) {
     let node_v = &ckt.solution.node_v;
     for meter_ref in ckt.energy_meters.clone() {
-        // D9 (dss_capi `fb728364`, SVN r4115): `TMeterElement.CalcAllocationFactors`
-        // opens with `if not Enabled then Exit` — a disabled meter contributes no
-        // allocation factors.
+        // A disabled meter contributes no allocation factors.
         if !meter_mut(store, meter_ref).enabled() {
             continue;
         }
@@ -48,8 +65,7 @@ fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &S
         let sensor = store
             .typed::<Sensor>(sensor_ref)
             .expect("sensors holds Sensor objects");
-        // D9 (SVN r4115): `TMeterElement.CalcAllocationFactors` skips a disabled
-        // sensor too (both EnergyMeter and Sensor are `TMeterElement`).
+        // Nor does a disabled sensor.
         if !sensor.med.cd.enabled {
             continue;
         }
@@ -61,29 +77,62 @@ fn calc_allocation_factors_all(ckt: &Circuit, store: &mut dyn ElemStore, sys: &S
     }
 }
 
-/// `AllocateLoad` over every EnergyMeter zone.
-fn allocate_load_all(ckt: &Circuit, store: &mut dyn ElemStore) {
+/// Adjust the loads of every enabled EnergyMeter zone. The new factors of
+/// the pass are collected in zone order first, each read from the factor an
+/// earlier zone of the pass gave the same load, and applied only when every
+/// one is a finite number that leaves its load built. Otherwise the refusal
+/// of the first such load is returned. A load refused as it stands is
+/// skipped, and the messages of the skips are returned.
+fn allocate_load_all(
+    ckt: &Circuit,
+    store: &mut dyn ElemStore,
+    sys: &SysCtx,
+) -> Result<Vec<String>, String> {
+    let mut pending: Vec<(ElemId, f64)> = Vec::new();
     for meter_ref in ckt.energy_meters.clone() {
-        // D9 (dss_capi `fb728364`, SVN r4115): `TEnergyMeterObj.AllocateLoad`
-        // opens with `if not Enabled then Exit` — a disabled meter does not
-        // adjust its zone loads.
+        // A disabled meter does not adjust its zone loads.
         if !meter_mut(store, meter_ref).enabled() {
             continue;
         }
-        allocate_load_for_meter(meter_ref, ckt, store);
+        allocate_load_for_meter(meter_ref, ckt, store, &mut pending);
     }
+    let command = AllocationCommand::Allocate;
+    for &(load_ref, factor) in &pending {
+        let load = store
+            .typed::<Load>(load_ref)
+            .expect("load_list holds Load objects");
+        let refusal = command
+            .not_finite_factor(factor, Some(load.cd.obj.name()))
+            .or_else(|| load.allocation_refusal(command, factor, sys));
+        if let Some(msg) = refusal {
+            return Err(msg);
+        }
+    }
+    let mut skips = Vec::new();
+    for (load_ref, factor) in pending {
+        let load = store
+            .typed_mut::<Load>(load_ref)
+            .expect("load_list holds Load objects");
+        match load.allocation_skip(command) {
+            Some(msg) => skips.push(msg),
+            None => load.set_allocation_factor(factor),
+        }
+    }
+    Ok(skips)
 }
 
-/// Pascal `TEnergyMeterObj.AllocateLoad` (EnergyMeter.pas l.2147): walk the
-/// meter's zone loads and scale each by its upstream sensor's allocation factor
-/// (single-phase loads use the connected-phase factor; poly-phase loads use the
-/// average factor). The sensor may be a Sensor object **or** an EnergyMeter.
-fn allocate_load_for_meter(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn ElemStore) {
-    // Pascal walks `BranchList` (`First`/`GoForward`) and, per branch, its shunt
-    // objects (`FirstObject`/`NextObject`), filtering to `LOAD_ELEMENT`. The
-    // meter's `load_list` is exactly that set (only Loads are pushed during the
-    // zone build, in the same branch-tree order) and the per-load scaling is
-    // independent, so iterating it is equivalent — no other shunt type responds.
+/// Walk the meter's zone loads and push to `pending` each one's factor
+/// scaled by its upstream sensor's allocation factor (single-phase loads use
+/// the connected-phase factor, poly-phase loads the average factor). The
+/// sensor may be a Sensor object **or** an EnergyMeter.
+fn allocate_load_for_meter(
+    meter_ref: ElemId,
+    ckt: &Circuit,
+    store: &mut dyn ElemStore,
+    pending: &mut Vec<(ElemId, f64)>,
+) {
+    // The meter's `load_list` holds the zone's loads in branch-tree order, and
+    // each load is scaled independently of the others.
     let loads = meter_mut(store, meter_ref).load_list().to_vec();
     for load_ref in loads {
         let (nphases, sensor_ref, alloc_factor, node_ref0) = {
@@ -93,31 +142,31 @@ fn allocate_load_for_meter(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn Ele
             (
                 load.cd.nphases,
                 load.cd.sensor_obj,
-                load.allocation_factor(),
+                pending
+                    .iter()
+                    .rev()
+                    .find(|(r, _)| *r == load_ref)
+                    .map_or(load.allocation_factor(), |&(_, f)| f),
                 load.cd.node_ref.first().copied().unwrap_or(0),
             )
         };
-        // Pascal dereferences `LoadElem.SensorObj` unconditionally; every zone
-        // load is given a sensor (the meter, or an upstream Sensor) by the zone
-        // build, so this is never NIL there. We guard defensively rather than
-        // panic if the back-pointer is somehow unset.
+        // The zone build gives every zone load a sensor (the meter or an
+        // upstream Sensor), so a load without one is skipped, never a panic.
         let Some(sref) = sensor_ref else { continue };
         let Some((s_nphases, avg, phs)) = sensor_alloc_data(store, sref) else {
             continue;
         };
         let new_factor = if nphases == 1 {
-            // Connected phase from NodeRef[1] → MapNodeToBus → NodeNum (1..3).
+            // The connected phase is the bus node number of the load's first node.
             let connected_phase = ckt
                 .map_node_to_bus
                 .get(node_ref0)
                 .map(|nb| nb.node_num)
                 .unwrap_or(0);
             if connected_phase > 0 && connected_phase < 4 {
-                // Pascal indexes `PhsAllocationFactor[ConnectedPhase]` directly
-                // (1-based → `connected_phase - 1` here). A connected phase past
-                // the sensor's phase count is a malformed circuit (e.g. a 3-phase
-                // node on a 2-phase sensor) where Pascal reads past the array; we
-                // fall back to the no-change factor 1.0 instead.
+                // A one-phase sensor gives its only factor. A connected phase
+                // past the sensor's phase count (a load on node 3 under a
+                // two-phase sensor) takes the no-change factor 1.
                 let f = if s_nphases == 1 {
                     phs.first().copied().unwrap_or(1.0)
                 } else {
@@ -127,22 +176,20 @@ fn allocate_load_for_meter(meter_ref: ElemId, ckt: &Circuit, store: &mut dyn Ele
                 };
                 Some(alloc_factor * f)
             } else {
-                None // Pascal leaves the factor unchanged outside phases 1..3
+                None // a load off phases 1 to 3 keeps its factor
             }
         } else {
             Some(alloc_factor * avg)
         };
         if let Some(nf) = new_factor {
-            store
-                .typed_mut::<Load>(load_ref)
-                .expect("load_list holds Load objects")
-                .set_allocation_factor(nf);
+            pending.push((load_ref, nf));
         }
     }
 }
 
-/// The (nphases, AvgAllocFactor, PhsAllocationFactor) of a metering device,
-/// which may be a [`Sensor`] or an [`EnergyMeter`] (both embed `MeterElementData`).
+/// The phase count, the average allocation factor and the per-phase factors
+/// of a metering device, a [`Sensor`] or an [`EnergyMeter`] (both embed
+/// `MeterElementData`).
 fn sensor_alloc_data(store: &dyn ElemStore, r: ElemId) -> Option<(usize, f64, Vec<f64>)> {
     if let Some(s) = store.typed::<Sensor>(r) {
         Some((

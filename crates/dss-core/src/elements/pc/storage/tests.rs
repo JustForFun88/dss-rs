@@ -1047,3 +1047,79 @@ fn a_dynamic_eq_without_variables_keeps_the_classic_layout() {
         "DynaModel after the user tail"
     );
 }
+
+/// The DC power of an efficiency curve solves its relation to the AC power on
+/// the segment that holds the solution, the end segments extended past the
+/// curve, also where the segment of the AC power is another one, a falling
+/// segment has a second root past the curve, or rounding puts each root just
+/// past their shared knot, and a curve of one point is its constant. A curve
+/// that cannot carry the AC power at any DC power has none.
+#[test]
+fn the_dc_power_is_solved_on_the_segment_that_holds_it() {
+    use super::registers::dc_power_on_curve;
+    use crate::elements::general::xy_curve::XyCurveObj;
+    let curve = |xs: &[f64], ys: &[f64]| XyCurveObj::from_points("eff", xs, ys);
+    let (kva, p) = (120.0, 100.0);
+    // Discharging delivers `p = η(P / kva) P`. The segment of the AC power and
+    // the segment past it each send the solution to the other, the steep one
+    // between them holds it.
+    let steep = curve(&[0.0, 0.9, 0.91, 1.2], &[0.89, 0.9, 0.96, 0.97]);
+    let dc = dc_power_on_curve(&steep, p, kva, true).expect("a segment holds it");
+    let (a, b) = steep.segment_line(1);
+    assert!((0.9..=0.91).contains(&(dc / kva)), "{dc}");
+    assert!(((a * dc / kva + b) * dc - p).abs() <= 1e-12 * p, "{dc}");
+    // On a falling last segment the larger root of its quadratic lies past
+    // the curve's last point, the smaller one on the segment.
+    let falling = curve(&[0.0, 0.5, 1.0], &[0.96, 0.96, 0.86]);
+    let dc = dc_power_on_curve(&falling, p, kva, true).expect("a segment holds it");
+    let (a, b) = falling.segment_line(1);
+    assert!((0.5..=1.0).contains(&(dc / kva)), "{dc}");
+    assert!(((a * dc / kva + b) * dc - p).abs() <= 1e-12 * p, "{dc}");
+    // Charging stores `P = η(P / kva) p`: the AC power reads the falling
+    // segment, the DC power the flat one.
+    let fall = curve(&[0.0, 0.8, 1.2], &[0.9, 0.9, 0.5]);
+    assert_eq!(dc_power_on_curve(&fall, p, kva, false), Some(0.9 * p));
+    // Charging on a sloped segment, and on the third segment of a curve that
+    // starts past zero.
+    let rising = curve(&[0.0, 0.5, 1.2], &[0.8, 0.9, 0.97]);
+    let corpus = curve(&[0.1, 0.2, 0.4, 1.0], &[0.86, 0.9, 0.93, 0.97]);
+    for (c, k, lo, hi) in [(&rising, 1, 0.5, 1.2), (&corpus, 2, 0.4, 1.0)] {
+        let dc = dc_power_on_curve(c, p, kva, false).expect("a segment holds it");
+        let (a, b) = c.segment_line(k);
+        assert!(a != 0.0 && (lo..=hi).contains(&(dc / kva)), "{dc}");
+        assert!((dc - (a * dc / kva + b) * p).abs() <= 1e-12 * dc, "{dc}");
+    }
+    // Before the first point and past the last one the end segment extends.
+    for (ac, k, discharging) in [(6.0, 0, true), (118.8, 2, true), (6.0, 0, false)] {
+        let dc = dc_power_on_curve(&corpus, ac, kva, discharging).expect("an end segment holds it");
+        let (a, b) = corpus.segment_line(k);
+        let x = dc / kva;
+        assert!(if k == 0 { x < 0.1 } else { x > 1.0 }, "{ac}: {x}");
+        let eta = a * x + b;
+        let residual = if discharging {
+            eta * dc - ac
+        } else {
+            dc - eta * ac
+        };
+        assert!(residual.abs() <= 1e-12 * ac, "{ac}: {residual}");
+    }
+    // A flat curve in both directions, and no power.
+    let flat = curve(&[0.0, 1.0], &[0.9, 0.9]);
+    assert_eq!(dc_power_on_curve(&flat, p, kva, true), Some(p / 0.9));
+    assert_eq!(dc_power_on_curve(&flat, p, kva, false), Some(p * 0.9));
+    assert_eq!(dc_power_on_curve(&steep, 0.0, kva, true), Some(0.0));
+    // The roots of the two segments at this knot each fall just past it, so
+    // the solution is taken at the knot.
+    let knot = curve(&[0.0, 0.3, 1.0], &[0.85, 0.95, 0.97]);
+    let p_knot = 34.20000000000001;
+    let dc = dc_power_on_curve(&knot, p_knot, kva, true).expect("taken at the knot");
+    assert_eq!(dc / kva, 0.3);
+    // No DC power gives the AC power.
+    let low = curve(&[0.0, 1.0], &[0.5, 0.1]);
+    assert_eq!(dc_power_on_curve(&low, p, kva, true), None);
+    assert_eq!(dc_power_on_curve(&fall, p, kva, true), None);
+    // A curve of one point is its efficiency at every power, as the flat one.
+    let one = curve(&[0.5], &[0.9]);
+    assert_eq!(dc_power_on_curve(&one, p, kva, true), Some(p / 0.9));
+    assert_eq!(dc_power_on_curve(&one, p, kva, false), Some(p * 0.9));
+}

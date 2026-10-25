@@ -92,8 +92,17 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
             Some(482),
         ));
         ckt.solution.solution_abort = true;
+        clear_solved(ckt);
     }
     Ok(())
+}
+
+/// A solve that failed at any step is neither solved nor converged, whatever
+/// an earlier step of the same run found (pinned by
+/// `exec::tests::rating_refusals::the_dc_power_of_an_efficiency_curve_is_solved_on_the_segment_that_holds_it`).
+pub(crate) fn clear_solved(ckt: &mut Circuit) {
+    ckt.is_solved = false;
+    ckt.solution.converged_flag = false;
 }
 
 /// Pascal `nearestBasekV`: the legal base closest to `kv` in **relative**

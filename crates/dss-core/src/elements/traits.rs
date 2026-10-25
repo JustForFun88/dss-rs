@@ -1075,13 +1075,16 @@ pub trait CktElement: Send {
     }
 
     /// The rating a loading is measured against, given one of this element's
-    /// current ratings (`NormAmps`, `EmergAmps` or a seasonal entry): the rating
-    /// itself, sign included (pinned for a Line by
-    /// `nonpositive_line_rating_keeps_the_oracle_reading_at_every_loading_site`).
-    /// A rating that is not set stays not set. The Transformer and the
-    /// AutoTrans override it.
+    /// current ratings (`NormAmps`, `EmergAmps` or a seasonal entry): its
+    /// magnitude ([`Rating::magnitude`]), as a negative rating comes only from a
+    /// derivation whose current flows whatever its sign. A rating that is not
+    /// set stays not set. Pinned by
+    /// `a_derived_negative_rating_loads_against_its_magnitude`,
+    /// `a_derived_negative_rating_loads_by_its_magnitude_at_every_loading_site`,
+    /// `export_seqcurrents_negative_transformer_rating_loads_against_its_magnitude`
+    /// and `export_seqcurrents_negative_autotrans_rating_loads_against_its_magnitude`.
     fn loading_rating(&self, rating: Rating) -> Rating {
-        rating
+        rating.magnitude()
     }
 
     /// [`Self::get_ratings`] as the pair a loading is measured against

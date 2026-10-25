@@ -51,7 +51,10 @@
     "posseq-seqpowers-slot-stride": "EPRI r4133's CktElement.SeqPowers writes the 1-phase POSITIVE-SEQUENCE arm into the wrong slot with the wrong stride. Mode 9 of Version8/Source/DDLL/DCktElement.pas transplants the ONE-based iV := 2 / Inc(iV, 3) of CalcSeqCurrents (:50, :55) onto a ZERO-based dynamic array and then keeps a stride of one -- Count := 2 (:760) and inc(count) (:768) -- so terminal t's positive-sequence power lands in flat slot t+2 (terminal 1 in the NEGATIVE-sequence slot, terminal 2 in the next terminal's ZERO-sequence slot, and so on) instead of 3t+1. dss_capi 0.14.5 is right on the same arm (iCount := 1 at CAPI/CAPI_Alt.pas:555, inc(icount, 3) at :562), and so are all four Calc* helpers on BOTH engines on their one-based buffers. SeqCurrents and SeqVoltages are unaffected -- they go through Calc*, not through mode 9 -- so the divergence is seq_powers only. The port emits capi's correct layout (CLAUDE.md: upstream bugs are never reproduced); upstream report investigations/to_opendss/67-seqpowers-posseq-slot-stride.md.",
     "visualize-dssview-file-pair": "`Visualize <quantity> <element>` writes a DSSView file PAIR on EPRI r4133 and NOTHING at all on the pinned dss_capi 0.14.5, so a deck that issues it diverges on the created-file SET of the r4133 channel only. r4133 Version8/Source/Executive/ExecHelper.pas:3672 (DoVisualizeCmd) dispatches to TDSSPlot.DoVisualizationPlot (Version8/Source/Plot/DSSPlot.pas:3642), which builds GetOutputDirectory + CircuitName_ + Format('%s_%s_PQ.DSV', [class, name]) (:3728 + :3746 for vizPOWER; :3730 _V.DSV and :3739 _I.DSV for the other two quantities) and calls MakeNewGraph (:3758). MakeNewGraph (Version8/Source/Plot/DSSGraph.pas:109) Rewrites that .DSV text file (:114-115) and then FileCreates its binary companion ChangeFileExt(ActiveFileName, '.dbl') (:125, :128) -- hence the PAIR, one file per DSSView viewer artifact. dss_capi 0.14.5 src/Executive/ExecHelper.pas:4099 instead assembles a TJSONObject {PlotType: 'Visualize', ElementName, ElementType, Quantity} (:4184-4189) and hands the formatted string to DSS.DSSPlotCallback, opening no file; with the headless oracle's NIL callback it is a pure no-op. The port follows the JSON payload (crates/dss-core/src/exec/command.rs:865-968 -> exec/plot.rs:405-421, fire_visualize_callback): a headless Rust engine has no DSSView to feed, and a callback payload is the interface a client can consume, where a .DSV/.dbl pair is a Windows-viewer file format. This is a deliberate PRODUCT divergence, NOT an upstream defect: r4133 is doing what it means to do, so no investigations/to_opendss/ report is owed, and it costs exactly the two r4133-only names. GOLDEN_REBASE G1.10a.",
     "di-hourly-reactive-energy-cancels": "The hourly net REACTIVE energy of the ckt7 feeder is a near-cancellation: the EnergyMeter integrates every zone element's kvar over the hour (r4133 Version8/Source/Meters/EnergyMeter.pas:1267 `TakeSample` -> :1324 `Integrate(Reg_kvarh, S_Local.im, Delta_Hrs)`, `Integrate` itself at :1247, the zone's own kvar summed in `Accumulate_Load` :2247-2318 (:2264); written out by `WriteDemandIntervalData` :2990, the hourly register row at :3001-3003 -- citation corrected by the G1.10c audit settlement, finding AT2-1: the range that stood here was `Accumulate_Load`'s body under `TakeSample`'s name and its :2943-2949 was the dss_capi 0.14.5 `WriteDemandIntervalData` (capi src/Meters/EnergyMeter.pas:2944) attributed to r4133), and on the 24 cells this cause covers the capacitive and inductive halves of the feeder cancel to |kvarh| <= 76.7594 on the port (<= 76.7674 including both oracles) while the SAME row's real-energy register is kWh >= 2106.0996 -- the summands are 46.376x .. 11031.672x the net they add up to. Three MEASURED facts make the residual an indeterminate rather than a port bug (coordinator decision D44(1), Option A; the two universals D42(2) had prescribed were withdrawn as measured false). (a) The cancellation above. (b) The residual is inside the accumulator's own class on its uncancelled twin: the port's absolute gap is at most 8.010487e-03 kvarh, which is at most 0.023012 of the energy band the same row's kWh earns (a band never narrower than 0.2107), equivalently 5.4927e-08 .. 1.6014e-06 of the row's own Max kVA -- the i_rel(large) = 1e-6 scale of the powers being integrated, exceeded by at most 1.6014x and only on 2 of the 24 cells (Time 475 on r4133, Time 478 on both). (c) No engine-independent value exists at that scale: the two KLU oracles disagree with EACH OTHER by 2.443741e-05 .. 2.513225e-03 kvarh = 2.7 % .. 88.8 % of the port's own gap on the same cell, and exceed the energy class between themselves outright on 6 of the 24 cells (Times 359, 477, 827, 850, 2596, 8517), worst ratio 4.021 at Time 359 (capi 1.01464560883437 vs r4133 1.01383583996829). The port's larger faer perturbation only scales an indeterminacy the two KLU oracles already have between themselves. Not a port gap and not a tolerance question: widening the energy band to admit these cells would widen EVERY energy cell on a `large` deck by ~5e-3 kvarh (50x the class's own `abs`) to admit 20, which CLAUDE.md forbids. Measured GOLDEN_REBASE G1.10c R part 2026-09-11, re-derived per cell at full precision by F4 2026-09-12 (tmp/g110c/analyze_classes.py, analyze_energy.py, di_gaps.json, f4_kvarh.json); pinned by di_pins::the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate.",
-    "di-voltexception-argmin-tie": "The voltage-exception report's `Min LV Bus` column is the ARGMIN of a tied minimum on ckt7. `TEnergyMeterObj.WriteVoltageReport` scans the buses in list order and keeps the FIRST STRICT minimizer (`If Vmagpu < underVmin`, r4133 Version8/Source/Meters/EnergyMeter.pas:3620-3754: the primary arm opens at :3648 and keeps its strict minimum at :3658, the LV arm opens at :3707 on kVBase <= 1 and keeps its own at :3717; citation corrected by the G1.10c audit settlement, finding AT-2), and the port's scan is faithful to it line for line (crates/dss-core/src/solution/meters/demand_interval.rs:866-906 -- same order, same strict `<`, same `> 0.1` neutral guard, same kVBase split). On ckt7 the three service buses s1x_1001577 / s2x_1001577 / s3x_1001577 carry the SAME node magnitudes bit for bit on the oracle (tmp/g110c/probe_tie.py: 0x1.c26d89b2b06a6p-1, 0x1.c5736ad8e99ddp-1, 0x1.c69388d539fa3p-1 at each of the three), so the minimum is attained at three buses at once and which one a strict `<` scan reports is decided by the last bit of the solve: the port's faer solution breaks the tie at s2x_1001577 / s3x_1001577 where both KLU oracles break it at s1x_1001577. Every one of the three is a correct answer, and the VALUE column `Min LV Voltage` agrees inside the voltage class on all 7316 rows -- so the name column carries no information the value column does not. Not a port gap, no engine change; `Min Bus`, `Max Bus` and `Max LV Bus` stay compared and match on every row of every case. Measured GOLDEN_REBASE G1.10c R part 2026-09-11; coordinator decision D42(2)."
+    "di-voltexception-argmin-tie": "The voltage-exception report's `Min LV Bus` column is the ARGMIN of a tied minimum on ckt7. `TEnergyMeterObj.WriteVoltageReport` scans the buses in list order and keeps the FIRST STRICT minimizer (`If Vmagpu < underVmin`, r4133 Version8/Source/Meters/EnergyMeter.pas:3620-3754: the primary arm opens at :3648 and keeps its strict minimum at :3658, the LV arm opens at :3707 on kVBase <= 1 and keeps its own at :3717; citation corrected by the G1.10c audit settlement, finding AT-2), and the port's scan is faithful to it line for line (crates/dss-core/src/solution/meters/demand_interval.rs:866-906 -- same order, same strict `<`, same `> 0.1` neutral guard, same kVBase split). On ckt7 the three service buses s1x_1001577 / s2x_1001577 / s3x_1001577 carry the SAME node magnitudes bit for bit on the oracle (tmp/g110c/probe_tie.py: 0x1.c26d89b2b06a6p-1, 0x1.c5736ad8e99ddp-1, 0x1.c69388d539fa3p-1 at each of the three), so the minimum is attained at three buses at once and which one a strict `<` scan reports is decided by the last bit of the solve: the port's faer solution breaks the tie at s2x_1001577 / s3x_1001577 where both KLU oracles break it at s1x_1001577. Every one of the three is a correct answer, and the VALUE column `Min LV Voltage` agrees inside the voltage class on all 7316 rows -- so the name column carries no information the value column does not. Not a port gap, no engine change; `Min Bus`, `Max Bus` and `Max LV Bus` stay compared and match on every row of every case. Measured GOLDEN_REBASE G1.10c R part 2026-09-11; coordinator decision D42(2).",
+    "geometry-weakest-phase": "A LineGeometry rating nobody typed is the weakest phase conductor's, and so is the rating of a Line on it, where both oracles copy conductor 1's. Every phase conductor carries the line current and every loading reader compares the largest phase current with the Line's one rating, so the weakest phase conductor's rating is the largest single rating that never misses an overload (not the exact check of each phase current against its own conductor, which no reader makes). The spacing form already reads it so on the engine and on r4133. The asymmetric geometry oh3 (ACSR_336_4 530 A, ACSR_4-0 340 A, ACSR_1-0 230 A on the phases, emergency ratings 1.5 times) reads 230/345 where both oracles read 530/795. Pinned by exec::tests::ratings::a_geometry_line_is_rated_by_its_weakest_phase_conductor.",
+    "two-winding-kva-derives-the-kva-ratings": "A kVA typed at the second winding of a two-winding Transformer, AutoTrans or XfmrCode is the kVA of both windings, and the documentation defaults NormHkVA and EmergHkVA to 110 % and 150 % of winding 1's kVA. The engine derives both kVA ratings from that kVA, as a kVA typed at winding 1 does, while both oracles keep the ratings of the kVA winding 1 held before, so a unit is rated for a kVA it no longer has. Measured 2026-10-25 with the epri-worker on the r4133 DLL and on the pinned dss-python: wdg=2 kva=1000 on a 500 kVA two-winding unit reads NormHkVA 550 and EmergHkVA 750 on both, wdg=1 kva=1000 reads 1100 and 1500. Reported upstream.",
+    "storage-charges-at-the-efficiency-of-its-dc-power": "A Storage charging through an EffCurve stores the AC power times the efficiency the curve gives at the per-unit DC power, P = eta(P / kVA) P_ac, solved on the curve segment that holds it. Both oracles solve it by trial and, when the segment of the AC power is not the segment of the DC power, apply the second segment's efficiency to the DC power of the first pass instead of to the AC power, so the efficiency is applied twice and less energy is stored than the curve allows. Measured 2026-10-25 with the epri-worker on the r4133 DLL and on the pinned dss-python: one charging hour at 100 kW on xarray=[0 0.8 1.2] yarray=[0.9 0.9 0.5] (kVA 120, 2000 kWh stored) stores 2074.21111404038 kWh on dss_capi and 2074.21 on r4133, the flat 0.9 curve 2080.10400007158 on both, the value the engine stores for either. Reported upstream."
   },
   "entries": [
     {
@@ -889,6 +892,106 @@
       "source": "UNIFIED_GATE fix round 2026-07-19 (full seed): port min-over-phase (230/345, WP-U1.2 D3, r4133 LineGeometry.pas) vs 0.14.5 first-wire (730/1095). Exact-pair-numeric (discrete jump, not display). r4133 #303-crashes this deck (skip below).",
       "measured": {
         "date": "2026-07-19"
+      }
+    },
+    {
+      "id": "r4133-geometry-weakest-phase-lgeo",
+      "case": "asymmetric:line/line_geometry_asym.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lgeo\\.normamps$",
+          "rust": "230",
+          "oracle": "530"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lgeo\\.emergamps$",
+          "rust": "345",
+          "oracle": "795"
+        }
+      ],
+      "cause_ref": "geometry-weakest-phase",
+      "source": "Measured 2026-10-17 by the live corpus gate on this case (DSS_GATE_ONLY, default lane, pinned dss-python 0.15.7 and the r4133 DLL through epri-worker): Line.lgeo property normamps reads 230 on the engine and 530 on this channel, an exact pair. Its emergency rating follows at 1.5 times, 345 against 795. Nothing else of the case moves. Pinned by exec::tests::ratings::a_geometry_line_is_rated_by_its_weakest_phase_conductor.",
+      "measured": {
+        "date": "2026-10-17"
+      }
+    },
+    {
+      "id": "capi-geometry-weakest-phase-lfc",
+      "case": "asymmetric:line/line_fullcarson_asym.dss",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lfc\\.normamps$",
+          "rust": "230",
+          "oracle": "530"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lfc\\.emergamps$",
+          "rust": "345",
+          "oracle": "795"
+        }
+      ],
+      "cause_ref": "geometry-weakest-phase",
+      "source": "Measured 2026-10-17 by the live corpus gate on this case (DSS_GATE_ONLY, default lane, pinned dss-python 0.15.7 and the r4133 DLL through epri-worker): Line.lfc property NormAmps reads 230 on the engine and 530 on this channel, an exact pair. Its emergency rating follows at 1.5 times, 345 against 795. Nothing else of the case moves. Pinned by exec::tests::ratings::a_geometry_line_is_rated_by_its_weakest_phase_conductor.",
+      "measured": {
+        "date": "2026-10-17"
+      }
+    },
+    {
+      "id": "r4133-geometry-weakest-phase-lfc",
+      "case": "asymmetric:line/line_fullcarson_asym.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lfc\\.normamps$",
+          "rust": "230",
+          "oracle": "530"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.lfc\\.emergamps$",
+          "rust": "345",
+          "oracle": "795"
+        }
+      ],
+      "cause_ref": "geometry-weakest-phase",
+      "source": "Measured 2026-10-17 by the live corpus gate on this case (DSS_GATE_ONLY, default lane, pinned dss-python 0.15.7 and the r4133 DLL through epri-worker): Line.lfc property normamps reads 230 on the engine and 530 on this channel, an exact pair. Its emergency rating follows at 1.5 times, 345 against 795. Nothing else of the case moves. Pinned by exec::tests::ratings::a_geometry_line_is_rated_by_its_weakest_phase_conductor.",
+      "measured": {
+        "date": "2026-10-17"
+      }
+    },
+    {
+      "id": "r4133-geometry-weakest-phase-loh",
+      "case": "asymmetric:combo/midi_geometry_cable_asym.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.loh\\.normamps$",
+          "rust": "230",
+          "oracle": "530"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^line\\.loh\\.emergamps$",
+          "rust": "345",
+          "oracle": "795"
+        }
+      ],
+      "cause_ref": "geometry-weakest-phase",
+      "source": "Measured 2026-10-17 by the live corpus gate on this case (DSS_GATE_ONLY, default lane, pinned dss-python 0.15.7 and the r4133 DLL through epri-worker): Line.loh property normamps reads 230 on the engine and 530 on this channel, an exact pair. Its emergency rating follows at 1.5 times, 345 against 795. Nothing else of the case moves. Pinned by exec::tests::ratings::a_geometry_line_is_rated_by_its_weakest_phase_conductor.",
+      "measured": {
+        "date": "2026-10-17"
       }
     },
     {
@@ -2141,6 +2244,195 @@
         ],
         "min_lv_voltage_exceptions": 0,
         "date": "2026-09-11"
+      }
+    },
+    {
+      "id": "r4133-two-winding-kva-ratings-autoxc",
+      "case": "asymmetric:autotrans/autotrans_xfmrcode.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "probe",
+          "name_re": "(?i)^autotrans\\.t1\\.normhkva$",
+          "rust": "44000",
+          "oracle": "55000"
+        },
+        {
+          "field": "probe",
+          "name_re": "(?i)^autotrans\\.t1\\.emerghkva$",
+          "rust": "60000",
+          "oracle": "75000"
+        },
+        {
+          "field": "probe",
+          "name_re": "(?i)^autotrans\\.t2\\.normhkva$",
+          "rust": "44000",
+          "oracle": "55000"
+        },
+        {
+          "field": "probe",
+          "name_re": "(?i)^autotrans\\.t2\\.emerghkva$",
+          "rust": "60000",
+          "oracle": "75000"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t1\\.normhkva$",
+          "rust": "44000",
+          "oracle": "55000"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t1\\.emerghkva$",
+          "rust": "60000",
+          "oracle": "75000"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t1\\.normamps$",
+          "rust": "956.521739130435",
+          "oracle": "1195.7"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t1\\.emergamps$",
+          "rust": "1304.34782608696",
+          "oracle": "1630.4"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t2\\.normhkva$",
+          "rust": "44000",
+          "oracle": "55000"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t2\\.emerghkva$",
+          "rust": "60000",
+          "oracle": "75000"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t2\\.normamps$",
+          "rust": "956.521739130435",
+          "oracle": "1195.7"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^autotrans\\.t2\\.emergamps$",
+          "rust": "1304.34782608696",
+          "oracle": "1630.4"
+        }
+      ],
+      "cause_ref": "two-winding-kva-derives-the-kva-ratings",
+      "source": "Measured 2026-10-25 by the live corpus gate on this case (DSS_GATE_ONLY, default lane, the r4133 DLL through epri-worker), one failing cell per round with the entries above in place: XfmrCode.ac1 types kVA=50000 at winding 1 and kVA=40000 at winding 2, so both windings hold 40000 kVA, and AutoTrans.t1 and t2 fetch the code. The engine reads NormHkVA 44000 and EmergHkVA 60000 (110 % and 150 % of 40000), r4133 the 55000 and 75000 of the 50000 kVA winding 1 held before, and the current ratings follow at 46 kV, 956.521739130435 and 1304.34782608696 A against 1195.7 and 1630.4. Nothing else of the case moves. Pinned by exec::tests::rating_refusals::a_typed_non_finite_kva_or_device_rating_is_refused.",
+      "measured": {
+        "date": "2026-10-25"
+      }
+    },
+    {
+      "id": "capi-storage-charging-efficiency-once-peakshavelow",
+      "case": "solvable_now:Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
+      "channel": "capi_v0145",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.b\\.kwhstored$",
+          "rust": "390.837871526292",
+          "oracle": "380.359718675169"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.b\\.%stored$",
+          "rust": "39.0837871526292",
+          "oracle": "38.0359718675169"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.c\\.kwhstored$",
+          "rust": "495.378518320241",
+          "oracle": "488.605097184527"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.c\\.%stored$",
+          "rust": "30.022940504257",
+          "oracle": "29.6124301323956"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.f\\.kwhstored$",
+          "rust": "430.842985864307",
+          "oracle": "420.364892487216"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.f\\.%stored$",
+          "rust": "35.9035821553589",
+          "oracle": "35.030407707268"
+        }
+      ],
+      "cause_ref": "storage-charges-at-the-efficiency-of-its-dc-power",
+      "source": "Measured 2026-10-25 by the live corpus gate on this case (DSS_GATE_ONLY, default lane), one failing cell per round with the entries above in place. The deck charges its seven Storage elements under a StorageController in peakShaveLow through XYCurve.Eff (xarray=[.1 .2 .4 1.0] yarray=[.86 .9 .93 .97]), and the energy Storage.B, C and F hold after the solve the gate adds to the deck's own daily solve (a second day), with the controller's reading of the fleet's energy on r4133, is all that moves. The engine run with the trial loop restored matches both channels, and the same loop with only the charging relation reading the AC power gives the engine's readings exactly. Pinned by exec::tests::rating_refusals::the_dc_power_of_an_efficiency_curve_is_solved_on_the_segment_that_holds_it.",
+      "measured": {
+        "date": "2026-10-25"
+      }
+    },
+    {
+      "id": "r4133-storage-charging-efficiency-once-peakshavelow",
+      "case": "solvable_now:Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
+      "channel": "r4133",
+      "kind": "divergence",
+      "match": [
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.b\\.kwhstored$",
+          "rust": "390.837871526292",
+          "oracle": "380.36"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.b\\.%stored$",
+          "rust": "39.0837871526292",
+          "oracle": "38.036"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.c\\.kwhstored$",
+          "rust": "495.378518320241",
+          "oracle": "488.605"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.c\\.%stored$",
+          "rust": "30.022940504257",
+          "oracle": "29.6124"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.f\\.kwhstored$",
+          "rust": "430.842985864307",
+          "oracle": "420.365"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storage\\.f\\.%stored$",
+          "rust": "35.9035821553589",
+          "oracle": "35.0304"
+        },
+        {
+          "field": "property",
+          "name_re": "(?i)^storagecontroller\\.sc\\.kwhactual$",
+          "rust": "2734.0187708146",
+          "oracle": "2706.2891"
+        }
+      ],
+      "cause_ref": "storage-charges-at-the-efficiency-of-its-dc-power",
+      "source": "Measured 2026-10-25 by the live corpus gate on this case (DSS_GATE_ONLY, default lane), one failing cell per round with the entries above in place. The deck charges its seven Storage elements under a StorageController in peakShaveLow through XYCurve.Eff (xarray=[.1 .2 .4 1.0] yarray=[.86 .9 .93 .97]), and the energy Storage.B, C and F hold after the solve the gate adds to the deck's own daily solve (a second day), with the controller's reading of the fleet's energy on r4133, is all that moves. The engine run with the trial loop restored matches both channels, and the same loop with only the charging relation reading the AC power gives the engine's readings exactly. Pinned by exec::tests::rating_refusals::the_dc_power_of_an_efficiency_curve_is_solved_on_the_segment_that_holds_it.",
+      "measured": {
+        "date": "2026-10-25"
       }
     }
   ]

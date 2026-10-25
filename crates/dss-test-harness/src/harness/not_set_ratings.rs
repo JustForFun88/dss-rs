@@ -1,21 +1,23 @@
 //! A rating that is not set, against an oracle that prints a number for it.
 //!
 //! The engine reads a current rating nobody gave as its own value and renders
-//! it `none` (user decision 2026-10-04). Both gating oracles store such a rating
-//! as a number and print it: `-1` where the class starts from a "not defined"
-//! marker (a Line on a spacing whose phase wire carries no rating), `0` where
-//! the class starts from zero (a Fault, a GICTransformer, a Line on a geometry
-//! of unrated wires, whose seasonal ratings start `[ 0]`).
+//! it `none` (user decision 2026-10-04), and so it reads a typed `0` or
+//! negative number, which names no rating, and a derived zero. Both gating
+//! oracles store such a rating as a number and print it: `-1` where the class
+//! starts from a "not defined" marker (a Line on a spacing whose phase wire
+//! carries no rating), `0` where the class starts from zero (a Fault, a
+//! GICTransformer, a Line on a geometry of unrated wires, whose seasonal
+//! ratings start `[ 0]`), where a Capacitor without kvar derives zero (a
+//! `cmatrix` bank), and where a seasonal entry is typed `0` (a geometry Line
+//! typed `Seasons=1 Ratings=[0,]`).
 //!
 //! [`LANE_NOT_SET_RATINGS`] names each `(class, property)` and the number its
 //! class prints. A cell is excused only when the engine prints `none` where the
 //! oracle prints exactly that number, in both lanes and on both channels, and
 //! for an array only entry by entry: every `none` faces the class's number and
 //! every other entry is equal by value. Any other difference still fails. The
-//! engine's spellings are pinned by
-//! `exec::tests::ratings::unset_ratings_read_none_by_default`,
-//! `line_on_an_unrated_phase_wire_is_not_set` and
-//! `line_on_a_geometry_of_unrated_wires_is_not_set`.
+//! engine's spellings are pinned by the `exec::tests::ratings` tests each row
+//! names per sentinel ([`NotSetRatingRow::pins`]).
 //!
 //! The excused cells are counted per row and per channel, and a
 //! whole-population run of the corpus gate must excuse exactly
@@ -36,16 +38,17 @@ pub struct NotSetRatingRow {
     /// The numbers the oracle prints for a rating of this class that is not
     /// set.
     pub sentinels: &'static [&'static str],
-    /// The `exec::tests::ratings` test that pins the engine's `none` for each
-    /// of `sentinels`, in the same order.
-    pub pins: &'static [&'static str],
+    /// The `exec::tests::ratings` tests that pin the engine's `none` for each
+    /// of `sentinels`, one list per sentinel in the same order: a sentinel the
+    /// oracle prints for more than one engine reading names a pin for each.
+    pub pins: &'static [&'static [&'static str]],
 }
 
 const fn row(
     class: &'static str,
     prop: &'static str,
     sentinels: &'static [&'static str],
-    pins: &'static [&'static str],
+    pins: &'static [&'static [&'static str]],
 ) -> NotSetRatingRow {
     NotSetRatingRow {
         class,
@@ -55,17 +58,21 @@ const fn row(
     }
 }
 
-const DEFAULTS: &[&str] = &["unset_ratings_read_none_by_default"];
-const SPACING_AND_GEOMETRY: &[&str] = &[
-    "line_on_an_unrated_phase_wire_is_not_set",
-    "line_on_a_geometry_of_unrated_wires_is_not_set",
+const DEFAULTS: &[&[&str]] = &[&["unset_ratings_read_none_by_default"]];
+const DERIVED_ZERO: &[&[&str]] = &[&["a_derived_zero_rating_is_not_set"]];
+const SPACING_AND_GEOMETRY: &[&[&str]] = &[
+    &["line_on_an_unrated_phase_wire_is_not_set"],
+    &["line_on_a_geometry_of_unrated_wires_is_not_set"],
 ];
 
-/// The corpus property compare's rows. `Line.NormAmps`/`EmergAmps` print `-1`
-/// on a spacing Line and `0` on a geometry Line, `Line.Ratings` prints a `0`
-/// entry for every season of a geometry Line, and a Fault and a GICTransformer
-/// print `0`.
+/// The corpus property compare's rows. A Capacitor without kvar prints `0`,
+/// `Line.NormAmps`/`EmergAmps` print `-1` on a spacing Line and `0` on a
+/// geometry Line, `Line.Ratings` prints a `0` entry for every season of a
+/// geometry Line and for a seasonal entry typed `0`, and a Fault and a
+/// GICTransformer print `0`.
 pub const LANE_NOT_SET_RATINGS: &[NotSetRatingRow] = &[
+    row("Capacitor", "EmergAmps", &["0"], DERIVED_ZERO),
+    row("Capacitor", "NormAmps", &["0"], DERIVED_ZERO),
     row("Fault", "EmergAmps", &["0"], DEFAULTS),
     row("Fault", "NormAmps", &["0"], DEFAULTS),
     row("GICTransformer", "EmergAmps", &["0"], DEFAULTS),
@@ -76,7 +83,10 @@ pub const LANE_NOT_SET_RATINGS: &[NotSetRatingRow] = &[
         "Line",
         "Ratings",
         &["0"],
-        &["line_on_a_geometry_of_unrated_wires_is_not_set"],
+        &[&[
+            "line_on_a_geometry_of_unrated_wires_is_not_set",
+            "a_typed_zero_or_negative_rating_reads_none",
+        ]],
     ),
 ];
 
@@ -117,15 +127,19 @@ pub fn reads_not_set(rust: &str, oracle: &str, sentinels: &[&str]) -> bool {
 
 /// The cells a whole-population run of the corpus gate excuses, per row of
 /// [`LANE_NOT_SET_RATINGS`] (same order), as `(capi_v0145, r4133)`. Measured
-/// 2026-10-04 in both lanes, which agree.
+/// 2026-10-04 in both lanes, which agree, and the Capacitor rows and the
+/// `Line.Ratings` row again 2026-10-16. The property compare runs once per solve
+/// step, so a stepped deck counts its cells once per step.
 pub const NOT_SET_RATING_HITS: [(usize, usize); LANE_NOT_SET_RATINGS.len()] = [
+    (30, 30),
+    (30, 30),
     (42, 388),
     (42, 388),
     (0, 22),
     (0, 22),
     (254, 24),
     (254, 24),
-    (197, 231),
+    (485, 519),
 ];
 
 /// Cells [`excuse`] excused, per row of [`LANE_NOT_SET_RATINGS`] and per
@@ -248,6 +262,7 @@ mod tests {
         let enums = EnumRegistry::new();
         for r in LANE_NOT_SET_RATINGS {
             let props = match r.class {
+                "Capacitor" => pd::capacitor::class_props(&enums),
                 "Fault" => pd::fault::class_props(&enums),
                 "GICTransformer" => pd::gic_transformer::class_props(&enums),
                 "Line" => pd::line::class_props(&enums),
@@ -307,12 +322,13 @@ mod tests {
         check_hits(&no_r4133, false);
         no_r4133[0].0 += 1;
         let msg = crate::harness::panic_message(|| check_hits(&no_r4133, false));
-        assert!(msg.contains("Fault.EmergAmps capi_v0145"), "{msg}");
+        assert!(msg.contains("Capacitor.EmergAmps capi_v0145"), "{msg}");
     }
 
     /// Every row is dispositioned sentinel by sentinel: each number it accepts
-    /// names the engine test that pins the `none` it lets through, and that
-    /// test exists, so a sentinel cannot join a row without its pin.
+    /// names a non-empty list of the engine tests that pin the `none` it lets
+    /// through, and each named test exists once, so a sentinel cannot join a
+    /// row without its pins.
     #[test]
     fn every_sentinel_of_a_row_names_the_pin_of_its_none() {
         let pins = std::fs::read_to_string(concat!(
@@ -324,11 +340,19 @@ mod tests {
             assert_eq!(
                 r.pins.len(),
                 r.sentinels.len(),
-                "{}.{}: one pin per sentinel",
+                "{}.{}: one list of pins per sentinel",
                 r.class,
                 r.prop
             );
-            for pin in r.pins {
+            for (sentinel, list) in r.sentinels.iter().zip(r.pins) {
+                assert!(
+                    !list.is_empty(),
+                    "{}.{}: sentinel {sentinel} names no pin",
+                    r.class,
+                    r.prop
+                );
+            }
+            for pin in r.pins.iter().flat_map(|list| list.iter()) {
                 assert_eq!(
                     pins.matches(&format!("fn {pin}() {{")).count(),
                     1,

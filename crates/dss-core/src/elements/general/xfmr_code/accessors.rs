@@ -235,6 +235,33 @@ impl DssObject for XfmrCodeObj {
         self.active_winding = self.num_windings;
     }
 
+    /// A winding-1 kVA from which the derived normal (`1.1` times) or
+    /// emergency (`1.5` times) kVA rating is not a finite number is refused,
+    /// the message quoting that entry, and the code keeps every kVA it held
+    /// (`a_typed_non_finite_kva_or_device_rating_is_refused`). A kVA typed at
+    /// either winding of a two-winding code is winding 1's as well.
+    fn refuse_f64(&self, idx: usize, texts: &[&str], values: &[Option<f64>]) -> Option<String> {
+        use prop::*;
+        let rates_winding_1 = self.active_winding == 1 || self.num_windings == 2;
+        let (prop, kva) = match idx {
+            KVA if rates_winding_1 => ("kVA", values.first().copied().flatten()?),
+            KVAS => ("kVAs", values.first().copied().flatten()?),
+            _ => return None,
+        };
+        let text = texts.first()?;
+        let rating = if !(1.1 * kva).is_finite() {
+            "a normal"
+        } else if !(1.5 * kva).is_finite() {
+            "an emergency"
+        } else {
+            return None;
+        };
+        Some(format!(
+            "XfmrCode.{}.{prop}: the value {text} derives {rating} kVA rating that is not a finite number.",
+            self.data().name()
+        ))
+    }
+
     /// Pascal `TXfmrCodeObj.PropertySideEffects`.
     fn side_effects(&mut self, idx: usize, prev_int: i32) {
         use prop::*;
@@ -249,7 +276,12 @@ impl DssObject for XfmrCodeObj {
                     self.norm_max_hkva = 1.1 * k;
                     self.emerg_max_hkva = 1.5 * k;
                 } else if self.num_windings == 2 {
-                    self.windings[0].kva = self.windings[1].kva;
+                    // One kVA rates both windings of a two-winding code, so
+                    // winding 1 takes it and its kVA ratings follow.
+                    let k = self.windings[1].kva;
+                    self.windings[0].kva = k;
+                    self.norm_max_hkva = 1.1 * k;
+                    self.emerg_max_hkva = 1.5 * k;
                 }
             }
             PCTR | PCTRS => {

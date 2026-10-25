@@ -1306,6 +1306,55 @@ const RP3_LEDGERED: &[(&str, &str, usize, usize, &str)] = &[
     ),
 ];
 
+/// **The `property`-scoped `r4133` ledger entries outside the frozen census**
+/// — `(entry id, case, the test file of its pin, pin)`.
+///
+/// Each excludes a divergence the engine took up after the census of this
+/// file was frozen, at spellings no frozen row holds, so it retires no row and
+/// moves no bucket: [`RP3_LEDGERED`] cannot vouch for it, and the entry is
+/// accounted for here instead. [`the_ledger_entries_outside_the_census_retire_no_frozen_row`]
+/// checks each one as strictly as [`RP3_LEDGERED`] checks its own (an `r4133`
+/// `divergence` on the cited case, anchored literal property scopes, both
+/// numbers pinned) and that its pin exists, and the two rails that hold the set
+/// of landed entries ([`the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger`],
+/// [`the_staged_r4133_property_entries_landed_at_rp41`]) count it as accounted.
+const LEDGER_ENTRIES_OUTSIDE_THE_CENSUS: &[(&str, &str, &str, &str)] = &[
+    (
+        "r4133-geometry-weakest-phase-lgeo",
+        "asymmetric:line/line_geometry_asym.dss",
+        "ratings.rs",
+        "a_geometry_line_is_rated_by_its_weakest_phase_conductor",
+    ),
+    (
+        "r4133-geometry-weakest-phase-lfc",
+        "asymmetric:line/line_fullcarson_asym.dss",
+        "ratings.rs",
+        "a_geometry_line_is_rated_by_its_weakest_phase_conductor",
+    ),
+    (
+        "r4133-geometry-weakest-phase-loh",
+        "asymmetric:combo/midi_geometry_cable_asym.dss",
+        "ratings.rs",
+        "a_geometry_line_is_rated_by_its_weakest_phase_conductor",
+    ),
+    (
+        "r4133-two-winding-kva-ratings-autoxc",
+        "asymmetric:autotrans/autotrans_xfmrcode.dss",
+        "rating_refusals.rs",
+        "a_typed_non_finite_kva_or_device_rating_is_refused",
+    ),
+    (
+        "r4133-storage-charging-efficiency-once-peakshavelow",
+        "solvable_now:Version8/Distrib/Examples/StorageControllerTechNote/PeakShaveDch_PeakShaveLow_Ch/PeakShaveDch_PeakShaveLow_ChRun.dss",
+        "rating_refusals.rs",
+        "the_dc_power_of_an_efficiency_curve_is_solved_on_the_segment_that_holds_it",
+    ),
+];
+
+/// The directory that holds the test files of the pins of
+/// [`LEDGER_ENTRIES_OUTSIDE_THE_CENSUS`].
+const OUTSIDE_THE_CENSUS_PINS: &str = "crates/dss-core/src/exec/tests";
+
 /// **The frozen spellings a ledgered pair retires that NO landed entry names**
 /// — `(pair, rust, r4133, why it is sound anyway)`.
 ///
@@ -7409,19 +7458,20 @@ fn the_ledgered_rows_are_excluded_by_entries_that_are_really_in_the_ledger() {
         })
         .map(|e| e["id"].as_str().unwrap_or("<no id>"))
         .collect();
+    named.extend(LEDGER_ENTRIES_OUTSIDE_THE_CENSUS.iter().map(|(id, ..)| *id));
     let accounted: BTreeSet<&str> = named.iter().copied().collect();
     assert_eq!(
         named.len(),
         accounted.len(),
-        "RP3_LEDGERED names an entry twice: {named:?}"
+        "RP3_LEDGERED and LEDGER_ENTRIES_OUTSIDE_THE_CENSUS name an entry twice: {named:?}"
     );
     assert_eq!(
         landed, accounted,
         "every `property`-scoped `r4133` ledger entry must be accounted for by an RP3_LEDGERED \
-         row, and every row must name entries that exist. A NEW staged entry landing here \
-         without its accounting move is exactly what this half catches — retire its RP3_ROUTING \
-         row (or the successor table that owns it), shrink the bucket lock by exactly those \
-         rows, and name the entry above."
+         row or a LEDGER_ENTRIES_OUTSIDE_THE_CENSUS row, and every row must name entries that \
+         exist. A NEW staged entry landing here without its accounting move is exactly what \
+         this half catches — retire its RP3_ROUTING row (or the successor table that owns it), \
+         shrink the bucket lock by exactly those rows, and name the entry above."
     );
 }
 
@@ -7510,13 +7560,100 @@ fn the_staged_r4133_property_entries_landed_at_rp41() {
             "{id}: the landed entry sits on a different case than {pin} cites"
         );
     }
+    for (id, case, _, pin) in LEDGER_ENTRIES_OUTSIDE_THE_CENSUS {
+        let entry = entries
+            .iter()
+            .find(|e| e["id"] == *id)
+            .unwrap_or_else(|| panic!("{id:?} (witness {pin}) is NOT in tests/corpus/ledger.json"));
+        assert_eq!(
+            entry["case"], *case,
+            "{id}: the landed entry sits on a different case than its row cites"
+        );
+        assert!(staged.insert(*id), "{id}: listed twice");
+    }
     assert_eq!(
         landed, staged,
         "the `property`-scoped `r4133` entries in the ledger must be exactly WP-RP3's staged \
-         eight (LEDGER_ENTRY_PINS). An id on the left only is a NEW exclusion that owes a pin, \
-         an accounting move and a STATUS record (plan §1.1(e)); an id on the right only means \
-         RP4.1's unmask commit dropped one and its pair's rows are retired against nothing."
+         eight (LEDGER_ENTRY_PINS) and the entries outside the frozen census \
+         (LEDGER_ENTRIES_OUTSIDE_THE_CENSUS). An id on the left only is a NEW exclusion that \
+         owes a pin, an accounting move and a STATUS record (plan §1.1(e)); an id on the right \
+         only means RP4.1's unmask commit dropped one and its pair's rows are retired against \
+         nothing."
     );
+}
+
+/// Each entry of [`LEDGER_ENTRIES_OUTSIDE_THE_CENSUS`] is an `r4133`
+/// `divergence` on the case its row cites, every property scope of it is the
+/// anchored literal `(?i)^class\.element\.prop$` form pinning both an exact
+/// `rust` and an exact `oracle`, no spelling it pins is a frozen census row of
+/// its pair (a property scope excludes one exact spelling, so it retires
+/// nothing [`RP3_LEDGERED`] would have to account for), and its pin is a test
+/// of the file its row names under [`OUTSIDE_THE_CENSUS_PINS`].
+#[test]
+fn the_ledger_entries_outside_the_census_retire_no_frozen_row() {
+    let path = repo_root().join(LEDGER);
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let doc: serde_json::Value = serde_json::from_str(&text).expect("ledger.json is JSON");
+    let entries = doc["entries"]
+        .as_array()
+        .expect("ledger.json has an `entries` array");
+    let corpus = Corpus::load();
+    for (id, case, file, pin) in LEDGER_ENTRIES_OUTSIDE_THE_CENSUS {
+        let pins_path = repo_root().join(OUTSIDE_THE_CENSUS_PINS).join(file);
+        let pins = std::fs::read_to_string(&pins_path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", pins_path.display()));
+        let entry = entries
+            .iter()
+            .find(|e| e["id"] == *id)
+            .unwrap_or_else(|| panic!("{id:?} is not in tests/corpus/ledger.json"));
+        assert_eq!(entry["channel"], "r4133", "{id}");
+        assert_eq!(entry["kind"], "divergence", "{id}");
+        assert_eq!(entry["case"], *case, "{id}");
+        let scopes: Vec<&serde_json::Value> = entry["match"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{id}: a divergence entry carries a `match` array"))
+            .iter()
+            .filter(|m| m["field"] == "property")
+            .collect();
+        assert!(!scopes.is_empty(), "{id}: no property scope");
+        for sc in scopes {
+            let name_re = sc["name_re"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{id}: a property scope needs a `name_re`"));
+            let body = name_re
+                .strip_prefix("(?i)^")
+                .and_then(|b| b.strip_suffix('$'))
+                .unwrap_or_else(|| panic!("{id}: {name_re:?} is not an anchored literal"));
+            let parts: Vec<&str> = body.split("\\.").collect();
+            assert!(
+                parts.len() == 3
+                    && parts.iter().all(|p| !p.is_empty()
+                        && p.chars()
+                            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '%'))),
+                "{id}: {name_re:?} is not the literal `class.element.prop`"
+            );
+            assert!(
+                sc["rust"].is_string() && sc["oracle"].is_string(),
+                "{id}: {name_re:?} pins both numbers"
+            );
+            let pair = format!("{}.{}", parts[0].to_lowercase(), parts[2].to_lowercase());
+            let (rust, oracle) = (sc["rust"].as_str(), sc["oracle"].as_str());
+            assert!(
+                corpus.rows.iter().all(|r| r.pair != pair
+                    || Some(r.rust.as_str()) != rust
+                    || Some(r.r4133.as_str()) != oracle),
+                "{id}: {pair} holds the frozen census row {rust:?}/{oracle:?}, so the entry \
+                 belongs in RP3_LEDGERED"
+            );
+        }
+        assert_eq!(
+            pins.matches(&format!("fn {pin}()")).count(),
+            1,
+            "{id}: its pin {pin} is not a test of {}",
+            pins_path.display()
+        );
+    }
 }
 
 /// **RP3.12's four `skip` entries are staged, and this is what makes them land

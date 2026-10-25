@@ -334,3 +334,135 @@ fn copy_from_and_add_from_respect_order() {
     c3.copy_from(&a);
     assert!(c3.is_zero());
 }
+
+/// A lower-triangle list as a symmetric matrix of `R + jX` with `R = X`.
+fn sym_rx(lower: &[f64]) -> CMatrix {
+    let n = ((((1 + 8 * lower.len()) as f64).sqrt() - 1.0) / 2.0).round() as usize;
+    let mut m = CMatrix::new(n);
+    let mut k = 0;
+    for i in 0..n {
+        for j in 0..=i {
+            m.set_sym(i, j, c(lower[k], lower[k]));
+            k += 1;
+        }
+    }
+    m
+}
+
+/// The singular values of a diagonal matrix are the magnitudes of its
+/// entries, and a rank-one outer product has one value that is not zero.
+#[test]
+fn singular_values_of_known_matrices() {
+    let mut d = CMatrix::new(3);
+    d.set(0, 0, c(0.0, 3.0));
+    d.set(1, 1, c(-4.0, 0.0));
+    d.set(2, 2, c(1.0, 1.0));
+    let sv = d.singular_values().expect("finite");
+    assert_eq!(sv.len(), 3);
+    for (got, want) in sv.iter().zip([4.0, 3.0, 2.0_f64.sqrt()]) {
+        assert!((got - want).abs() <= 8.0 * f64::EPSILON * 4.0, "{sv:?}");
+    }
+    // u uᵀ (1 + j) with u = (1, 2, 2): one value |u|² √2 = 9 √2.
+    let sv = sym_rx(&[1.0, 2.0, 4.0, 2.0, 4.0, 4.0])
+        .singular_values()
+        .expect("finite");
+    assert!((sv[0] - 9.0 * 2.0_f64.sqrt()).abs() <= 1e-13, "{sv:?}");
+    assert!(sv[1] <= 1e-14 && sv[2] <= 1e-14, "{sv:?}");
+    let mut nan = CMatrix::new(2);
+    nan.set(1, 0, c(f64::NAN, 0.0));
+    assert_eq!(nan.singular_values(), None);
+}
+
+/// A matrix singular as typed is numerically singular even where the
+/// decimal rounding of its entries leaves an invertible one, and a matrix
+/// whose smallest singular value is far above the rounding is not.
+#[test]
+fn a_matrix_singular_within_its_rounding_is_numerically_singular() {
+    let rank_one = [0.01, 0.07, 0.49, 0.03, 0.21, 0.09];
+    let m = sym_rx(&rank_one);
+    assert!(
+        m.clone().invert().is_ok(),
+        "the rounding leaves it invertible"
+    );
+    assert!(m.is_numerically_singular());
+    assert!(CMatrix::new(3).is_numerically_singular(), "the zero matrix");
+    let mut held = m.clone();
+    for i in 0..3 {
+        held.add(i, i, c(1e-12, 1e-12));
+    }
+    assert!(
+        !held.is_numerically_singular(),
+        "regularised far above the rounding"
+    );
+    assert!(!sym_rx(&[10.0, 0.0, 10.0, 0.0, 0.0, 10.0]).is_numerically_singular());
+    let mut nan = CMatrix::new(1);
+    nan.set(0, 0, c(f64::NAN, 1.0));
+    assert!(nan.is_numerically_singular());
+}
+
+/// A real symmetric matrix from its lower triangle.
+fn sym_real(lower: &[f64]) -> CMatrix {
+    let n = ((((1 + 8 * lower.len()) as f64).sqrt() - 1.0) / 2.0).round() as usize;
+    let mut m = CMatrix::new(n);
+    let mut k = 0;
+    for i in 0..n {
+        for j in 0..=i {
+            m.set_sym(i, j, c(lower[k], 0.0));
+            k += 1;
+        }
+    }
+    m
+}
+
+/// The test reads the matrix equilibrated to unit row and column maxima, so a
+/// matrix that only spans many decades or holds its large entries off its
+/// diagonal builds while a dependence of its rows stays refused at any scale.
+/// The bound is pinned on both sides of `n ε` on a matrix of unit maxima whose
+/// smallest singular value is known.
+#[test]
+fn the_singular_test_reads_the_matrix_equilibrated_to_unit_maxima() {
+    for spread in [
+        &[1e-8, 0.0, 1e8][..],
+        &[1e-4, 0.0, 1.0, 0.0, 0.0, 1e12],
+        &[1e-9, 0.0, 1.0, 0.0, 0.0, 1e9],
+        &[1.0, 0.0, 1.0, 0.0, 0.0, 1.5 * f64::EPSILON],
+        &[1e-200, 1e-50, 1e200],
+        &[1e-20, 0.5, 1e20],
+    ] {
+        let m = sym_real(spread);
+        assert!(!m.is_numerically_singular(), "{spread:?}");
+    }
+    // A reactance with an inductive and a capacitive mode beside a tiny
+    // resistance: its large entries lie off the diagonal.
+    for a in [1e-20, 1e-16] {
+        let mut m = CMatrix::new(3);
+        m.set_sym(0, 0, c(a, 0.0));
+        m.set_sym(1, 0, c(0.0, 1.0));
+        m.set_sym(1, 1, c(a, 0.0));
+        m.set_sym(2, 2, c(1.0, 1.0));
+        assert!(!m.is_numerically_singular(), "{a}");
+    }
+    // A dependence of the rows at any scale: `D (u uᵀ) D`, and the exactly
+    // singular integer matrix with its rows far apart in scale.
+    let (u, d) = ([0.1, 0.7, 0.3], [1e-6, 1.0, 1e9]);
+    let mut lower = Vec::new();
+    for i in 0..3 {
+        for j in 0..=i {
+            lower.push(d[i] * u[i] * u[j] * d[j]);
+        }
+    }
+    assert!(sym_real(&lower).is_numerically_singular(), "{lower:?}");
+    assert!(sym_rx(&[1.0, 2.0, 4.0, 3.0, 6.0, 9.0]).is_numerically_singular());
+    // A zero diagonal entry scales by its row and column, and a zero row and
+    // column is singular.
+    assert!(!sym_real(&[0.0, 1e10, 0.0]).is_numerically_singular());
+    assert!(!sym_real(&[1e-300, 1e10, 1e-300]).is_numerically_singular());
+    assert!(sym_real(&[1.0, 0.0, 0.0]).is_numerically_singular());
+    // `[1 b 0 | b 1 0 | 0 0 1]` with `b = 1 - δ` has the singular values
+    // `2 - δ`, `1` and `δ`, and `1 - δ` is exact for `δ` a multiple of `ε / 2`:
+    // refused at `δ / 2 = n ε / 2`, built at `δ / 2 = 2 n ε`.
+    let unit = |delta: f64| sym_real(&[1.0, 1.0 - delta, 1.0, 0.0, 0.0, 1.0]);
+    let n_eps = 3.0 * f64::EPSILON;
+    assert!(unit(n_eps).is_numerically_singular());
+    assert!(!unit(4.0 * n_eps).is_numerically_singular());
+}

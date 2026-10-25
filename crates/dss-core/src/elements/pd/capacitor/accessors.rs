@@ -36,6 +36,10 @@ impl Capacitor {
         self.emerg_amps = other.emerg_amps;
         self.norm_amps_specified = other.norm_amps_specified;
         self.emerg_amps_specified = other.emerg_amps_specified;
+        self.cd.obj.copy_typed_ratings_from(
+            &other.cd.obj,
+            &[super::prop::NORMAMPS, super::prop::EMERGAMPS],
+        );
         self.fault_rate = other.fault_rate;
         self.pct_perm = other.pct_perm;
         self.hrs_to_repair = other.hrs_to_repair;
@@ -266,8 +270,11 @@ impl DssObject for Capacitor {
             CUF => self.spec_type = CapacitorSpecType::Cuf,
             NUMSTEPS => self.side_effect_numsteps(prev_int),
             XL => {
+                // An `XL` that is not finite derives no `R`: the recalc
+                // refuses it by name and a later finite `XL` derives `R`
+                // (`a_refused_element_is_built_again_once_its_input_is_valid`).
                 for i in 0..self.n_steps() {
-                    if self.fxl[i] != 0.0 && self.fr[i] == 0.0 {
+                    if self.fxl[i].is_finite() && self.fxl[i] != 0.0 && self.fr[i] == 0.0 {
                         self.fr[i] = self.fxl[i].abs() / 1000.0;
                     }
                 }
