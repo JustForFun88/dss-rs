@@ -3390,9 +3390,10 @@ fn a_refused_wire_list_changes_nothing_on_the_line() {
 /// which gives the wires at once. A LineGeometry's refused `conductors=` logs
 /// its refusal alone, writes no conductor and seeds no rating: `gd`, whose
 /// conductor 2 holds a wire rated 530/800 A, keeps its wires `[, w2, ]` and
-/// both ratings not set through a list that names no class, one that names a
-/// wire not found, and two that start with a valid wire and go on with an
-/// item that names no class or another class. An item with no class or
+/// the ratings of that wire, its only phase conductor, through a list that
+/// names no class, one that names a wire not found, and two that start with
+/// a valid wire and go on with an item that names no class or another
+/// class. An item with no class or
 /// another class is refused with code 10103. r4133 logs the Lines' lists
 /// (181023, 181025 and 181024) and keeps each as written (`? conductors`
 /// echoes it), and the `wires=[w w w]` after it, which `? wires` reads back,
@@ -3444,7 +3445,7 @@ fn a_refused_conductor_list_changes_nothing() {
     let ratings = |dss: &mut Dss| {
         ["normamps", "emergamps"].map(|p| query(dss, &format!("LineGeometry.gd.{p}")))
     };
-    assert_eq!(ratings(&mut dss), ["none", "none"]);
+    assert_eq!(ratings(&mut dss), ["530", "800"]);
     assert_eq!(query(&mut dss, "LineGeometry.gd.wires"), "[, w2, ]");
     for list in [
         "[w w w]",
@@ -3453,7 +3454,7 @@ fn a_refused_conductor_list_changes_nothing() {
         "[WireData.w Foo.w WireData.w]",
     ] {
         dss.command(&format!("Edit LineGeometry.gd conductors={list}"));
-        assert_eq!(ratings(&mut dss), ["none", "none"], "{list}");
+        assert_eq!(ratings(&mut dss), ["530", "800"], "{list}");
         assert_eq!(
             query(&mut dss, "LineGeometry.gd.wires"),
             "[, w2, ]",
@@ -3633,8 +3634,8 @@ fn a_missing_object_or_a_cable_list_with_no_position_changes_nothing() {
         ("Line.Kl.linecode", "lc"),
         ("Line.Kn.wires", "[w, w, w]"),
         ("LineGeometry.gw.wires", "[w2, w2, w2]"),
-        ("LineGeometry.gw.normamps", "0"),
-        ("LineGeometry.gw.emergamps", "0"),
+        ("LineGeometry.gw.normamps", "none"),
+        ("LineGeometry.gw.emergamps", "none"),
     ] {
         assert_eq!(query(&mut dss, prop), want, "{prop}");
     }

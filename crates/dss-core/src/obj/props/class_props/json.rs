@@ -76,12 +76,17 @@ impl ClassProps {
                     }
                 }
             }
-            // A rating that is not set: `null` in the full sweep, omitted from
-            // the set-order sweep (as `Save` omits it).
+            // A rating that is not set is `null` in the full sweep, and in the
+            // set-order sweep when it was typed. The set-order sweep omits one
+            // that was never typed (`a_json_round_trip_keeps_a_typed_rating_that_is_not_set`).
             PropType::Rating => match obj.get_rating(idx) {
                 Rating::Set(v) if v.is_finite() => Json::Float(v),
                 Rating::Set(_) => Json::Null,
-                Rating::NotSet if opts.contains(JsonOpts::FULL) => Json::Null,
+                Rating::NotSet
+                    if opts.contains(JsonOpts::FULL) || obj.data().typed_rating(idx).is_some() =>
+                {
+                    Json::Null
+                }
                 Rating::NotSet => return None,
             },
             PropType::RatingArray => {
@@ -90,7 +95,10 @@ impl ClassProps {
                     return Some(Json::Null);
                 };
                 let vals = &vals[..n.min(vals.len())];
-                if !opts.contains(JsonOpts::FULL) && !vals.iter().any(|r| r.is_set()) {
+                if !opts.contains(JsonOpts::FULL)
+                    && obj.data().typed_rating(idx).is_none()
+                    && !vals.iter().any(|r| r.is_set())
+                {
                     return None;
                 }
                 Json::Arr(

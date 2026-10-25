@@ -93,7 +93,14 @@ fn build_wire(name: &str, edits: &[(&str, &str)]) -> WireDataObj {
     for (n, v) in edits {
         scalar(&cls, &mut obj, n, v);
     }
+    end_edit(&mut obj);
     obj
+}
+
+/// Mirror the executive's end of an edit, where the ratings nobody typed are
+/// derived.
+fn end_edit(obj: &mut dyn DssObject) {
+    obj.end_edit(&crate::elements::traits::SysCtx::parse_default());
 }
 
 fn build_spacing(edits: &[(&str, &str)]) -> LineSpacingObj {
@@ -135,8 +142,8 @@ fn defaults() {
 fn cond_wire_state_machine() {
     // The classic per-conductor edit: `cond=N wire=.. x=.. h=.. units=..`.
     // Only the active conductor's scalars are visible via `?`; the full
-    // assignment shows through the `wires` array. NormAmps/EmergAmps default
-    // from the first conductor.
+    // assignment shows through the `wires` array. NormAmps/EmergAmps are
+    // derived from the phase conductors when the edit ends.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let acsr = build_wire("acsr", &[("normamps", "530"), ("radius", "0.0306")]);
@@ -156,13 +163,14 @@ fn cond_wire_state_machine() {
     set_ref(&cls, &mut g, "wire", &arena_of(&acsr));
     scalar(&cls, &mut g, "x", "1.2909");
     scalar(&cls, &mut g, "h", "13.716");
+    end_edit(&mut g);
 
     assert_eq!(get(&cls, &g, "cond"), "3"); // last active
     assert_eq!(get(&cls, &g, "wire"), "acsr");
     assert_eq!(get(&cls, &g, "x"), "1.2909");
     assert_eq!(get(&cls, &g, "h"), "13.716");
     assert_eq!(get(&cls, &g, "units"), "m"); // sticky from cond 1
-    assert_eq!(get(&cls, &g, "normamps"), "530"); // defaulted from acsr
+    assert_eq!(get(&cls, &g, "normamps"), "530"); // the phase conductors' rating
     assert_eq!(get(&cls, &g, "emergamps"), "795"); // 1.5 × 530 on the wire
     assert_eq!(get(&cls, &g, "wires"), "[acsr, acsr, acsr]");
     assert_eq!(get(&cls, &g, "cncables"), "[acsr, acsr, acsr]");
@@ -182,6 +190,7 @@ fn wires_array_leaves_the_selection_alone() {
     set_ref_array(&cls, &mut g, "wires", &three);
     assert_eq!(get(&cls, &g, "cond"), "0");
     assert_eq!(get(&cls, &g, "wires"), "[acsr, acsr, acsr]");
+    end_edit(&mut g);
     assert_eq!(get(&cls, &g, "normamps"), "530");
     scalar(&cls, &mut g, "cond", "2");
     set_ref_array(&cls, &mut g, "wires", &three);
@@ -352,9 +361,11 @@ fn make_like_copies_geometry_and_selects_nothing() {
     scalar(&cls, &mut src, "x", "1.29");
     scalar(&cls, &mut src, "h", "13.7");
     scalar(&cls, &mut src, "reduce", "y");
+    end_edit(&mut src);
 
     let mut dst = LineGeometryObj::new("g1");
     dst.make_like(&src);
+    end_edit(&mut dst);
     assert_eq!(get(&cls, &dst, "nconds"), "3");
     assert_eq!(get(&cls, &dst, "cond"), "0"); // `like=` selects no conductor
     assert_eq!(get(&cls, &dst, "x"), ""); // so `x` holds no value
@@ -394,10 +405,10 @@ fn wire_undefined_pushes_not_defined_error() {
 }
 
 #[test]
-fn wires_array_defaults_multi_season_ratings() {
-    // The `wires=` array branch defaults the geometry's Seasons/Ratings from
-    // the first conductor when its own are unset (the NumAmpRatings>1 /
-    // AmpRatings-copy branches of `default_amps_from`).
+fn wires_array_derives_multi_season_ratings() {
+    // A geometry that types neither Seasons nor Ratings takes both from the
+    // phase conductor at the lowest position with more than one season when
+    // the edit ends.
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let w4 = build_wire(
@@ -417,6 +428,7 @@ fn wires_array_defaults_multi_season_ratings() {
         "wires",
         &[arena_of(&w4), arena_of(&w4), arena_of(&w4)],
     );
+    end_edit(&mut g);
     assert_eq!(get(&cls, &g, "seasons"), "4");
     assert_eq!(get(&cls, &g, "ratings"), "[ 400 450 500 550]");
     assert_eq!(get(&cls, &g, "normamps"), "530");
@@ -957,7 +969,7 @@ fn conductors_array_matches_mixed_capi015() {
     // the (now r4133-parity, case-insensitive) text parser AND JSON import call.
     // This drives that entry point directly (the `wires=` test precedent), gating
     // `apply_conductors` / per-conductor `change_line_constants_type_at` /
-    // `default_amps_from` / `conductor_choice_of`.
+    // `conductor_choice_of`.
     //
     // The identical MIXED geometry as `matrices_mixed_cn_ts_wire_match_capi015`
     // (phase-1 CN, phase-2 TS, phase-3 CN, cond-4 bare wire), but the per-
@@ -1025,11 +1037,10 @@ fn conductors_array_matches_mixed_capi015() {
 }
 
 #[test]
-fn conductors_array_defaults_ratings_from_first_valid() {
-    // The `Conductors=` list defaults the geometry ratings from the first valid
-    // conductor (`apply_conductors` → `default_amps_from(first_valid)`), exactly
-    // like the traditional `wires=` path. A wire with NormAmps=530 seeds the
-    // geometry's NormAmps/EmergAmps (1.5× on the wire).
+fn conductors_array_derives_ratings_from_the_phase_conductors() {
+    // A geometry given by the `Conductors=` list derives its ratings from the
+    // phase conductors when the edit ends, as the `wires=` form does. Three
+    // wires of NormAmps=530 rate it 530/795 (1.5× on the wire).
     let enums = EnumRegistry::new();
     let cls = class_props(&enums);
     let w = build_wire("acsr", &[("normamps", "530"), ("radius", "0.0306")]);
@@ -1042,6 +1053,7 @@ fn conductors_array_defaults_ratings_from_first_valid() {
         "conductors",
         &[arena_of(&w), arena_of(&w), arena_of(&w)],
     );
+    end_edit(&mut g);
     assert!(g.data_mut().take_errors().is_empty());
     assert_eq!(get(&cls, &g, "normamps"), "530");
     assert_eq!(get(&cls, &g, "emergamps"), "795");

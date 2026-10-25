@@ -58,6 +58,8 @@ mod edit;
 mod matrix;
 mod save;
 
+pub use matrix::{PhaseRating, phase_ratings};
+
 use crate::elements::general::conductor_data::{
     CONDUCTOR_PROXY_CLASSES, CONDUCTOR_PROXY_NAME, ConductorObj,
 };
@@ -302,8 +304,9 @@ impl LineGeometryObj {
         self.fnphases
     }
 
-    /// Pascal `LineGeometryObj.NormAmps` (seeded from the first conductor unless
-    /// set explicitly) — `TLineObj.FetchGeometryCode` copies it onto the Line.
+    /// The normal rating: as typed, or derived from the phase conductors when
+    /// an edit ends (`derive_ratings`). `TLineObj.FetchGeometryCode` copies it
+    /// onto the Line.
     pub fn norm_amps(&self) -> Rating {
         self.norm_amps
     }

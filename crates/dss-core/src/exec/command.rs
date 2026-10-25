@@ -2295,8 +2295,9 @@ pub(super) fn reattach_edited_control(
 /// the inline list path (`parse.rs`), and write the array + shrunk count through
 /// the object's typed accessors. The read is capped at the current count
 /// property so Pascal's in-place shrink of one array is visible to a later one
-/// (e.g. `%mag` shrinking `NumHarm` before `angle` reads). A rating array
-/// holding a value that is not a finite number is refused and left as it was.
+/// (e.g. `%mag` shrinking `NumHarm` before `angle` reads). A rating array or a
+/// kVA rating array holding a value that is not a finite number is refused and
+/// left as it was.
 fn apply_generic_dbl_array_file(
     obj: &mut dyn crate::obj::base::DssObject,
     gf: &crate::obj::base::GenericDblArrayFile,
@@ -2347,7 +2348,7 @@ fn apply_generic_dbl_array_file(
         }
     }
     let count = vals.len() as i32;
-    if gf.rating && vals.iter().any(|v| !v.is_finite()) {
+    if (gf.rating || gf.finite_rating) && vals.iter().any(|v| !v.is_finite()) {
         errors.push(format!(
             "{what}: a rating in file \"{}\" is not a finite number.",
             gf.filename
@@ -2356,10 +2357,12 @@ fn apply_generic_dbl_array_file(
     }
     if gf.rating {
         let ratings = vals
-            .into_iter()
-            .map(crate::obj::Rating::from_number)
+            .iter()
+            .map(|&v| crate::obj::Rating::from_number(v))
             .collect();
         obj.set_rating_array(gf.prop, ratings);
+        obj.data_mut()
+            .set_typed_rating(gf.prop, crate::obj::TypedRating::Array(vals));
     } else {
         obj.set_f64_array(gf.prop, vals);
     }

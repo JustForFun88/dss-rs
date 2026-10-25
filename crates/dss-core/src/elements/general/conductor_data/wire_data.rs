@@ -45,7 +45,7 @@ impl WireDataObj {
     }
 
     /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` — the rating fields a
-    /// `LineGeometry` defaults from its first conductor.
+    /// `LineGeometry` or a `Line` derives its own from.
     pub fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         self.cond.amps()
     }
@@ -63,6 +63,10 @@ impl WireDataObj {
         {
             self.cond.make_like_from(&o.cond);
         }
+        self.data
+            .copy_typed_ratings_from(&o.data, &[prop::NORMAMPS, prop::EMERGAMPS]);
+        self.cond
+            .hold_ratings(&self.data, prop::NORMAMPS, prop::EMERGAMPS);
     }
 }
 
@@ -99,6 +103,14 @@ impl DssObject for WireDataObj {
     fn set_rating_array(&mut self, idx: usize, value: Vec<Rating>) {
         debug_assert_eq!(idx, prop::RATINGS);
         self.cond.amp_ratings = value;
+    }
+
+    /// The ratings nobody typed follow their typed partner when an edit
+    /// ends ([`ConductorDataCore::end_edit_ratings`]).
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
+        let full = format!("WireData.{}", self.data.name());
+        self.cond
+            .end_edit_ratings(&mut self.data, &full, prop::NORMAMPS, prop::EMERGAMPS);
     }
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {

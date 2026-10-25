@@ -155,6 +155,187 @@ impl Winding {
     }
 }
 
+/// The input a refused Transformer or AutoTrans recalc names: for a kVA
+/// rating the winding 1 `kVA` it derives from, else the first winding `kV`,
+/// `kVA`, `Tap`, `%R` or typed `RDCOhms` that is not a finite number, else the
+/// first of `others` (`name=value` texts with whether the value is finite)
+/// that is not, else the first winding of zero `kV`, then of zero `kVA`. An
+/// overflow of finite inputs names, for the admittance, the `kV` of a winding
+/// whose voltage base squared overflows, the `%R` of a winding whose derived
+/// dc resistance overflows before its quotient, winding 1's `kVA` when the VA
+/// base (`kVA` times 1000) or a quotient by it overflows, and the `Tap` of a
+/// winding whose voltage times its tap has no finite reciprocal while its
+/// voltage alone has one, then the `kV` of a winding whose voltage base squared
+/// is below the normal range, the `Tap` of one whose voltage times its tap
+/// squared is, and winding 1's `kVA` when the one-volt impedance base
+/// `phases / VA` squared is, else winding 1's `kV`, the divisor of every
+/// current rating. The dc resistance names its overflow as the admittance does.
+/// `windings` are the recalc's trial, with their derived voltage bases
+/// and resistances. A winding after the first is named with its `wdg=`.
+pub(crate) fn winding_refused_input(
+    windings: &[Winding],
+    nphases: usize,
+    others: &[(String, bool)],
+    quantity: &str,
+) -> String {
+    use super::input_text;
+    let named = |i: usize, name: &str, v: f64| {
+        if i == 0 {
+            input_text(name, v)
+        } else {
+            format!("wdg={} {}", i + 1, input_text(name, v))
+        }
+    };
+    if quantity.ends_with("kVA rating") {
+        return named(0, "kVA", windings[0].kva);
+    }
+    for (i, w) in windings.iter().enumerate() {
+        let typed_rdc = w.rdc_specified.then_some(("RDCOhms", w.rdcohms));
+        let inputs = [
+            ("kV", w.kvll),
+            ("kVA", w.kva),
+            ("Tap", w.putap),
+            ("%R", w.rpu),
+        ];
+        for (name, v) in inputs.into_iter().chain(typed_rdc) {
+            if !v.is_finite() {
+                return named(i, name, v);
+            }
+        }
+    }
+    if let Some((text, _)) = others.iter().find(|(_, finite)| !finite) {
+        return text.clone();
+    }
+    if let Some(i) = windings.iter().position(|w| w.kvll == 0.0) {
+        return named(i, "kV", windings[i].kvll);
+    }
+    if let Some(i) = windings.iter().position(|w| w.kva == 0.0) {
+        return named(i, "kVA", windings[i].kva);
+    }
+    if quantity == "admittance" || quantity == "dc resistance" {
+        // Per unit of winding 1's kVA times 1000: the impedance base divides
+        // by it, and so does a dc resistance derived from the `%R`.
+        if let Some(i) = windings
+            .iter()
+            .position(|w| !(w.vbase * w.vbase).is_finite())
+        {
+            return named(i, "kV", windings[i].kvll);
+        }
+        let derived_rdc = |w: &Winding| w.rdcpu * (w.vbase * w.vbase);
+        if let Some(i) = windings
+            .iter()
+            .position(|w| !w.rdc_specified && !derived_rdc(w).is_finite())
+        {
+            return named(i, "%R", windings[i].rpu / 0.01);
+        }
+        let va = windings[0].kva * 1000.0;
+        let by_va = |x: f64| (x / va).is_finite();
+        if !va.is_finite()
+            || !by_va(nphases as f64)
+            || windings
+                .iter()
+                .any(|w| !w.rdc_specified && !by_va(derived_rdc(w)))
+        {
+            return named(0, "kVA", windings[0].kva);
+        }
+        if let Some(i) = windings
+            .iter()
+            .position(|w| (1.0 / w.vbase).is_finite() && !(1.0 / (w.vbase * w.putap)).is_finite())
+        {
+            return named(i, "Tap", windings[i].putap);
+        }
+        // The admittance divides by each winding's voltage times its tap,
+        // squared, and the short-circuit impedance is inverted on the one-volt
+        // impedance base `phases / VA`, so it grows with winding 1's kVA. A
+        // square below the normal range is the one the quotient overflows on.
+        let tiny = |x: f64| x * x < f64::MIN_POSITIVE;
+        if let Some(i) = windings.iter().position(|w| tiny(w.vbase)) {
+            return named(i, "kV", windings[i].kvll);
+        }
+        if let Some(i) = windings.iter().position(|w| tiny(w.vbase * w.putap)) {
+            return named(i, "Tap", windings[i].putap);
+        }
+        if tiny(nphases as f64 / va) {
+            return named(0, "kVA", windings[0].kva);
+        }
+    }
+    // Every current rating divides by winding 1's kV.
+    named(0, "kV", windings[0].kvll)
+}
+
+/// The input of winding `i` that leaves it no dc resistance, a short at dc:
+/// its typed `RDCOhms`, else the `%R` its dc resistance derives from, with
+/// its `wdg=` after the first winding.
+pub(crate) fn dc_short_input(windings: &[Winding], i: usize) -> String {
+    use super::input_text;
+    let w = &windings[i];
+    let text = if w.rdc_specified {
+        input_text("RDCOhms", w.rdcohms)
+    } else {
+        input_text("%R", w.rpu / 0.01)
+    };
+    if i == 0 {
+        text
+    } else {
+        format!("wdg={} {text}", i + 1)
+    }
+}
+
+/// The kVA ratings a transformer derives from winding 1's `kva` (110 % and
+/// 150 %), each `None` where it is not a finite number: such a rating is not
+/// committed and the recalc refuses the transformer.
+pub(crate) fn hkva_from(kva: f64) -> [Option<f64>; 2] {
+    [1.1 * kva, 1.5 * kva].map(|v| v.is_finite().then_some(v))
+}
+
+/// Which derived quantity of a transformer is not a finite number, in the
+/// order a refusal names it: the kVA ratings (`hkva_overflow`), the current
+/// ratings, then the admittance: the short-circuit reactances `xsc`, the
+/// per-winding data and the matrices built from them (a reactance that is
+/// not a number is named here before the singular short-circuit impedance it
+/// also makes), then the dc resistance, typed or derived from the `%R`,
+/// which only the dc model reads.
+pub(crate) fn transformer_not_finite(
+    hkva_overflow: [bool; 2],
+    ratings: &[crate::obj::Rating],
+    seasonal: &[crate::obj::Rating],
+    windings: &[Winding],
+    xsc: &[f64],
+    admittances: &[&crate::support::cmatrix::CMatrix],
+) -> Option<&'static str> {
+    let set_finite =
+        |r: &crate::obj::Rating| !matches!(r, crate::obj::Rating::Set(v) if !v.is_finite());
+    let quantities = ["normal current rating", "emergency current rating"];
+    if hkva_overflow[0] {
+        return Some("normal kVA rating");
+    }
+    if hkva_overflow[1] {
+        return Some("emergency kVA rating");
+    }
+    if let Some(i) = ratings.iter().position(|r| !set_finite(r)) {
+        return Some(quantities[i]);
+    }
+    if !seasonal.iter().all(set_finite) {
+        return Some("seasonal current ratings");
+    }
+    let windings_finite = windings
+        .iter()
+        .all(|w| [w.rpu, w.vbase, w.y_ppm].iter().all(|v| v.is_finite()))
+        && xsc.iter().all(|v| v.is_finite());
+    let matrices_finite = admittances.iter().all(|m| {
+        m.values()
+            .iter()
+            .all(|v| v.re.is_finite() && v.im.is_finite())
+    });
+    if !(windings_finite && matrices_finite) {
+        return Some("admittance");
+    }
+    let dc_finite = windings
+        .iter()
+        .all(|w| w.rdcpu.is_finite() && w.rdcohms.is_finite());
+    (!dc_finite).then_some("dc resistance")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

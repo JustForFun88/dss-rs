@@ -130,8 +130,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::REQUIRED
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
         PropDef::double("Irradiance"),
         PropDef::double("Pmpp"),
         PropDef::double("%Pmpp").scale(0.01),
@@ -142,7 +146,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // `kvar`: read returns `kvar_out` (Pascal `Getkvar`), write stores
         // `kvarRequested`.
         PropDef::double("kvar").flags(PropFlags::NO_DEFAULT | PropFlags::REQUIRED_IN_SPEC_SET),
-        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
+        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO | PropFlags::FINITE_BASE),
         PropDef::double("%CutIn"),
         PropDef::double("%CutOut"),
         PropDef::object_ref_class("XYcurve", "EffCurve"),
@@ -178,7 +182,9 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("%PMinkvarMax"),
         PropDef::double("kvarMax").flags(PropFlags::DYNAMIC_DEFAULT),
         PropDef::double("kvarMaxAbs").flags(PropFlags::DYNAMIC_DEFAULT),
-        PropDef::double("kVDC").scale(1000.0),
+        PropDef::double("kVDC")
+            .scale(1000.0)
+            .flags(PropFlags::FINITE_BASE),
         PropDef::double("Kp").scale(1.0 / 1000.0),
         PropDef::double("PITol").scale(1.0 / 100.0),
         PropDef::double("SafeVoltage"),

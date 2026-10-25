@@ -10,6 +10,89 @@ use crate::util::{CDOUBLEONE, inv_sqrt3_x1000, sqrt3};
 
 use super::{GenDispatchMode, Generator, prop};
 
+/// The powers the `kW`, `kvar`, `PF` and load-shape side effects derive at
+/// their token, as the last recalc that built the generator left them.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(super) struct HeldPowers {
+    kw: f64,
+    kvar: f64,
+    pf: f64,
+    kva: f64,
+    kvar_max: f64,
+    kvar_min: f64,
+    p_per_phase: f64,
+    q_per_phase: f64,
+}
+
+impl HeldPowers {
+    /// The powers `g` holds now.
+    pub(super) fn of(g: &Generator) -> Self {
+        Self {
+            kw: g.kw_base,
+            kvar: g.kvar_base,
+            pf: g.pf_nominal,
+            kva: g.kva_rating,
+            kvar_max: g.kvar_max,
+            kvar_min: g.kvar_min,
+            p_per_phase: g.p_nominal_per_phase,
+            q_per_phase: g.q_nominal_per_phase,
+        }
+    }
+
+    /// After a refused edit, give `g` back each power that a spoiled token of
+    /// the edit derived and no property of the edit set. A token is spoiled
+    /// when its input, or a power it derives, is not a finite number: a
+    /// `kvar` of `+Inf` leaves the `PF` as it was, a `PF` that is not a
+    /// number, or one of `1e-310` whose `kvar` overflows, the `kvar`. The
+    /// powers finite tokens derive as finite numbers are kept, so the edit
+    /// that makes the refused input valid builds the generator its twin
+    /// builds (pinned by
+    /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`
+    /// and `::a_refused_edit_keeps_the_powers_its_valid_tokens_derive`).
+    fn restore_untyped(self, g: &mut Generator) {
+        use prop::*;
+        let typed = |i: usize| g.cd.obj.prop_edited_since_boundary(i);
+        let shape = g.actual_shape_typed_last().is_some();
+        let (kw, kvar, pf) = (typed(KW), typed(KVAR), typed(PF));
+        if !(kw || kvar || pf || shape) {
+            return;
+        }
+        let kva = typed(KVA) || typed(MVA);
+        let (max, min) = (typed(MAXKVAR), typed(MINKVAR));
+        let bad = |x: f64| !x.is_finite();
+        // The `kW` and `PF` tokens derive the `kvar`, its limits and an
+        // untyped kVA rating, the `kvar` token the `PF` and the limits, a load
+        // shape used as actual the `kW` and the `kvar`. A token is spoiled when
+        // its input or a power it derives is not finite.
+        let sync = (kw || pf)
+            && ((kw && bad(g.kw_base)) || (pf && bad(g.pf_nominal)) || (!kvar && bad(g.kvar_base)));
+        let kvar_token = kvar && (bad(g.kvar_base) || (!pf && bad(g.pf_nominal)));
+        let shape = shape && (bad(g.kw_base) || bad(g.kvar_base));
+        if shape {
+            g.kw_base = self.kw;
+        }
+        let kvar_back = shape || (!kvar && (sync || bad(g.kvar_base)));
+        if kvar_back {
+            g.kvar_base = self.kvar;
+        }
+        if !pf && (kvar_token || shape || bad(g.pf_nominal)) {
+            g.pf_nominal = self.pf;
+        }
+        if !kva && (sync || bad(g.kva_rating)) {
+            g.kva_rating = self.kva;
+        }
+        let limits = kvar_back || kvar_token;
+        if !max && (limits || bad(g.kvar_max)) {
+            g.kvar_max = self.kvar_max;
+        }
+        if !min && (limits || bad(g.kvar_min)) {
+            g.kvar_min = self.kvar_min;
+        }
+        g.p_nominal_per_phase = self.p_per_phase;
+        g.q_nominal_per_phase = self.q_per_phase;
+    }
+}
+
 impl Generator {
     /// Pascal `CalcDailyMult`.
     fn calc_daily_mult(&mut self, hr: f64) {
@@ -232,8 +315,187 @@ impl Generator {
         }
     }
 
-    /// Pascal `TGeneratorObj.RecalcElementData`.
+    /// Recompute the derived values, refused when an input makes
+    /// the power-flow admittance of the configured model, or the `kvar` a
+    /// typed `PF` derives, or the `model=3` current through a target voltage
+    /// `Vpu` that is not a number, not a finite number: the edit logs the
+    /// refusal, every derived value keeps what it held, a power a refused
+    /// token derived included, and the stamp is refused until a recalc finds
+    /// it finite (pinned by
+    /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
     pub fn recalc(&mut self, sys: &SysCtx) {
+        let mut held = self.clone();
+        self.derive(sys);
+        let finite = |z: Complex64| z.re.is_finite() && z.im.is_finite();
+        let yeq = finite(self.yeq);
+        let pf_kvar = self.pf_kvar().is_none_or(f64::is_finite);
+        let quantity = if !(yeq && self.yq_fixed.is_finite() && pf_kvar) {
+            "admittance"
+        } else if self.gen_model == 3 && self.v_target.is_nan() {
+            // The voltage-regulating model drives its vars toward the target
+            // voltage, so a target that is not a number makes its current one.
+            "model current"
+        } else {
+            self.cd.recalc_refusal = None;
+            self.held_powers = HeldPowers::of(self);
+            // The user-written models are updated once the recalc is accepted.
+            self.update_user_models(sys);
+            return;
+        };
+        held.user_model = self.user_model.take();
+        held.shaft_model = self.shaft_model.take();
+        *self = held;
+        let input = if quantity == "model current" {
+            use crate::obj::base::DssObject;
+            crate::elements::ckt::input_text("Vpu", self.get_f64(super::prop::VPU))
+        } else {
+            self.refused_input(yeq)
+        };
+        let powers = self.held_powers;
+        powers.restore_untyped(self);
+        self.cd.refuse_recalc("Generator", &input, quantity);
+    }
+
+    /// The `kvar` a typed `PF` derives from `kW`, where the `PF` is the last
+    /// of the two typed and not zero (a zero `PF` derives nothing). A refused
+    /// `PF` gives the stored `kvar` back, so the recalc checks this one too
+    /// and the generator stays refused until the `PF` or a `kvar` is typed
+    /// valid (pinned by
+    /// `exec::tests::rating_refusals::a_refused_edit_keeps_the_powers_its_valid_tokens_derive`).
+    fn pf_kvar(&self) -> Option<f64> {
+        let typed = |i: usize| self.cd.obj.prp_specified(i);
+        (typed(prop::PF) && !typed(prop::KVAR) && self.pf_nominal != 0.0)
+            .then(|| self.kw_base * (1.0 / self.pf_nominal.powi(2) - 1.0).sqrt())
+    }
+
+    /// The input a refused recalc names: the first that is not finite, else
+    /// a zero, else the cause of the overflow. A power a side effect derived
+    /// is never named: the `PF` and the `kvar` are inputs only when typed
+    /// last of the two, and model 6 reads its kVA rating through the `kW`
+    /// unless the kVA is typed. Where the model-6 `Yeq` is not finite
+    /// (`yeq` false) it names a `kV` or `Xd` whose square leaves the normal
+    /// range, else the kVA rating it divides by. Otherwise it names a zero
+    /// square of `kV`, else the input of a power (`kW` or `kvar` times 1000)
+    /// that is not finite, with a typed `PF` where the `kvar` it derives
+    /// overflows on `1/PF²`, else `kV`, the divisor of the admittance.
+    fn refused_input(&self, yeq: bool) -> String {
+        use super::prop::*;
+        use crate::obj::base::DssObject;
+        let v = |i: usize| self.get_f64(i);
+        let typed = |i: usize| self.cd.obj.prp_specified(i);
+        if let Some(shape) = self.shape_powers_refused() {
+            return shape;
+        }
+        let model6 = self.gen_model == 6 && !yeq;
+        let kva = if self.kva_not_set {
+            ("kW", v(KW))
+        } else {
+            ("kVA", v(KVA))
+        };
+        let mut inputs = vec![("kV", v(KV)), ("kW", v(KW))];
+        inputs.extend(typed(PF).then_some(("PF", v(PF))));
+        inputs.extend(typed(KVAR).then_some(("kvar", v(KVAR))));
+        if model6 {
+            inputs.extend([kva, ("Xd", v(XD))]);
+        }
+        let zeros: &[(&str, f64)] = if model6 {
+            &[("kV", v(KV)), kva, ("Xd", v(XD))]
+        } else {
+            &[("kV", v(KV))]
+        };
+        let power = |kw: f64| !(1000.0 * kw / self.cd.nphases as f64).is_finite();
+        let normal = |x: f64| (x * x).is_normal();
+        let fallback = if model6 {
+            if !normal(self.kv_generator_base) {
+                ("kV", v(KV))
+            } else if !normal(self.pu_xd) {
+                ("Xd", v(XD))
+            } else {
+                kva
+            }
+        } else if self.v_base.powi(2) == 0.0 {
+            ("kV", v(KV))
+        } else if power(self.kw_base) {
+            ("kW", v(KW))
+        } else if self.pf_kvar().is_some_and(power) {
+            if (1.0 / self.pf_nominal.powi(2)).is_finite() {
+                ("kW", v(KW))
+            } else {
+                ("PF", v(PF))
+            }
+        } else if power(self.kvar_base) {
+            ("kvar", v(KVAR))
+        } else {
+            ("kV", v(KV))
+        };
+        crate::elements::ckt::refused_input_text(&inputs, zeros, fallback)
+    }
+
+    /// The load shape used as actual that this edit typed after the `kW` and
+    /// the `kvar`, as its property name and its shape: it set both to its
+    /// peak powers.
+    fn actual_shape_typed_last(&self) -> Option<(&'static str, &str)> {
+        use super::prop::*;
+        let obj = &self.cd.obj;
+        let shapes = [
+            (YEARLY, "Yearly", &self.yearly_shape, &self.yearly_shape_obj),
+            (DAILY, "Daily", &self.daily_shape, &self.daily_shape_obj),
+            (DUTY, "Duty", &self.duty_shape, &self.duty_shape_obj),
+        ];
+        let (i, name, shape, _) = shapes
+            .into_iter()
+            .filter(|(i, _, _, s)| {
+                obj.prop_edited_since_boundary(*i) && s.as_ref().is_some_and(|s| s.use_actual())
+            })
+            .max_by_key(|(i, ..)| obj.seq_mark(*i))?;
+        (obj.seq_mark(i) > obj.seq_mark(KW).max(obj.seq_mark(KVAR)))
+            .then_some((name, shape.as_str()))
+    }
+
+    /// The load shape whose peak powers are not finite numbers, as
+    /// `Daily=<name>`, named in place of the powers it set.
+    fn shape_powers_refused(&self) -> Option<String> {
+        if self.kw_base.is_finite() && self.kvar_base.is_finite() {
+            return None;
+        }
+        let (name, shape) = self.actual_shape_typed_last()?;
+        Some(format!("{name}={shape}"))
+    }
+
+    /// The refusal of a dynamics or harmonics `quantity`, the admittance of
+    /// the reactance `reactance` (`Xdp` with its X/R ratio `XRdp`, or `Xdpp`),
+    /// that is not a finite number.
+    pub(super) fn mode_refusal(&self, reactance: usize, quantity: &str) -> String {
+        use super::prop::*;
+        use crate::obj::base::DssObject;
+        let v = |i: usize| self.get_f64(i);
+        let x = if reactance == XDP {
+            ("Xdp", v(XDP))
+        } else {
+            ("Xdpp", v(XDPP))
+        };
+        let mut inputs = vec![("kV", v(KV)), ("kVA", v(KVA)), x];
+        if reactance == XDP {
+            inputs.push(("XRdp", v(XRDP)));
+        }
+        let zeros = [("kV", v(KV)), ("kVA", v(KVA)), x];
+        let input = crate::elements::ckt::refused_input_text(&inputs, &zeros, ("kVA", v(KVA)));
+        self.cd.refusal_message("Generator", &input, quantity)
+    }
+
+    /// Whether the dynamics model divides by `Xdpp`: a three-phase machine
+    /// forms its negative-sequence current through it, bar the `model=7`
+    /// inverter, and its zero-sequence current where it is a wye that is not
+    /// forced balanced. The user-written `model=6` reads none.
+    pub(super) fn dynamics_reads_xdpp(&self) -> bool {
+        self.cd.nphases == 3
+            && self.gen_model != 6
+            && (self.gen_model != 7
+                || (self.connection == super::Connection::Wye && !self.force_balanced))
+    }
+
+    /// The body of [`Self::recalc`], bar the user-model update.
+    fn derive(&mut self, sys: &SysCtx) {
         let nphases = self.cd.nphases as f64;
         self.v_base95 = self.vminpu * self.v_base;
         self.v_base105 = self.vmaxpu * self.v_base;
@@ -256,10 +518,5 @@ impl Generator {
 
         self.dqdv = self.dqdv_saved; // for Model 3
         self.delta_q_max = (self.var_max - self.var_min) * 0.10; // limit to 10% of range
-
-        // Update any user-written models (Pascal `RecalcElementData` tail,
-        // `generator.pas:1305-1307`: `UserModel.FUpdateModel` /
-        // `ShaftModel.FUpdateModel`).
-        self.update_user_models(sys);
     }
 }

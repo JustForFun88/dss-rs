@@ -98,20 +98,24 @@ pub struct SaveCtx<'a> {
     pub enums: &'a EnumRegistry,
 }
 
-/// The Pascal `SaveWrite` loop **body** — one ` <Name>=<CheckForBlanks(value)>`
-/// token for property `iprop`, skipping an empty value and the `----`
-/// conditional-value sentinel (`CompareText = 0`, so case-insensitive —
-/// faithfully mirrored though the sentinel is emitted literally). A rating that
-/// holds no set value ([`ClassProps::holds_no_rating`]) is omitted as well.
+/// One ` <Name>=<value>` token of the `Save` line for property `iprop`, the
+/// value quoted when it holds a blank, skipping an empty value and the `----`
+/// conditional-value sentinel. A number that is not a number is written `Nan`
+/// ([`ClassProps::saved_value`]), so it reloads as typed. A rating is
+/// written as the user typed it ([`ClassProps::saved_rating`]) and omitted
+/// when it was never typed.
 ///
 /// Shared with the class overrides that re-order the walk but keep this body
 /// ([`crate::elements::general::xy_curve`], [`crate::elements::control::reg_control`]).
 pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObject, iprop: usize) {
-    if cx.cls.holds_no_rating(obj, iprop) {
-        return;
-    }
-    // Pascal `str := trim(PropertyValue[iProp])`.
-    let val = cx.cls.get_value(obj, iprop, cx.enums);
+    let val = if cx.cls.is_rating(iprop) {
+        match cx.cls.saved_rating(obj, iprop) {
+            Some(v) => v,
+            None => return,
+        }
+    } else {
+        cx.cls.saved_value(obj, iprop, cx.enums)
+    };
     let mut s = val.trim();
     if s.eq_ignore_ascii_case("----") {
         s = ""; // set to ignore this property
@@ -127,8 +131,8 @@ pub(crate) fn save_write_token(out: &mut String, cx: &SaveCtx, obj: &dyn DssObje
         out.push(' ');
         out.push_str(cx.cls.property_name(iprop));
         out.push('=');
-        // Pascal `CheckForBlanks` (`Utilities.pas:1212`): quote a value
-        // containing spaces unless it starts with a quote/bracket char.
+        // Quote a value that holds a blank unless it opens with a quote or a
+        // bracket.
         out.push_str(&crate::util::check_for_blanks(s));
         if let Some((sizer, _)) = held {
             let data = obj.data();

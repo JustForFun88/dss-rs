@@ -98,10 +98,14 @@ impl TsDataObj {
         {
             self.cond.make_like_from(&o.cond);
             self.cable.make_like_from(&o.cable);
+            self.data
+                .copy_typed_ratings_from(&o.data, &[prop::NORMAMPS, prop::EMERGAMPS]);
             self.fdia_shield = o.fdia_shield;
             self.ftape_layer = o.ftape_layer;
             self.ftape_lap = o.ftape_lap;
         }
+        self.cond
+            .hold_ratings(&self.data, prop::NORMAMPS, prop::EMERGAMPS);
     }
 }
 
@@ -150,6 +154,14 @@ impl DssObject for TsDataObj {
     fn set_rating_array(&mut self, idx: usize, value: Vec<Rating>) {
         debug_assert_eq!(idx, prop::RATINGS);
         self.cond.amp_ratings = value;
+    }
+
+    /// The ratings nobody typed follow their typed partner when an edit
+    /// ends ([`ConductorDataCore::end_edit_ratings`]).
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
+        let full = format!("TSData.{}", self.data.name());
+        self.cond
+            .end_edit_ratings(&mut self.data, &full, prop::NORMAMPS, prop::EMERGAMPS);
     }
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {

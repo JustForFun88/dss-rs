@@ -2152,6 +2152,10 @@ pub(crate) fn run_and_compare_abort(
         let mut dss = Dss::new();
         dss.command("clear");
         dss.command(&format!("compile \"{deck}\""));
+        // The compile's declared messages, checked before `post` adds the abort.
+        if !c.expect_warnings.is_empty() {
+            assert_expected_warnings(&dss, &c.expect_warnings, &format!("{label}: after compile"));
+        }
         for cmd in &c.post {
             dss.command(cmd);
         }

@@ -166,8 +166,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("Reset"),
         PropDef::boolean("EventLog"),
         PropDef::boolean("DebugTrace"),
-        PropDef::double("RatedCurrent"),
-        PropDef::double("InterruptingRating"),
+        PropDef::double("RatedCurrent").flags(PropFlags::FINITE_RATING),
+        PropDef::double("InterruptingRating").flags(PropFlags::FINITE_RATING),
         // Deprecated aliases (props 33-46):
         PropDef::object_ref_class("TCC_Curve", "PhaseFast"),
         PropDef::object_ref_class("TCC_Curve", "PhaseDelayed"),

@@ -334,8 +334,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("SinglePhLockout"),
         PropDef::boolean("Lock"),
         PropDef::boolean("Reset"),
-        PropDef::double("RatedCurrent"),
-        PropDef::double("InterruptingRating"),
+        PropDef::double("RatedCurrent").flags(PropFlags::FINITE_RATING),
+        PropDef::double("InterruptingRating").flags(PropFlags::FINITE_RATING),
         // Deprecated aliases (props 57-71):
         PropDef::double("Breakertime"),
         PropDef::double("Delay"),

@@ -28,15 +28,14 @@ use crate::util::check_for_blanks;
 use super::{XfmrCodeObj, prop};
 
 impl XfmrCodeObj {
-    /// Pascal `TXfmrCodeObj.SaveWrite` (the body only — the caller already
-    /// emitted `New "XfmrCode.name"`). Appends ` name=value` tokens to `out`.
+    /// The tokens of the code's `Save` line after `New "XfmrCode.name"`,
+    /// which the caller writes, appended to `out` as ` name=value`.
     pub(crate) fn save_write_body(&self, out: &mut String, cx: &SaveCtx) {
         use prop::*;
 
-        // Pascal `done: Set of TProp`.
+        // The properties already written.
         let mut done = [false; NUM_PROPS + 1];
-        // Pascal's `case iProp of RdcOhms,Conn,kV,kVA,Tap,MinTap,MaxTap,pctR,
-        // RNeut,Xneut,NumTaps,Wdg` (the Transformer set without `Bus`).
+        // The winding scalars, the Transformer's set without `Bus`.
         let is_trap = |ip: usize| {
             matches!(
                 ip,
@@ -66,15 +65,12 @@ impl XfmrCodeObj {
                         if done[ai] {
                             continue;
                         }
-                        let val = cx.cls.get_value(self, ai, cx.enums);
+                        let val = cx.cls.saved_value(self, ai, cx.enums);
                         out.push_str(&format!(" {}={}", cx.cls.property_name(ai), val));
                         done[ai] = true;
                     }
-                    // Per-winding `Wdg=i` + only the set per-winding scalars.
-                    // Pascal's `for i := 1 to NumWindings` walked 1-based; the
-                    // port iterates the slice and derives the printed ordinal,
-                    // so no Pascal index escapes into the engine
-                    // (`depascalize_metrics_gate::part3_metrics_…`).
+                    // Per-winding `Wdg=i` + only the set per-winding scalars,
+                    // the printed ordinal derived from the slice position.
                     for (iw, w) in self.windings().iter().take(nw).enumerate() {
                         let i = iw + 1;
                         out.push_str(&format!(" Wdg={i}"));
@@ -97,7 +93,7 @@ impl XfmrCodeObj {
                             out.push_str(&format!(" NumTaps={}", w.num_taps));
                         }
                     }
-                    // Pascal's `Include(done, …)` set.
+                    // Every winding scalar is written now.
                     for d in [
                         RDCOHMS, CONN, KV, KVA, TAP, MINTAP, MAXTAP, NUMTAPS, PCTR, RNEUT, XNEUT,
                         WDG,
@@ -107,10 +103,9 @@ impl XfmrCodeObj {
                 }
             } else if !done[ip] {
                 done[ip] = true;
-                // Pascal: `if Length(PropertyValue[iProp]) > 0 then write
-                // name=CheckForBlanks(value)` — no `----`/trim handling here
-                // (that is the *generic* SaveWrite's job).
-                let val = cx.cls.get_value(self, ip, cx.enums);
+                // A value that is not empty, quoted when it holds a blank,
+                // with no `----` or trim handling (the generic token's job).
+                let val = cx.cls.saved_value(self, ip, cx.enums);
                 if !val.is_empty() {
                     out.push_str(&format!(
                         " {}={}",

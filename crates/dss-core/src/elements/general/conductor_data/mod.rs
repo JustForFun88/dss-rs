@@ -27,9 +27,9 @@ pub mod cn_data;
 pub mod ts_data;
 pub mod wire_data;
 
-use crate::obj::Rating;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::obj::props::{PropDef, PropFlags, define_properties};
+use crate::obj::{Rating, TypedRating};
 
 /// The ordered target classes of the Line/LineGeometry `Conductors`
 /// `TProxyClass` — Pascal `TProxyClass.Create(dssContext, ['WireData', 'CNData',
@@ -87,6 +87,11 @@ struct ConductorDataCore {
     emerg_amps: Rating,
     num_amp_ratings: i32,
     amp_ratings: Vec<Rating>,
+    /// The normal and the emergency rating, each with its typed value and its
+    /// set-order mark, as the last edit or a `like=` copy left them: what an
+    /// edit whose derived emergency rating is not a finite number puts back
+    /// ([`ConductorDataCore::end_edit_ratings`]).
+    held: [(Rating, Option<TypedRating>, u32); 2],
 }
 
 impl ConductorDataCore {
@@ -107,11 +112,12 @@ impl ConductorDataCore {
             emerg_amps: Rating::NotSet,
             num_amp_ratings: 1,
             amp_ratings: vec![Rating::NotSet],
+            held: [(Rating::NotSet, None, 0), (Rating::NotSet, None, 0)],
         }
     }
 
-    /// The current-rating fields a `LineGeometry` defaults from its first
-    /// conductor (`NormAmps`/`EmergAmps`/`NumAmpRatings`/`AmpRatings`).
+    /// The current-rating fields a `LineGeometry` or a `Line` derives its own
+    /// from (`NormAmps`/`EmergAmps`/`NumAmpRatings`/`AmpRatings`).
     fn amps(&self) -> (Rating, Rating, i32, &[Rating]) {
         (
             self.norm_amps,
@@ -223,28 +229,98 @@ impl ConductorDataCore {
                     self.fgmr_units = self.fradius_units;
                 }
             }
-            // A set rating fills its partner when that one is not set or
-            // negative. A rating that is not set derives nothing, and a
-            // derived `-1` is not set.
-            cd::NORMAMPS => {
-                if let Rating::Set(norm) = self.norm_amps
-                    && !matches!(self.emerg_amps, Rating::Set(e) if e >= 0.0)
-                {
-                    self.emerg_amps = Rating::from_number(1.5 * norm);
-                }
-            }
-            cd::EMERGAMPS => {
-                if let Rating::Set(emerg) = self.emerg_amps
-                    && !matches!(self.norm_amps, Rating::Set(n) if n >= 0.0)
-                {
-                    self.norm_amps = Rating::from_number(emerg / 1.5);
-                }
-            }
             cd::SEASONS => self
                 .amp_ratings
                 .resize(self.num_amp_ratings.max(0) as usize, Rating::NotSet),
             _ => {}
         }
+    }
+
+    /// Each rating not typed, derived from its typed partner when an edit
+    /// ends: the emergency rating is 1.5 times the typed normal rating and the
+    /// normal rating the typed emergency rating over 1.5, when that partner is
+    /// a rating, and not set otherwise. A typed rating is never replaced, and a
+    /// derived one follows the last typed partner
+    /// (`a_typed_conductor_rating_is_never_overwritten`,
+    /// `a_derived_conductor_rating_follows_the_last_typed_rating`).
+    ///
+    /// A typed normal rating whose 1.5 times is not a finite number is
+    /// refused: the edit logs it, and both ratings, their typed values and
+    /// their set-order marks go back to what the last edit left, or to the
+    /// copy a `like=` earlier in the same edit made
+    /// (`a_conductor_rating_whose_emergency_rating_overflows_is_refused`).
+    /// `full` is the object's `Class.name`, `norm_idx` and `emerg_idx` the
+    /// class's global ordinals.
+    fn end_edit_ratings(
+        &mut self,
+        data: &mut DssObjData,
+        full: &str,
+        norm_idx: usize,
+        emerg_idx: usize,
+    ) {
+        if let Err(norm) = self.derive_ratings(data, norm_idx, emerg_idx) {
+            data.push_error(format!(
+                "{full}.NormAmps: the rating {} derives an emergency rating that is not a finite number.",
+                crate::util::float_to_str_ex(norm)
+            ));
+            let [norm, emerg] = self.held.clone();
+            self.norm_amps = norm.0;
+            self.emerg_amps = emerg.0;
+            for (idx, (_, typed, mark)) in [(norm_idx, norm), (emerg_idx, emerg)] {
+                match typed {
+                    Some(t) => data.set_typed_rating(idx, t),
+                    None => data.clear_typed_rating(idx),
+                }
+                data.restore_seq_mark(idx, mark);
+            }
+        }
+        self.hold_ratings(data, norm_idx, emerg_idx);
+    }
+
+    /// Hold both ratings as they stand, with their typed values and their
+    /// set-order marks, for a later refused edit to put back. Called when an
+    /// edit ends and after a `like=` copy.
+    fn hold_ratings(&mut self, data: &DssObjData, norm_idx: usize, emerg_idx: usize) {
+        self.held = [
+            (
+                self.norm_amps,
+                data.typed_rating(norm_idx).cloned(),
+                data.seq_mark(norm_idx),
+            ),
+            (
+                self.emerg_amps,
+                data.typed_rating(emerg_idx).cloned(),
+                data.seq_mark(emerg_idx),
+            ),
+        ];
+    }
+
+    /// The derivation of [`Self::end_edit_ratings`]. `Err` carries the typed
+    /// normal rating whose 1.5 times is not a finite number, the emergency
+    /// rating left as it was.
+    fn derive_ratings(
+        &mut self,
+        data: &DssObjData,
+        norm_idx: usize,
+        emerg_idx: usize,
+    ) -> Result<(), f64> {
+        let norm_typed = data.typed_rating(norm_idx).is_some();
+        let emerg_typed = data.typed_rating(emerg_idx).is_some();
+        if !norm_typed {
+            // A typed emergency rating is finite, so its quotient is too.
+            self.norm_amps = match self.emerg_amps {
+                Rating::Set(emerg) if emerg_typed => Rating::derived(emerg / 1.5),
+                _ => Ok(Rating::NotSet),
+            }
+            .unwrap_or(self.norm_amps);
+        }
+        if !emerg_typed {
+            self.emerg_amps = match self.norm_amps {
+                Rating::Set(norm) if norm_typed => Rating::derived(1.5 * norm).map_err(|_| norm)?,
+                _ => Rating::NotSet,
+            };
+        }
+        Ok(())
     }
 
     /// `TConductorDataObj.MakeLike`. Note Pascal copies neither `NumAmpRatings`
@@ -421,7 +497,7 @@ pub trait ConductorData {
     /// (`UpdateLineGeometryData`).
     fn geom(&self) -> ConductorGeom;
     /// `(NormAmps, EmergAmps, NumAmpRatings, AmpRatings)` — the current ratings
-    /// a `LineGeometry`/`Line` defaults from its first conductor.
+    /// a `LineGeometry` or a `Line` derives its own from.
     fn amps(&self) -> (Rating, Rating, i32, &[Rating]);
     /// The concrete catalog class.
     fn conductor_kind(&self) -> ConductorKind;
@@ -506,6 +582,17 @@ impl ConductorObj {
             ConductorObj::Wire(w) => w.data().name(),
             ConductorObj::Cn(c) => c.data().name(),
             ConductorObj::Ts(t) => t.data().name(),
+        }
+    }
+
+    /// The catalogue class the conductor belongs to (`WireData`, `CNData`,
+    /// `TSData`).
+    pub fn class_name(&self) -> &'static str {
+        let [wire, cn, ts] = CONDUCTOR_PROXY_CLASSES;
+        match self {
+            ConductorObj::Wire(_) => wire,
+            ConductorObj::Cn(_) => cn,
+            ConductorObj::Ts(_) => ts,
         }
     }
 

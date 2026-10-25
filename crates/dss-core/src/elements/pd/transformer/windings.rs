@@ -412,6 +412,7 @@ impl Transformer {
         self.pct_imag = code.pct_imag();
         self.norm_max_hkva = code.norm_max_hkva();
         self.emerg_max_hkva = code.emerg_max_hkva();
+        self.hkva_overflow = [false; 2];
         self.ppm_float_factor = code.ppm_float_factor();
         self.cd.yprim_invalid = true;
         self.y_terminal_freqmult = 0.0;
@@ -419,6 +420,6 @@ impl Transformer {
         self.num_amp_ratings = code.num_kva_ratings();
         self.kva_ratings = code.kva_ratings().to_vec();
 
-        self.recalc();
+        self.recalc_logging(false);
     }
 }

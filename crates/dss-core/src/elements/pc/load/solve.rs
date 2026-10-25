@@ -14,15 +14,11 @@ use crate::util::EPSILON;
 use super::{Connection, Load, LoadModel};
 
 impl Load {
-    /// Pascal `CalcYPrimMatrix`: the load's equivalent admittance, frequency-
-    /// corrected. In harmonics mode (above fundamental) the load is split into a
-    /// parallel R-L part and a series R-L part (`%SeriesRL`), each with its own
-    /// reactance-vs-frequency scaling.
-    pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
-        self.cd.yprim_freq = sys.frequency;
-        let freq_multiplier = self.cd.yprim_freq / self.cd.base_frequency;
-
-        let y = if sys.is_harmonic_model && sys.frequency != sys.fundamental {
+    /// The admittance of one phase of the load at the present frequency: the
+    /// harmonic model splits it into a series and a parallel R-L branch.
+    pub(super) fn branch_admittance(&self, sys: &SysCtx) -> Complex64 {
+        let freq_multiplier = sys.frequency / self.cd.base_frequency;
+        if sys.is_harmonic_model && sys.frequency != sys.fundamental {
             if sys.neglect_load_y {
                 // Just a small value so things don't die and the actual injection
                 // current still comes out the terminal.
@@ -53,7 +49,16 @@ impl Load {
             let mut y = self.yeq;
             y.im /= freq_multiplier; // correct reactive part for frequency
             y
-        };
+        }
+    }
+
+    /// Pascal `CalcYPrimMatrix`: the load's equivalent admittance, frequency-
+    /// corrected. In harmonics mode (above fundamental) the load is split into a
+    /// parallel R-L part and a series R-L part (`%SeriesRL`), each with its own
+    /// reactance-vs-frequency scaling.
+    pub(super) fn calc_yprim_matrix(&mut self, ymatrix: &mut CMatrix, sys: &SysCtx) {
+        self.cd.yprim_freq = sys.frequency;
+        let y = self.branch_admittance(sys);
 
         let yij = -y;
         let nphases = self.cd.nphases;

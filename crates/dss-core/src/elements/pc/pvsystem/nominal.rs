@@ -6,6 +6,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::SysCtx;
 use crate::solution::{SolveMode, USEDAILY, USEDUTY, USEYEARLY};
 use crate::util::{CDOUBLEONE, inv_sqrt3_x1000};
@@ -397,8 +398,191 @@ impl PVSystem {
         }
     }
 
-    /// Pascal `TPVsystemObj.RecalcElementData`.
+    /// Recompute the derived values, refused when an input makes
+    /// the inverter output or the power-flow admittance not a finite number:
+    /// the edit logs the refusal, every derived value keeps what it held and
+    /// the stamp is refused until a recalc finds them finite (pinned by
+    /// `exec::tests::rating_refusals::an_input_that_makes_a_stamp_non_finite_is_refused_at_the_recalc`).
+    /// A `P-TCurve` or `EffCurve` with a point that is not a finite number
+    /// refuses the output whatever operating point this recalc reads, since a
+    /// later step can read any point (pinned by
+    /// `exec::tests::rating_refusals::a_curve_point_that_is_not_a_number_refuses_its_element`).
     pub fn recalc(&mut self, sys: &SysCtx) {
+        let mut held = self.clone();
+        self.derive(sys);
+        let (kw_out, kvar_out, yeq, factors) = self.power_flow_output(sys);
+        let finite = |z: Complex64| z.re.is_finite() && z.im.is_finite();
+        let curve_points = self.curves().iter().any(|(_, _, c)| curve_broken(*c));
+        let output = kw_out.is_finite() && kvar_out.is_finite() && !curve_points;
+        let quantity = if !output {
+            Some("inverter output")
+        } else if !finite(yeq) {
+            Some("admittance")
+        } else {
+            None
+        };
+        let Some(quantity) = quantity else {
+            self.cd.recalc_refusal = None;
+            // The user-written models are updated once the recalc is accepted.
+            self.update_user_models(sys);
+            return;
+        };
+        let nphases = self.cd.nphases as f64;
+        let per_phase = [kw_out, kvar_out]
+            .iter()
+            .all(|x| (1000.0 * x / nphases).is_finite());
+        held.user_model = self.user_model.take();
+        *self = held;
+        let zero_pf = !output && !curve_points && self.zero_pf_breaks_output(sys);
+        let input = self.refused_input(output, per_phase, factors, zero_pf);
+        self.cd.refuse_recalc("PVSystem", &input, quantity);
+    }
+
+    /// The curves the inverter output reads, in property order: the name of
+    /// the property, the curve's name and the curve held.
+    fn curves(&self) -> [(&'static str, &str, Option<&XyCurveObj>); 2] {
+        [
+            (
+                "P-TCurve",
+                &self.power_temp_curve,
+                self.power_temp_curve_obj.as_ref(),
+            ),
+            (
+                "EffCurve",
+                &self.base.inverter_curve,
+                self.base.inverter_curve_obj.as_ref(),
+            ),
+        ]
+    }
+
+    /// Whether a zero `PF` that the power-factor mode divides by is alone what
+    /// makes the inverter output not finite: the same inputs with a `PF` of 1,
+    /// which divides by nothing, give a finite output.
+    fn zero_pf_breaks_output(&self, sys: &SysCtx) -> bool {
+        if self.base.var_mode != VarMode::Pf || self.base.pf_nominal != 0.0 {
+            return false;
+        }
+        let mut trial = self.clone();
+        trial.base.pf_nominal = 1.0;
+        trial.derive(sys);
+        let (kw, kvar, _, _) = trial.power_flow_output(sys);
+        kw.is_finite() && kvar.is_finite()
+    }
+
+    /// The inverter output, the admittance and the factors read from the
+    /// `P-TCurve` and the `EffCurve` that a power-flow solve computes from the
+    /// present inputs, a factor read at an operating point that is not a
+    /// finite number counted as `1`. Dynamics and harmonics keep the output the element
+    /// held, so there it is computed on a copy and an edit in either mode is
+    /// checked as in a power flow
+    /// (`exec::tests::rating_refusals::a_refusal_holds_after_a_dynamics_or_harmonics_solve`).
+    fn power_flow_output(&self, sys: &SysCtx) -> (f64, f64, Complex64, [f64; 2]) {
+        let out = |pv: &Self| {
+            let at = |point: f64, factor: f64| if point.is_finite() { factor } else { 1.0 };
+            (
+                pv.base.kw_out,
+                pv.base.kvar_out,
+                pv.base.yeq,
+                [
+                    at(pv.t_shape_value, pv.temp_factor),
+                    at(pv.panel_kw / pv.f_kva_rating, pv.eff_factor),
+                ],
+            )
+        };
+        if !(sys.is_dynamic_model || sys.is_harmonic_model) {
+            return out(self);
+        }
+        let mut flow = self.clone();
+        flow.set_nominal_der_output(&SysCtx {
+            is_dynamic_model: false,
+            is_harmonic_model: false,
+            ..sys.clone()
+        });
+        out(&flow)
+    }
+
+    /// The input a refused recalc names. An inverter output that is not finite
+    /// names a zero `PF` that alone breaks it (`zero_pf`), so an input beside
+    /// it that is not a finite number and leaves the output finite (an
+    /// infinite cap is no cap) is not named, else the first of the inputs it
+    /// computes with, in property order, that is not a finite number (`kvar` is the typed request, since its reading
+    /// is the output), else the `P-TCurve`, then the `EffCurve` it feeds, that
+    /// holds a point that is not a finite number or whose factor at a finite
+    /// operating point (`factors`) is not one, else a zero `PF`
+    /// it divides by in power-factor mode, else the kVA rating it is held to.
+    /// From a finite output the admittance
+    /// names a zero `kV`, else the kVA rating when the per-phase power
+    /// overflows (the output never exceeds that rating), else `kV`, the
+    /// voltage base it overflows on.
+    fn refused_input(
+        &self,
+        output: bool,
+        per_phase: bool,
+        factors: [f64; 2],
+        zero_pf: bool,
+    ) -> String {
+        use super::prop::*;
+        use crate::elements::ckt::{input_text, refused_input_text};
+        use crate::obj::base::DssObject;
+        let v = |i: usize| self.get_f64(i);
+        let kv = [("kV", v(KV))];
+        if output {
+            let fallback = if per_phase { kv[0] } else { ("kVA", v(KVA)) };
+            return refused_input_text(&kv, &kv, fallback);
+        }
+        if zero_pf {
+            return input_text("PF", v(PF));
+        }
+        let inputs = [
+            ("Irradiance", v(IRRADIANCE)),
+            ("Pmpp", v(PMPP)),
+            ("%Pmpp", v(PCT_PMPP) / 0.01),
+            ("Temperature", v(TEMPERATURE)),
+            ("PF", v(PF)),
+            ("kvar", self.kvar_requested),
+            ("kVA", v(KVA)),
+            ("%CutIn", v(PCT_CUTIN)),
+            ("%CutOut", v(PCT_CUTOUT)),
+            ("%PMinNoVars", v(PCT_PMIN_NO_VARS)),
+            ("%PMinkvarMax", v(PCT_PMIN_KVAR_MAX)),
+            ("kvarMax", v(KVAR_MAX)),
+            ("kvarMaxAbs", v(KVAR_MAX_ABS)),
+        ];
+        if inputs.iter().all(|(_, x)| x.is_finite()) {
+            let broken = self
+                .curves()
+                .into_iter()
+                .zip(factors)
+                .find(|((_, _, c), f)| curve_broken(*c) || !f.is_finite());
+            if let Some(((name, curve, _), _)) = broken {
+                return format!("{name}={curve}");
+            }
+        }
+        let pf: &[(&str, f64)] = if self.base.var_mode == VarMode::Pf {
+            &[("PF", v(PF))]
+        } else {
+            &[]
+        };
+        refused_input_text(&inputs, pf, ("kVA", v(KVA)))
+    }
+
+    /// The refusal of a harmonic admittance, the inverse of the Thevenin
+    /// impedance of `%R` and `%X`, that is not a finite number.
+    pub(super) fn harmonic_refusal(&self) -> String {
+        use super::prop::*;
+        use crate::obj::base::DssObject;
+        let v = |i: usize| self.get_f64(i);
+        let thev = Complex64::new(self.r_thev, self.x_thev);
+        let input = crate::elements::pc::inv_based_pce::harmonic_refused_input(
+            [v(KV), v(KVA), v(PCT_R), v(PCT_X)],
+            thev,
+        );
+        self.cd
+            .refusal_message("PVSystem", &input, "harmonic admittance")
+    }
+
+    /// The body of [`Self::recalc`], bar the user-model update.
+    fn derive(&mut self, sys: &SysCtx) {
         self.base.v_base_min = self.base.vminpu * self.base.v_base;
         self.base.v_base_max = self.base.vmaxpu * self.base.v_base;
 
@@ -427,10 +611,6 @@ impl PVSystem {
 
         // Initialise InjCurrent to zero (defaults to a PQ PVSystem element).
         self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
-
-        // Pascal `RecalcElementData` tail (PVsystem.pas:1146-1147):
-        // `UserModel.FUpdateModel` on the existing model (WASM_USERMODELS WM.4).
-        self.update_user_models(sys);
     }
 
     /// The L-N `VBase` update (Pascal `TProp.conn`/`TProp.kV` side effects):
@@ -441,4 +621,9 @@ impl PVSystem {
             _ => self.kv_pvsystem_base * 1000.0,
         };
     }
+}
+
+/// Whether a held curve has a point that is not a finite number.
+fn curve_broken(curve: Option<&XyCurveObj>) -> bool {
+    curve.is_some_and(XyCurveObj::has_point_not_finite)
 }

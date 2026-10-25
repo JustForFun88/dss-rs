@@ -9,4 +9,4 @@ pub mod dss_enum;
 pub mod props;
 pub mod rating;
 
-pub use rating::Rating;
+pub use rating::{NotFinite, Rating, TypedRating};

@@ -504,6 +504,9 @@ impl Fault {
         // TPDElement.MakeLike copies the rating fields.
         self.norm_amps = other.norm_amps;
         self.emerg_amps = other.emerg_amps;
+        self.cd
+            .obj
+            .copy_typed_ratings_from(&other.cd.obj, &[prop::NORMAMPS, prop::EMERGAMPS]);
         self.fault_rate = other.fault_rate;
         self.pct_perm = other.pct_perm;
         self.hrs_to_repair = other.hrs_to_repair;

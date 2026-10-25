@@ -2347,7 +2347,7 @@ fn save_hoists_a_sizer_only_to_behind_the_reference_that_resets_it() {
         (
             "Line",
             "llc",
-            "New \"Line.llc\" Bus1=c1 Bus2=c2 LineCode=lc3 Seasons=2 NormAmps=400 EmergAmps=600 Length=1 Units=km Ratings=[ 400 500]",
+            "New \"Line.llc\" Bus1=c1 Bus2=c2 LineCode=lc3 Seasons=2 Length=1 Units=km Ratings=[ 400 500]",
         ),
         (
             "Transformer",
@@ -2578,10 +2578,10 @@ fn save_keeps_line_matrices_ahead_of_the_reference_that_rebuilt_them() {
     let r = "RMatrix=[0.0946969696969697 |0.0378787878787879 0.0946969696969697 |0.0378787878787879 0.0378787878787879 0.0946969696969697 ]";
     let x = "XMatrix=[0.0441919191919192 |0.00631313131313131 0.0441919191919192 |0.00631313131313131 0.00631313131313131 0.0441919191919192 ]";
     let c = "CMatrix=[53.6616161616162 |-3.15656565656566 53.6616161616162 |-3.15656565656566 -3.15656565656566 53.6616161616162 ]";
-    let code = "LineCode=cab Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600";
+    let code = "LineCode=cab Seasons=1";
     let r2 = "RMatrix=[0.0946969696969697 |0.0378787878787879 0.0946969696969697 ]";
     let x2 = "XMatrix=[0.0441919191919192 |0.00631313131313131 0.0441919191919192 ]";
-    let code2 = "LineCode=lc2 Seasons=1 Ratings=[ 400] NormAmps=400 EmergAmps=600";
+    let code2 = "LineCode=lc2 Seasons=1";
     for (name, want) in [
         (
             "l",

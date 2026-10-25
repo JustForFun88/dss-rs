@@ -460,15 +460,18 @@ const LANE_SKIP_PROP_VALUE_CELLS: usize = 33;
 /// `CNData`, `TSData`) starts at `-1` and fills seasons not supplied with `0`,
 /// which only a `WireData` capture shows, so only that row takes `0`; a
 /// `LineGeometry`, a `Fault` and a `GICTransformer` start at `0` (user decision
-/// 2026-10-04: a rating that is not set is its own value, not a number).
+/// 2026-10-04: a rating that is not set is its own value, not a number), and a
+/// `Capacitor` without kvar (the `cap_cmatrix` bank) derives a zero rating,
+/// which is not set where the oracle prints `0`.
 ///
 /// A cell is excused only through
 /// [`reads_not_set`](dss_test_harness::harness::not_set_ratings::reads_not_set):
 /// every `none` must face one of the row's numbers and every other entry must
 /// equal the capture by value, so the cell is still checked and counts as
 /// compared. The engine's spellings are pinned by
-/// `dss_core::exec::tests::ratings::unset_ratings_read_none_by_default` and
-/// `seasonal_ratings_not_supplied_are_not_set`.
+/// `dss_core::exec::tests::ratings::unset_ratings_read_none_by_default`,
+/// `seasonal_ratings_not_supplied_are_not_set` and
+/// `a_derived_zero_rating_is_not_set`.
 const LANE_NOT_SET_RATING_CELLS: &[(&str, &str, &[&str])] = &[
     ("WireData", "NormAmps", &["-1"]),
     ("WireData", "EmergAmps", &["-1"]),
@@ -486,13 +489,16 @@ const LANE_NOT_SET_RATING_CELLS: &[(&str, &str, &[&str])] = &[
     ("Fault", "EmergAmps", &["0"]),
     ("GICTransformer", "NormAmps", &["0"]),
     ("GICTransformer", "EmergAmps", &["0"]),
+    ("Capacitor", "NormAmps", &["0"]),
+    ("Capacitor", "EmergAmps", &["0"]),
 ];
 
 /// How many cells [`LANE_NOT_SET_RATING_CELLS`] excuses over the committed
 /// goldens: `wiredata` NormAmps 6, EmergAmps 6, Ratings 8; `cndata` 6, 6, 7;
 /// `tsdata` 3, 3, 4; `linegeometry` 1, 1, 9; `fault` 6, 6; `gictransformer` 5,
-/// 5. An equality in both lanes, so the table is fail-on-stale both ways.
-const LANE_NOT_SET_RATING_CELL_COUNT: usize = 82;
+/// 5; `capacitor` 1, 1. An equality in both lanes, so the table is
+/// fail-on-stale both ways.
+const LANE_NOT_SET_RATING_CELL_COUNT: usize = 84;
 
 /// The value-free half of [`assert_value_matches`]: the rendered *shape* only —
 /// the literal text around the numbers and how many numbers there are. Used for

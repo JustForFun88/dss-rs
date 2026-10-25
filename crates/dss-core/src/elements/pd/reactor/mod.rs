@@ -34,7 +34,6 @@ use crate::elements::ckt::CktElementData;
 use crate::elements::general::xy_curve::XyCurveObj;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
-use crate::util::sqrt3;
 
 mod accessors;
 mod dump;
@@ -134,8 +133,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::bus("Bus2", 2),
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double("kvar").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVAR),
-        PropDef::double("kV")
-            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV),
+        PropDef::double("kV").flags(
+            PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double_sym_matrix("RMatrix", PHASES),
         PropDef::double_sym_matrix("XMatrix", PHASES).flags(PropFlags::REQUIRED_IN_SPEC_SET),
@@ -277,7 +280,7 @@ impl Reactor {
             z2_specified: false,
             z0_specified: false,
             is_shunt: true,
-            norm_amps: crate::obj::Rating::from_number(kvarrating * sqrt3() / kvrating),
+            norm_amps: crate::obj::Rating::NotSet,
             emerg_amps: crate::obj::Rating::NotSet,
             norm_amps_specified: false,
             emerg_amps_specified: false,
@@ -285,7 +288,6 @@ impl Reactor {
             pct_perm: 100.0,
             hrs_to_repair: 3.0,
         };
-        r.emerg_amps = r.norm_amps.map(|n| n * 1.35);
         r.cd.yorder = r.cd.nterms * r.cd.nconds;
         r.recalc();
         r

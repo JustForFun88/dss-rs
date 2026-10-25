@@ -57,8 +57,9 @@ impl ClassProps {
     }
 
     /// The typed setter of a [`PropType::Rating`](crate::obj::props::PropType::Rating)
-    /// property: write the rating as it is, then `SetAsNextSeq(idx)` +
-    /// `PropertySideEffects(idx, 0)`.
+    /// property: write the rating as it is, record a set rating as typed and
+    /// forget the typed value of one that is not set, then `SetAsNextSeq(idx)`
+    /// and `PropertySideEffects(idx, 0)`.
     pub fn set_prop_rating(&self, obj: &mut dyn DssObject, idx: usize, value: crate::obj::Rating) {
         debug_assert_eq!(
             self.props[idx].ptype,
@@ -68,6 +69,12 @@ impl ClassProps {
             self.props[idx].name
         );
         obj.set_rating(idx, value);
+        match value {
+            crate::obj::Rating::Set(v) => obj
+                .data_mut()
+                .set_typed_rating(idx, crate::obj::TypedRating::Scalar(v)),
+            crate::obj::Rating::NotSet => obj.data_mut().clear_typed_rating(idx),
+        }
         obj.data_mut().set_as_next_seq(idx);
         obj.side_effects(idx, 0);
     }

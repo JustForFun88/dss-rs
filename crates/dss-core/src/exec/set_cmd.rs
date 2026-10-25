@@ -47,22 +47,41 @@ fn apply_data_path(
 }
 
 /// `Set %Normal=pct`: every Line's normal rating becomes `pct` percent of its
-/// emergency rating, and stays not set where the emergency rating is not set.
-/// Pinned by `exec::tests::ratings::set_pct_normal_rates_every_line_from_its_emergency_rating`.
+/// emergency rating, read through [`crate::obj::Rating::from_number`], so it is
+/// not set where the emergency rating is not set or the percentage is not
+/// positive. A percentage that takes any Line's rating past a finite number
+/// changes nothing and names the first such Line. Pinned by
+/// `exec::tests::ratings::set_pct_normal_rates_every_line_from_its_emergency_rating`
+/// and `exec::tests::rating_refusals::set_pct_normal_that_overflows_a_line_rating_is_refused`.
 fn set_line_normal_ratings(
     classes: &mut [DssClass],
     lines: &[crate::elements::traits::ElemId],
     pct: f64,
-) {
+) -> Result<(), String> {
+    use crate::elements::pd::line::Line;
     let factor = pct * 0.01;
     for &r in lines {
-        if let Some(line) = classes[r.class_ord()]
-            .arena
-            .get_mut::<crate::elements::pd::line::Line>(r.index())
+        if let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index())
+            && let crate::obj::Rating::Set(e) = line.emerg_amps
+            && !(factor * e).is_finite()
         {
-            line.norm_amps = line.emerg_amps.map(|e| factor * e);
+            return Err(format!(
+                "Set %Normal: {} % of Line.{}.EmergAmps {} is not a finite rating.",
+                crate::util::float_to_str(pct),
+                line.data().name(),
+                crate::util::float_to_str(e)
+            ));
         }
     }
+    for &r in lines {
+        if let Some(line) = classes[r.class_ord()].arena.get_mut::<Line>(r.index()) {
+            line.norm_amps = match line.emerg_amps {
+                crate::obj::Rating::Set(e) => crate::obj::Rating::from_number(factor * e),
+                crate::obj::Rating::NotSet => crate::obj::Rating::NotSet,
+            };
+        }
+    }
+    Ok(())
 }
 
 /// Pascal `Set InjCurrent=`/`Set ITerminal=` (ExecOptions.pas @ 0.15.0b4): parse
@@ -399,8 +418,10 @@ impl Dss {
                     opt::PCT_NORMAL => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
                             if v.is_finite() {
-                                ckt.pct_normal_factor = v;
-                                set_line_normal_ratings(classes, &ckt.lines, v);
+                                match set_line_normal_ratings(classes, &ckt.lines, v) {
+                                    Ok(()) => ckt.pct_normal_factor = v,
+                                    Err(msg) => errors.push(msg),
+                                }
                             } else {
                                 // A rating is a finite number: the Line ratings stay.
                                 errors.push(format!(
@@ -661,21 +682,39 @@ impl Dss {
                             }
                         }
                     }
-                    // Pascal `DoSetAllocationFactors` (ExecHelper.pas l.2651):
-                    // set every load's kVA allocation factor (ConnectedkVA spec).
+                    // Set every load's kVA allocation factor, each load made a
+                    // connected-kVA load. A factor that is not a finite number,
+                    // or that would leave any load unbuilt, changes no load, and
+                    // a load refused as it stands keeps the factor it holds.
                     opt::ALLOCATION_FACTORS => {
                         if let Some(v) = get_dbl(parser, vars, errors) {
+                            let command = load::AllocationCommand::Set;
                             if v <= 0.0 {
                                 errors.push(
                                     "Allocation Factor must be greater than zero.".to_string(),
                                 );
+                            } else if let Some(msg) = command.not_finite_factor(v, None) {
+                                errors.push(msg);
                             } else {
+                                let sys = crate::solution::solution::sys_ctx(ckt);
                                 let mut store = ClassStore {
                                     classes: &mut classes[..],
                                 };
-                                for &lr in &ckt.loads {
-                                    if let Some(load) = store.typed_mut::<load::Load>(lr) {
-                                        load.set_kva_allocation_factor(v);
+                                let refusal = ckt.loads.iter().find_map(|&lr| {
+                                    store
+                                        .typed::<load::Load>(lr)
+                                        .and_then(|load| load.allocation_refusal(command, v, &sys))
+                                });
+                                if let Some(msg) = refusal {
+                                    errors.push(msg);
+                                } else {
+                                    for &lr in &ckt.loads {
+                                        if let Some(load) = store.typed_mut::<load::Load>(lr) {
+                                            match load.allocation_skip(command) {
+                                                Some(msg) => errors.push(msg),
+                                                None => load.set_kva_allocation_factor(v),
+                                            }
+                                        }
                                     }
                                 }
                             }

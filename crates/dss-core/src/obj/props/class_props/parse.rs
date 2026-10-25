@@ -2,13 +2,13 @@
 //! [`DssObject`] setters (Pascal `DSSObjectHelper.ParseObjPropertyValue` +
 //! `SetObj*`). Split out of `class_props/mod.rs` (no behavioral change).
 
-use crate::obj::Rating;
 use crate::obj::base::DssObject;
 use crate::obj::props::setters::{
     get_double, get_integer, interval_units_error, parse_interval_units_f64,
     parse_interval_units_i32, set_obj_double, set_obj_integer,
 };
 use crate::obj::props::{PropEngine, PropFlags, PropType};
+use crate::obj::{Rating, TypedRating};
 use crate::support::line_units::LineUnits;
 use crate::util::{interpret_dbl_array, interpret_given_values};
 use dss_parser::{ParserError, val_i32};
@@ -23,11 +23,13 @@ impl ClassProps {
     /// property unchanged. A value refused at its token is returned as `Err`
     /// and leaves the property unchanged too: a property that is not ported,
     /// a value that does not read as a number or as a name of its
-    /// enumeration, a rating that is not finite, a string list with an empty
-    /// element before a name, a value its element refuses
-    /// ([`DssObject::refuse_string_list`], [`DssObject::refuse_object_ref`],
-    /// [`DssObject::refuse_integer`]) and `like=`, which only the executive
-    /// applies.
+    /// enumeration, a rating, rated voltage or kVA base that is not a finite
+    /// number, a string list with an empty element before a name, a value its
+    /// element refuses ([`DssObject::refuse_f64`],
+    /// [`DssObject::refuse_string_list`], [`DssObject::refuse_object_ref`],
+    /// [`DssObject::refuse_integer`]), a write to a
+    /// [`PropFlags::READ_ONLY_RATING`] property and `like=`, which only the
+    /// executive applies.
     pub fn parse_into(
         &self,
         obj: &mut dyn DssObject,
@@ -67,6 +69,9 @@ impl ClassProps {
             }
             return Ok(0);
         }
+        if pd.flags.contains(PropFlags::READ_ONLY_RATING) {
+            return Err(read_only_rating(&full, pd.name));
+        }
         match pd.ptype {
             PropType::Double => {
                 let v = if pd.flags.contains(PropFlags::INTERVAL_UNITS) {
@@ -81,25 +86,36 @@ impl ClassProps {
                 } else {
                     get_double(eng, value)?
                 };
+                if let Some(e) = not_finite_input(pd, &full, value, [v]) {
+                    return Err(e);
+                }
+                if let Some(msg) = obj.refuse_f64(idx, &[value], &[Some(v)]) {
+                    return Err(ParserError::new(msg));
+                }
                 let scale = if pd.flags.contains(PropFlags::SCALED_BY_FUNCTION) {
                     obj.prop_scale(idx, false)
                 } else {
                     pd.scale
                 };
+                if let Some(e) = not_finite_in_stored_unit(pd, &full, value, v, scale) {
+                    return Err(e);
+                }
                 set_obj_double(pd, obj, idx, v, scale, eng, &full);
                 Ok(0)
             }
             PropType::Rating => {
-                let rating = if Rating::is_none_token(value) {
-                    Rating::NotSet
+                let typed = if Rating::is_none_token(value) {
+                    TypedRating::NONE
                 } else {
                     let v = get_double(eng, value)?;
                     if !v.is_finite() {
                         return Err(not_finite_rating(&full, pd.name, value));
                     }
-                    Rating::from_number(v)
+                    v
                 };
-                obj.set_rating(idx, rating);
+                obj.set_rating(idx, Rating::from_number(typed));
+                obj.data_mut()
+                    .set_typed_rating(idx, TypedRating::Scalar(typed));
                 Ok(0)
             }
             PropType::RatingArray => {
@@ -118,13 +134,15 @@ impl ClassProps {
                             scale: 1.0,
                             non_zero: false,
                             rating: true,
+                            finite_rating: false,
                         });
                     return Ok(0);
                 }
                 let max = obj.get_i32(pd.size_prop).max(0) as usize;
-                let buf = interpret_rating_array(eng, value, max)
-                    .map_err(|e| e.unwrap_or_else(|| not_finite_rating(&full, pd.name, value)))?;
-                obj.set_rating_array(idx, buf);
+                let typed = interpret_rating_array(eng, value, max, &full, pd.name)?;
+                obj.set_rating_array(idx, typed.iter().map(|&v| Rating::from_number(v)).collect());
+                obj.data_mut()
+                    .set_typed_rating(idx, TypedRating::Array(typed));
                 Ok(0)
             }
             PropType::Bus => {
@@ -510,12 +528,19 @@ impl ClassProps {
                             scale: pd.scale,
                             non_zero: pd.flags.contains(PropFlags::NON_ZERO),
                             rating: false,
+                            finite_rating: pd.flags.contains(PropFlags::FINITE_RATING),
                         });
                     return Ok(0);
                 }
                 let max = obj.get_i32(pd.size_prop).max(0) as usize;
                 let mut buf = vec![0.0; max];
                 interpret_dbl_array(eng.parser, eng.vars, value, max, &mut buf)?;
+                if let Some(i) = buf.iter().position(|v| !v.is_finite()) {
+                    let entry = array_entry_text(eng, value, i);
+                    if let Some(e) = not_finite_input(pd, &full, &entry, [buf[i]]) {
+                        return Err(e);
+                    }
+                }
                 if pd.flags.contains(PropFlags::APPLY_ROUND) {
                     // Pascal `TPropertyFlag.ApplyRound` is
                     // `doubles[i] := Round(doubles[i])` — an Int64 `Round`
@@ -658,13 +683,26 @@ impl ClassProps {
                 eng.parser.set_auto_increment(false);
                 eng.parser.set_cmd_string(value);
                 let mut vals = vec![None; count];
-                for slot in vals.iter_mut() {
+                let mut texts = vec![String::new(); count];
+                for (slot, text) in vals.iter_mut().zip(texts.iter_mut()) {
                     eng.parser.next_param(eng.vars);
                     let token = eng.parser.make_string(eng.vars);
                     if !token.is_empty() {
-                        let v = eng.parser.make_double(eng.vars)? * pd.scale;
-                        *slot = Some(v);
+                        *slot = Some(eng.parser.make_double(eng.vars)?);
                     }
+                    *text = token;
+                }
+                if let Some(i) = vals.iter().position(|v| v.is_some_and(|v| !v.is_finite()))
+                    && let Some(e) = not_finite_input(pd, &full, &texts[i], vals[i])
+                {
+                    return Err(e);
+                }
+                let texts: Vec<&str> = texts.iter().map(String::as_str).collect();
+                if let Some(msg) = obj.refuse_f64(idx, &texts, &vals) {
+                    return Err(ParserError::new(msg));
+                }
+                for v in vals.iter_mut().flatten() {
+                    *v *= pd.scale;
                 }
                 obj.set_struct_f64_array(idx, &vals);
                 Ok(0)
@@ -847,32 +885,124 @@ pub(crate) fn not_finite_rating(full: &str, prop: &str, value: &str) -> ParserEr
     ))
 }
 
+/// The refusal of a rated voltage or kVA base that is not a finite number
+/// ([`PropFlags::FINITE_BASE`]): the edit leaves the property as it was
+/// (`a_typed_non_finite_rated_voltage_or_kva_base_is_refused_at_its_token`).
+pub(crate) fn not_finite_value(full: &str, prop: &str, value: &str) -> ParserError {
+    ParserError::new(format!(
+        "{full}.{prop}: the value {value} is not a finite number."
+    ))
+}
+
+/// The refusal of `value`, read as `numbers`, written to a
+/// [`PropFlags::FINITE_RATING`] or [`PropFlags::FINITE_BASE`] property when
+/// any of the numbers is not finite. `None` for every other property.
+fn not_finite_input(
+    pd: &crate::obj::props::PropDef,
+    full: &str,
+    value: &str,
+    numbers: impl IntoIterator<Item = f64>,
+) -> Option<ParserError> {
+    if !pd
+        .flags
+        .intersects(PropFlags::FINITE_RATING | PropFlags::FINITE_BASE)
+        || numbers.into_iter().all(f64::is_finite)
+    {
+        return None;
+    }
+    Some(if pd.flags.contains(PropFlags::FINITE_RATING) {
+        not_finite_rating(full, pd.name, value)
+    } else {
+        not_finite_value(full, pd.name, value)
+    })
+}
+
+/// The text of entry `index` of the array `value`, as the array parse reads
+/// it, for the message refusing that entry.
+fn array_entry_text(eng: &mut PropEngine, value: &str, index: usize) -> String {
+    eng.parser.set_auto_increment(false);
+    eng.parser.set_cmd_string(value);
+    for _ in 0..=index {
+        eng.parser.next_param(eng.vars);
+    }
+    eng.parser.make_string(eng.vars)
+}
+
+/// The refusal of a finite value written to a [`PropFlags::FINITE_RATING`] or
+/// [`PropFlags::FINITE_BASE`] property that is not finite once scaled to the
+/// unit the element keeps it in, `v` times `scale`: an `MVA` is kept in kVA
+/// and a `kVDC` in volts. The edit leaves the property as it was
+/// (`a_value_not_finite_in_its_stored_unit_is_refused_at_its_token`).
+fn not_finite_in_stored_unit(
+    pd: &crate::obj::props::PropDef,
+    full: &str,
+    value: &str,
+    v: f64,
+    scale: f64,
+) -> Option<ParserError> {
+    if !pd
+        .flags
+        .intersects(PropFlags::FINITE_RATING | PropFlags::FINITE_BASE)
+        || (v * scale).is_finite()
+    {
+        return None;
+    }
+    let kilo = scale == 1000.0;
+    let unit = match (pd.name.strip_prefix('M'), pd.name.strip_prefix('k')) {
+        (Some(rest), _) if kilo => format!("k{rest}"),
+        (None, Some(rest)) if kilo => rest.to_string(),
+        _ => format!("{scale} times its unit"),
+    };
+    Some(ParserError::new(format!(
+        "{full}.{}: the value {value} is not a finite number in {unit}.",
+        pd.name
+    )))
+}
+
+/// The refusal of a value written to a [`PropFlags::READ_ONLY_RATING`]
+/// property: the element derives the current rating from its kVA rating, so
+/// the message names the kVA property to set instead, and the edit leaves the
+/// derived rating as it was (`a_typed_transformer_current_rating_is_refused`).
+pub(crate) fn read_only_rating(full: &str, prop: &str) -> ParserError {
+    let (kind, set_by) = if prop.eq_ignore_ascii_case("EmergAmps") {
+        ("emergency", "EmergHkVA")
+    } else {
+        ("normal", "NormHkVA")
+    };
+    ParserError::new(format!(
+        "{full}.{prop}: read only, the {kind} rating is set by {set_by}."
+    ))
+}
+
 /// The inline value of a [`PropType::RatingArray`], whose caller has queued a
-/// `file=`, `dblfile=` or `sngfile=` value already: `max` entries, each a
-/// number, `none`, or nothing. `none`, `-1` and an entry not supplied read as a
-/// rating that is not set. An entry that is not a finite number fails with
-/// `None`, a parse error with its own error.
+/// `file=`, `dblfile=` or `sngfile=` value already: `max` typed entries, each a
+/// number, `none`, or nothing, with `none` and an entry not supplied kept as
+/// [`TypedRating::NONE`]. An entry that is not a finite number is refused with
+/// the message of a scalar rating naming that entry, `full` and `prop` naming
+/// the property (`a_rating_that_is_not_a_finite_number_is_refused`).
 fn interpret_rating_array(
     eng: &mut PropEngine,
     value: &str,
     max: usize,
-) -> Result<Vec<Rating>, Option<ParserError>> {
+    full: &str,
+    prop: &str,
+) -> Result<Vec<f64>, ParserError> {
     eng.parser.set_auto_increment(false);
     eng.parser.set_cmd_string(value);
     eng.parser.next_param(eng.vars);
     let mut out = Vec::with_capacity(max);
     for _ in 0..max {
         let token = eng.parser.make_string(eng.vars);
-        let rating = if token.is_empty() || Rating::is_none_token(&token) {
-            Rating::NotSet
+        let typed = if token.is_empty() || Rating::is_none_token(&token) {
+            TypedRating::NONE
         } else {
             let v = eng.parser.make_double(eng.vars)?;
             if !v.is_finite() {
-                return Err(None);
+                return Err(not_finite_rating(full, prop, &token));
             }
-            Rating::from_number(v)
+            v
         };
-        out.push(rating);
+        out.push(typed);
         eng.parser.next_param(eng.vars);
     }
     Ok(out)

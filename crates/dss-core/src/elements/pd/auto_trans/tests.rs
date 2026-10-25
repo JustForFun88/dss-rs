@@ -162,3 +162,30 @@ fn bh_curve_default_and_realloc() {
     assert_eq!(t.bh_flux, vec![0.0; 3]);
     assert_eq!(t.get_f64_array(prop::BHCURRENT), Some(&[0.0, 0.0, 0.0][..]));
 }
+
+/// A short-circuit impedance the Y build finds singular at its frequency
+/// refuses the build with the message that names the short-circuit
+/// reactance, also where no recalc saw it.
+#[test]
+fn a_short_circuit_impedance_singular_at_the_y_build_refuses_it() {
+    let mut t = AutoTrans::new("a1");
+    assert!(t.cd.recalc_refusal.is_none(), "{:?}", t.cd.recalc_refusal);
+    t.puxhx = 0.0;
+    t.xsc[0] = 0.0;
+    for w in &mut t.windings {
+        w.rpu = 0.0;
+    }
+    t.y_terminal_freqmult = 0.0;
+    t.calc_yprim(&crate::elements::traits::SysCtx::parse_default());
+    assert!(t.cd.yprim_refused);
+    let messages: Vec<String> =
+        t.cd.obj
+            .take_errors()
+            .into_iter()
+            .map(|d| d.message)
+            .collect();
+    assert_eq!(
+        messages,
+        ["AutoTrans.a1: XHX=0 makes its admittance not a finite number, so it is not built."]
+    );
+}

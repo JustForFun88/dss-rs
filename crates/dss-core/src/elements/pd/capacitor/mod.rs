@@ -28,7 +28,6 @@ mod tests;
 use crate::elements::ckt::CktElementData;
 use crate::obj::dss_enum::EnumRegistry;
 use crate::obj::props::{ClassProps, PropDef, PropFlags};
-use crate::util::sqrt3;
 
 mod accessors;
 mod dump;
@@ -124,8 +123,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::double_array("kvar", NUMSTEPS)
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVAR),
-        PropDef::double("kV")
-            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NON_NEGATIVE | PropFlags::UNITS_KV),
+        PropDef::double("kV").flags(
+            PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::NON_NEGATIVE
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
         PropDef::mapped_string_enum("Conn", enums.connection),
         PropDef::double_sym_matrix("CMatrix", PHASES)
             .scale(CUF_SCALE)
@@ -239,7 +242,7 @@ impl Capacitor {
             num_term: 1,
             is_shunt: true,
             connection: 0, // wye
-            norm_amps: crate::obj::Rating::from_number(fkvar * sqrt3() / kvrating * 1.35), // 135%
+            norm_amps: crate::obj::Rating::NotSet,
             emerg_amps: crate::obj::Rating::NotSet,
             norm_amps_specified: false,
             emerg_amps_specified: false,
@@ -247,7 +250,6 @@ impl Capacitor {
             pct_perm: 100.0,
             hrs_to_repair: 3.0,
         };
-        c.emerg_amps = c.norm_amps.map(|n| n * 1.8 / 1.35); // 180%
         c.cd.yorder = c.cd.nterms * c.cd.nconds;
         c.recalc();
         c

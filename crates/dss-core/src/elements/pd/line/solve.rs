@@ -35,6 +35,96 @@ fn cinv_fpc(z: Complex64) -> Complex64 {
 }
 
 impl Line {
+    /// Refuse the Y build of a Line whose series impedance has no admittance:
+    /// the message is logged, the build fails and the next solve builds and
+    /// refuses again, so no solve goes on without the Line.
+    fn refuse_singular_impedance(&mut self) {
+        let msg = crate::diag::DssDiagnostic::msg(
+            format!(
+                "Matrix Inversion Error for Line \"{}\". \
+                 Invalid impedance specified. Aborting solution.",
+                self.cd.obj.name()
+            ),
+            Some(183),
+        );
+        self.cd.refuse_yprim(msg);
+    }
+
+    /// Invert `z` in place into the admittance the Line stamps, refusing the
+    /// Y build when it has none: a singular impedance
+    /// ([`Self::refuse_singular_impedance`], also when `strict` finds it
+    /// numerically singular), or an inverse with an entry that is not a finite
+    /// number, named by its inputs ([`Self::impedance_input_text`]).
+    fn invert_impedance(&mut self, z: &mut CMatrix, strict: bool) -> bool {
+        if (strict && z.is_numerically_singular()) || z.invert().is_err() {
+            self.refuse_singular_impedance();
+            return false;
+        }
+        if z.values()
+            .iter()
+            .all(|v| v.re.is_finite() && v.im.is_finite())
+        {
+            return true;
+        }
+        let msg = self
+            .cd
+            .refusal_message("Line", &self.impedance_input_text(), "admittance");
+        self.cd.refuse_yprim(msg);
+        false
+    }
+
+    /// The inputs of the series impedance, as `?` reads them: the geometry,
+    /// spacing or LineCode it is taken from, else the sequence impedances or
+    /// the impedance matrices, then the length.
+    fn impedance_input_text(&self) -> String {
+        use crate::elements::pd::input_text;
+        let matrix = |name: &str, z: &CMatrix, real: bool| {
+            let mut s = format!("{name}=[");
+            for i in 0..z.order() {
+                if i > 0 {
+                    s.push('|');
+                }
+                for j in 0..=i {
+                    let v = z.get(i, j);
+                    let part = if real { v.re } else { v.im };
+                    s.push_str(&crate::util::float_to_str_ex(part / self.units_convert));
+                    s.push(' ');
+                }
+            }
+            s.push(']');
+            s
+        };
+        let source = if self.geometry_obj.is_some() {
+            format!("Geometry={}", self.geometry_name)
+        } else if self.spacing_specified {
+            let name = self
+                .line_spacing_obj
+                .as_ref()
+                .map(|s| s.data().name().to_string())
+                .unwrap_or_default();
+            format!("Spacing={name}")
+        } else if self.line_code_specified {
+            format!("LineCode={}", self.line_code_name)
+        } else if self.sym_components_model {
+            let read = |name: &str, v: f64| input_text(name, v / self.units_convert);
+            let mut texts = vec![read("R1", self.r1), read("X1", self.x1)];
+            if self.cd.nphases > 1 {
+                texts.extend([read("R0", self.r0), read("X0", self.x0)]);
+            }
+            texts.join(" ")
+        } else {
+            match &self.z {
+                Some(z) => format!(
+                    "{} {}",
+                    matrix("RMatrix", z, true),
+                    matrix("XMatrix", z, false)
+                ),
+                None => String::new(),
+            }
+        };
+        format!("{source} {}", input_text("Length", self.len))
+    }
+
     /// Pascal `TLineObj.RecalcElementData`: compute the per-unit-length
     /// `Z`/`Yc` from the symmetrical components. Only called when those have
     /// changed.
@@ -178,14 +268,6 @@ impl Line {
         if self.cd.obj.prp_specified(prop::RHO) {
             pgeo.set_rho_earth(self.rho);
         }
-        // Unless ratings were specified *after* the spacing conductors, seed the
-        // Line's amps from the temporary geometry (0.15.x D3: the minimum over
-        // the phase conductors — see `load_spacing_and_wires`).
-        if !self.got_ratings_after_spacing_conds {
-            self.norm_amps = pgeo.norm_amps();
-            self.emerg_amps = pgeo.emerg_amps();
-        }
-
         let z = pgeo.z_matrix(f, len, units, earth_model)?;
         let yc = pgeo.yc_matrix(f, len, units, earth_model)?;
         self.z = Some(z);
@@ -487,30 +569,12 @@ impl CktElement for Line {
         let mut yp_shunt = CMatrix::new(yorder);
         let mut yprim = CMatrix::new(yorder);
 
-        if zinv.invert().is_err() {
-            // Pascal error 183 (TLineObj.CalcYPrim, Line.pas:1300): a singular
-            // series impedance. `DoErrorMsg` sets `SolutionAbort := True`
-            // *unconditionally* (DSSGlobals.pas:265), so the solve aborts in
-            // both `DSS_CAPI_EARLY_ABORT` modes — and `BuildYMatrix` then Exits
-            // on `SolutionAbort` before adding any primitive. The oracle default
-            // is `EARLY_ABORT = True` (DSSGlobals.pas:781: env <> '0'), whose
-            // branch emits "Aborting solution." and exits without building YPrim
-            // (confirmed live: both modes raise the #183 "Y matrix build aborted"
-            // exception).
-            //
-            // NOT_PORTED: the `EARLY_ABORT = False` branch (DoErrorMsg "Replaced
-            // with tiny conductance." then embed `epsilon·I`) is dead weight —
-            // that YPrim is discarded by the abort — so we model only the abort.
-            // YPrim was already cleared above (Pascal `ClearYPrim`). Record the
-            // message; the Y-build loop drains it and sets `solution_abort`.
-            self.cd.obj.push_error(crate::diag::DssDiagnostic::msg(
-                format!(
-                    "Matrix Inversion Error for Line \"{}\". \
-                     Invalid impedance specified. Aborting solution.",
-                    self.cd.obj.name()
-                ),
-                Some(183),
-            ));
+        // A series impedance that cannot be told from a singular one in f64,
+        // or whose inverse is not finite, has no admittance to stamp, so the
+        // Line refuses every Y build until its impedance is valid (pinned by
+        // `exec::tests::rating_refusals::a_typed_impedance_matrix_singular_within_its_rounding_is_refused`
+        // and `a_line_whose_admittance_overflows_is_refused_at_every_solve`).
+        if !self.invert_impedance(&mut zinv, true) {
             return;
         }
 
@@ -524,12 +588,7 @@ impl CktElement for Line {
         // divergence on `autotrans_gic`'s original switch line).
         if sys.frequency < 0.51 {
             // Re-invert Zinv back to Z with length included.
-            if zinv.invert().is_err() {
-                self.cd.obj.push_error(format!(
-                    "Matrix Inversion Error for Line \"{}\". \
-                     Invalid impedance specified. Aborting solution.",
-                    self.cd.obj.name()
-                ));
+            if !self.invert_impedance(&mut zinv, false) {
                 return;
             }
             let zs = zinv.avg_diagonal();
@@ -539,13 +598,9 @@ impl CktElement for Line {
             for i in 0..zinv.order() {
                 zinv.set(i, i, z1);
             }
-            // Back to Zinv for inserting in Yprim.
-            if zinv.invert().is_err() {
-                self.cd.obj.push_error(format!(
-                    "Matrix Inversion Error for Line \"{}\". \
-                     Invalid impedance specified. Aborting solution.",
-                    self.cd.obj.name()
-                ));
+            // Back to Zinv for inserting in Yprim: a Line with no resistance
+            // is a short at dc.
+            if !self.invert_impedance(&mut zinv, true) {
                 return;
             }
         }

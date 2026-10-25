@@ -61,7 +61,7 @@ impl Transformer {
                         if done[ai] {
                             continue;
                         }
-                        let val = cx.cls.get_value(self, ai, cx.enums);
+                        let val = cx.cls.saved_value(self, ai, cx.enums);
                         out.push_str(&format!(" {}={}", cx.cls.property_name(ai), val));
                         done[ai] = true;
                     }
@@ -100,12 +100,13 @@ impl Transformer {
                 done[ip] = true;
                 // Pascal: `if Length(PropertyValue[iProp]) > 0 then write
                 // name=CheckForBlanks(value)` — no `----`/trim handling here
-                // (that is the *generic* SaveWrite's job). A rating that is
-                // not set is omitted.
-                let val = if cx.cls.holds_no_rating(self, ip) {
+                // (that is the *generic* SaveWrite's job). The two current
+                // ratings are read only, derived from `NormHkVA` and
+                // `EmergHkVA`, and never written.
+                let val = if matches!(ip, NORMAMPS | EMERGAMPS) {
                     String::new()
                 } else {
-                    cx.cls.get_value(self, ip, cx.enums)
+                    cx.cls.saved_value(self, ip, cx.enums)
                 };
                 if !val.is_empty() {
                     out.push_str(&format!(

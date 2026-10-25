@@ -134,6 +134,16 @@ impl XyCurveObj {
         self.n()
     }
 
+    /// Whether a point of the curve, its `X` or its `Y`, is not a finite
+    /// number. A reader interpolates between whichever points its operating
+    /// point falls in, so every point is an input of the element that holds
+    /// the curve.
+    pub fn has_point_not_finite(&self) -> bool {
+        let n = self.n();
+        let finite = |v: &[f64]| v.iter().take(n).all(|x| x.is_finite());
+        !(finite(&self.x_values) && finite(&self.y_values))
+    }
+
     /// Pascal `TXYcurveObj.InterpolatePoints`: linear interpolation between the
     /// `i`-th and `j`-th points (0-based). When the abscissae coincide the
     /// abscissa-array value is undefined, so the `i`-th ordinate is returned.
@@ -192,29 +202,33 @@ impl XyCurveObj {
         if n <= 1 {
             return (0.0, 0.0);
         }
-        let (xv, yv) = (&self.x_values, &self.y_values);
+        let xv = &self.x_values;
         // Restart the hunt if we are now to the left of the cached point.
         if xv[self.last_value_accessed] > x {
             self.last_value_accessed = 0;
         }
         // Off the left end: coefficients from the first two points.
         if self.last_value_accessed == 0 && xv[0] > x {
-            let a = (yv[1] - yv[0]) / (xv[1] - xv[0]);
-            let b = yv[1] - a * xv[1];
-            return (a, b);
+            return self.segment_line(0);
         }
         // In the middle of the arrays.
-        for i in (self.last_value_accessed + 1)..n {
-            if xv[i] > x {
-                self.last_value_accessed = i - 1;
-                let a = (yv[i] - yv[i - 1]) / (xv[i] - xv[i - 1]);
-                let b = yv[i] - a * xv[i];
-                return (a, b);
-            }
+        let start = self.last_value_accessed + 1;
+        if let Some(k) = xv[start.min(n)..n].iter().position(|&v| v > x) {
+            self.last_value_accessed = start + k - 1;
+            return self.segment_line(start + k - 1);
         }
         // Fell through: coefficients from the last two points.
-        let a = (yv[n - 1] - yv[n - 2]) / (xv[n - 1] - xv[n - 2]);
-        let b = yv[n - 1] - a * xv[n - 1];
+        self.segment_line(n - 2)
+    }
+
+    /// The line `a·X + b` through points `k` and `k + 1` (0-based), the one
+    /// [`Self::get_coefficients`] returns for an `X` on that segment. The
+    /// first segment also holds every `X` left of it and the last every `X`
+    /// right of it.
+    pub fn segment_line(&self, k: usize) -> (f64, f64) {
+        let (xv, yv) = (&self.x_values, &self.y_values);
+        let a = (yv[k + 1] - yv[k]) / (xv[k + 1] - xv[k]);
+        let b = yv[k + 1] - a * xv[k + 1];
         (a, b)
     }
 

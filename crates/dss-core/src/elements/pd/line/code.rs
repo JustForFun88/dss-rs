@@ -4,11 +4,19 @@
 
 use crate::elements::general::conductor_data::{ConductorData, ConductorKind, ConductorObj};
 use crate::elements::general::line_code::LineCodeObj;
-use crate::elements::general::line_geometry::LineGeometryObj;
-use crate::obj::base::ObjectRefArrayItem;
+use crate::elements::general::line_geometry::{LineGeometryObj, PhaseRating, phase_ratings};
+use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_units::{LineUnits, convert_line_units};
 
 use super::{ConductorChoice, Line, prop};
+use crate::elements::general::line_geometry::prop::{
+    EMERGAMPS as GEOMETRY_EMERGAMPS, NORMAMPS as GEOMETRY_NORMAMPS,
+};
+use crate::obj::Rating;
+
+/// The Line's scalar ratings and the word a message names each by.
+const RATING_KINDS: [(usize, &str); 2] =
+    [(prop::NORMAMPS, "normal"), (prop::EMERGAMPS, "emergency")];
 
 impl Line {
     /// Pascal `FLineCodeSpecified := FALSE` — r4133 clears the flag at eight
@@ -115,6 +123,7 @@ impl Line {
         self.emerg_amps = code.emerg_amps();
         self.num_amp_ratings = code.num_amp_ratings();
         self.amp_ratings = code.amp_ratings().to_vec();
+        self.forget_typed_ratings();
 
         // FaultRate/PctPerm/HrsToRepair deliberately NOT copied (Pascal
         // commented out 2014 — they vary section to section).
@@ -183,6 +192,15 @@ impl Line {
         self.fz_frequency = -1.0;
     }
 
+    /// A linecode or geometry definition replaces the Line's ratings, so a
+    /// rating typed before it is no longer the typed one
+    /// (`a_later_line_definition_replaces_a_typed_line_rating`).
+    fn forget_typed_ratings(&mut self) {
+        for p in [prop::NORMAMPS, prop::EMERGAMPS, prop::RATINGS] {
+            self.cd.obj.clear_typed_rating(p);
+        }
+    }
+
     /// Pascal `TLineObj.FetchGeometryCode`: adopt a resolved `LineGeometry` as
     /// the impedance source. Snapshot-clones it (the WP4.2 `FetchLineCode`
     /// pattern), copies the ratings/line-type, sizes the Line to the geometry's
@@ -226,6 +244,7 @@ impl Line {
 
         self.num_amp_ratings = geom.num_amp_ratings();
         self.amp_ratings = geom.amp_ratings().to_vec();
+        self.forget_typed_ratings();
         self.line_type = geom.line_type();
 
         self.sym_components_model = false;
@@ -325,6 +344,86 @@ impl Line {
         }
     }
 
+    /// Each scalar rating of a spacing Line not typed since its conductor list,
+    /// derived from the phase conductors at the spacing's phase positions
+    /// ([`phase_ratings`]): the weakest one when every phase conductor has it,
+    /// not set when none has it, and not set with an error naming the first
+    /// phase conductor without it when only some have it. A rating typed after
+    /// the conductors stays as typed
+    /// (`a_partly_rated_spacing_line_is_an_error_naming_the_conductor`,
+    /// `an_unrated_line_is_not_set_without_an_error`).
+    pub(super) fn derive_spacing_ratings(&mut self) {
+        let Some(spc) = self.line_spacing_obj.as_ref() else {
+            return;
+        };
+        let readings = phase_ratings(&self.line_wire_data, spc.nphases().max(0) as usize);
+        for ((idx, kind), reading) in RATING_KINDS.into_iter().zip(readings) {
+            if self.cd.obj.typed_rating(idx).is_some() {
+                continue;
+            }
+            if let PhaseRating::Partly {
+                position,
+                conductor,
+            } = &reading
+            {
+                self.push_partly_rated(*position, conductor, "", kind);
+            }
+            self.set_derived_rating(idx, reading.rating());
+        }
+    }
+
+    /// Each scalar rating of a geometry Line not typed since its geometry:
+    /// the geometry's rating. A rating the geometry derived from its phase
+    /// conductors and found only partly rated is not set and logs an error
+    /// naming the first phase conductor without it. A rating typed on the
+    /// geometry is taken as typed and never checked
+    /// (`a_partly_rated_geometry_line_is_an_error_naming_the_conductor`,
+    /// `a_geometry_line_is_rated_by_its_weakest_phase_conductor`).
+    pub(super) fn derive_geometry_ratings(&mut self) {
+        let Some(geom) = self.geometry_obj.as_ref() else {
+            return;
+        };
+        let readings = geom.phase_conductor_ratings();
+        let of = format!(" of LineGeometry.{}", geom.data().name());
+        let geometry = [geom.norm_amps(), geom.emerg_amps()];
+        let typed_on_geometry = [
+            geom.data().typed_rating(GEOMETRY_NORMAMPS).is_some(),
+            geom.data().typed_rating(GEOMETRY_EMERGAMPS).is_some(),
+        ];
+        for (k, ((idx, kind), reading)) in RATING_KINDS.into_iter().zip(readings).enumerate() {
+            if self.cd.obj.typed_rating(idx).is_some() {
+                continue;
+            }
+            if !typed_on_geometry[k]
+                && let PhaseRating::Partly {
+                    position,
+                    conductor,
+                } = &reading
+            {
+                self.push_partly_rated(*position, conductor, &of, kind);
+            }
+            self.set_derived_rating(idx, geometry[k]);
+        }
+    }
+
+    /// The error of a Line whose phase conductors are partly rated:
+    /// `of` names the geometry the conductor belongs to (empty for a spacing).
+    fn push_partly_rated(&mut self, position: usize, conductor: &str, of: &str, kind: &str) {
+        self.cd.obj.push_error(format!(
+            "Line.{}: phase conductor {position} ({conductor}){of} has no {kind} rating where \
+             another phase conductor has one, so the Line's {kind} rating is not set.",
+            self.cd.obj.name()
+        ));
+    }
+
+    fn set_derived_rating(&mut self, idx: usize, value: Rating) {
+        if idx == prop::NORMAMPS {
+            self.norm_amps = value;
+        } else {
+            self.emerg_amps = value;
+        }
+    }
+
     /// Whether every phase position of the spacing holds a conductor.
     pub(super) fn holds_every_phase_conductor(&self) -> bool {
         let n = self.cd.nphases;
@@ -382,8 +481,9 @@ impl Line {
     /// per open position. A list that starts at position 1 drops a line code
     /// and a geometry: the overhead wires of a Line whose model no conductor
     /// list has set, and the neutrals after a cable or `conductors=` list on a
-    /// spacing whose `nphases` is 0 or negative. Seeds the Line's ratings from
-    /// the wires.
+    /// spacing whose `nphases` is 0 or negative. Takes the seasonal ratings of
+    /// the wire with the most seasons. The scalar ratings are derived when the
+    /// edit ends.
     pub(super) fn set_wires(&mut self, refs: &[ObjectRefArrayItem<'_>]) {
         debug_assert!(self.wires_refusal(refs.len()).is_none());
         let positions = self.wire_positions();
@@ -409,19 +509,18 @@ impl Line {
                 self.line_wire_data[i - 1] = None;
                 continue;
             };
-            let (cnorm, cemerg, cnum, crat) = cond.amps_owned();
+            let (_, _, cnum, crat) = cond.amps_owned();
             self.line_wire_data[i - 1] = Some(cond);
             if cnum > new_num_rat {
                 new_num_rat = cnum;
                 new_ratings = crat.into_iter().take(new_num_rat.max(0) as usize).collect();
                 ratings_inc = true;
             }
-            self.norm_amps = cnorm;
-            self.emerg_amps = cemerg;
         }
         if ratings_inc {
             self.num_amp_ratings = new_num_rat;
             self.amp_ratings = new_ratings;
+            self.cd.obj.clear_typed_rating(prop::RATINGS);
         }
         self.cd.obj.set_as_next_seq(prop::RATINGS);
         self.cd.obj.set_as_next_seq(prop::NORMAMPS);

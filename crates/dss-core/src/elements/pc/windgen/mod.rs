@@ -134,7 +134,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1),
-        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE),
+        PropDef::double("kV").flags(PropFlags::NON_NEGATIVE | PropFlags::FINITE_BASE),
         // L2 (DIVERGENCES.md): WindGen `kW`/`kVA`/`MVA` all carry the EPRI
         // `DblValueNZ` band-clamp (`REPLACE_ZERO`, applied unconditionally). The
         // dss_capi `NonZero` strict-error surface is NOT adopted (dss-ext-only).
@@ -150,12 +150,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::boolean("DebugTrace"),
         PropDef::double("VMinpu"),
         PropDef::double("VMaxpu"),
-        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO),
+        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO | PropFlags::FINITE_BASE),
         // `MVA` = `DblValueNZ * 1000` (WindGen.pas:638, scale 1000): unlike
         // Generator's `MVA` (plain `DblValue`), WindGen's MVA also clamps — L2.
         PropDef::double("MVA")
             .scale(1000.0)
-            .flags(PropFlags::REPLACE_ZERO | PropFlags::REDUNDANT)
+            .flags(PropFlags::REPLACE_ZERO | PropFlags::REDUNDANT | PropFlags::FINITE_BASE)
             .redundant_with(prop::KVA),
         // User-written model 6 over WASM (`WindGen.pas:391-395`, Edit arms
         // `:641-642`). Same §2.4 activation rule as Generator's pair: a value
@@ -247,6 +247,8 @@ pub struct WindGen {
     pub pu_xdpp: f64,
     pub p_nominal_per_phase: f64,
     pub q_nominal_per_phase: f64,
+    /// The powers the last accepted recalc left, given back by a refused one.
+    held_powers: nominal::HeldPowers,
     pub theta: f64,
     pub dtheta: f64,
     pub speed: f64,
@@ -418,6 +420,7 @@ impl WindGen {
             pu_xdpp,
             p_nominal_per_phase: 0.0,
             q_nominal_per_phase: 0.0,
+            held_powers: nominal::HeldPowers::default(),
             theta: 0.0,
             dtheta: 0.0,
             speed: 0.0,
@@ -485,6 +488,7 @@ impl WindGen {
             pending_user_model_loads: Vec::new(),
         };
         g.cd.inj_current = vec![Complex64::ZERO; g.cd.yorder];
+        g.held_powers = nominal::HeldPowers::of(&g);
         // Pascal `TWindGenObj.Create` ends with `RecalcElementData` (live
         // `ActiveCircuit.Solution`). `new` has no circuit; the executive runs that
         // live recalc after construction (`create_object_no_edit`) and at

@@ -87,11 +87,24 @@ impl CktElement for Load {
 
     /// Pascal `TLoadObj.CalcYPrim`.
     fn calc_yprim(&mut self, sys: &SysCtx) {
+        if self.cd.refuse_yprim_on_recalc() {
+            return;
+        }
         let yorder = self.cd.yorder;
         let mut yp_shunt = CMatrix::new(yorder);
 
         // POWERFLOW and ADMITTANCE both use the admittance matrix here.
         self.set_nominal_load(sys);
+        if sys.is_harmonic_model && sys.frequency != sys.fundamental {
+            let y = self.branch_admittance(sys);
+            if !(y.re.is_finite() && y.im.is_finite()) {
+                // Checked where the harmonics mode computes it (pinned by
+                // `exec::tests::rating_refusals::a_mode_specific_input_is_refused_only_in_its_mode`).
+                let msg = self.harmonic_refusal();
+                self.cd.refuse_yprim(msg);
+                return;
+            }
+        }
         self.calc_yprim_matrix(&mut yp_shunt, sys);
 
         // YPrim_Series from the shunt diagonal so CalcVoltages doesn't fail.

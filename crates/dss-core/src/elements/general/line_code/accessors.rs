@@ -31,6 +31,8 @@ impl LineCodeObj {
         self.fneutral_conductor = o.fneutral_conductor;
         self.norm_amps = o.norm_amps;
         self.emerg_amps = o.emerg_amps;
+        self.data
+            .copy_typed_ratings_from(&o.data, &[prop::NORMAMPS, prop::EMERGAMPS]);
         self.fault_rate = o.fault_rate;
         self.pct_perm = o.pct_perm;
         self.hrs_to_repair = o.hrs_to_repair;

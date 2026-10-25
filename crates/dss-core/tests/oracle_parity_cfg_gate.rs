@@ -695,7 +695,7 @@ const ESCAPE_REGISTER: &[(&str, &str, Escape)] = &[
     ),
     (
         "crates/dss-core/src/elements/pd/reactor/solve.rs",
-        "Pascal `CALPHA` is the truncated literal",
+        "the rotation is the truncated phasor",
         Escape::UpgradeRung,
     ),
     // The truncated pi / rad-to-deg pair: upstream names the fix itself, and the

@@ -2,6 +2,7 @@ use super::*;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::obj::base::DssObject;
 use crate::solution::{LoadSolutionModel, SolveMode};
+use crate::util::sqrt3;
 
 fn test_sys() -> SysCtx {
     SysCtx {

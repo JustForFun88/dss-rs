@@ -287,6 +287,24 @@ fn copy_tree(src: &Path, dst: &Path) {
     }
 }
 
+/// The messages of the IEEE-123 compile, in deck order: its three regulators
+/// type their read-only current ratings, which the engine refuses while
+/// keeping the ratings derived from their kVA
+/// (`exec::tests::ratings::a_typed_transformer_current_rating_is_refused`).
+fn ieee123_refused_ratings() -> Vec<String> {
+    ["reg4c", "reg4b", "reg3c"]
+        .iter()
+        .flat_map(|reg| {
+            [
+                format!("Transformer.{reg}.NormAmps: read only, the normal rating is set by NormHkVA."),
+                format!(
+                    "Transformer.{reg}.EmergAmps: read only, the emergency rating is set by EmergHkVA."
+                ),
+            ]
+        })
+        .collect()
+}
+
 /// Copy the IEEE_123_Bus-G tree into `scratch`, trim its AD/solve tail, compile +
 /// base-solve, then run the manual 2-link A-Diakoptics init. Returns the
 /// coordinator `Dss` (post-init, pre-AD-solve).
@@ -313,8 +331,9 @@ fn init_ieee123_manual_ad(scratch: &Path) -> Dss {
     dss.command(&format!("compile \"{}\"", master.display()));
     dss.command(&format!("set datapath=\"{}\"", scratch.display()));
     dss.command("solve");
-    assert!(
-        dss.errors().is_empty(),
+    assert_eq!(
+        dss.error_texts(),
+        ieee123_refused_ratings(),
         "IEEE-123 base solve errors: {:?}",
         dss.errors()
     );

@@ -282,11 +282,17 @@ pub(crate) struct SolvableCase {
     /// exclusive with `pending` / `expect_solve_abort`.
     #[serde(default)]
     pub(crate) defer_ledger: Option<String>,
-    /// Non-fatal warnings this deck's compile deliberately produces, which the
-    /// port reproduces 1:1 (CF-C Port 2: a user-written model DLL that safe Rust
-    /// cannot load). Each string is a substring an actual engine error must
-    /// contain; every actual error must match one, and every listed substring
-    /// must actually appear. Empty ⇒ zero errors are tolerated.
+    /// Non-fatal messages this deck's compile produces on the engine and the
+    /// solve goes on: a user-written model DLL that safe Rust cannot load, and
+    /// the refusal of input the documentation does not allow, such as a typed
+    /// Transformer `NormAmps` (read only, the token is refused and the derived
+    /// rating stays). Each string is a substring an actual engine error must
+    /// contain, a whole message where the engine's refusal is meant. Every
+    /// actual error must match one, and every listed substring must actually
+    /// appear. Checked after the compile on the live path and, before the
+    /// `post` commands, on the abort path. A non-empty list also sends
+    /// `warn_and_continue` to both oracle channels on the live path. Empty ⇒ zero errors are
+    /// tolerated.
     #[serde(default)]
     pub(crate) expect_warnings: Vec<String>,
     /// Schema v2 (UNIFIED_GATE_PLAN.md §1.2): which live channel(s) gate this

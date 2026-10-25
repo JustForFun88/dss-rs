@@ -111,12 +111,16 @@ impl CnDataObj {
         {
             self.cond.make_like_from(&o.cond);
             self.cable.make_like_from(&o.cable);
+            self.data
+                .copy_typed_ratings_from(&o.data, &[prop::NORMAMPS, prop::EMERGAMPS]);
             self.fk_strand = o.fk_strand;
             self.fdia_strand = o.fdia_strand;
             self.fgmr_strand = o.fgmr_strand;
             self.fr_strand = o.fr_strand;
             self.fsemicon_layer = o.fsemicon_layer;
         }
+        self.cond
+            .hold_ratings(&self.data, prop::NORMAMPS, prop::EMERGAMPS);
     }
 }
 
@@ -179,6 +183,14 @@ impl DssObject for CnDataObj {
     fn set_rating_array(&mut self, idx: usize, value: Vec<Rating>) {
         debug_assert_eq!(idx, prop::RATINGS);
         self.cond.amp_ratings = value;
+    }
+
+    /// The ratings nobody typed follow their typed partner when an edit
+    /// ends ([`ConductorDataCore::end_edit_ratings`]).
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
+        let full = format!("CNData.{}", self.data.name());
+        self.cond
+            .end_edit_ratings(&mut self.data, &full, prop::NORMAMPS, prop::EMERGAMPS);
     }
 
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {

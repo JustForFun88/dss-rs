@@ -91,6 +91,8 @@ impl LineGeometryObj {
             self.data_changed = true;
             self.norm_amps = o.norm_amps;
             self.emerg_amps = o.emerg_amps;
+            self.data
+                .copy_typed_ratings_from(&o.data, &[prop::NORMAMPS, prop::EMERGAMPS]);
             self.freduce = o.freduce;
             // Pascal's `NConds := Other.NWires` rebuilds an *overhead* engine via
             // the nconds side effect and then runs `UpdateLineGeometryData`; for a
@@ -389,9 +391,15 @@ impl DssObject for LineGeometryObj {
         })
     }
 
+    /// The ratings nobody typed follow the phase conductors when an edit
+    /// ends ([`LineGeometryObj::derive_ratings`]).
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
+        self.derive_ratings();
+    }
+
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
-        // Three blocks: the engine and selection state, the ratings default,
-        // then the staleness flag.
+        // Three blocks: the engine and selection state, the conductor
+        // messages and the seasonal array, then the staleness flag.
         let selected = self.active_index();
         match idx {
             prop::NPHASES => {
@@ -455,30 +463,21 @@ impl DssObject for LineGeometryObj {
             self.last_filled = None;
         }
 
-        // Second block: default this geometry's ratings from its conductors.
+        // Second block: the conductor arms' messages and the seasonal array.
+        // The ratings are derived when the edit ends.
         match idx {
-            prop::WIRES | prop::CNCABLES | prop::TSCABLES => {
-                // The plural forms seed the ratings from the first conductor,
-                // whichever slots the fill wrote.
-                self.default_amps_from(0);
-            }
             prop::WIRE | prop::CNCABLE | prop::TSCABLE => {
-                // A conductor object on conductor 1 seeds the geometry ratings.
                 // A name that did not resolve (the parse already logged its
                 // "not found") leaves the slot unset and logs that the object
                 // was not defined. Nothing happens with no conductor selected.
-                if let Some(a) = selected {
-                    if self.fwiredata[a].is_some() {
-                        if a == 0 {
-                            self.default_amps_from(0);
-                        }
-                    } else {
-                        self.data.push_error(
-                            "WireData/CNData/TSData object was not defined. \
-                             Must be previously defined."
-                                .to_string(),
-                        );
-                    }
+                if let Some(a) = selected
+                    && self.fwiredata[a].is_none()
+                {
+                    self.data.push_error(
+                        "WireData/CNData/TSData object was not defined. \
+                         Must be previously defined."
+                            .to_string(),
+                    );
                 }
             }
             prop::SEASONS => {

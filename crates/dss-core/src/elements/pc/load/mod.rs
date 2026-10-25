@@ -22,6 +22,8 @@ mod accessors;
 mod nominal;
 mod solve;
 
+pub use nominal::AllocationCommand;
+
 use num_complex::Complex64;
 
 use crate::elements::ckt::CktElementData;
@@ -164,8 +166,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
     let defs = vec![
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::REQUIRED
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
         // NB: kW/kvar/kVA carry no `Units_*` flag — the pinned 0.14.5 oracle
         // backend has none (`Load.pas` at tag 0.14.5); the vendored source added
         // them post-0.14.5 (`dss_capi` `90c572e4` "AltDSS-Schema: More units"),
@@ -191,10 +197,14 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("VMaxpu"),
         PropDef::double("VMinNorm"),
         PropDef::double("VMinEmerg"),
-        PropDef::double("XfkVA").flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVA),
+        PropDef::double("XfkVA")
+            .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::UNITS_KVA | PropFlags::FINITE_BASE),
         PropDef::double("AllocationFactor"),
         PropDef::double("kVA").flags(
-            PropFlags::REPLACE_ZERO | PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::NO_DEFAULT,
+            PropFlags::REPLACE_ZERO
+                | PropFlags::REQUIRED_IN_SPEC_SET
+                | PropFlags::NO_DEFAULT
+                | PropFlags::FINITE_BASE,
         ),
         PropDef::double("%Mean").scale(0.01),
         PropDef::double("%StdDev").scale(0.01),

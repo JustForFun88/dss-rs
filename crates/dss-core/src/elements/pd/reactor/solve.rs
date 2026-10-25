@@ -28,42 +28,101 @@ impl Reactor {
         }
     }
 
-    /// Pascal `RecalcElementData`: derive `Z.im`/`L` from the spec, set `Gp` from
-    /// `Rp`, build the inverted parallel `Gmatrix`/`Bmatrix` when needed, and
-    /// (unless overridden) the default Norm/Emerg current ratings.
+    /// Derive `X`/`L` from the spec, `Gp` from `Rp`, the inverted parallel
+    /// `Gmatrix`/`Bmatrix` when needed, and (unless typed) the normal and
+    /// emergency current ratings. When an input makes the reactance, the
+    /// admittance or a derived rating not a finite number nothing is committed: the reactor
+    /// keeps what its last good recalc derived and refuses the build
+    /// ([`CktElementData::refuse_recalc`]). The matrix and symmetrical-component
+    /// forms are checked on the matrices they stamp
+    /// ([`Self::matrix_refused_input`], [`Self::sym_refused_input`]). A
+    /// `kvar=0` reactor is an open device ([`Self::is_open`]): its infinite
+    /// reactance stamps nothing.
     pub(super) fn recalc(&mut self) {
+        use crate::obj::Rating;
         let two_pi = 2.0 * std::f64::consts::PI;
         let w = two_pi * self.cd.base_frequency;
 
+        let mut x = self.z.im;
+        let mut l = self.l;
+        let mut norm = Ok(self.norm_amps);
+        let mut emerg = Ok(self.emerg_amps);
         match self.spec_type {
             ReactorSpecType::Kvar => {
                 let kvar_per_phase = self.kvarrating / self.cd.nphases as f64;
                 let phase_kv = self.phase_kv();
-                self.z.im = phase_kv * phase_kv * 1000.0 / kvar_per_phase;
-                self.l = self.z.im / w;
+                x = phase_kv * phase_kv * 1000.0 / kvar_per_phase;
+                l = x / w;
                 // Leave R as specified.
                 if !self.norm_amps_specified {
-                    self.norm_amps = crate::obj::Rating::from_number(kvar_per_phase / phase_kv);
+                    norm = Rating::derived(kvar_per_phase / phase_kv);
                 }
                 if !self.emerg_amps_specified {
-                    self.emerg_amps =
-                        crate::obj::Rating::from_number(kvar_per_phase / phase_kv * 1.35);
+                    emerg = Rating::derived(kvar_per_phase / phase_kv * 1.35);
                 }
             }
-            ReactorSpecType::RplusJx => {
-                // Nothing much to do.
-                self.l = self.z.im / w;
-            }
-            // Pascal's `case` has an empty `3:` arm and no `4:` arm at all
-            // (`Reactor.pas:661-665`): matrices / sym components are handled in
-            // `CalcYPrim`.
+            ReactorSpecType::RplusJx => l = x / w,
+            // Matrices and symmetrical components are stamped from what was
+            // typed.
             ReactorSpecType::Matrices | ReactorSpecType::SymComponents => {}
         }
-
-        if self.rp_specified && self.rp != 0.0 {
-            self.gp = 1.0 / self.rp;
+        let gp = if self.rp_specified && self.rp != 0.0 {
+            1.0 / self.rp
         } else {
-            self.gp = 0.0; // default to 0 if Rp = 0
+            0.0 // no parallel resistance when Rp = 0
+        };
+
+        let all_finite = |m: &Option<Vec<f64>>| m.iter().flatten().all(|v| v.is_finite());
+        let stamp_finite = gp.is_finite()
+            && match self.spec_type {
+                ReactorSpecType::Kvar | ReactorSpecType::RplusJx => {
+                    let y = Complex64::new(self.z.re, l * w).inv();
+                    self.is_open()
+                        || (y.re.is_finite()
+                            && y.im.is_finite()
+                            && self.curve_refused_input().is_none())
+                }
+                ReactorSpecType::Matrices => {
+                    all_finite(&self.rmatrix)
+                        && all_finite(&self.xmatrix)
+                        && self.matrix_refused_input().is_none()
+                }
+                ReactorSpecType::SymComponents => self.sym_refused_input().is_none(),
+            };
+        // An infinite series reactance has an admittance of zero, as the open
+        // `kvar=0` reactor, so the reactance is the quantity refused.
+        let reactance_only = matches!(
+            self.spec_type,
+            ReactorSpecType::Kvar | ReactorSpecType::RplusJx
+        ) && !self.is_open()
+            && !(l * w).is_finite()
+            && self.z.re.is_finite()
+            && gp.is_finite();
+        let quantity = if reactance_only {
+            "reactance"
+        } else if !stamp_finite {
+            "admittance"
+        } else if norm.is_err() {
+            "normal current rating"
+        } else if emerg.is_err() {
+            "emergency current rating"
+        } else {
+            ""
+        };
+        match (norm, emerg) {
+            (Ok(norm), Ok(emerg)) if quantity.is_empty() => {
+                self.cd.recalc_refusal = None;
+                self.z.im = x;
+                self.l = l;
+                self.gp = gp;
+                self.norm_amps = norm;
+                self.emerg_amps = emerg;
+            }
+            _ => {
+                let input = self.refused_input();
+                self.cd.refuse_recalc("Reactor", &input, quantity);
+                return;
+            }
         }
 
         if self.is_parallel && self.spec_type == ReactorSpecType::Matrices {
@@ -109,6 +168,272 @@ impl Reactor {
         }
     }
 
+    /// A reactor of no size (`kvar=0`): its reactance is infinite, so it is
+    /// an open device that stamps nothing and whose derived ratings are not
+    /// set (pinned by `a_zero_kvar_reactor_is_an_open_device`).
+    fn is_open(&self) -> bool {
+        self.spec_type == ReactorSpecType::Kvar && self.kvarrating == 0.0
+    }
+
+    /// The input a refused recalc names: the first input the reactor's form
+    /// reads that is not a finite number, else the zero that breaks its
+    /// formula (`kV`, or `R` with the reactance input together), else the
+    /// divisor of the overflow: `kvar` when the reactance `kV² 1000 / kvar`
+    /// overflows on it, else `kV`. The reactance input is `LmH` when it was
+    /// given after `X`. The matrix form names a matrix with an entry that is
+    /// not finite, else what [`Self::matrix_refused_input`] names, and the
+    /// symmetrical-component form what [`Self::sym_refused_input`] names.
+    fn refused_input(&self) -> String {
+        use super::prop;
+        use crate::elements::pd::{input_text, sym_matrix_input_text};
+        let nphases = self.cd.nphases;
+        let rp = self.rp_specified.then_some(("Rp", self.rp));
+        let obj = &self.cd.obj;
+        let reactance = if obj.seq_mark(prop::LMH) > obj.seq_mark(prop::X) {
+            ("LmH", self.l / 1.0e-3)
+        } else {
+            ("X", self.z.im)
+        };
+        let scalars: Vec<(&str, f64)> = match self.spec_type {
+            ReactorSpecType::Kvar => [
+                ("kvar", self.kvarrating),
+                ("kV", self.kvrating),
+                ("R", self.z.re),
+            ]
+            .into_iter()
+            .chain(rp)
+            .collect(),
+            // Property order: `R`, `X`, `Rp`, then `LmH`.
+            ReactorSpecType::RplusJx if reactance.0 == "X" => [("R", self.z.re), reactance]
+                .into_iter()
+                .chain(rp)
+                .collect(),
+            ReactorSpecType::RplusJx => std::iter::once(("R", self.z.re))
+                .chain(rp)
+                .chain(std::iter::once(reactance))
+                .collect(),
+            ReactorSpecType::Matrices => {
+                for (name, m) in [("RMatrix", &self.rmatrix), ("XMatrix", &self.xmatrix)] {
+                    if let Some(m) = m.as_ref().filter(|m| m.iter().any(|v| !v.is_finite())) {
+                        return sym_matrix_input_text(name, m, nphases, 1.0);
+                    }
+                }
+                if let Some(text) = self.matrix_refused_input() {
+                    return text;
+                }
+                rp.into_iter().collect()
+            }
+            ReactorSpecType::SymComponents => {
+                // Only `Rp` besides the sequence impedances reaches the check.
+                return match rp.filter(|(_, v)| !v.is_finite()) {
+                    Some((name, v)) => input_text(name, v),
+                    None => self
+                        .sym_refused_input()
+                        .unwrap_or_else(|| input_text("Rp", self.rp)),
+                };
+            }
+        };
+        if let Some((name, v)) = scalars.iter().find(|(_, v)| !v.is_finite()) {
+            return input_text(name, *v);
+        }
+        if let Some(text) = self.curve_refused_input() {
+            return text;
+        }
+        match self.spec_type {
+            ReactorSpecType::RplusJx => format!(
+                "{} {}",
+                input_text("R", self.z.re),
+                input_text(reactance.0, reactance.1)
+            ),
+            ReactorSpecType::Kvar => {
+                let phase_kv = self.phase_kv();
+                let numerator = phase_kv * phase_kv * 1000.0;
+                let x = numerator / (self.kvarrating / nphases as f64);
+                if self.kvrating != 0.0 && numerator.is_finite() && !x.is_finite() {
+                    input_text("kvar", self.kvarrating)
+                } else {
+                    input_text("kV", self.kvrating)
+                }
+            }
+            _ => input_text("kV", self.kvrating),
+        }
+    }
+
+    /// The first of `RCurve` and `LCurve` that the series stamp reads and that
+    /// holds a point that is not a finite number, as the input text a refusal
+    /// names. The stamp scales its resistance and its inductance by the
+    /// curves at each frequency it is built at, so every point is an input
+    /// (pinned by
+    /// `exec::tests::rating_refusals::a_curve_point_that_is_not_a_number_refuses_its_element`).
+    fn curve_refused_input(&self) -> Option<String> {
+        if !matches!(
+            self.spec_type,
+            ReactorSpecType::Kvar | ReactorSpecType::RplusJx
+        ) || self.is_open()
+        {
+            return None;
+        }
+        [
+            ("RCurve", &self.r_curve_name, &self.r_curve),
+            ("LCurve", &self.l_curve_name, &self.l_curve),
+        ]
+        .into_iter()
+        .find(|(_, _, c)| c.as_ref().is_some_and(|c| c.has_point_not_finite()))
+        .map(|(prop, name, _)| format!("{prop}={name}"))
+    }
+
+    /// The sequence impedances the symmetrical-component stamp reads, by name:
+    /// `Z1` alone on one phase, else `Z1`, `Z2` and `Z0`.
+    fn sym_inputs(&self) -> Vec<(&'static str, Complex64)> {
+        if self.cd.nphases == 1 {
+            vec![("Z1", self.z1)]
+        } else {
+            vec![("Z1", self.z1), ("Z2", self.z2), ("Z0", self.z0)]
+        }
+    }
+
+    /// Why the symmetrical-component stamp has no finite admittance, `None`
+    /// when it has one, as the input text a refusal names: the first sequence
+    /// impedance it reads that is not a finite number, else on one and three
+    /// phases the read impedances with no finite reciprocal, else, when the
+    /// matrix at base frequency ([`Self::sym_zmatrix`]) does not invert to
+    /// finite entries, those impedances, or all the read ones when each has a
+    /// reciprocal (their mean is the zero). Each is written as `?` reads a
+    /// complex, `Z1=[0, 0]`. On one and three phases each read impedance is an
+    /// eigenvalue of the phase matrix, so a zero one is a bolted short in its
+    /// sequence with no finite admittance, also where the truncated rotation
+    /// of [`Self::sym_zmatrix`] leaves the matrix invertible. On two or more
+    /// than three phases the stamp reads only their mean, so one zero
+    /// impedance builds and a zero mean is refused (pinned by
+    /// `a_sequence_impedance_reactor_of_two_or_four_phases_stamps_their_mean`).
+    fn sym_refused_input(&self) -> Option<String> {
+        let finite = |z: Complex64| z.re.is_finite() && z.im.is_finite();
+        let text = |(name, z): &(&str, Complex64)| {
+            format!(
+                "{name}=[{}, {}]",
+                crate::util::float_to_str_ex(z.re),
+                crate::util::float_to_str_ex(z.im)
+            )
+        };
+        let inputs = self.sym_inputs();
+        if let Some(input) = inputs.iter().find(|(_, z)| !finite(*z)) {
+            return Some(text(input));
+        }
+        let n = self.cd.nphases;
+        let infinite: Vec<String> = inputs
+            .iter()
+            .filter(|(_, z)| !(1.0 / z.norm()).is_finite())
+            .map(text)
+            .collect();
+        if matches!(n, 1 | 3) && !infinite.is_empty() {
+            return Some(infinite.join(" "));
+        }
+        let mut y = self.sym_zmatrix(1.0);
+        if y.invert().is_ok() && (0..n * n).all(|k| finite(y.get(k / n, k % n))) {
+            return None;
+        }
+        let named = if infinite.is_empty() {
+            inputs.iter().map(text).collect()
+        } else {
+            infinite
+        };
+        Some(named.join(" "))
+    }
+
+    /// Why the matrix stamp has no finite admittance, `None` when it has one,
+    /// as the input text a refusal names. The series form stamps the inverse
+    /// of `RMatrix + j XMatrix` at base frequency and names both matrices when
+    /// that impedance cannot be told from a singular one in f64
+    /// ([`CMatrix::is_numerically_singular`]) or inverts to entries that are
+    /// not finite. The parallel form stamps `R⁻¹` and `−X⁻¹` and names the
+    /// first given matrix that fails the same test (a singular one meets a
+    /// current pattern with no resistance or reactance, a short). A matrix
+    /// nobody gave, or of another order than the phases, is left to the solve
+    /// ([`Self::refusal`]).
+    fn matrix_refused_input(&self) -> Option<String> {
+        use crate::elements::pd::sym_matrix_input_text;
+        fn given(m: &Option<Vec<f64>>, n: usize) -> Option<&[f64]> {
+            m.as_deref().filter(|m| m.len() == n * n)
+        }
+        let n = self.cd.nphases;
+        let text = |name: &str, m: &[f64]| sym_matrix_input_text(name, m, n, 1.0);
+        if self.is_parallel {
+            return [("RMatrix", &self.rmatrix), ("XMatrix", &self.xmatrix)]
+                .into_iter()
+                .find_map(|(name, m)| {
+                    let m = given(m, n)?;
+                    let mut typed = CMatrix::new(n);
+                    for (k, &v) in m.iter().enumerate() {
+                        typed.set(k / n, k % n, Complex64::new(v, 0.0));
+                    }
+                    let mut inv = m.to_vec();
+                    let ok = !typed.is_numerically_singular()
+                        && etk_invert(&mut inv, n).is_ok()
+                        && inv.iter().all(|v| v.is_finite());
+                    (!ok).then(|| text(name, m))
+                });
+        }
+        let (rm, xm) = (given(&self.rmatrix, n)?, given(&self.xmatrix, n)?);
+        let mut y = self.series_zmatrix(1.0)?;
+        let finite = |z: Complex64| z.re.is_finite() && z.im.is_finite();
+        if !y.is_numerically_singular()
+            && y.invert().is_ok()
+            && (0..n * n).all(|k| finite(y.get(k / n, k % n)))
+        {
+            return None;
+        }
+        Some(format!("{} {}", text("RMatrix", rm), text("XMatrix", xm)))
+    }
+
+    /// The symmetrical-component impedance matrix in phase quantities, its
+    /// reactances scaled by `freq_multiplier`: `Z1` on one phase, the mean
+    /// `(Z0 + Z1 + Z2) / 3` on the diagonal of more, and on three phases the
+    /// mutual terms of the sequence-to-phase transform.
+    fn sym_zmatrix(&self, freq_multiplier: f64) -> CMatrix {
+        let nphases = self.cd.nphases;
+        let mut zmat = CMatrix::new(nphases);
+        // Diagonal — all the same: `Z1` on one phase (pinned by
+        // `a_single_phase_z1_reactor_stamps_z1`), `(Z0 + Z1 + Z2) / 3`
+        // on more.
+        let mut value = if nphases == 1 {
+            self.z1
+        } else {
+            self.z2 + self.z1 + self.z0
+        };
+        value.im *= freq_multiplier;
+        if nphases > 1 {
+            value /= 3.0;
+        }
+        for i in 0..nphases {
+            zmat.set(i, i, value);
+        }
+
+        if nphases == 3 {
+            // TODO(compat): the rotation is the truncated phasor
+            // (-0.5, -0.866025), conjugated to 1∠+120°. The clean fix uses the
+            // exact 120° rotation here and at its twin `util::CALPHA`, whose
+            // note gives the measurement that keeps it.
+            let calpha = Complex64::new(-0.5, -0.866025);
+            let calpha1 = calpha.conj();
+            let calpha2 = calpha1 * calpha1;
+            let mut value2 = calpha2 * self.z2 + calpha1 * self.z1 + self.z0;
+            let mut value1 = calpha2 * self.z1 + calpha1 * self.z2 + self.z0;
+            value1.im *= freq_multiplier;
+            value2.im *= freq_multiplier;
+            value1 /= 3.0;
+            value2 /= 3.0;
+            // Lower triangle.
+            zmat.set(1, 0, value1);
+            zmat.set(2, 0, value2);
+            zmat.set(2, 1, value1);
+            // Upper triangle.
+            zmat.set(0, 1, value2);
+            zmat.set(0, 2, value1);
+            zmat.set(1, 2, value2);
+        }
+        zmat
+    }
+
     /// The `R`, `X` and `Rp` writes of a matrix reactor's positive-sequence
     /// reduction, two or more phases. The value is the positive-sequence self
     /// term [`pos_seq_self_term`] of the matrix the element stamps:
@@ -148,7 +473,12 @@ impl Reactor {
             (0.0, x, rp)
         } else if n <= 3 {
             let mut y = self.series_zmatrix(1.0).unwrap_or_else(|| CMatrix::new(n));
-            Self::invert_series(&mut y, n);
+            if !Self::invert_series(&mut y, false) {
+                y.clear();
+                for i in 0..n {
+                    y.set(i, i, Complex64::new(EPSILON, 0.0));
+                }
+            }
             let y: Vec<Complex64> = (0..n * n).map(|k| y.get(k / n, k % n)).collect();
             let s = pos_seq_self_term(&y, n);
             let z1 = if s != Complex64::ZERO {
@@ -172,32 +502,87 @@ impl Reactor {
         out
     }
 
-    /// Invert the series impedance `zmat` in place into its admittance. On an
-    /// inversion error it becomes a tiny series conductance on the diagonal.
-    /// The solve refuses a series `rmatrix`/`xmatrix` pair that does not
-    /// invert at base frequency ([`Self::refusal`]), so the fallback is left to
-    /// a symmetrical-component matrix with a zero sequence impedance and to a
-    /// series matrix at another frequency (a GIC solve stamps `rmatrix` alone).
-    fn invert_series(zmat: &mut CMatrix, nphases: usize) {
-        if zmat.invert().is_err() {
-            zmat.clear();
-            for i in 0..nphases {
-                zmat.set(i, i, Complex64::new(EPSILON, 0.0));
-            }
+    /// Invert the series impedance `zmat` in place into its admittance, false
+    /// when it has none: `strict`, the test of the matrix form, refuses one
+    /// that cannot be told from a singular one ([`CMatrix::is_numerically_singular`]),
+    /// and either form one that does not invert to finite entries. The recalc
+    /// refuses such a matrix at base frequency ([`Self::matrix_refused_input`],
+    /// [`Self::sym_refused_input`]), so the Y build meets one at another
+    /// frequency, as a GIC solve that zeroes the reactance of a lossless one.
+    fn invert_series(zmat: &mut CMatrix, strict: bool) -> bool {
+        if strict && zmat.is_numerically_singular() {
+            return false;
         }
+        zmat.invert().is_ok()
+            && zmat
+                .values()
+                .iter()
+                .all(|z| z.re.is_finite() && z.im.is_finite())
     }
 
-    /// The first given matrix of the parallel form, `rmatrix` then `xmatrix`,
-    /// that does not invert. A matrix nobody gave stamps no branch.
-    fn singular_parallel_matrix(&self) -> Option<&'static str> {
+    /// Refuse the Y build of a series stamp with no admittance at the solve
+    /// frequency, as a lossless matrix at dc, a short the stamp cannot carry
+    /// (pinned by
+    /// `exec::tests::rating_refusals::a_typed_impedance_matrix_singular_within_its_rounding_is_refused`).
+    fn refuse_series_at_this_frequency(&mut self) {
+        let msg = self
+            .cd
+            .refusal_message("Reactor", &self.series_input_text(), "admittance");
+        self.cd.refuse_yprim(msg);
+    }
+
+    /// The inputs of the series stamp, as a refusal at the Y build names
+    /// them: both matrices of the matrix form, the resistance and reactance
+    /// inputs of the R + jX and kvar forms with the curves that scale them,
+    /// else the sequence impedances.
+    fn series_input_text(&self) -> String {
+        use crate::elements::pd::{input_text, sym_matrix_input_text};
         let n = self.cd.nphases;
-        [("rmatrix", &self.rmatrix), ("xmatrix", &self.xmatrix)]
+        let curves = || {
+            [
+                ("RCurve", &self.r_curve_name, self.r_curve.is_some()),
+                ("LCurve", &self.l_curve_name, self.l_curve.is_some()),
+            ]
             .into_iter()
-            .find(|(_, m)| {
-                m.as_ref()
-                    .is_some_and(|m| etk_invert(&mut m.clone(), n).is_err())
-            })
-            .map(|(prop, _)| prop)
+            .filter(|(_, _, held)| *held)
+            .map(|(prop, name, _)| format!(" {prop}={name}"))
+            .collect::<String>()
+        };
+        match (self.spec_type, &self.rmatrix, &self.xmatrix) {
+            (ReactorSpecType::Matrices, Some(rm), Some(xm)) => format!(
+                "{} {}",
+                sym_matrix_input_text("RMatrix", rm, n, 1.0),
+                sym_matrix_input_text("XMatrix", xm, n, 1.0)
+            ),
+            (ReactorSpecType::RplusJx, _, _) => {
+                let obj = &self.cd.obj;
+                let reactance = if obj.seq_mark(super::prop::LMH) > obj.seq_mark(super::prop::X) {
+                    input_text("LmH", self.l / 1.0e-3)
+                } else {
+                    input_text("X", self.z.im)
+                };
+                format!("{} {reactance}{}", input_text("R", self.z.re), curves())
+            }
+            (ReactorSpecType::Kvar, _, _) => format!(
+                "{} {} {}{}",
+                input_text("kvar", self.kvarrating),
+                input_text("kV", self.kvrating),
+                input_text("R", self.z.re),
+                curves()
+            ),
+            _ => self
+                .sym_inputs()
+                .iter()
+                .map(|(name, z)| {
+                    format!(
+                        "{name}=[{}, {}]",
+                        crate::util::float_to_str_ex(z.re),
+                        crate::util::float_to_str_ex(z.im)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+        }
     }
 
     /// The series-form impedance matrix `R + jX` at base frequency, when both
@@ -215,16 +600,17 @@ impl Reactor {
         Some(zmat)
     }
 
-    /// Why the solve refuses this reactor, if it does: a delta matrix or
+    /// Why the solve refuses this reactor, if it does: the input its last
+    /// recalc refused (a singular matrix among them, pinned by
+    /// `a_singular_series_matrix_refuses_the_solve` and
+    /// `a_singular_parallel_matrix_refuses_the_solve`), a delta matrix or
     /// symmetrical-component reactor of two or more phases has no defined
     /// stamp, a given matrix must be `nphases × nphases`, and the series matrix
-    /// form needs both matrices, whose impedance `R + jX` must invert (a
-    /// singular one has a current pattern that meets no impedance, and so no
-    /// admittance, pinned by `a_singular_series_matrix_refuses_the_solve`).
-    /// The parallel form stamps `R⁻¹` and `−X⁻¹`, so a given `rmatrix` or
-    /// `xmatrix` must invert for the same reason (pinned by
-    /// `a_singular_parallel_matrix_refuses_the_solve`).
+    /// form needs both matrices.
     fn refusal(&self) -> Option<String> {
+        if let Some(msg) = &self.cd.recalc_refusal {
+            return Some(msg.clone());
+        }
         let full = format!("Reactor.{}", self.cd.obj.name());
         let nphases = self.cd.nphases;
         let delta_multi = self.connection == 1 && nphases >= 2;
@@ -250,26 +636,12 @@ impl Reactor {
                     }
                 }
                 if self.is_parallel {
-                    return self.singular_parallel_matrix().map(|prop| {
-                        format!(
-                            "{full}: {prop} is singular, so the parallel reactor has no \
-                             admittance. Specify an {prop} that can be inverted. Aborting solution."
-                        )
-                    });
+                    return None;
                 }
                 let missing = match (&self.rmatrix, &self.xmatrix) {
                     (None, _) => "rmatrix",
                     (_, None) => "xmatrix",
-                    _ => {
-                        let z = self.series_zmatrix(1.0);
-                        return z.filter(|z| z.clone().invert().is_err()).map(|_| {
-                            format!(
-                                "{full}: the impedance rmatrix + j xmatrix is singular and has \
-                                 no admittance. Specify matrices that can be inverted. \
-                                 Aborting solution."
-                            )
-                        });
-                    }
+                    _ => return None,
                 };
                 Some(format!(
                     "{full}: {missing} is missing. A reactor given by matrices needs both \
@@ -282,9 +654,12 @@ impl Reactor {
 
     /// Invert the series impedance `zmat` ([`Self::invert_series`]) and stamp
     /// the admittance into the four quadrants of the two-terminal `work`
-    /// matrix. `zmat[i][j]` is `nphases²` row-major.
-    fn stamp_series(work: &mut CMatrix, zmat: &mut CMatrix, nphases: usize) {
-        Self::invert_series(zmat, nphases);
+    /// matrix, false with nothing stamped when it has none. `zmat[i][j]` is
+    /// `nphases²` row-major.
+    fn stamp_series(work: &mut CMatrix, zmat: &mut CMatrix, nphases: usize, strict: bool) -> bool {
+        if !Self::invert_series(zmat, strict) {
+            return false;
+        }
         // `StampBl::Direct` places the bottom-left block at `(i+n, j)`, NOT
         // `(j+n, i)` (Pascal `YPrimTemp[i + Fnphases, j] := -Value`,
         // `Reactor.pas:936`, the SpecType-3/4 stamp). For a **symmetric** series Y
@@ -293,6 +668,7 @@ impl Reactor {
         // `(j+n, i)`, corrupting the bottom-left YPrim block (invisible to a
         // balanced solve, wrong under unbalance). Pinned by `dump_reactor_symcomp`.
         work.stamp_two_terminal_block(nphases, StampBl::Direct, |i, j| zmat.get(i, j));
+        true
     }
 }
 
@@ -458,7 +834,18 @@ impl CktElement for Reactor {
                     Some(c) => self.l * c.get_y_value(yprim_freq),
                     None => self.l,
                 };
-                let mut value = Complex64::new(r_value, l_value * two_pi * yprim_freq).inv();
+                let mut value = if self.is_open() {
+                    Complex64::new(0.0, 0.0)
+                } else {
+                    Complex64::new(r_value, l_value * two_pi * yprim_freq).inv()
+                };
+                // A curve that zeroes the impedance at this frequency leaves
+                // a short the stamp cannot carry (pinned by
+                // `exec::tests::rating_refusals::a_reactor_curve_that_zeroes_its_impedance_refuses_it_at_that_frequency`).
+                if !(value.re.is_finite() && value.im.is_finite()) {
+                    self.refuse_series_at_this_frequency();
+                    return;
+                }
                 if self.rp_specified {
                     value += self.gp;
                 }
@@ -497,58 +884,18 @@ impl CktElement for Reactor {
                     let mut zmat = self
                         .series_zmatrix(freq_multiplier)
                         .expect("refusal checks both matrices");
-                    Self::stamp_series(&mut work, &mut zmat, nphases);
+                    if !Self::stamp_series(&mut work, &mut zmat, nphases, true) {
+                        self.refuse_series_at_this_frequency();
+                        return;
+                    }
                 }
             }
             ReactorSpecType::SymComponents => {
-                // Symmetrical-component Z's specified.
-                let mut zmat = CMatrix::new(nphases);
-                // Diagonal — all the same: `Z1` on one phase (pinned by
-                // `a_single_phase_z1_reactor_stamps_z1`), `(Z0 + Z1 + Z2) / 3`
-                // on more.
-                let mut value = if nphases == 1 {
-                    self.z1
-                } else {
-                    self.z2 + self.z1 + self.z0
-                };
-                value.im *= freq_multiplier;
-                if nphases > 1 {
-                    value /= 3.0;
+                let mut zmat = self.sym_zmatrix(freq_multiplier);
+                if !Self::stamp_series(&mut work, &mut zmat, nphases, false) {
+                    self.refuse_series_at_this_frequency();
+                    return;
                 }
-                for i in 0..nphases {
-                    zmat.set(i, i, value);
-                }
-
-                if nphases == 3 {
-                    // TODO(compat): Pascal `CALPHA` is the truncated literal
-                    // (-0.5, -0.866025) (DSSGlobals.pas:74), not the exact 1∠-120°.
-                    // `Calpha1 := cong(Calpha)` then flips it to 1∠+120° "to agree
-                    // with textbooks". The clean fix uses an exact 120° rotation.
-                    //
-                    // Escaped with the twin at `util::CALPHA`, measured in Stage
-                    // F.3z: the exact value (both sites) costs 33 of the 520
-                    // gated corpus cases and the `dump_reactor_symcomp` golden.
-                    // See that constant's note for the number and the reasoning.
-                    let calpha = Complex64::new(-0.5, -0.866025);
-                    let calpha1 = calpha.conj();
-                    let calpha2 = calpha1 * calpha1;
-                    let mut value2 = calpha2 * self.z2 + calpha1 * self.z1 + self.z0;
-                    let mut value1 = calpha2 * self.z1 + calpha1 * self.z2 + self.z0;
-                    value1.im *= freq_multiplier;
-                    value2.im *= freq_multiplier;
-                    value1 /= 3.0;
-                    value2 /= 3.0;
-                    // Lower triangle.
-                    zmat.set(1, 0, value1);
-                    zmat.set(2, 0, value2);
-                    zmat.set(2, 1, value1);
-                    // Upper triangle.
-                    zmat.set(0, 1, value2);
-                    zmat.set(0, 2, value1);
-                    zmat.set(1, 2, value2);
-                }
-
-                Self::stamp_series(&mut work, &mut zmat, nphases);
             }
         }
 

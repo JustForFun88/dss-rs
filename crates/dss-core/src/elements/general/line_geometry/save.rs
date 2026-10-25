@@ -39,7 +39,7 @@ impl LineGeometryObj {
         use prop::*;
 
         let generic = |out: &mut String, ip: usize| {
-            let val = cx.cls.get_value(self, ip, cx.enums);
+            let val = cx.cls.saved_value(self, ip, cx.enums);
             let s = val.trim();
             if !s.is_empty() {
                 out.push_str(&format!(
@@ -91,8 +91,15 @@ impl LineGeometryObj {
                 // its `get_value` is empty — skipping it drops a redundant clone
                 // directive, exactly as every other class's generic save does,
                 // since the real per-conductor props are emitted explicitly).
-                // A rating that is not set is omitted.
-                _ if cx.cls.holds_no_rating(self, ip) => {}
+                // A rating is written as typed and omitted when never typed.
+                _ if cx.cls.is_rating(ip) => {
+                    if let Some(v) = cx.cls.saved_rating(self, ip) {
+                        out.push(' ');
+                        out.push_str(cx.cls.property_name(ip));
+                        out.push('=');
+                        out.push_str(&check_for_blanks(&v));
+                    }
+                }
                 _ => generic(out, ip),
             }
             iprop = self.data().next_property_set(Some(ip));

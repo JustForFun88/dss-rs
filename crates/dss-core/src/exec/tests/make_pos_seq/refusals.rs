@@ -1032,8 +1032,10 @@ fn a_write_whose_recalc_the_class_refuses_names_the_write() {
     };
     let text = |idx: usize, value: &str| PosSeqAction::SetText(idx, value.to_string());
     let singular = || text(reactor::prop::RMATRIX, "1|1 1");
-    let refused = "was refused by the class: Error inverting R Matrix for \"rp\" - G is zeroed.";
-    let both = "were refused by the class: Error inverting R Matrix for \"rp\" - G is zeroed.";
+    let reason = "Reactor.rp: RMatrix=(1 |1 1 ) makes its admittance not a finite number, so it \
+                  is not built.";
+    let refused = format!("was refused by the class: {reason}");
+    let both = format!("were refused by the class: {reason}");
     for (what, actions, message, kept) in [
         (
             "single",

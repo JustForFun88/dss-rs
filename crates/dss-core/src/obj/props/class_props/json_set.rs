@@ -156,6 +156,26 @@ impl ClassProps {
             return;
         }
 
+        // A seasonal rating array carries its season count: an object whose
+        // `Seasons` was never set takes the array's length first, so every
+        // season comes back (`a_json_round_trip_keeps_a_typed_rating_that_is_not_set`).
+        let seasons = match jval {
+            Json::Arr(a)
+                if pd.ptype == PropType::RatingArray
+                    && !obj.data().prp_specified(pd.size_prop)
+                    && usize::try_from(obj.get_i32(pd.size_prop)).ok() != Some(a.len()) =>
+            {
+                Some(a.len())
+            }
+            _ => None,
+        };
+        if let Some(n) = seasons
+            && let Err(e) = self.edit_property(obj, pd.size_prop, &n.to_string(), eng)
+        {
+            eng.errors.push(e);
+            return;
+        }
+
         // Everything else: render to the string its parse path expects, then run
         // the ordinary property-applier VM (seq mark + side effects included).
         if let Some(s) = json_to_value_string(pd, jval)

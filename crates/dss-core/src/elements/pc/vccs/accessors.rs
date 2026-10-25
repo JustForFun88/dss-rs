@@ -52,6 +52,16 @@ impl CktElement for Vccs {
     /// source has `YPrim = 0`); the open-conductor pass adds the epsilon diagonal
     /// for any opened conductor.
     fn calc_yprim(&mut self, sys: &SysCtx) {
+        if self.cd.refuse_yprim_on_recalc() {
+            return;
+        }
+        if sys.is_dynamic_model
+            && let Some(input) = self.dynamics_curve_refused_input()
+        {
+            let msg = self.cd.refusal_message("VCCS", &input, "dynamic current");
+            self.cd.refuse_yprim(msg);
+            return;
+        }
         let yorder = self.cd.yorder;
         self.cd.yprim_freq = sys.frequency;
         // YPrim = 0 for an ideal current source; just leave it zeroed.

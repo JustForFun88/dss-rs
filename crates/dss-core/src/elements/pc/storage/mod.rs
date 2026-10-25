@@ -231,8 +231,12 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::integer("Phases").flags(PropFlags::NON_NEGATIVE | PropFlags::NON_ZERO),
         PropDef::bus("Bus1", 1).flags(PropFlags::REQUIRED),
         // Pascal `[Required, Units_kV, NonNegative]` (`Storage.pas:697`).
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::REQUIRED
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
         PropDef::mapped_string_enum("Conn", enums.connection),
         // `kW`: read returns `kW_out` (the field), write goes through Set_kW
         // (sets the state + %Discharge/%Charge). Pascal `[WriteByFunction, Units_kW]`
@@ -246,7 +250,8 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("PF")
             .flags(PropFlags::REQUIRED_IN_SPEC_SET | PropFlags::POWER_FACTOR_LIMITS),
         // Pascal `[Units_kVA]` (`Storage.pas:694`).
-        PropDef::double("kVA").flags(PropFlags::REPLACE_ZERO | PropFlags::UNITS_KVA),
+        PropDef::double("kVA")
+            .flags(PropFlags::REPLACE_ZERO | PropFlags::UNITS_KVA | PropFlags::FINITE_BASE),
         PropDef::double("%CutIn"),
         PropDef::double("%CutOut"),
         PropDef::object_ref_class("XYcurve", "EffCurve"),
@@ -316,7 +321,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Pascal `[Units_kV]` (`Storage.pas:716`), scale 1000.
         PropDef::double("kVDC")
             .scale(1000.0)
-            .flags(PropFlags::UNITS_KV),
+            .flags(PropFlags::UNITS_KV | PropFlags::FINITE_BASE),
         PropDef::double("Kp").scale(1.0 / 1000.0),
         PropDef::double("PITol").scale(1.0 / 100.0),
         PropDef::double("SafeVoltage"),

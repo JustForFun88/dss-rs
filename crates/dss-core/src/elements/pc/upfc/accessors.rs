@@ -41,6 +41,9 @@ impl CktElement for Upfc {
     /// admittance `inv(j·Xs·freqmult)` stamped as a 2-terminal series matrix (the
     /// `Z = j·Xs` series Z is diagonal, so its inverse is the per-element inverse).
     fn calc_yprim(&mut self, sys: &SysCtx) {
+        if self.cd.refuse_yprim_on_recalc() {
+            return;
+        }
         let nphases = self.cd.nphases;
         let yorder = self.cd.yorder;
 

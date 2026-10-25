@@ -289,14 +289,16 @@ impl AutoTrans {
         self.pct_imag = code.pct_imag(); // "Omission corrected 12-14-18"
         self.norm_max_hkva = code.norm_max_hkva();
         self.emerg_max_hkva = code.emerg_max_hkva();
+        self.hkva_overflow = [false; 2];
         self.ppm_float_factor = code.ppm_float_factor();
 
-        // `:2389-2393` — Yorder, the YPrim invalidation, the frequency-multiplier
-        // reset that forces `CalcY_Terminal` to rebuild, and the recalc.
+        // Yorder, the YPrim invalidation, the frequency-multiplier reset that
+        // forces the terminal Y to rebuild, and a recalc whose refusal the end
+        // of the edit logs.
         self.cd.yorder = self.cd.nconds * self.cd.nterms;
         self.cd.yprim_invalid = true;
         self.y_terminal_freqmult = 0.0;
-        self.recalc();
+        self.recalc_logging(false);
     }
 
     /// Pascal `TAutoTransObj.SetNumWindings`.

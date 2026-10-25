@@ -45,6 +45,7 @@ mod open_close;
 mod options_timing;
 mod pd_elements;
 mod pvsystem;
+mod rating_refusals;
 mod ratings;
 mod reduce;
 mod reliability;

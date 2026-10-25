@@ -81,17 +81,21 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         // Winding definition (active winding selected by `Wdg=`).
         PropDef::integer("Wdg"),
         PropDef::mapped_string_enum("Conn", enums.connection),
-        PropDef::double("kV")
-            .flags(PropFlags::NON_NEGATIVE | PropFlags::REQUIRED | PropFlags::UNITS_KV),
-        PropDef::double("kVA"),
+        PropDef::double("kV").flags(
+            PropFlags::NON_NEGATIVE
+                | PropFlags::REQUIRED
+                | PropFlags::UNITS_KV
+                | PropFlags::FINITE_BASE,
+        ),
+        PropDef::double("kVA").flags(PropFlags::FINITE_BASE),
         PropDef::double("Tap"),
         PropDef::double("%R").scale(pct),
         PropDef::double("RNeut").flags(PropFlags::UNITS_OHM),
         PropDef::double("XNeut").flags(PropFlags::UNITS_OHM),
         // General data (plural array forms write every winding).
         PropDef::enum_array_on_struct("Conns", enums.connection, WINDINGS),
-        PropDef::double_array_on_struct("kVs", WINDINGS),
-        PropDef::double_array_on_struct("kVAs", WINDINGS),
+        PropDef::double_array_on_struct("kVs", WINDINGS).flags(PropFlags::FINITE_BASE),
+        PropDef::double_array_on_struct("kVAs", WINDINGS).flags(PropFlags::FINITE_BASE),
         PropDef::double_array_on_struct("Taps", WINDINGS),
         PropDef::double("XHL").scale(pct).flags(PropFlags::NON_ZERO),
         PropDef::double("XHT").scale(pct).flags(PropFlags::NON_ZERO),
@@ -106,8 +110,10 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("HSRise").flags(PropFlags::UNITS_DEGC),
         PropDef::double("%LoadLoss"),
         PropDef::double("%NoLoadLoss"),
-        PropDef::double("NormHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
-        PropDef::double("EmergHkVA").flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA),
+        PropDef::double("NormHkVA")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA | PropFlags::FINITE_RATING),
+        PropDef::double("EmergHkVA")
+            .flags(PropFlags::DYNAMIC_DEFAULT | PropFlags::UNITS_KVA | PropFlags::FINITE_RATING),
         PropDef::double("MaxTap"),
         PropDef::double("MinTap"),
         PropDef::integer("NumTaps"),
@@ -121,7 +127,7 @@ pub fn class_props(enums: &EnumRegistry) -> ClassProps {
         PropDef::double("X23").scale(pct).flags(PropFlags::NON_ZERO),
         PropDef::double("RDCOhms"),
         PropDef::integer("Seasons").flags(PropFlags::SUPPRESS_JSON),
-        PropDef::double_array("Ratings", SEASONS),
+        PropDef::double_array("Ratings", SEASONS).flags(PropFlags::FINITE_RATING),
     ];
     debug_assert_eq!(defs.len(), NUM_PROPS - 1);
 

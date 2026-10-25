@@ -65,7 +65,6 @@ impl Line {
         self.spacing_specified = other.spacing_specified;
         self.line_wire_data.clone_from(&other.line_wire_data);
         self.fphase_choice = other.fphase_choice;
-        self.got_ratings_after_spacing_conds = other.got_ratings_after_spacing_conds;
         self.norm_amps = other.norm_amps;
         self.emerg_amps = other.emerg_amps;
         self.fault_rate = other.fault_rate;
@@ -73,6 +72,14 @@ impl Line {
         self.hrs_to_repair = other.hrs_to_repair;
         self.num_amp_ratings = other.num_amp_ratings;
         self.amp_ratings = other.amp_ratings.clone();
+        self.cd.obj.copy_typed_ratings_from(
+            &other.cd.obj,
+            &[
+                super::prop::NORMAMPS,
+                super::prop::EMERGAMPS,
+                super::prop::RATINGS,
+            ],
+        );
     }
 }
 
@@ -288,6 +295,7 @@ impl DssObject for Line {
                     && let Some(geom) = o.get::<LineGeometryObj>()
                 {
                     self.fetch_geometry_code(geom);
+                    self.conductors_edited = true;
                 }
             }
             super::prop::SPACING => {
@@ -720,6 +728,7 @@ impl DssObject for Line {
         // spacing and no conductors reads its default `r1` 0.058 (measured on
         // the r4133 DLL, 2026-08-29).
         if matches!(idx, SPACING | WIRES | CNCABLES | TSCABLES | CONDUCTORS) {
+            self.conductors_edited = true;
             let kept = idx == SPACING && self.fetch_line_spacing();
             let takes_spacing = if idx == SPACING {
                 kept && !self.spacing_specified && self.holds_every_phase_conductor()
@@ -737,25 +746,26 @@ impl DssObject for Line {
                 self.sym_components_model = false;
                 self.sym_components_changed = false;
                 self.kill_geometry_specified();
-                self.got_ratings_after_spacing_conds = false;
                 // A `conductors=` list with no phase conductor is taken as an
                 // overhead set.
                 if idx == CONDUCTORS && self.fphase_choice == ConductorChoice::Unknown {
                     self.fphase_choice = ConductorChoice::Overhead;
                 }
-                for p in [
-                    SEASONS, RATINGS, NORMAMPS, EMERGAMPS, R1, X1, R0, X0, C1, C0, B1, B0,
-                ] {
+                for p in [NORMAMPS, EMERGAMPS, R1, X1, R0, X0, C1, C0, B1, B0] {
                     self.cd.obj.clear_seq(p);
+                }
+                // The spacing definition takes effect here and replaces the
+                // scalar ratings, which the end of the edit derives. Seasonal
+                // ratings typed before it that the conductors did not replace
+                // stay typed and in the set chain.
+                self.cd.obj.clear_typed_rating(NORMAMPS);
+                self.cd.obj.clear_typed_rating(EMERGAMPS);
+                if self.cd.obj.typed_rating(RATINGS).is_none() {
+                    self.cd.obj.clear_seq(SEASONS);
+                    self.cd.obj.clear_seq(RATINGS);
                 }
             }
             self.cd.yprim_invalid = true;
-        }
-
-        // Pascal block 3 (Line.pas:781-785): ratings/amps specified *after* the
-        // spacing conductors must not be overwritten by `FMakeZFromSpacing`.
-        if matches!(idx, SEASONS | RATINGS | NORMAMPS | EMERGAMPS) {
-            self.got_ratings_after_spacing_conds = true;
         }
 
         // Pascal (Line.pas:772): a `rho=` while a geometry is attached pushes the
@@ -794,6 +804,16 @@ impl DssObject for Line {
         }
     }
 
-    /// Pascal `TLine.EndEdit`: Line does *not* call RecalcElementData here.
-    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {}
+    /// An edit that gave the spacing, a conductor list or a geometry ends by
+    /// deriving the ratings of a spacing Line ([`Line::derive_spacing_ratings`])
+    /// or of a geometry Line ([`Line::derive_geometry_ratings`]).
+    fn end_edit(&mut self, _sys: &crate::elements::traits::SysCtx) {
+        if std::mem::take(&mut self.conductors_edited) {
+            if self.spacing_specified {
+                self.derive_spacing_ratings();
+            } else if self.geometry_obj.is_some() {
+                self.derive_geometry_ratings();
+            }
+        }
+    }
 }

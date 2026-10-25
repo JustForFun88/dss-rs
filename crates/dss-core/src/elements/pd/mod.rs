@@ -23,8 +23,35 @@ pub use line::Line;
 pub use reactor::Reactor;
 pub use transformer::Transformer;
 
+pub(crate) use super::ckt::{array_input_text, input_text};
+
 /// The sentence that ends the solve's refusal of an element.
 pub(crate) const ABORTING_SOLUTION: &str = " Aborting solution.";
+
+/// `name=(a |b c )`, as `?` reads a symmetric matrix of `nphases` phases
+/// stored in units of `scale` (the Capacitor's microfarads), for the message
+/// of a refused recalc.
+pub(crate) fn sym_matrix_input_text(
+    name: &str,
+    vals: &[f64],
+    nphases: usize,
+    scale: f64,
+) -> String {
+    let order = crate::report::save::dump::held_matrix_order(nphases, vals.len());
+    let mut s = format!("{name}=(");
+    for i in 0..order {
+        if i > 0 {
+            s.push('|');
+        }
+        for v in &vals[i * order..=i * order + i] {
+            let v = if scale == 1.0 { *v } else { *v / scale };
+            s.push_str(&crate::util::float_to_str_ex(v));
+            s.push(' ');
+        }
+    }
+    s.push(')');
+    s
+}
 
 /// The solve's refusal of the element `full` when its matrix property `prop`
 /// holds `len` entries where its `nphases` phases need `nphases²`, as a

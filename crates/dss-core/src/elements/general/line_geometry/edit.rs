@@ -1,7 +1,7 @@
 //! The conductor-selection edit helpers: conductor (re)allocation, the
 //! line-constants engine swap, `spacing=` copy-in, the plural `wires=`,
 //! `cncables=` and `tscables=` fills,
-//! and the per-conductor ampacity defaulting.
+//! and the ratings derived from the phase conductors.
 
 use std::ops::Range;
 
@@ -10,7 +10,9 @@ use crate::obj::Rating;
 use crate::obj::base::{DssObject, ObjectRefArrayItem};
 use crate::support::line_constants::LineConstants;
 
-use super::{ConductorChoice, LineGeometryObj, UNIT_UNSET, UNITS_FT, prop};
+use super::{
+    ConductorChoice, LineGeometryObj, PhaseRating, UNIT_UNSET, UNITS_FT, phase_ratings, prop,
+};
 use crate::support::line_units::{LineUnits, POSITION_WORD_LIST};
 
 /// A fresh conductor table: the engine (none without conductors) and each
@@ -273,8 +275,7 @@ impl LineGeometryObj {
     }
 
     /// The `Conductors=` side effect: set each valid conductor's engine kind
-    /// (the selection is left alone) and default the geometry ratings from the
-    /// first valid conductor. An all-NIL list is rejected with #10103. Returns
+    /// (the selection is left alone). An all-NIL list is rejected with #10103. Returns
     /// `true` when at least one conductor was valid (the caller flags
     /// `data_changed`; Pascal `Exit`s before the `dataChanged` block on rejection).
     ///
@@ -284,79 +285,70 @@ impl LineGeometryObj {
     /// the all-`none` reject path stays live too (r4133 #303-AVs on that input —
     /// UB, not reproduced). Both are gated by the whitebox equivalence tests
     /// `tests::conductors_array_matches_mixed_capi015` /
-    /// `conductors_array_defaults_ratings_from_first_valid`, which drive the
+    /// `conductors_array_derives_ratings_from_the_phase_conductors`, which drive the
     /// resolved-ref entry point directly against the capi015 references.
     pub(super) fn apply_conductors(&mut self) -> bool {
         let n = self.fnconds.max(0) as usize;
-        let mut first_valid: Option<usize> = None;
+        let mut any_valid = false;
         for i in 0..n {
             let choice = match self.fwiredata.get(i).and_then(|o| o.as_ref()) {
                 Some(c) => conductor_choice_of(c),
                 None => continue, // an unset slot is skipped
             };
-            if first_valid.is_none() {
-                first_valid = Some(i);
-            }
+            any_valid = true;
             self.change_line_constants_type_at(Some(i), choice);
         }
-        match first_valid {
-            Some(i) => {
-                self.default_amps_from(i);
-                true
-            }
-            None => {
-                let name = self.data.name().to_string();
-                self.data.push_error(format!(
-                    "LineGeometry.{name}.Conductors: At least one valid conductor must be provided."
-                ));
-                false
-            }
+        if !any_valid {
+            let name = self.data.name().to_string();
+            self.data.push_error(format!(
+                "LineGeometry.{name}.Conductors: At least one valid conductor must be provided."
+            ));
         }
+        any_valid
     }
 
-    /// Pascal `wire`/`cncable`/`tscable` side effect (active conductor) and the
-    /// `wires`/`cncables`/`tscables` "traditional" branch (first conductor):
-    /// default this geometry's ratings from the conductor's once, when unset.
-    ///
-    /// A positive conductor rating fills a geometry rating that was never
-    /// typed, or a typed zero. A typed `none` or `-1` is kept
-    /// (`a_geometry_rating_typed_not_set_is_kept_against_a_later_conductor`).
-    pub(super) fn default_amps_from(&mut self, cond_index: usize) {
-        let Some((cnorm, cemerg, cnum, crat)) = self
-            .fwiredata
-            .get(cond_index)
-            .and_then(|o| o.as_ref())
-            .map(|o| o.amps_owned())
-        else {
-            return;
-        };
-        let fills = |conductor: Rating, geometry: Rating, typed: bool| {
-            matches!(conductor, Rating::Set(c) if c > 0.0)
-                && match geometry {
-                    Rating::NotSet => !typed,
-                    Rating::Set(g) => g == 0.0,
-                }
-        };
-        if fills(
-            cnorm,
-            self.norm_amps,
-            self.data.prp_specified(prop::NORMAMPS),
-        ) {
-            self.norm_amps = cnorm;
+    /// The `[normal, emergency]` readings of the phase conductors, the
+    /// conductors at positions `1..=min(nphases, nconds)` ([`phase_ratings`]).
+    pub fn phase_conductor_ratings(&self) -> [PhaseRating; 2] {
+        phase_ratings(&self.fwiredata, self.phase_positions())
+    }
+
+    /// The ratings nobody typed on this geometry, derived from its phase
+    /// conductors when an edit ends. A typed rating, `0` included, is never
+    /// filled. A normal or emergency rating not typed is the weakest phase
+    /// conductor's when every phase conductor has it and not set otherwise: the
+    /// readers compare the largest phase current with the one rating, so the
+    /// weakest phase conductor's is the largest single rating that never misses
+    /// an overload (`a_geometry_line_is_rated_by_its_weakest_phase_conductor`,
+    /// `a_geometry_rating_derives_over_its_phase_positions`). When neither
+    /// `Seasons` nor `Ratings` was typed, both follow the phase conductor at the
+    /// lowest position with more than one season, and hold one season not set
+    /// when there is none (`a_typed_geometry_rating_is_never_filled`).
+    pub(super) fn derive_ratings(&mut self) {
+        let [norm, emerg] = self.phase_conductor_ratings();
+        if self.data.typed_rating(prop::NORMAMPS).is_none() {
+            self.norm_amps = norm.rating();
         }
-        if fills(
-            cemerg,
-            self.emerg_amps,
-            self.data.prp_specified(prop::EMERGAMPS),
-        ) {
-            self.emerg_amps = cemerg;
+        if self.data.typed_rating(prop::EMERGAMPS).is_none() {
+            self.emerg_amps = emerg.rating();
         }
-        if cnum > 1 && self.num_amp_ratings == 1 {
-            self.num_amp_ratings = cnum;
-        }
-        if crat.len() > 1 && self.amp_ratings.len() == 1 {
-            let n = self.num_amp_ratings.max(0) as usize;
-            self.amp_ratings = crat.into_iter().take(n).collect();
+        if self.data.typed_rating(prop::RATINGS).is_none()
+            && !self.data.prp_specified(prop::SEASONS)
+        {
+            let seasonal = self
+                .fwiredata
+                .iter()
+                .take(self.phase_positions())
+                .flatten()
+                .map(ConductorObj::amps_owned)
+                .find(|(_, _, seasons, _)| *seasons > 1);
+            (self.num_amp_ratings, self.amp_ratings) = match seasonal {
+                Some((_, _, seasons, ratings)) => (
+                    seasons,
+                    ratings.into_iter().take(seasons.max(0) as usize).collect(),
+                ),
+                None => (1, vec![Rating::NotSet]),
+            };
         }
     }
 }

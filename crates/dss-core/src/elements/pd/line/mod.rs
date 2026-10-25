@@ -410,9 +410,11 @@ pub struct Line {
     pub spacing_specified: bool,
     /// Pascal `FPhaseChoice`: the conductor model in force for the spacing path.
     pub fphase_choice: ConductorChoice,
-    /// Pascal `gotRatingsAfterSpacingConds`: set once ratings/amps are specified
-    /// *after* the spacing conductors, so `FMakeZFromSpacing` won't overwrite them.
-    pub got_ratings_after_spacing_conds: bool,
+    /// Set by an edit that gave the spacing, a conductor list or a geometry,
+    /// so that the end of the edit derives the ratings nobody typed from the
+    /// phase conductors (`a_partly_rated_spacing_line_is_an_error_naming_the_conductor`,
+    /// `a_partly_rated_geometry_line_is_an_error_naming_the_conductor`).
+    pub conductors_edited: bool,
     /// Per-unit-length series impedance at base frequency.
     pub z: Option<CMatrix>,
     /// Per-unit-length shunt susceptance at base frequency.
@@ -495,7 +497,7 @@ impl Line {
             spacing_specified: false,
             line_wire_data: Vec::new(),
             fphase_choice: ConductorChoice::Unknown,
-            got_ratings_after_spacing_conds: false,
+            conductors_edited: false,
             z: None,
             yc: None,
             norm_amps: Rating::Set(400.0),
