@@ -176,7 +176,7 @@ impl CktElement for Load {
         // violation surface as DSS error 641 out of `TPCElement.GetCurrents`'
         // `TRY ... EXCEPT` (`PCElements/PCElement.pas:278`, `:304-306`) -- the
         // same `Curr` vector its `not Enabled` arm writes (`:298-300`).
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             curr.fill(Complex64::ZERO);
             return;
         }
@@ -219,13 +219,15 @@ impl Load {
     /// Pascal `TLoadObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);
-        self.connection = other.connection;
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = nconds_for_connection(self.connection, self.cd.nphases);
-            self.cd.set_nconds(n);
+        // The copy takes the phases and the connection of `other`, and the
+        // conductors they give.
+        if self.cd.nphases != other.cd.nphases || self.connection != other.connection {
             self.cd.yprim_invalid = true;
         }
+        self.connection = other.connection;
+        self.cd.nphases = other.cd.nphases;
+        let n = nconds_for_connection(self.connection, self.cd.nphases);
+        self.cd.set_shape(n, self.connection as i32);
         self.kv_load_base = other.kv_load_base;
         self.v_base = other.v_base;
         self.vlowpu = other.vlowpu;
@@ -494,7 +496,7 @@ impl DssObject for Load {
         match idx {
             CONN => {
                 let n = nconds_for_connection(self.connection, self.cd.nphases);
-                self.cd.set_nconds(n);
+                self.cd.set_shape(n, self.connection as i32);
                 self.update_vbase();
                 self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
                 self.cd.yprim_invalid = true;
@@ -503,7 +505,7 @@ impl DssObject for Load {
                 if idx == PHASES {
                     self.phase_curr = vec![Complex64::ZERO; self.cd.nphases];
                     let n = nconds_for_connection(self.connection, self.cd.nphases);
-                    self.cd.set_nconds(n); // force reallocation of terminal info
+                    self.cd.set_shape(n, self.connection as i32);
                 }
                 self.update_vbase();
             }

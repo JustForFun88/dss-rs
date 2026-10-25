@@ -341,8 +341,8 @@ fn a_disabled_element_keeps_the_node_order_it_was_given() {
 // re-runs it for enabled elements only — so a disabled element that grows
 // phases keeps a short `node_ref`, and a `node_order` written as
 // `node_ref[..yorder]` would panic in the public `snapshot_elements`.
-/// A stale, too-short `NodeRef` reports a full-length node order whose missing
-/// slots read as ground.
+/// A stale node map shorter than the element's conductors is no node map: the
+/// element reports a full-length node order whose every slot reads as ground.
 #[test]
 fn a_stale_node_ref_reads_the_missing_slots_as_ground() {
     let mut dss = Dss::new();
@@ -365,9 +365,8 @@ fn a_stale_node_ref_reads_the_missing_slots_as_ground() {
     let snaps = dss.snapshot_elements();
     let a = elem(&snaps, "Line.a");
     assert!(!a.enabled, "Line.a stays disabled");
-    // The two surviving slots keep the mapping they had (both buses' node 1);
-    // the four with no `NodeRef` entry read ground, like a `NodeRef` of 0.
-    assert_eq!(a.node_order, vec![1, 1, 0, 0, 0, 0]);
+    // A map of the one-phase shape names no node of the three-phase line.
+    assert_eq!(a.node_order, vec![0, 0, 0, 0, 0, 0]);
 }
 
 // Expected-value pin — the three counts are the element's own `NTerms`,

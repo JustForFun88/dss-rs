@@ -178,6 +178,25 @@ pub struct CktElementData {
     /// `TPDElement.Overload_UE`: degree of emergency-rating overload, set as a
     /// side effect of `excess_kva_emerg`.
     pub overload_ue: f64,
+    /// How the present dynamics entry treated this element.
+    pub dynamics_seed: DynamicsSeed,
+    /// A bus rebuild ran while the element was disabled and gave its buses other
+    /// nodes than its node map names, so the map belongs to an earlier bus list.
+    pub stale_node_map: bool,
+    /// The last power flow holds this element where it is now: enabled, on its
+    /// present node map, in its present shape and connection. Every power flow,
+    /// the direct solve and the no-load snapshot of `Calcvoltagebases` set it for
+    /// each enabled element with a node map. Creating, enabling, re-phasing or
+    /// reconnecting the element clears it, and so does a bus rebuild that gives
+    /// it another node map. The dynamics entry seeds only such an element.
+    pub in_power_flow: bool,
+    /// A bus rebuild gave the element another node map than the last power flow
+    /// solved it on, and nothing else has taken it out of that power flow since,
+    /// so the dynamics refusal names the rebuild as the cause.
+    pub renumbered: bool,
+    /// The phase count and the connection ordinal the terminals are allocated
+    /// for ([`Self::set_shape`]).
+    shape: (usize, i32),
 
     // --- Reliability accumulators (Pascal `TPDElement` l.32-48), written by
     // --- the EnergyMeter reliability sweep (`CalcReliabilityIndices`). Inert
@@ -206,6 +225,23 @@ pub struct CktElementData {
     /// `exec::tests::reliability::section_device_type_is_the_live_ocp_scan_not_the_registration_latch`.
     /// Retiring this field is A-1's tail; it is read only by tests today.
     pub ocp_device_type: OcpDeviceType,
+}
+
+/// How the present dynamics entry treated an element.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DynamicsSeed {
+    /// Not seeded by the present entry (disabled there, or created or enabled
+    /// after it).
+    #[default]
+    Unseeded,
+    /// Enabled at the entry without a model to integrate, so the entry seeded,
+    /// with this phase count, only the state a direct solve reads.
+    NoModel(usize),
+    /// Enabled at the entry but not part of the last solved power flow in its
+    /// present shape, so the entry had no operating point to seed it from.
+    OutsidePowerFlow,
+    /// Seeded by the present entry with this phase count.
+    Seeded(usize),
 }
 
 /// Pascal `GetOCPDeviceType` (`Utilities.pas:1996-2018`) — which class of
@@ -254,7 +290,7 @@ impl OcpDeviceType {
 
 /// The first `min(nphases, 3)` conductors of one terminal — the "phase window"
 /// the symmetrical-component exports/shows iterate ([`CktElementData::term_phases`]).
-/// Yields `(Iterminal, NodeRef)` per phase in conductor order.
+/// Yields the terminal current and the node of each phase in conductor order.
 pub struct Phases<'a> {
     curr: &'a [Complex64],
     nodes: &'a [usize],
@@ -262,12 +298,13 @@ pub struct Phases<'a> {
 }
 
 impl Phases<'_> {
-    /// `(Iterminal, NodeRef)` for the first `min(nphases, 3)` phases, in order.
+    /// The terminal current and the node of each of the first
+    /// `min(nphases, 3)` phases, in order, node 0 for a phase without a node.
     pub fn iter(&self) -> impl Iterator<Item = (Complex64, usize)> + '_ {
         self.curr[..self.n]
             .iter()
             .copied()
-            .zip(self.nodes[..self.n].iter().copied())
+            .zip((0..self.n).map(|i| self.nodes.get(i).copied().unwrap_or(0)))
     }
 }
 
@@ -395,6 +432,11 @@ impl CktElementData {
             branch_total_customers: 0,
             overload_een: 0.0,
             overload_ue: 0.0,
+            dynamics_seed: DynamicsSeed::Unseeded,
+            stale_node_map: false,
+            in_power_flow: false,
+            renumbered: false,
+            shape: (3, 0),
             branch_flt_rate: 0.0,
             accumulated_br_flt_rate: 0.0,
             accumulated_miles_downstream: 0.0,
@@ -422,14 +464,32 @@ impl CktElementData {
             }
         }
 
-        self.terminals = (0..value).map(|_| Terminal::init(self.nconds)).collect();
-        self.terminals_checked = vec![false; value];
-
         self.nterms = value;
+        self.reallocate_terminals();
         self.yorder = self.nterms * self.nconds;
         self.vterminal.resize(self.yorder, Complex64::ZERO);
         self.iterminal.resize(self.yorder, Complex64::ZERO);
         self.complex_buffer.resize(self.yorder, Complex64::ZERO);
+    }
+
+    /// Allocate fresh terminals for the present terminal and conductor counts:
+    /// no terminal names a bus, so the node map no longer fits
+    /// ([`Self::is_mapped`]) until a bus rebuild maps the element again, and the
+    /// element is outside the last power flow ([`Self::in_power_flow`]).
+    fn reallocate_terminals(&mut self) {
+        self.terminals = (0..self.nterms)
+            .map(|_| Terminal::init(self.nconds))
+            .collect();
+        self.terminals_checked = vec![false; self.nterms];
+        self.shape.0 = self.nphases;
+        self.leave_power_flow();
+    }
+
+    /// Take the element out of the last power flow ([`Self::in_power_flow`]) for
+    /// a cause other than a bus rebuild.
+    fn leave_power_flow(&mut self) {
+        self.in_power_flow = false;
+        self.renumbered = false;
     }
 
     /// Sets the conductor count. A change flags the bus names for
@@ -451,19 +511,90 @@ impl CktElementData {
         self.set_nterms(nterms);
     }
 
-    /// Pascal `Set_Enabled`: a change forces rebuilding of bus lists and Y.
+    /// Set the conductor count `nconds` that the present phase count and the
+    /// connection ordinal `connection` give an element of a class with a `conn`
+    /// property. A change of the phase count or the connection re-shapes the
+    /// terminals as a change of the conductor count does, also where the count
+    /// stays: the node map no longer fits ([`Self::drop_unfit_node_map`]) and the
+    /// element leaves the last power flow
+    /// (`a_machine_reshaped_on_its_conductors_is_outside_the_run`).
+    pub fn set_shape(&mut self, nconds: usize, connection: i32) {
+        if nconds == 0 {
+            return;
+        }
+        let reshaped = (self.nphases, connection) != self.shape;
+        self.shape.1 = connection;
+        if nconds != self.nconds {
+            self.set_nconds(nconds);
+        } else if reshaped {
+            self.reallocate_terminals();
+        }
+    }
+
+    /// Enable or disable the element. A change forces rebuilding of bus lists
+    /// and Y, and leaves the element without a dynamic state of the present run
+    /// and outside the last power flow ([`Self::in_power_flow`]). An element
+    /// enabled after a bus rebuild that left it out keeps its node map when that
+    /// rebuild gave its buses the nodes the map names and the map still has the
+    /// element's shape, and drops it otherwise, so until the next rebuild it
+    /// reads as one created after the last
+    /// (`readers_of_an_element_enabled_after_a_bus_rebuild`,
+    /// `readers_of_an_element_reshaped_since_its_map`).
     pub fn set_enabled(&mut self, value: bool) {
         if value == self.enabled {
             return;
         }
         self.enabled = value;
         self.signal_bus_name_redefined = true;
+        self.dynamics_seed = DynamicsSeed::Unseeded;
+        self.leave_power_flow();
+        if value && !self.is_mapped() {
+            self.drop_node_map();
+        }
     }
 
-    /// Pascal `SetBus` (1-based terminal).
+    /// Drop the node map: no node for any conductor, no bus for any terminal,
+    /// and zero terminal voltages and currents.
+    fn drop_node_map(&mut self) {
+        self.node_ref.clear();
+        for t in &mut self.terminals {
+            t.bus_ref = None;
+            t.term_node_ref.fill(0);
+        }
+        self.vterminal.fill(Complex64::ZERO);
+        self.iterminal.fill(Complex64::ZERO);
+        self.stale_node_map = false;
+    }
+
+    /// Drop the node map of an enabled element that no longer has the shape the
+    /// map was built for (a `like=`, `phases=` or `conn=` edit since the last
+    /// bus rebuild), so until the next rebuild, which the drop requests, it reads
+    /// as one created after it.
+    pub fn drop_unfit_node_map(&mut self) {
+        if self.enabled && !self.node_ref.is_empty() && !self.is_mapped() {
+            self.drop_node_map();
+            self.signal_bus_name_redefined = true;
+        }
+    }
+
+    /// Whether the present dynamics entry seeded this element with its present
+    /// phase count, with or without a model to integrate.
+    pub fn dynamics_seeded(&self) -> bool {
+        matches!(
+            self.dynamics_seed,
+            DynamicsSeed::Seeded(n) | DynamicsSeed::NoModel(n) if n == self.nphases
+        )
+    }
+
+    /// Name the bus of terminal `i` (1-based). A bus other than the one named
+    /// before takes the element out of the last power flow.
     pub fn set_bus(&mut self, i: usize, s: &str) {
         if i >= 1 && i <= self.nterms {
-            self.bus_names[i - 1] = s.to_ascii_lowercase();
+            let bus = s.to_ascii_lowercase();
+            if self.bus_names[i - 1] != bus {
+                self.leave_power_flow();
+            }
+            self.bus_names[i - 1] = bus;
             self.signal_bus_name_redefined = true;
         }
         // else: Pascal DoSimpleMsg 7541; the executive records that
@@ -485,6 +616,7 @@ impl CktElementData {
         // Convert the 1-based terminal boundary value once; the offset math and
         // terminal record below are 0-based.
         let t = iterm - 1;
+        self.stale_node_map = false;
         self.node_ref.resize(self.yorder, 0);
         let offset = t * self.nconds;
         self.node_ref[offset..offset + self.nconds].copy_from_slice(&node_ref_array[..self.nconds]);
@@ -495,10 +627,12 @@ impl CktElementData {
         self.complex_buffer.resize(self.yorder, Complex64::ZERO);
     }
 
-    /// Pascal `ComputeVterminal`: `Vterminal[i] = NodeV[NodeRef[i]]`
-    /// (`NodeV[0]` is the always-zero ground slot).
+    /// The terminal voltage of each conductor from the node voltages (node 0 is
+    /// the always-zero ground slot). An element without a node map
+    /// ([`Self::is_mapped`]) reads zero at every conductor.
     pub fn compute_vterminal(&mut self, node_v: &[Complex64]) {
-        if self.node_ref.is_empty() {
+        if !self.is_mapped() {
+            self.vterminal.fill(Complex64::ZERO);
             return;
         }
         for i in 0..self.yorder {
@@ -542,20 +676,52 @@ impl CktElementData {
         self.iterminal.chunks_exact(self.nconds)
     }
 
-    /// Global node-reference slice of terminal `t` (0-based) into `node_ref`
-    /// (requires `SetNodeRef` to have populated `node_ref`).
+    /// Global node-reference slice of terminal `t` (0-based) into `node_ref`,
+    /// for an element with a node map ([`Self::is_mapped`]) only.
     pub fn term_nodes(&self, t: usize) -> &[usize] {
         let base = t * self.nconds;
         &self.node_ref[base..base + self.nconds]
     }
 
+    /// Whether the node map belongs to the present bus list and shape: a node for
+    /// every conductor, a bus for every terminal, and no bus rebuild since it was
+    /// built that gave the element other nodes. An element created after the
+    /// last bus rebuild, re-phased or re-connected since, or enabled with its
+    /// stale map dropped has none, and every reader reads it as connected to no
+    /// node. An element without conductors connects to no node, so it has no map
+    /// either, and `Dump` writes its node map as `nil`.
+    pub fn is_mapped(&self) -> bool {
+        self.yorder > 0
+            && !self.stale_node_map
+            && self.node_ref.len() == self.yorder
+            && self.terminals.iter().all(|t| t.bus_ref.is_some())
+    }
+
+    /// The global node of conductor slot `k` (terminal-major), or the ground
+    /// node 0 where the element has no node map: a reader sees such a conductor
+    /// at zero volts with no node number.
+    pub fn node_or_ground(&self, k: usize) -> usize {
+        if self.is_mapped() {
+            self.node_ref.get(k).copied().unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
     /// The symmetrical-component "phase window" of terminal `t` (0-based): the
     /// first `min(nphases, 3)` conductors' terminal current and global node
-    /// reference — the walk the seq-quantity exports/shows share.
+    /// reference — the walk the seq-quantity exports/shows share. A conductor
+    /// without a node reads at the ground node 0.
     pub fn term_phases(&self, t: usize) -> Phases<'_> {
+        let base = t * self.nconds;
+        let nodes = if self.is_mapped() {
+            self.node_ref.get(base..base + self.nconds).unwrap_or(&[])
+        } else {
+            &[]
+        };
         Phases {
             curr: self.term_i(t),
-            nodes: self.term_nodes(t),
+            nodes,
             n: self.nphases.min(3),
         }
     }
@@ -737,12 +903,13 @@ impl CktElementData {
         self.yprim = whole;
     }
 
-    /// Pascal `TDSSCktElement.MakeLike` (`inherited MakeLike` for elements):
-    /// copies the base frequency and re-enables the target.
+    /// `like=` for every circuit element: copies the property sequence and the
+    /// base frequency and enables the target through [`Self::set_enabled`], as
+    /// `Enable` does (`like_enables_a_disabled_machine_as_enable_does`).
     pub fn make_like_base(&mut self, other: &CktElementData) {
         self.obj.copy_prp_sequence_from(&other.obj);
         self.base_frequency = other.base_frequency;
-        self.enabled = true;
+        self.set_enabled(true);
     }
 
     /// Pascal `TDSSCktElement.MakePosSequence` (`CktElement.pas:1120-1132`): for

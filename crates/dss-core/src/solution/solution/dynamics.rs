@@ -1,29 +1,39 @@
-//! The dynamics solve mode: `SolveDynamic` (`SolutionAlgs.pas` l.333), the
-//! predictor/corrector step loop over `DynaVars.h`, `IntegratePCStates`
-//! (`SolutionAlgs.pas` l.321) and `calcInitialMachineStates` (`Solution.pas`
-//! l.2156, the dynamics-entry machine-state init).
-//!
-//! Scope (WP7.7 step 1): the solve-loop driver + the dynamics-entry machine-state
-//! init hook. The per-element state machinery (`InitStateVars` /
-//! `IntegrateStates` / the dynamics current injection) is the no-op
-//! `CktElement` trait default here; Generator / Storage / PVSystem / IndMach012
-//! fill it in WP7.7 steps 2–3, at which point this loop drives real dynamics.
+//! The dynamics solve mode: the entry that seeds the dynamic states from the
+//! last power flow, the predictor/corrector step loop over the step size `h`,
+//! the integration of the states, and the refusal of an element that has no
+//! state in the present run (the dynamics step, the FaultStudy and MonteFault
+//! solves and the step-solution commands share it).
 
 use crate::circuit::Circuit;
+use crate::elements::ckt::DynamicsSeed;
 use crate::support::dynamics::IterationFlag;
 
 use super::power_flow::solve_snap;
 use super::time_series::end_of_time_step_cleanup;
-use super::{SolveEnv, SolveResult, sys_ctx};
+use super::{SolveEnv, SolveMode, SolveResult, sys_ctx};
 
-/// Pascal `calcInitialMachineStates` (`Solution.pas` l.2156): set the state
-/// variables for every enabled PC element (machines and inverters). Called when
-/// entering dynamics mode from a solved, non-dynamic circuit (the
-/// `OK_for_Dynamics` success path — the executive `Set mode=` handler, mirroring
-/// the harmonics `InitializeForHarmonics` entry). PC classes without state
-/// variables do nothing (the base `TPCElement.InitStateVars` is a no-op).
+/// Seed the dynamic states at the entry into a dynamics-model mode (Dynamic,
+/// FaultStudy, MonteFault) from a solved circuit, and record on every PC
+/// element how the entry treated it ([`DynamicsSeed`]).
+///
+/// The entry seeds every enabled element the last power flow held in its
+/// present shape and connection ([`CktElementData::in_power_flow`]) and records
+/// its phase count. An element without a model to integrate
+/// ([`CktElement::undefined_dynamics_model`]) is seeded with what a direct
+/// solve reads and marked [`DynamicsSeed::NoModel`]: it takes part in a fault
+/// study, and the integrating dynamics solve refuses it. The entry seeds nothing
+/// of an element that power flow did not hold, created, enabled, re-phased or
+/// given another bus after it, nor of one whose map does not fit that power
+/// flow, marked [`DynamicsSeed::OutsidePowerFlow`]: it is not in the run, and
+/// the first solve refuses it ([`refusal_of_an_element_outside_the_run`]). A
+/// node map kept for the readers is no membership: an element enabled again on
+/// the nodes it had is outside the run until a power flow solves with it.
+///
+/// [`CktElement::undefined_dynamics_model`]: crate::elements::traits::CktElement::undefined_dynamics_model
+/// [`CktElementData::in_power_flow`]: crate::elements::ckt::CktElementData::in_power_flow
 pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
+    let solved_nodes = ckt.solution.node_v.len();
     // `env.store` is disjoint from `ckt`, so the loop reads `node_v` straight
     // out of the solution — no per-entry copy of the voltage vector.
     // Pascal `TWindGenObj.InitStateVars` (and the classic machines) can
@@ -36,12 +46,30 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
     let mut errs = crate::diag::ErrorLog::new();
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
-        if elem.cd().enabled {
-            elem.init_state_vars(&sys, &ckt.solution.node_v);
-            errs.extend(elem.cd_mut().obj.take_errors());
-            if elem.cd_mut().obj.take_abort() {
-                aborted = true;
+        elem.cd_mut().dynamics_seed = DynamicsSeed::Unseeded;
+        if !elem.cd().enabled {
+            continue;
+        }
+        let nphases = elem.cd().nphases;
+        let mut seed = DynamicsSeed::Seeded(nphases);
+        if elem.has_dynamic_state() {
+            let cd = elem.cd();
+            if !cd.in_power_flow
+                || cd.node_ref.len() != cd.yorder
+                || cd.node_ref.iter().any(|&n| n >= solved_nodes)
+            {
+                elem.cd_mut().dynamics_seed = DynamicsSeed::OutsidePowerFlow;
+                continue;
             }
+            if elem.undefined_dynamics_model().is_some() {
+                seed = DynamicsSeed::NoModel(nphases);
+            }
+        }
+        elem.cd_mut().dynamics_seed = seed;
+        elem.init_state_vars(&sys, &ckt.solution.node_v);
+        errs.extend(elem.cd_mut().obj.take_errors());
+        if elem.cd_mut().obj.take_abort() {
+            aborted = true;
         }
     }
     env.errors.extend(errs);
@@ -62,20 +90,106 @@ pub(crate) fn calc_initial_machine_states(ckt: &mut Circuit, env: &mut SolveEnv)
     ckt.solution.system_y_changed = true;
 }
 
-/// Pascal `TSolutionAlgs.IntegratePCStates` (`SolutionAlgs.pas` l.321):
-/// integrate the dynamic states of every PC element by one (half-)step. Only PC
-/// elements can have dynamic states; the base `TPCElement.IntegrateStates`
-/// default does nothing, so static elements (loads, sources) are unaffected.
-/// Unlike `calcInitialMachineStates`, the Pascal loop does **not** test
-/// `Enabled` — it walks the full `PCElements` list.
+/// Integrate the dynamic states of every PC element in the present run
+/// ([`CktElement::in_dynamics_run`]) by one predictor or corrector half-step. A
+/// disabled element is out of the model and keeps its states untouched.
+///
+/// [`CktElement::in_dynamics_run`]: crate::elements::traits::CktElement::in_dynamics_run
 fn integrate_pc_states(ckt: &mut Circuit, env: &mut SolveEnv) {
     let sys = sys_ctx(ckt);
     // `env.store` is disjoint from `ckt`: borrow `node_v` in place (a full copy
     // of the voltage vector per half-step otherwise).
     for &r in &ckt.pc_elements {
         let elem = env.store.ckt_elem_mut(r);
-        elem.integrate_states(&sys, &ckt.solution.node_v);
+        if elem.in_dynamics_run() {
+            elem.integrate_states(&sys, &ckt.solution.node_v);
+        }
     }
+}
+
+/// The word the user writes in `Set mode=` for a dynamics-model mode, `None`
+/// for every other mode.
+pub(crate) fn dynamics_mode_word(mode: SolveMode) -> Option<&'static str> {
+    match mode {
+        SolveMode::Dynamic => Some("dynamic"),
+        SolveMode::FaultStudy => Some("faultstudy"),
+        SolveMode::MonteFault => Some("mf"),
+        _ => None,
+    }
+}
+
+/// Why a solve in a dynamics-model mode cannot run: the first enabled PC
+/// element, in list order, that has dynamic state but no state in the present
+/// run. An `integrating` solve (the dynamics step) also refuses an element
+/// without a model to integrate, one that cannot integrate the present step
+/// ([`CktElement::step_refusal`]) and one whose linked `DynamicExp` leaves its
+/// integration ill-defined, none of which a direct solve reads. `None` when
+/// every enabled element can take part. A disabled element is out of the
+/// model and never answers. `mode_word` is [`dynamics_mode_word`] of the
+/// present mode.
+///
+/// [`CktElement::step_refusal`]: crate::elements::traits::CktElement::step_refusal
+pub(crate) fn refusal_of_an_element_outside_the_run(
+    ckt: &Circuit,
+    env: &SolveEnv,
+    mode_word: &str,
+    integrating: bool,
+) -> Option<String> {
+    for &r in &ckt.pc_elements {
+        let elem = env.store.ckt_elem(r);
+        let cd = elem.cd();
+        if !cd.enabled {
+            continue;
+        }
+        if elem.has_dynamic_state() {
+            if integrating && let Some(msg) = elem.undefined_dynamics_model() {
+                return Some(msg);
+            }
+            let name = format!("{}.{}", r.class_name(), cd.obj.name());
+            let remedy = format!("Run Set mode=snap, Solve and Set mode={mode_word}");
+            match cd.dynamics_seed {
+                DynamicsSeed::Unseeded => {
+                    return Some(format!(
+                        "{name} joined after Set mode={mode_word} and has no initial state. \
+                         {remedy} to start a new run that includes it."
+                    ));
+                }
+                DynamicsSeed::OutsidePowerFlow if cd.renumbered => {
+                    return Some(format!(
+                        "{name} was renumbered by a bus rebuild since the last power flow and \
+                         has no initial state. {remedy} to start a new run that includes it."
+                    ));
+                }
+                DynamicsSeed::OutsidePowerFlow => {
+                    return Some(format!(
+                        "{name} was created, enabled, re-phased or reconnected after the last \
+                         Solve before Set mode={mode_word} and has no initial state. {remedy} \
+                         to start a new run that includes it."
+                    ));
+                }
+                DynamicsSeed::Seeded(n) | DynamicsSeed::NoModel(n) if n != cd.nphases => {
+                    return Some(format!(
+                        "{name} changed its phase count after Set mode={mode_word} and has no \
+                         initial state for it. {remedy} to start a new run with it."
+                    ));
+                }
+                DynamicsSeed::NoModel(_) if integrating => {
+                    return Some(format!(
+                        "{name} had no dynamics model at Set mode={mode_word} and has no \
+                         initial state. {remedy} to start a new run that includes it."
+                    ));
+                }
+                DynamicsSeed::Seeded(_) | DynamicsSeed::NoModel(_) => {}
+            }
+            if integrating && let Some(msg) = elem.step_refusal(ckt.solution.h) {
+                return Some(msg);
+            }
+        }
+        if integrating && let Some(msg) = elem.dynamics_refusal() {
+            return Some(msg);
+        }
+    }
+    None
 }
 
 /// Pascal `TSolutionAlgs.SolveDynamic` (`SolutionAlgs.pas` l.333): the
@@ -99,18 +213,21 @@ pub(super) fn solve_dynamic(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResul
     result
 }
 
-/// The `SolveDynamic` stepping loop (the Pascal `try` body).
+/// The dynamics stepping loop. Each step first refuses an element without a
+/// state in the run ([`refusal_of_an_element_outside_the_run`]), then advances
+/// the clock, integrates and solves (predictor, corrector), samples the
+/// monitors and runs the end-of-step cleanup.
 fn solve_dynamic_body(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
     for _ in 1..=ckt.solution.number_of_times {
         if ckt.solution.solution_abort {
             continue;
         }
-        // An element whose states cannot be integrated stops the solve before
-        // the step integrates anything (`CktElement::dynamics_refusal`).
-        for &r in &ckt.pc_elements {
-            if let Some(msg) = env.store.ckt_elem_mut(r).dynamics_refusal() {
-                return Err(msg);
-            }
+        // An element without a state in the run stops the solve before the
+        // step integrates anything.
+        if let Some(msg) = dynamics_mode_word(ckt.solution.mode)
+            .and_then(|word| refusal_of_an_element_outside_the_run(ckt, env, word, true))
+        {
+            return Err(msg);
         }
         ckt.solution.increment_time();
         let dbl_hour = ckt.solution.dbl_hour;

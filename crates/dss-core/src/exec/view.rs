@@ -1570,7 +1570,7 @@ impl Dss {
             // `PCElements/Storage.pas:2874`) — part of this reader's footprint,
             // which the Storage trace comparison pins
             // (`tests/corpus_gate/scheduler.rs::TRACE_READBACK_RECORDS`).
-            if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
+            if elem.cd().enabled && elem.cd().is_mapped() {
                 elem.refresh_iterminal(&sys, &node_v);
                 let cd = elem.cd();
                 // Terminal-major / conductor-minor flat layout with
@@ -1621,7 +1621,7 @@ impl Dss {
             // Currents: the element's own `GetCurrents` (the oracle's
             // scratch-buffer `CktElement.Currents`), overwriting the `Iterminal`
             // cache after Powers/Losses.
-            if elem.cd().enabled && !elem.cd().node_ref.is_empty() {
+            if elem.cd().enabled && elem.cd().is_mapped() {
                 elem.refresh_iterminal(&sys, &node_v);
                 let cd = elem.cd();
                 currents.copy_from_slice(&cd.iterminal[..yorder]);
@@ -1694,7 +1694,7 @@ impl Dss {
             } else {
                 (0..yorder)
                     .map(|i| {
-                        let n = cd.node_ref.get(i).copied().unwrap_or(0);
+                        let n = cd.node_or_ground(i);
                         c_to_polar_deg(
                             node_v
                                 .get(n)
@@ -1878,7 +1878,7 @@ impl Dss {
             } else {
                 (0..yorder)
                     .map(|i| {
-                        let n = cd.node_ref.get(i).copied().unwrap_or(0);
+                        let n = cd.node_or_ground(i);
                         ckt.map_node_to_bus.get(n).map_or(0, |m| m.node_num)
                     })
                     .collect()
@@ -2000,7 +2000,7 @@ impl Dss {
                     let elem = class.arena.try_ckt_elem_mut(oi)?;
                     let n = elem.num_variables();
                     let mut states = vec![0.0; n];
-                    elem.get_all_variables(&sys, &node_v, &mut states);
+                    elem.read_variables(&sys, &node_v, &mut states);
                     return Some(states);
                 }
             }

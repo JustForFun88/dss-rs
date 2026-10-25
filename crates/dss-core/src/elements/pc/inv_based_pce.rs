@@ -315,6 +315,24 @@ impl InvDynamicVars {
         }
     }
 
+    /// Write the three settings of this block into `states`, the block
+    /// starting at the 0-based slot `first`: the stored `Rated VDC` and the
+    /// given `Series L` and `Max. Amps (phase)`. A slot past `states` is
+    /// skipped and every other slot is left as it is.
+    pub fn write_setting_variables(
+        &self,
+        states: &mut [f64],
+        first: usize,
+        ls: f64,
+        i_max_p_phase: f64,
+    ) {
+        for (offset, value) in [(4, self.rated_vdc), (7, ls), (8, i_max_p_phase)] {
+            if let Some(s) = states.get_mut(first + offset) {
+                *s = value;
+            }
+        }
+    }
+
     /// Pascal `TInvDynamicVars.Get_InvDynName` (l.140).
     pub fn get_inv_dyn_name(var_idx: usize) -> &'static str {
         match var_idx {
@@ -631,6 +649,22 @@ impl InvBasedPceData {
             first_sample_after_reset: true,
             dyneq: DynEqPceData::new(),
         }
+    }
+
+    /// One PI controller per phase, each without memory and tuned with the
+    /// present `kp`. The dynamics seed calls it at every entry, so a new run
+    /// never starts from the controller error an earlier run left.
+    pub fn fresh_pi_controllers(&mut self, nphases: usize) {
+        let kp = self.dyn_vars.kp;
+        self.pi_ctrl = (0..nphases)
+            .map(|_| {
+                let mut pi = PiCtrl::new();
+                pi.kp = kp;
+                pi.k_num = 0.9502;
+                pi.k_den = 0.04979;
+                pi
+            })
+            .collect();
     }
 
     /// Pascal `TInvBasedPCE.Get_Presentkvar`: `Qnominalperphase * 0.001 *

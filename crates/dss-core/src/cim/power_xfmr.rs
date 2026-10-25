@@ -658,7 +658,7 @@ pub(crate) fn write_transformers(
             let Some(au) = classes[r.class_ord()].arena.get::<AutoTrans>(r.index()) else {
                 continue;
             };
-            if !au.cd.enabled {
+            if !au.cd.enabled || !au.cd.is_mapped() {
                 continue;
             }
             let nw = au.num_windings().max(0) as usize;
@@ -703,7 +703,7 @@ pub(crate) fn write_transformers(
             let Some(t) = classes[r.class_ord()].arena.get::<Transformer>(r.index()) else {
                 continue;
             };
-            if !t.cd.enabled {
+            if !t.cd.enabled || !t.cd.is_mapped() {
                 continue;
             }
             let nphases = t.cd.nphases;
@@ -716,8 +716,8 @@ pub(crate) fn write_transformers(
                 let bus_spec = &t.cd.bus_names[i - 1];
                 // Winding `i` is terminal `i-1`; its NodeRef slice gives the phase-1
                 // node (`node_j1`) and the neutral node at conductor `nphases`
-                // (`node_j2`). `node_ref` may be empty pre-solve → 0 for both.
-                let (node_j1, node_j2) = if t.cd.node_ref.is_empty() {
+                // (`node_j2`), 0 for both without a node map.
+                let (node_j1, node_j2) = if !t.cd.is_mapped() {
                     (0, 0)
                 } else {
                     let nodes = t.cd.term_nodes(i - 1);
@@ -1415,7 +1415,10 @@ pub(crate) fn write_reg_controls(
             let phs = phase_string(
                 &tr.cd.bus_names[wi],
                 tr.cd.nphases,
-                ckt.buses[tr.cd.terminals[wi].bus_idx()].kv_base,
+                tr.cd.terminals[wi]
+                    .bus_ref
+                    .filter(|_| tr.cd.is_mapped())
+                    .map_or(0.0, |b| ckt.buses[b].kv_base),
                 true,
             );
             let first_phase = phs.chars().next().unwrap_or('A').to_string();

@@ -1283,11 +1283,12 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 .compute_iterminal(self.sys, self.node_v);
             let cd = self.store.ckt_elem(m).cd();
             // Per-conductor power V[c]·conj(I[c]) over the monitored terminal's
-            // conductor slices (0-based).
-            let term_nodes = cd.term_nodes(self.element_terminal - 1);
+            // conductor slices (0-based). An element without a node map reads
+            // as connected to no node.
+            let base = (self.element_terminal - 1) * cd.nconds;
             let term_i = cd.term_i(self.element_terminal - 1);
             let pw = |c: usize| -> Complex64 {
-                let n = term_nodes[c];
+                let n = cd.node_or_ground(base + c);
                 if n > 0 {
                     self.node_v[n] * term_i[c].conj()
                 } else {
@@ -1322,7 +1323,7 @@ impl StorageDispatchEnv for StorageDispEnv<'_> {
                 // from terminal 1, scaled by Fnphases.
                 MonPhase::Phase(p) => {
                     let i0 = (p - 1) as usize;
-                    let n = cd.node_ref[i0];
+                    let n = cd.node_or_ground(i0);
                     let c = if n > 0 {
                         self.node_v[n] * cd.iterminal[i0].conj()
                     } else {

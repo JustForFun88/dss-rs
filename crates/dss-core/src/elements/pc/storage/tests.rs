@@ -396,6 +396,7 @@ fn direct_shortcut_excluded_in_gfm_mode() {
             yp.set(i, i, Complex64::new(0.01, -0.02));
         }
         st.cd.yprim = Some(yp);
+        st.cd.terminals[0].set_bus(0);
         st.cd.set_node_ref(1, &[1, 2, 3, 0]);
         st.cd.inj_current = vec![inj; n];
         st.cd.iterminal_solution_count = Some(0); // == solution_count → skip model recompute

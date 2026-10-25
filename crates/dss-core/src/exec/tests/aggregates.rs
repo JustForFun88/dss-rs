@@ -231,6 +231,92 @@ fn losses_skip_shunt_elements() {
     );
 }
 
+/// A Reactor whose `bus2` grounds every phase at another bus is a shunt, so
+/// `Circuit.Losses` holds the transformer alone and the sources' power closes as
+/// those losses plus the motor's load.
+#[test]
+fn a_bank_grounded_at_another_bus_is_a_shunt_outside_the_losses() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/corpus/electricdss-tst/Test/Source012Test.dss");
+    let source012 = format!("compile \"{}\"", corpus.display());
+    for (what, deck, transformer, losses) in [
+        (
+            "REACTORTest",
+            vec![
+                "Clear",
+                "Set DefaultBaseFrequency=60",
+                "New Circuit.ReactorTest2",
+                "New Transformer.t1  XHL=2 kvas=25 Buses=[SourceBus LoadBus] kvs=[115  0.24]  conns=[Y Y] %Loadloss=1",
+                "New Reactor.KerstingMotor  phases=3 Bus1=LoadBus.1.2.3 Bus2=LoadBus2.0.0.0  Z1=[1.9775  1.3431]  Z2=[0.1203  0.3623]  Z0=[1000 0]  Parallel=no",
+            ],
+            "Transformer.t1",
+            "223.716472 447.457486",
+        ),
+        (
+            "Source012Test",
+            vec![source012.as_str()],
+            "Transformer.TYD",
+            "8.170574 8.191406",
+        ),
+    ] {
+        let mut deck = deck;
+        deck.extend(TIGHT.into_iter().chain(["Solve"]));
+        let mut dss = build(&deck);
+        assert!(dss.circuit().unwrap().is_solved, "{what}: solved");
+        let pd = dss.pd_elements();
+        let motor_pd = pd
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case("Reactor.KerstingMotor"))
+            .expect("the motor is a PD element");
+        assert!(motor_pd.is_shunt, "{what}: the motor is a shunt");
+        let terms = dss.aggregate_terms();
+        assert!(
+            !terms.losses.iter().any(|t| t == "reactor.kerstingmotor"),
+            "{what}: the motor must not be a Losses term: {:?}",
+            terms.losses
+        );
+        let snaps = dss.snapshot_elements();
+        let (_, xf) = find(&snaps, transformer);
+        let (_, motor) = find(&snaps, "Reactor.KerstingMotor");
+        let (p_w, q_var) = dss.losses();
+        assert_eq!(
+            format!("{p_w:.6} {q_var:.6}"),
+            losses,
+            "{what}: Circuit.Losses"
+        );
+        close(
+            p_w,
+            xf.0,
+            1e-12,
+            1e-9,
+            &format!("{what}: Losses.re = the transformer's"),
+        );
+        close(
+            q_var,
+            xf.1,
+            1e-12,
+            1e-9,
+            &format!("{what}: Losses.im = the transformer's"),
+        );
+        let l = ledger(&mut dss);
+        assert_ledger_closes(&l, what);
+        close(
+            -l.total_power.re * 1000.0,
+            p_w + motor.0,
+            1e-9,
+            1e-6,
+            &format!("{what}: the sources' kW = losses + the motor"),
+        );
+        close(
+            -l.total_power.im * 1000.0,
+            q_var + motor.1,
+            1e-9,
+            1e-6,
+            &format!("{what}: the sources' kvar = losses + the motor"),
+        );
+    }
+}
+
 // Expected-value pin, LineLosses walks the Lines list: `Circuit.LineLosses`
 // walks the raw `Lines` pointer list with no `enabled` filter
 // (`DDLL/DCircuit.pas:313-320`, `CAPI_Circuit.pas:156-159`); a disabled line

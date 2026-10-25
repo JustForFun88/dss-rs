@@ -125,7 +125,7 @@ impl CktElement for VsConverter {
         // inherit from `TPCElement.GetCurrents` is deliberately NOT added here:
         // this override carries none, so a disabled element goes on reporting
         // `YPrim*Vterminal - Iinj` from its last mapping, as upstream does.
-        if self.cd.node_ref.is_empty() {
+        if !self.cd.is_mapped() {
             curr.fill(Complex64::ZERO);
             return;
         }

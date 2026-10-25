@@ -822,7 +822,7 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
         let cd = elem.cd();
         if nphases < 3 {
             for i in 0..nphases.min(3) {
-                let nref = cd.node_ref[i];
+                let nref = cd.node_or_ground(i);
                 if nref > 0 {
                     let k = ckt.map_node_to_bus[nref].node_num;
                     if (1..=3).contains(&k) {
@@ -839,7 +839,7 @@ fn write_overload_report(ckt: &mut Circuit, store: &mut dyn ElemStore, sys: &Sys
         let full_name = pd_full_name(store, r);
         // `Buses[MapNodeToBus[NodeRef[1]].BusRef].kVBase`.
         let kv_base = {
-            let nref = store.ckt_elem(r).cd().node_ref[0];
+            let nref = store.ckt_elem(r).cd().node_or_ground(0);
             if nref > 0 {
                 ckt.buses[ckt.map_node_to_bus[nref].bus_ref].kv_base
             } else {

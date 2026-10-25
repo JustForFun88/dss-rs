@@ -853,6 +853,83 @@ impl Circuit {
         // The per-element call leaves BusNameRedefined handling to the caller.
     }
 
+    /// A disabled element keeps its node map when the present bus list gives
+    /// each of its conductors the node the map names, its terminals then naming
+    /// their buses' present indices. Otherwise (a bus or a node it names is gone,
+    /// the nodes were renumbered, its shape or its buses changed, or it never had
+    /// a map) the map is left as it was and marked stale, and
+    /// [`CktElementData::set_enabled`] drops it when the element comes back.
+    /// Nothing is added to the bus list.
+    ///
+    /// [`CktElementData::set_enabled`]: crate::elements::ckt::CktElementData::set_enabled
+    fn check_disabled_node_map(
+        &self,
+        elem: &mut dyn CktElement,
+        parser: &mut Parser,
+        vars: &ParserVars,
+    ) {
+        let Some(present) = self.node_map_on_present_buses(elem.cd(), parser, vars) else {
+            elem.cd_mut().stale_node_map = true;
+            return;
+        };
+        let cd = elem.cd();
+        let old_map = cd.node_ref.clone();
+        let old_terminals: Vec<(Option<usize>, Vec<usize>)> = cd
+            .terminals
+            .iter()
+            .map(|t| (t.bus_ref, t.term_node_ref.clone()))
+            .collect();
+        // Through the element's own `set_node_ref`, so a map with aliased nodes
+        // (the series AutoTrans) compares as it was built.
+        for (t, (bus_idx, nodes)) in present.iter().enumerate() {
+            elem.cd_mut().terminals[t].set_bus(*bus_idx);
+            elem.set_node_ref(t + 1, nodes);
+        }
+        if elem.cd().node_ref != old_map {
+            let cd = elem.cd_mut();
+            cd.node_ref = old_map;
+            for (t, (bus_ref, nodes)) in cd.terminals.iter_mut().zip(old_terminals) {
+                t.bus_ref = bus_ref;
+                t.term_node_ref = nodes;
+            }
+            cd.stale_node_map = true;
+        }
+    }
+
+    /// Each terminal's bus index and conductor nodes on the present bus list, as
+    /// [`Self::process_bus_defs`] gives them, without adding a bus or a node.
+    /// `None` when a bus spec does not parse or names a bus or a node the list
+    /// does not hold.
+    fn node_map_on_present_buses(
+        &self,
+        cd: &crate::elements::ckt::CktElementData,
+        parser: &mut Parser,
+        vars: &ParserVars,
+    ) -> Option<Vec<(usize, Vec<usize>)>> {
+        let (np, ncond) = (cd.nphases, cd.nconds);
+        (1..=cd.nterms)
+            .map(|iterm| {
+                let (bus_name, node_nums) =
+                    parser.parse_as_bus_name(cd.get_bus(iterm), vars).ok()?;
+                if node_nums.iter().any(|&n| n < 0) {
+                    return None;
+                }
+                let bus_idx = self.bus_list.find(&bus_name)?;
+                let bus = &self.buses[bus_idx];
+                let nodes = (0..ncond)
+                    .map(|i| {
+                        let default = if i < np { i as i32 + 1 } else { 0 };
+                        match node_nums.get(i).copied().unwrap_or(default) {
+                            0 => Some(0),
+                            num => bus.find_idx(num).map(|k| bus.ref_no[k]),
+                        }
+                    })
+                    .collect::<Option<Vec<usize>>>()?;
+                Some((bus_idx, nodes))
+            })
+            .collect()
+    }
+
     /// `DSS.LogThisEvent(name)` gated on `LogEvents` (Pascal's `if LogEvents then
     /// DSS.LogThisEvent(...)` guard), stamping the solution's current
     /// clock/iteration fields — the circuit-build call sites `ReprocessBusDefs` /
@@ -873,9 +950,14 @@ impl Circuit {
         );
     }
 
-    /// Pascal `ReprocessBusDefs`: rebuild the bus list and all node
-    /// references from scratch, then restore saved per-bus info (kV bases,
-    /// coordinates, prior voltages).
+    /// Rebuild the bus list and all node references from scratch, then restore
+    /// saved per-bus info (kV bases, coordinates, prior voltages). An element of
+    /// the last power flow that the rebuild gives another node map leaves that
+    /// power flow, renumbered
+    /// (`a_rebuild_that_renumbers_a_machine_sets_it_outside_the_run`). Outside a
+    /// Dynamic or harmonic run the node voltages it was solved with stay at the
+    /// old node numbers, and inside one, which carries them by bus, the clear is
+    /// conservative.
     pub fn reprocess_bus_defs(
         &mut self,
         store: &mut dyn ElemStore,
@@ -895,10 +977,24 @@ impl Circuit {
 
         // Now redo all enabled circuit elements.
         let refs: Vec<ElemId> = self.ckt_elements.clone();
-        for r in refs {
+        for &r in &refs {
             let elem = store.ckt_elem_mut(r);
             if elem.cd().enabled {
+                let cd = elem.cd();
+                let held = (cd.in_power_flow && cd.is_mapped()).then(|| cd.node_ref.clone());
                 self.process_bus_defs(elem, parser, vars, errors);
+                if held.is_some_and(|map| map != elem.cd().node_ref) {
+                    let cd = elem.cd_mut();
+                    cd.in_power_flow = false;
+                    cd.renumbered = true;
+                }
+            }
+        }
+        // Then hold each disabled element's map against the bus list they built.
+        for &r in &refs {
+            let elem = store.ckt_elem_mut(r);
+            if !elem.cd().enabled {
+                self.check_disabled_node_map(elem, parser, vars);
             }
         }
 

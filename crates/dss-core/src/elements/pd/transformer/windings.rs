@@ -217,7 +217,7 @@ impl Transformer {
         vbuffer: &mut [Complex64],
     ) {
         let nphases = self.cd.nphases;
-        if !self.cd.enabled || self.cd.node_ref.is_empty() || node_v.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() || node_v.is_empty() {
             return;
         }
         if iwind < 1 || iwind > self.num_windings.max(0) as usize {
@@ -249,7 +249,7 @@ impl Transformer {
     /// over the terminal's conductors (zero refs skipped), ×3 under positive
     /// sequence.
     pub fn power_into(&mut self, term: usize, node_v: &[Complex64], sys: &SysCtx) -> Complex64 {
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             return Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);

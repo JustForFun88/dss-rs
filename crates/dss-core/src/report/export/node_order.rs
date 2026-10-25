@@ -30,11 +30,11 @@ pub(crate) fn export_node_order(classes: &mut [DssClass], ckt: &Circuit) -> Stri
         // case-insensitively (PHASE8_PLAN §2.3).
         s.push_str(&format!("\"{name}\", {nterms}, {nconds}"));
         for i in 0..nconds * nterms {
-            // `GetNodeNum(NodeRef^[i])`: ground (`node_ref == 0`) → 0, else the
-            // bus-local `MapNodeToBus[NodeRef].NodeNum` (slot 0 defaults to 0).
+            // The bus-local node number of each conductor: 0 for ground and for
+            // a conductor of an element without a node map (`node_or_ground`).
             s.push_str(&format!(
                 ", {}",
-                ckt.map_node_to_bus[cd.node_ref[i]].node_num
+                ckt.map_node_to_bus[cd.node_or_ground(i)].node_num
             ));
         }
         s.push('\n');

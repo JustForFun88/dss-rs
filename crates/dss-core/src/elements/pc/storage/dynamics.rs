@@ -21,7 +21,6 @@ use crate::elements::pc::inv_based_pce::{InvDynamicVars, NUM_INV_DYN_VARS};
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::complexutil::{c_to_polar, pclx, to_polar};
 use crate::support::dynamics::IterationFlag;
-use crate::support::mathutil::PiCtrl;
 use crate::util::CDOUBLEONE;
 
 use super::{Storage, StorageState};
@@ -43,15 +42,9 @@ impl Storage {
 
         let nphases = self.cd.nphases;
 
-        // Pascal `if (Length(PICtrl)=0) or (Length(PICtrl)<Fnphases)`.
-        if self.base.pi_ctrl.len() < nphases {
-            self.base.pi_ctrl.resize_with(nphases, PiCtrl::new);
-            for pi in &mut self.base.pi_ctrl {
-                pi.kp = self.base.dyn_vars.kp;
-                pi.k_num = 0.9502;
-                pi.k_den = 0.04979;
-            }
-        }
+        // A new run starts every phase's controller without memory
+        // (`a_machine_that_ran_before_starts_the_next_run_fresh`).
+        self.base.fresh_pi_controllers(nphases);
 
         // Pascal: `ZThev := Cmplx(RThev, XThev); Yeq := Cinv(ZThev)` (for state-var init).
         let z_thev = Complex64::new(self.r_thev, self.x_thev);
@@ -69,16 +62,10 @@ impl Storage {
             return;
         }
 
+        let (base_kv, i_max_p_phase, ls) = self.dynamics_ratings(sys.fundamental);
+        self.base.dyn_vars.base_kv = base_kv;
+
         let present_kv = self.kv_storage_base;
-
-        // BasekV: L-N for multi-phase, kV for single-phase.
-        self.base.dyn_vars.base_kv = if nphases > 1 {
-            present_kv / 3.0_f64.sqrt()
-        } else {
-            present_kv
-        };
-
-        let base_kv = self.base.dyn_vars.base_kv;
         let base_zt = 0.01 * (present_kv * present_kv / self.f_kva_rating) * 1000.0;
         let sm_thresh = self.base.dyn_vars.sm_threshold;
         self.base.dyn_vars.max_vs = (2.0 - sm_thresh / 100.0) * base_kv * 1000.0;
@@ -86,7 +73,7 @@ impl Storage {
         self.base.dyn_vars.min_amps =
             (self.base.fpct_cut_out / 100.0) * ((self.f_kva_rating / base_kv) / nphases as f64);
         self.base.dyn_vars.reset_ibr = false;
-        self.base.dyn_vars.i_max_p_phase = (self.f_kva_rating / base_kv) / nphases as f64;
+        self.base.dyn_vars.i_max_p_phase = i_max_p_phase;
 
         if self.base.pct_x == 0.0 {
             self.base.pct_x = 50.0; // Pascal forces 50% in dynamics if not given
@@ -100,10 +87,8 @@ impl Storage {
 
         self.compute_present_kw();
 
-        // Pascal `LS := ZThev.im / (2 * PI * DefaultBaseFreq)`.
-        // `sys.fundamental` == `DSS.DefaultBaseFreq` in dynamics.
-        let two_pi_f = 2.0 * std::f64::consts::PI * sys.fundamental;
-        self.base.dyn_vars.ls = x_thev / two_pi_f;
+        // The series inductance `x_thev / (2π f)`, f the circuit's fundamental.
+        self.base.dyn_vars.ls = ls;
 
         // Size and zero the per-phase dynamics arrays.
         self.base.dyn_vars.init_dyn_arrays(nphases);
@@ -126,15 +111,41 @@ impl Storage {
             self.base.dyn_vars.ang_delta[i] = 0.0;
         }
 
-        // DynamicEqObj <> NIL: zero the derivative column of the equation memory
-        // (Pascal Storage.pas l.2834). Reached only for a discharging unit (the
-        // `FState <> STORE_DISCHARGING` early-return above); the per-phase `it`/
-        // `Vgrid`/`m` seeded by the classic loop *are* the state.
+        // A linked equation of a discharging unit gets its constant initial
+        // values and a zero derivative column. The per-phase `it`, `Vgrid` and
+        // `m` seeded above are its state.
         if self.base.dyneq.has_dynamic_eq() {
+            self.base.dyneq.apply_init_values();
             for row in self.base.dyneq.dynamic_eq_vals.iter_mut() {
                 row[1] = 0.0;
             }
         }
+    }
+
+    /// The inverter ratings the dynamics model derives from the rated data, in
+    /// the seed's operation order: the phase base voltage (line-to-neutral for
+    /// more than one phase), the per-phase current limit and the series
+    /// inductance of the Thevenin reactance (`%X` taken as 50 when it is 0) at
+    /// the fundamental `fundamental`. The seed stores these values and the
+    /// variable readers of a unit outside the run report them.
+    pub(super) fn dynamics_ratings(&self, fundamental: f64) -> (f64, f64, f64) {
+        let nphases = self.cd.nphases;
+        let present_kv = self.kv_storage_base;
+        let base_kv = if nphases > 1 {
+            present_kv / 3.0_f64.sqrt()
+        } else {
+            present_kv
+        };
+        let base_zt = 0.01 * (present_kv * present_kv / self.f_kva_rating) * 1000.0;
+        let i_max_p_phase = (self.f_kva_rating / base_kv) / nphases as f64;
+        let pct_x = if self.base.pct_x == 0.0 {
+            50.0
+        } else {
+            self.base.pct_x
+        };
+        let x_thev = pct_x * base_zt;
+        let ls = x_thev / (2.0 * std::f64::consts::PI * fundamental);
+        (base_kv, i_max_p_phase, ls)
     }
 
     /// Pascal `TStorageObj.IntegrateStates` (l.2840) — advance the inverter state
@@ -528,9 +539,10 @@ impl Storage {
         }
     }
 
-    /// Pascal `TStorageObj.Get_kWDesired` (l.2626).
-    fn get_kw_desired(&self) -> f64 {
-        match self.state_desired {
+    /// The kW the dispatch asks of the unit in `state`: `%charge` of the rated
+    /// kW drawn, `%discharge` of it delivered, nothing when idling.
+    fn kw_desired(&self, state: StorageState) -> f64 {
+        match state {
             StorageState::Charging => -self.pct_kw_in * self.kw_rating / 100.0,
             StorageState::Discharging => self.pct_kw_out * self.kw_rating / 100.0,
             StorageState::Idling | StorageState::Other(_) => 0.0,
@@ -563,12 +575,40 @@ impl Storage {
     /// linked `DynamicExp`'s memory dump when it has variables, else the 34
     /// classic variables. The four variable accessors all start the tail here.
     pub(super) fn variable_base(&self) -> usize {
-        let n = self.base.dyneq.num_variables();
-        if n != 0 {
-            n
-        } else {
+        if self.classic_variable_layout() {
             self.num_storage_variables()
+        } else {
+            self.base.dyneq.num_variables()
         }
+    }
+
+    /// Whether the variables ahead of the tail are the 34 classic ones (no
+    /// linked `DynamicExp` with variables).
+    pub(super) fn classic_variable_layout(&self) -> bool {
+        self.base.dyneq.num_variables() == 0
+    }
+
+    /// The settings of a unit outside the dynamics run, in the classic layout:
+    /// kWh, State (the dispatch state), kWDesired (asked by that state), Limit
+    /// kWOut Function, then the inverter-dynamics settings.
+    pub(super) fn write_setting_variables(&self, sys: &SysCtx, states: &mut [f64]) {
+        for (slot, value) in [
+            (0, self.kwh_stored),
+            (1, self.f_state.ordinal() as f64),
+            (21, self.kw_desired(self.f_state)),
+            (23, self.pct_kw_rated * self.kw_rating),
+        ] {
+            if let Some(s) = states.get_mut(slot) {
+                *s = value;
+            }
+        }
+        let (_, i_max_p_phase, ls) = self.dynamics_ratings(sys.fundamental);
+        self.base.dyn_vars.write_setting_variables(
+            states,
+            NUM_BASE_STORAGE_VARS,
+            ls,
+            i_max_p_phase,
+        );
     }
 
     /// The 34 classic Storage names (1-based). Index 0 answers the empty string;
@@ -695,7 +735,7 @@ impl Storage {
             19 => self.vv_drc_operation,
             20 => self.wp_operation,
             21 => self.wv_operation,
-            22 => self.get_kw_desired(),
+            22 => self.kw_desired(self.state_desired),
             23 => {
                 if !self.base.vw_mode {
                     9999.0

@@ -87,6 +87,15 @@ impl CktElement for IndMach012 {
         self.cd.yprim_invalid = true;
     }
 
+    fn has_dynamic_state(&self) -> bool {
+        true
+    }
+
+    /// puRs, puXs, puRr, puXr, puXm and Maxslip.
+    fn setting_variables(&mut self, _sys: &SysCtx, states: &mut [f64]) {
+        self.write_setting_variables(states);
+    }
+
     /// Pascal `TIndMach012Obj.InitStateVars`.
     fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.init_state_vars_impl(sys, node_v);
@@ -155,7 +164,9 @@ impl CktElement for IndMach012 {
 
     /// Pascal `TIndMach012Obj.GetTerminalCurrents` + `TPCElement` base.
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
-        if !self.cd.enabled {
+        // A disabled machine, and one outside the present dynamics run, has no
+        // terminal current.
+        if !self.cd.enabled || (sys.is_dynamic_model && !self.cd.dynamics_seeded()) {
             curr.fill(Complex64::ZERO);
             return;
         }
@@ -239,7 +250,7 @@ impl IndMach012 {
     /// reproduced — the guard below is the same one
     /// [`CktElement::terminal_power`] already carries.
     pub(crate) fn refresh_live_pf(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             self.live_pf = power_factor(Complex64::ZERO);
             return;
         }
@@ -255,9 +266,10 @@ impl IndMach012 {
         self.cd.make_like_base(&other.cd);
         if self.cd.nphases != other.cd.nphases {
             self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
             self.cd.yprim_invalid = true;
         }
+        let n = nconds_for_connection(self.connection, self.cd.nphases);
+        self.cd.set_shape(n, self.connection as i32);
         // MachineData (the TGeneratorVars record) — copied wholesale.
         self.kv_generator_base = other.kv_generator_base;
         self.kva_rating = other.kva_rating;
@@ -444,14 +456,18 @@ impl DssObject for IndMach012 {
         }
     }
 
-    /// Pascal `TIndMach012Obj.PropertySideEffects` (only `phases`, `kV`, `slip`,
-    /// and the three shapes have side effects; `conn` notably does **not**).
+    /// The side effects of `phases`, `conn`, `kV`, `slip` and the three shapes.
+    /// `phases` and `conn` both set the conductor count the connection gives,
+    /// whatever their order: `phases` in wye, whose neutral the machine does not
+    /// connect, so a one-phase wye machine has one conductor, and in delta one
+    /// more below three phases
+    /// (`exec::tests::dynamics_membership::rebuild::an_indmach012_takes_its_conductors_from_its_final_connection`).
     fn side_effects(&mut self, idx: usize, _prev_int: i32) {
         use prop::*;
         match idx {
-            PHASES => {
+            PHASES | CONN => {
                 let n = nconds_for_connection(self.connection, self.cd.nphases);
-                self.cd.set_nconds(n); // force reallocation of terminal info
+                self.cd.set_shape(n, self.connection as i32);
             }
             KV => self.update_vbase(),
             SLIP => self.speed = self.w0 * (-self.s1), // make motor speed agree

@@ -2166,6 +2166,7 @@ pub(super) fn apply_edit_signal_tail(
         && let Some(elem) = classes[ci].arena.try_ckt_elem_mut(oi)
     {
         let cd = elem.cd_mut();
+        cd.drop_unfit_node_map();
         if cd.signal_bus_name_redefined {
             cd.signal_bus_name_redefined = false;
             ckt.set_bus_name_redefined(true);

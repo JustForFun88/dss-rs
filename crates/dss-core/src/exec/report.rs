@@ -2900,7 +2900,7 @@ impl Dss {
                 let nvar = elem.num_variables();
                 let names: Vec<String> = (1..=nvar).map(|i| elem.variable_name(i)).collect();
                 let mut states = vec![0.0f64; nvar];
-                elem.get_all_variables(&sys, nv, &mut states);
+                elem.read_variables(&sys, nv, &mut states);
                 names.into_iter().zip(states).collect()
             } else {
                 Vec::new()

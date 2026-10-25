@@ -520,7 +520,7 @@ impl Transformer {
         let np = self.cd.nphases;
         let nconds = self.cd.nconds;
         let mut curr = vec![Complex64::ZERO; 2 * np * nw];
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             return curr;
         }
         let vterminal = &self.cd.vterminal;

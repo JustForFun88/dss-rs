@@ -684,8 +684,8 @@ fn check_bus_array_suppressions(
 /// it (or a typo'd field) would silently never apply, so loading rejects
 /// anything outside this list loudly (pre-E/F audit UGA-T4).
 ///
-/// The last nine — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
-/// `reliability`, `distance`, `run_files`, `di` — are
+/// The last ten — `y`, `y_fingerprint`, `yprim`, `meter`, `variables`,
+/// `reliability`, `distance`, `run_files`, `di`, `voc` — are
 /// **exclusion-only** ([`EXCLUSION_ONLY_FIELDS`]). The first four name a whole
 /// compared artifact rather than a value with a natural envelope, so the only
 /// thing the ledger can say about them is "this (case, channel) does not
@@ -765,7 +765,16 @@ fn check_bus_array_suppressions(
 /// would promise an envelope nothing re-asserts; and everything structural
 /// around the cells — the file SET, the header line, the row count and the
 /// per-row field count — stays compared whatever the ledger says.
-const LEDGER_FIELDS: [&str; 18] = [
+///
+/// `voc` is the sixth per-VALUE field: the key is a BUS name, and a scope masks
+/// that bus's `Voc` array of the short-circuit surface alone
+/// (`harness::compare_bus_short_circuit_masking_voc`), asked only once the
+/// array has left its band. In a dynamics run `Voc` is the node voltage the
+/// last Y rebuild saved, an earlier instant than the final node voltages, so it
+/// can diverge where they do not, and a deck-wide `voltages` exclusion would
+/// then mask nothing and be stale. `Isc`, `Zsc`, `Ysc`, the study bit and every
+/// length stay compared.
+const LEDGER_FIELDS: [&str; 19] = [
     "iterations",
     "voltages",
     "injection",
@@ -784,12 +793,13 @@ const LEDGER_FIELDS: [&str; 18] = [
     "distance",
     "run_files",
     "di",
+    "voc",
 ];
 
 /// Fields an entry may name only with `kind: "exclusion"` — see
 /// [`LEDGER_FIELDS`]. A `divergence` naming one would promise an envelope
 /// nothing re-asserts.
-const EXCLUSION_ONLY_FIELDS: [&str; 9] = [
+const EXCLUSION_ONLY_FIELDS: [&str; 10] = [
     "y",
     "y_fingerprint",
     "yprim",
@@ -799,6 +809,7 @@ const EXCLUSION_ONLY_FIELDS: [&str; 9] = [
     "distance",
     "run_files",
     "di",
+    "voc",
 ];
 
 /// Fields an `exclusion` entry may name — the mirror obligation of
@@ -843,7 +854,7 @@ const EXCLUSION_ONLY_FIELDS: [&str; 9] = [
 /// the presence rail, the file-SET equality, the verbatim header and the two
 /// count assertions unconditional — an exclusion can only ever drop one
 /// column's cells.
-const EXCLUSION_FIELDS: [&str; 14] = [
+const EXCLUSION_FIELDS: [&str; 15] = [
     "voltages",
     "element",
     "injection",
@@ -858,6 +869,7 @@ const EXCLUSION_FIELDS: [&str; 14] = [
     "distance",
     "run_files",
     "di",
+    "voc",
 ];
 
 /// Fields whose [`Scope::channels`] selects **sub-channels** of a multi-part
@@ -3066,10 +3078,17 @@ const EXCLUSION_FIELDS_WITH_PARTITIONING_HANDLER: [&str; 2] = ["voltages", "elem
 /// so a dead selector on an entry that also excludes something coarse would
 /// never be reported (RP3.10 audit finding AT-4, generalized by G1.6(i), by
 /// G1.4b's `distance`, whose selector is a BUS name, and by G1.10a's
-/// `run_files`, whose scopes select one created-file NAME, and by G1.10c's
-/// `di`, whose scopes select one `<file>:<column>` cell column).
-const PER_VALUE_EXCLUSION_FIELDS: [&str; 5] =
-    ["variables", "reliability", "distance", "run_files", "di"];
+/// `run_files`, whose scopes select one created-file NAME, by G1.10c's `di`,
+/// whose scopes select one `<file>:<column>` cell column, and by `voc`, whose
+/// selector is a BUS name).
+const PER_VALUE_EXCLUSION_FIELDS: [&str; 6] = [
+    "variables",
+    "reliability",
+    "distance",
+    "run_files",
+    "di",
+    "voc",
+];
 
 /// Every field [`EXCLUSION_FIELDS`] lets an `exclusion` name must actually be
 /// honoured at runtime — the same guarantee [`LEDGER_FIELDS`] gives one level

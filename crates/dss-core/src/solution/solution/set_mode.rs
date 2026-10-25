@@ -55,16 +55,15 @@ pub fn set_mode(ckt: &mut Circuit, value: SolveMode, errors: &mut crate::diag::E
         ckt.solution.set_frequency(fundamental, fundamental);
         ckt.solution.system_y_changed = true;
     }
-    // Pascal `OK_for_Dynamics` (Solution.pas l.2185): leaving dynamics mode runs
-    // `ckt.InvalidateAllPCELEMENTS()` — YprimInvalid on every PC element plus
-    // `SystemYChanged := TRUE` (Circuit.pas l.2321) — so the next solve rebuilds
-    // the system Y without the machines' dynamics YPrims (the Norton `Yeq` a
-    // Generator/IndMach012 presents in dynamics, the Storage/PVSystem GFM
-    // short-circuit YPrim). In this port every `build_y_matrix` recomputes every
-    // element's YPrim (the oracle's effective default, see ymatrix.rs), so the
-    // observable half is exactly the rebuild trigger. (Ported at the WP8.8 exit
-    // sweep — the old "inert, no mode-dependent YPrim exists" note predates the
-    // WP7.7 machines and the WPG.13/WPG.17 GFM model.)
+    // Leaving a dynamics-model mode raises the system Y rebuild, and every
+    // `build_y_matrix` recomputes every element's YPrim, so the next solve
+    // stamps each machine's power-flow YPrim in place of its dynamics one (a
+    // Generator's, the GFM short-circuit YPrim of a Storage or PVSystem). An
+    // IndMach012 keeps what its run left: the Norton admittance of its
+    // dynamics model, its slip, its first-iteration flag and its stator
+    // current, so its next power flow starts warm and a direct solve after the
+    // run reads another voltage, an open item (the IndMach012 forms of
+    // `a_machine_that_ran_before_starts_the_next_run_fresh`).
     if ckt.solution.is_dynamic_model && !value_is_dynamic {
         ckt.solution.system_y_changed = true;
     }

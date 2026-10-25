@@ -307,6 +307,7 @@ pub fn solve_zero_load_snapshot(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
         log_event(ckt, "Solve Sparse Set ZeroLoadSnapshot ...");
     }
     let result = ckt.solution.solve_system();
+    mark_power_flow_members(ckt, env);
 
     // Reset the main system Y as the solution matrix.
     if ckt.solution.y_system.is_some() {
@@ -412,7 +413,28 @@ pub(crate) fn do_pflow_solution(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveR
 
     ckt.is_solved = ckt.solution.converged_flag;
     ckt.solution.last_solution_was_direct = false;
+    mark_power_flow_members(ckt, env);
     Ok(())
+}
+
+/// Record which PC elements the power flow just solved holds: every enabled
+/// element with a node map, outside the dynamics-model and harmonic solves
+/// (those are no power flow). The dynamics entry seeds only these
+/// ([`CktElementData::in_power_flow`]). The no-load snapshot of
+/// `Calcvoltagebases` counts as such a solve too, though it holds no
+/// power-conversion element: a deck may enter dynamics after it with no power
+/// flow solved, and the entry then seeds from it as before (an open item).
+///
+/// [`CktElementData::in_power_flow`]: crate::elements::ckt::CktElementData::in_power_flow
+fn mark_power_flow_members(ckt: &Circuit, env: &mut SolveEnv) {
+    if ckt.solution.is_dynamic_model || ckt.solution.is_harmonic_model {
+        return;
+    }
+    for &r in &ckt.pc_elements {
+        let cd = env.store.ckt_elem_mut(r).cd_mut();
+        cd.in_power_flow = cd.enabled && cd.is_mapped();
+        cd.renumbered = false;
+    }
 }
 
 /// Pascal `SolveCircuit`.
@@ -680,10 +702,21 @@ pub(crate) fn solve_direct(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult
         get_pc_inj_curr(ckt, env);
     }
     ckt.solution.solve_system()?;
-    ckt.is_solved = true;
-    ckt.solution.converged_flag = true;
     ckt.solution.iteration = 1;
     ckt.solution.last_solution_was_direct = true;
+    // A non-finite node voltage is not a solution
+    // (`a_non_finite_state_is_never_a_solution`).
+    if let Some(i) = ckt.solution.non_finite_node(ckt.num_nodes) {
+        ckt.is_solved = false;
+        ckt.solution.converged_flag = false;
+        return Err(format!(
+            "The direct solution has a non-finite voltage at node {}. It is not a solution.",
+            ckt.node_name(i)
+        ));
+    }
+    ckt.is_solved = true;
+    ckt.solution.converged_flag = true;
+    mark_power_flow_members(ckt, env);
     Ok(())
 }
 

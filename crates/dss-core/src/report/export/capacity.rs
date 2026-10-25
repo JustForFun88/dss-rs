@@ -69,9 +69,12 @@ pub(crate) fn export_capacity(
         };
 
         let cd = elem.cd();
-        // `Buses^[MapNodeToBus^[NodeRef^[1]].BusRef].kVBase` — the base kV of the
-        // terminal-1 conductor-1 bus (= the element's first terminal bus).
-        let kv_base = ckt.buses[cd.terminals[0].bus_idx()].kv_base;
+        // The base kV of the element's first terminal bus, 0 for an element
+        // without a node map (no bus, and no current through the zero row above).
+        let kv_base = cd.terminals[0]
+            .bus_ref
+            .filter(|_| cd.is_mapped())
+            .map_or(0.0, |b| ckt.buses[b].kv_base);
 
         s.push_str(&format!(
             "{}, {}, {}, {}, {}, {}, {}, {}, {}, {}\n",

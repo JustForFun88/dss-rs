@@ -242,13 +242,12 @@ impl IndMach012 {
         // NOT_PORTED: DebugTrace record.
     }
 
-    /// Pascal `TIndMach012Obj.DoHarmonicMode`. The spectrum-scaled internal
-    /// voltage `E` is **commented out upstream** (left at 0), so the injection is
-    /// `Yprim·buffer` with `buffer = 0` (plus the wye no-injection-neutral term).
-    /// Ported verbatim, including that quirk.
+    /// The harmonic injection: the machine has no internal harmonic voltage, so
+    /// it injects `Yprim·buffer` with every phase at zero and a neutral
+    /// conductor beyond the phases at its terminal voltage.
     fn do_harmonic_mode(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.cd.compute_vterminal(node_v);
-        // Pascal: E stays 0 (the spectrum lines are commented out upstream).
+        // No internal harmonic voltage.
         let mut e = Complex64::ZERO;
         let gen_harmonic = sys.frequency / self.cd.base_frequency;
 
@@ -261,8 +260,11 @@ impl IndMach012 {
                 e = rotate_phasor_deg(e, gen_harmonic, -120.0); // assume 3-phase
             }
         }
-        // Wye: assume no neutral injection voltage.
-        if self.connection == Connection::Wye {
+        // A wye machine sources zero on every phase, and a neutral conductor
+        // beyond the phases holds its terminal voltage
+        // (`an_indmach012_takes_its_conductors_from_its_final_connection`,
+        // `a_balanced_wye_indmach012_reads_balanced_harmonic_voltages`).
+        if self.connection == Connection::Wye && nconds > nphases {
             buffer[nconds - 1] = self.cd.vterminal[nconds - 1];
         }
 

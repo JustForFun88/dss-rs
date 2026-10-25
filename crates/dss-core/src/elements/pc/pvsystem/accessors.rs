@@ -133,6 +133,18 @@ impl CktElement for PVSystem {
         self.init_harmonics_impl(sys, node_v);
     }
 
+    fn has_dynamic_state(&self) -> bool {
+        true
+    }
+
+    /// Irradiance, PanelkW, P_TFactor, Efficiency, kW_out_desired, Rated VDC,
+    /// Series L and Max. Amps (phase), in the classic layout only.
+    fn setting_variables(&mut self, sys: &SysCtx, states: &mut [f64]) {
+        if self.classic_variable_layout() {
+            self.write_setting_variables(sys, states);
+        }
+    }
+
     /// Pascal `TPVsystemObj.InitStateVars`.
     fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.init_state_vars_impl(sys, node_v);
@@ -187,12 +199,12 @@ impl CktElement for PVSystem {
     /// the block actually filled (`a_dynamic_eq_pvsystem_keeps_its_model_tail`).
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         let base = self.variable_base();
-        if self.base.dyneq.num_variables() != 0 {
+        if self.classic_variable_layout() {
+            self.get_all_pv_variables(sys, node_v, states);
+        } else {
             for (i, s) in states.iter_mut().enumerate().take(base) {
                 *s = self.base.dyneq.get_dynamic_eq_val(i);
             }
-        } else {
-            self.get_all_pv_variables(sys, node_v, states);
         }
         let un = self.num_user_model_variables();
         if un > 0 {
@@ -272,17 +284,13 @@ impl CktElement for PVSystem {
 
     /// Pascal `TPVsystemObj.GetTerminalCurrents` + `TPCElement` base.
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
-        // No node references yet: an element declared after the last
-        // `SetNodeRef` sweep has an empty `node_ref` (the port's model of
-        // r4133's `NodeRef := nil`, `Common/CktElement.pas:186`, allocated only
-        // by `SetNodeRef` `:547-558`, which `ReProcessBusDefs` re-runs for
-        // enabled elements at Y build). Answer with the zero vector the base
-        // trait's `get_currents` default returns there, instead of indexing an
-        // empty array: r4133 dereferences the nil pointer and lets the access
-        // violation surface as DSS error 641 out of `TPCElement.GetCurrents`'
-        // `TRY ... EXCEPT` (`PCElements/PCElement.pas:278`, `:304-306`) -- the
-        // same `Curr` vector its `not Enabled` arm writes (`:298-300`).
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        // A disabled element, one without a node map (created or enabled after
+        // the last bus rebuild) and one outside the present dynamics run carry
+        // no current: there is no terminal voltage or no state to drive one.
+        if !self.cd.enabled
+            || !self.cd.is_mapped()
+            || (sys.is_dynamic_model && !self.cd.dynamics_seeded())
+        {
             curr.fill(Complex64::ZERO);
             return;
         }
@@ -367,18 +375,31 @@ impl PVSystem {
     /// `DynamicExp`'s memory dump when it has variables, else the 22 classic
     /// variables. The four variable accessors all start the tail here.
     fn variable_base(&self) -> usize {
-        let n = self.base.dyneq.num_variables();
-        if n != 0 { n } else { self.num_pv_variables() }
+        if self.classic_variable_layout() {
+            self.num_pv_variables()
+        } else {
+            self.base.dyneq.num_variables()
+        }
+    }
+
+    /// Whether the variables ahead of the tail are the 22 classic ones (no
+    /// linked `DynamicExp` with variables).
+    fn classic_variable_layout(&self) -> bool {
+        self.base.dyneq.num_variables() == 0
     }
 
     /// Pascal `TPVsystemObj.MakeLike`.
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases); // Pascal: NConds := Fnphases
+        // The copy takes the phases and the connection of `other`, and the
+        // conductors they give.
+        if self.cd.nphases != other.cd.nphases || self.base.connection != other.base.connection {
             self.cd.yprim_invalid = true;
         }
+        self.base.connection = other.base.connection;
+        self.cd.nphases = other.cd.nphases;
+        let n = nconds_for_connection(self.base.connection, self.cd.nphases);
+        self.cd.set_shape(n, self.base.connection as i32);
         self.kv_pvsystem_base = other.kv_pvsystem_base;
         self.base.v_base = other.base.v_base;
         self.base.vminpu = other.base.vminpu;
@@ -390,7 +411,6 @@ impl PVSystem {
         self.base.p_nominal_per_phase = other.base.p_nominal_per_phase;
         self.base.pf_nominal = other.base.pf_nominal;
         self.base.q_nominal_per_phase = other.base.q_nominal_per_phase;
-        self.base.connection = other.base.connection;
         self.base.yearly_shape = other.base.yearly_shape.clone();
         self.base.daily_shape = other.base.daily_shape.clone();
         self.base.duty_shape = other.base.duty_shape.clone();
@@ -733,12 +753,12 @@ impl DssObject for PVSystem {
         match idx {
             PHASES => {
                 let n = nconds_for_connection(self.base.connection, self.cd.nphases);
-                self.cd.set_nconds(n); // force reallocation of terminal info
+                self.cd.set_shape(n, self.base.connection as i32);
                 self.update_vbase(); // Pascal also runs the kV side effect
             }
             CONN => {
                 let n = nconds_for_connection(self.base.connection, self.cd.nphases);
-                self.cd.set_nconds(n);
+                self.cd.set_shape(n, self.base.connection as i32);
                 self.update_vbase();
                 self.base.v_base_min = self.base.vminpu * self.base.v_base;
                 self.base.v_base_max = self.base.vmaxpu * self.base.v_base;

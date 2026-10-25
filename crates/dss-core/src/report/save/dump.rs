@@ -222,7 +222,7 @@ pub(crate) fn cktelem_complete(out: &mut String, cd: &CktElementData) {
     out.push_str(&format!("! Yorder = {}\n", cd.yorder));
 
     out.push_str("! NodeRef = \"");
-    if cd.node_ref.is_empty() {
+    if !cd.is_mapped() {
         out.push_str("nil");
     } else {
         // Pascal writes `NodeRef[i]` for i := 1 to Yorder (the global 1-based node

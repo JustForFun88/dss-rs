@@ -22,6 +22,7 @@ use crate::elements::pd::fault::Fault;
 use crate::elements::traits::{CktElement, ElemId};
 use crate::support::mathutil::gauss;
 
+use super::dynamics::{dynamics_mode_word, refusal_of_an_element_outside_the_run};
 use super::power_flow::{set_generator_disp_ref, solve_direct, solve_snap};
 use super::time_series::{end_of_time_step_cleanup, sample_all_monitors_and_meters};
 use super::{LoadSolutionModel, RandomType, SolveEnv, SolveResult};
@@ -207,11 +208,13 @@ fn draw_load_multiplier(ckt: &mut Circuit, random_type: RandomType, allow_lognor
     }
 }
 
-/// Pascal `TSolutionAlgs.PickAFault` (l.701): enable one randomly-chosen fault,
-/// disable the rest. `Whichone = Trunc(Random·NumFaults)+1`, clamped to
-/// `NumFaults`. With a single fault this is always fault 1, though the RNG draw
-/// is still consumed (GAPS_PLAN.md §2.1). Returns the enabled fault's ref (the
-/// Pascal `ActiveFaultObj`).
+/// Enable one randomly-chosen fault and disable the rest. The fault picked is
+/// `trunc(random · n) + 1` of the `n` faults, at most `n`. With a single
+/// fault this is always fault 1, though the RNG draw is still consumed. Returns
+/// the enabled fault's ref. A fault that changes state does so as through
+/// `Enable` and `Disable`: the bus list is rebuilt before the next Y build, so a
+/// fault a rebuild left out is mapped before it is stamped
+/// (`monte_fault_maps_a_fault_a_rebuild_left_out`).
 fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemId> {
     let faults = ckt.faults.clone();
     let num_faults = faults.len();
@@ -225,12 +228,11 @@ fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemId> {
     for (i, &r) in faults.iter().enumerate() {
         let enable = (i as i64 + 1) == whichone;
         if let Some(fault) = env.store.typed_mut::<Fault>(r) {
-            let was = fault.cd().enabled;
-            fault.cd_mut().set_enabled(enable);
-            if fault.cd().enabled != was {
-                // Pascal `Set_Enabled` raises SystemYChanged (via the bus-name
-                // redefine → Y rebuild); force the rebuild the direct solve gates on.
-                ckt.solution.system_y_changed = true;
+            let cd = fault.cd_mut();
+            cd.set_enabled(enable);
+            if cd.signal_bus_name_redefined {
+                cd.signal_bus_name_redefined = false;
+                ckt.set_bus_name_redefined(true);
             }
         }
         if enable {
@@ -245,6 +247,12 @@ fn pick_a_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> Option<ElemId> {
 /// re-randomising its resistance (`Fault.Randomize`). Samples only the monitors
 /// (no meter sampling — Set_Mode leaves `SampleTheMeters=false`).
 pub(super) fn solve_monte_fault(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    // A machine without a state in the run has no fault contribution to give.
+    if let Some(msg) = dynamics_mode_word(ckt.solution.mode)
+        .and_then(|word| refusal_of_an_element_outside_the_run(ckt, env, word, false))
+    {
+        return Err(msg);
+    }
     ckt.solution.load_model = LoadSolutionModel::Admittance; // All direct solution
     ckt.load_multiplier = 1.0; // Always set WITH prop in case the matrix must rebuild
     ckt.solution.int_hour = 0;

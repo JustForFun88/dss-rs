@@ -98,6 +98,11 @@ pub struct DynEqPceData {
     /// `Save` and the JSON `"DynInit"` tail write those of the linked
     /// equation through [`Self::written_init`].
     pub user_dyn_init: Vec<(String, DynInitValue)>,
+    /// The constant that the last assignment of a variable in `user_dyn_init`
+    /// gives it, evaluated when it was written, by variable name. Every entry
+    /// into a dynamics-model mode writes them into the memory again
+    /// ([`Self::apply_init_values`]).
+    pub init_values: Vec<(String, f64)>,
 }
 
 impl DynEqPceData {
@@ -278,6 +283,7 @@ impl DynEqPceData {
         let stored = if DynamicExpObj::check_if_calc_value(value) >= 0 {
             // A value the host computes from its model (P/Q/Vmag/.../P0/Q0/edp),
             // kept as its operand token and paired with its row below.
+            self.init_values.retain(|(k, _)| *k != variable);
             DynInitValue::Text(value.to_string())
         } else {
             // A constant, evaluated with RPN into the memory row of its
@@ -293,6 +299,8 @@ impl DynEqPceData {
                 Some(row) => row[0] = dbl,
                 None => self.park_value(&variable, dbl),
             }
+            self.init_values.retain(|(k, _)| *k != variable);
+            self.init_values.push((variable.clone(), dbl));
             if required_rpn {
                 DynInitValue::Text(value.to_string())
             } else {
@@ -524,6 +532,25 @@ impl DynEqPceData {
         } = self;
         if let Some(eq) = dynamic_eq_obj {
             eq.solve_eq(dynamic_eq_vals);
+        }
+    }
+
+    /// Write each constant initial value into its variable's memory row, as the
+    /// assignment did, so every run starts from the values the equation's
+    /// inputs define and not from those an earlier run left
+    /// (`a_dynamicexp_machine_starts_every_run_from_its_initial_values`). A
+    /// variable without a memory row is skipped: the dynamics solve refuses
+    /// that equation before its first step.
+    pub fn apply_init_values(&mut self) {
+        let Some(eq) = &self.dynamic_eq_obj else {
+            return;
+        };
+        for (variable, value) in &self.init_values {
+            if let VarRef::State(row) = eq.get_var_idx(variable)
+                && let Some(slot) = self.dynamic_eq_vals.get_mut(row)
+            {
+                slot[0] = *value;
+            }
         }
     }
 

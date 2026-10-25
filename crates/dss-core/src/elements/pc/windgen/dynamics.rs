@@ -133,10 +133,12 @@ impl WindGen {
             }
         }
 
-        // DynamicEqObj <> NIL: seed the user equation's memory and exit. A
+        // A linked equation: seed its memory and exit, the constant initial
+        // values, then the derivative column at 0, then the calculated ones. A
         // variable without a memory row is skipped here: the dynamics solve
         // refuses that equation before its first step (`dynamics_refusal`).
         if self.dyneq.has_dynamic_eq() {
+            self.dyneq.apply_init_values();
             for row in self.dyneq.dynamic_eq_vals.iter_mut() {
                 row[1] = 0.0;
             }
@@ -382,8 +384,35 @@ impl WindGen {
     /// disagree about where the tail begins (upstream they do — see
     /// `accessors::get_all_variables`).
     pub(super) fn variable_base(&self) -> usize {
-        let n = self.dyneq.num_variables();
-        if n != 0 { n } else { self.num_wgen_variables() }
+        if self.classic_variable_layout() {
+            self.num_wgen_variables()
+        } else {
+            self.dyneq.num_variables()
+        }
+    }
+
+    /// Whether the variables ahead of the tail are the 22 classic ones (no
+    /// linked `DynamicExp` with variables).
+    pub(super) fn classic_variable_layout(&self) -> bool {
+        self.dyneq.num_variables() == 0
+    }
+
+    /// The settings of a generator outside the dynamics run, in the classic
+    /// layout: userTrip, Pcurtail, vwind, dFrqPuTest, QMode and Qref.
+    pub(super) fn write_setting_variables(&self, states: &mut [f64]) {
+        let w = &self.wind_model_dyn;
+        for (slot, value) in [
+            (0, w.user_trip as f64),
+            (2, w.pcurtail),
+            (9, w.vwind),
+            (13, w.d_frq_pu_test),
+            (14, w.q_mode as f64),
+            (15, w.qref),
+        ] {
+            if let Some(s) = states.get_mut(slot) {
+                *s = value;
+            }
+        }
     }
 
     /// Pascal `TWindGenObj.VariableName(i)` (1-based, the 22 classic names, from

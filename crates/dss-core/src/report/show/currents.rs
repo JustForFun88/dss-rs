@@ -320,6 +320,9 @@ pub(crate) fn write_terminal_currents(
     elem.compute_iterminal(sys, node_v);
     let (ncond, nterm, nphases) = (elem.cd().nconds, elem.cd().nterms, elem.cd().nphases);
     let cd = elem.cd();
+    // An element without a node map (created or enabled after the last bus
+    // rebuild) reads every conductor at node 0: no node number, zero volts.
+    let node = |k: usize| cd.node_or_ground(k);
     // Pascal `'ELEMENT = ', EncloseQuotes(FullName)` — the full name, native case.
     rep.line(&format!("ELEMENT = {}", format::enclose_quotes(name)));
 
@@ -358,8 +361,7 @@ pub(crate) fn write_terminal_currents(
             let row = Row::new()
                 .cell(Cell::left(from_bus.clone(), mbnl).sep("  "))
                 .cell(
-                    Cell::right(ckt.map_node_to_bus[cd.node_ref[k]].node_num.to_string(), 4)
-                        .sep("    "),
+                    Cell::right(ckt.map_node_to_bus[node(k)].node_num.to_string(), 4).sep("    "),
                 );
             rep.row(tail(row, "  ", ck));
             k += 1;

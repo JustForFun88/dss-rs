@@ -43,7 +43,7 @@ fn get_force_readback(
     };
     let cd = elem.cd();
     let uninit = "Error, the active element is not initialized yet".to_string();
-    if cd.node_ref.is_empty() {
+    if !cd.is_mapped() {
         return Err(uninit);
     }
     if pointer == opt::YPRIM {
@@ -511,7 +511,7 @@ impl Dss {
                                     .arena
                                     .try_ckt_elem_mut(oi)
                                     .expect("ckt element")
-                                    .get_all_variables(&sys, &node_v, &mut states);
+                                    .read_variables(&sys, &node_v, &mut states);
                                 append_result(&mut result, &format!("{}", states[i - 1]));
                             } else {
                                 errors.push(format!(

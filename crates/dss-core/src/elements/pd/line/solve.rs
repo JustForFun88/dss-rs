@@ -384,7 +384,8 @@ impl CktElement for Line {
         let mut pos = Complex64::ZERO;
         let mut neg = Complex64::ZERO;
         let mut zero = Complex64::ZERO;
-        if self.cd.nphases == 3 {
+        // A line without a node map carries no current and has no losses.
+        if self.cd.nphases == 3 && self.cd.is_mapped() {
             self.compute_iterminal(sys, node_v);
             let cd = &self.cd;
             let np = cd.nphases;

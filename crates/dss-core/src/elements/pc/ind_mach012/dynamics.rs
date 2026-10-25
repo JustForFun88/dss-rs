@@ -47,12 +47,18 @@ impl IndMach012 {
         let mut i012 = [Complex64::ZERO; 3];
         match self.cd.nphases {
             1 => {
+                // The one-phase seed reads the winding voltage from the phase to
+                // the second conductor in delta and to ground in wye, which has
+                // one conductor
+                // (`an_indmach012_takes_its_conductors_from_its_final_connection`),
+                // sets E1 from it and leaves E2 at zero.
                 let nr = &self.cd.node_ref;
-                self.e1 = node_v[nr[0]] - node_v[nr[1]] - self.cd.iterminal[0] * self.zsp;
-                // (Pascal leaves V012/I012 uninitialized in the 1-phase branch, so
-                // `InitModel` would read heap garbage for E2 — UB upstream. Use
-                // zero here: 1-phase dynamics is unreachable in the corpus, and
-                // zero is the only well-defined choice.)
+                let ret = if self.cd.nconds > 1 {
+                    node_v[nr[1]]
+                } else {
+                    Complex64::ZERO
+                };
+                self.e1 = node_v[nr[0]] - ret - self.cd.iterminal[0] * self.zsp;
             }
             3 => {
                 let sc = SymComp::default();
@@ -65,13 +71,7 @@ impl IndMach012 {
                 self.e1 = v012[1] - i012[1] * self.zsp; // positive sequence
             }
             _ => {
-                // Pascal sets DSS.SolutionAbort := TRUE (msg 5672). `init_state_vars`
-                // has no error channel; the machine is left zero-initialized, so
-                // `w0`/`m_mass` stay 0 and a following `integrate_states` would
-                // divide by `m_mass = 0` (NaN). Unreachable: the corpus is 1-/3-phase.
-                // On-demand (retagged at the WP8.8 sweep): surface a real abort
-                // (init_state_vars needs an error channel) if a >3-phase dynamics
-                // case appears.
+                // A machine of another phase count is left unseeded.
                 return;
             }
         }
@@ -232,6 +232,23 @@ impl IndMach012 {
             * self.zr.re;
         states[20] = power_factor(power1); // Power Factor
         states[21] = (1.0 - (stator_losses + rotor_losses) / power1.re) * 100.0; // Efficiency, %
+    }
+
+    /// The settings of a machine outside the dynamics run: puRs, puXs, puRr,
+    /// puXr, puXm and Maxslip.
+    pub(super) fn write_setting_variables(&self, states: &mut [f64]) {
+        for (slot, value) in [
+            (7, self.pu_rs),
+            (8, self.pu_xs),
+            (9, self.pu_rr),
+            (10, self.pu_xr),
+            (11, self.pu_xm),
+            (12, self.max_slip),
+        ] {
+            if let Some(s) = states.get_mut(slot) {
+                *s = value;
+            }
+        }
     }
 
     /// Pascal `TIndMach012Obj.Set_Variable` (1-based; only slip + the pu

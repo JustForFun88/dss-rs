@@ -745,13 +745,16 @@ impl Dss {
         self.last_result = s;
     }
 
-    /// The step-solution commands (`ExecCommands.pas:578-601`): thin drivers
-    /// over the ported solution internals — `_InitSnap` (`SnapShotInit`),
-    /// `_SolveNoControl` (`SolveCircuit`), `_SampleControls`
-    /// (`SampleControlDevices`), `_DoControlActions` (`DoControlActions`),
-    /// `_ShowControlQueue` (the same `WriteQueue` CSV the `Show controlqueue`
-    /// arm emits, `FireOffEditor` dropped per the GUI no-op rule),
-    /// `_SolveDirect` (`SolveDirect`), `_SolvePFlow` (`DoPFLOWsolution`).
+    /// The step-solution commands, each one stage of a solve: `_InitSnap`
+    /// (the snapshot start: generator dispatch reference and counters),
+    /// `_SolveNoControl` (the circuit solve without control actions),
+    /// `_SampleControls` (the control devices sample), `_DoControlActions`
+    /// (the queued actions run), `_ShowControlQueue` (the control queue CSV
+    /// that `Show controlqueue` writes, without opening an editor),
+    /// `_SolveDirect` (the direct solve) and `_SolvePFlow` (the power flow).
+    ///
+    /// The commands that solve report a failed solve as `Solve` does
+    /// ([`crate::solution::solution::report_solve_error`]).
     pub(super) fn do_step_solution_cmd(&mut self, pointer: usize) {
         if pointer == cmd::SHOW_CONTROL_QUEUE {
             let ckt = self.circuit.as_ref().expect("gated in command()");
@@ -782,19 +785,46 @@ impl Dss {
             vars,
             errors,
         };
-        // Hard errors are recorded by the solve internals (the `do_solve_cmd`
-        // convention), and a failed step is neither solved nor converged.
+        if pointer == cmd::SAMPLE_CONTROLS {
+            if crate::solution::controls::sample_control_devices(ckt, &mut env).is_err() {
+                crate::solution::solution::clear_solved(ckt);
+            }
+            return;
+        }
+        // A command that solves injects every element of the run, so in a
+        // dynamics-model mode it refuses an element without a state in the run
+        // first, as `Solve` does (`a_step_solution_command_refuses_a_joining_element`).
+        // `_DoControlActions` solves only under the multi-rate control mode.
+        let solves = pointer != cmd::DO_CONTROL_ACTIONS
+            || ckt.solution.control_mode == crate::solution::ControlMode::MultiRate;
+        let refusal = if solves {
+            crate::solution::solution::dynamics_mode_word(ckt.solution.mode).and_then(|word| {
+                crate::solution::solution::refusal_of_an_element_outside_the_run(
+                    ckt, &env, word, false,
+                )
+            })
+        } else {
+            None
+        };
+        // A refused command changes nothing, its solved flag included
+        // (`exec::tests::dynamics_membership::joining::assert_refused`).
+        if let Some(msg) = refusal {
+            crate::solution::solution::report_solve_error(ckt, &mut env, &msg);
+            return;
+        }
         let result = match pointer {
             cmd::SOLVE_NO_CONTROL => crate::solution::solution::solve_circuit(ckt, &mut env),
-            cmd::SAMPLE_CONTROLS => {
-                crate::solution::controls::sample_control_devices(ckt, &mut env)
-            }
             cmd::DO_CONTROL_ACTIONS => crate::solution::controls::do_control_actions(ckt, &mut env),
             cmd::SOLVE_DIRECT => crate::solution::solution::solve_direct(ckt, &mut env),
-            cmd::SOLVE_PFLOW => crate::solution::solution::do_pflow_solution(ckt, &mut env),
+            // `_SolvePFlow` solves the circuit as it stands
+            // (`the_step_power_flow_needs_the_system_y_of_the_present_circuit`).
+            cmd::SOLVE_PFLOW => build_the_present_circuit(ckt, &mut env)
+                .and_then(|()| crate::solution::solution::do_pflow_solution(ckt, &mut env)),
             _ => unreachable!("dispatch covers the step-solution ordinals"),
         };
-        if result.is_err() {
+        // A failed step is neither solved nor converged.
+        if let Err(e) = result {
+            crate::solution::solution::report_solve_error(ckt, &mut env, &e);
             crate::solution::solution::clear_solved(ckt);
         }
     }
@@ -999,4 +1029,32 @@ impl Dss {
             self.vars.add("@lastredirectfile", &path_str);
         }
     }
+}
+
+/// The prelude `Solve` runs before its power flow, where the step power flow
+/// needs it: while a bus redefinition is pending, or the node vectors do not
+/// hold the bus list (`MakeBusList`, `Show Isolated` or `Reduce` after a new
+/// bus), the bus list is rebuilt, the node vectors are sized to it and the
+/// system Y is built. A refused build leaves the circuit not solved, as after
+/// `Solve`. Otherwise nothing is built here, and a Y change (a tap step in a
+/// step loop) is built inside the iteration with the vectors kept.
+fn build_the_present_circuit(
+    ckt: &mut Circuit,
+    env: &mut SolveEnv,
+) -> crate::solution::solution::SolveResult {
+    let n = ckt.num_nodes + 1;
+    let vectors_fit = ckt.solution.currents.len() == n && ckt.solution.node_v.len() == n;
+    if ckt.bus_name_redefined || !vectors_fit {
+        let built = crate::solution::build_y_matrix(
+            ckt,
+            env,
+            crate::solution::BuildOption::WholeMatrix,
+            true,
+        );
+        if built.is_err() {
+            ckt.is_solved = false;
+        }
+        built?;
+    }
+    Ok(())
 }

@@ -156,6 +156,18 @@ impl XyCurveObj {
         }
     }
 
+    /// Start the next lookup's hunt from the first point, as on a curve whose
+    /// points were just given.
+    pub fn reset_hunt(&mut self) {
+        self.last_value_accessed = 0;
+    }
+
+    /// The point the next lookup's hunt starts from.
+    #[cfg(test)]
+    pub(crate) fn hunt_start(&self) -> usize {
+        self.last_value_accessed
+    }
+
     /// Pascal `TXYcurveObj.GetYValue`: interpolated `Y` for the given `X`, with
     /// end-extrapolation. Mutates the `LastValueAccessed` hunt cache. Returns
     /// `0.0` for an empty curve.
