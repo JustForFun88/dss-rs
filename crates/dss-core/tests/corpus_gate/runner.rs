@@ -1509,7 +1509,9 @@ pub(crate) fn compare_capture(
             // suppresses only the `Voc`/`Isc` values (a snapshot of the triaged
             // `Solution.NodeV` and its `Ysc*Voc` image) while `Zsc`/`Ysc`/
             // `Zsc1`/`Zsc0` — functions of `Y` alone — stay compared, along
-            // with the study bit, the bus identity and every length.
+            // with the study bit, the bus identity and every length. The
+            // per-bus `voc` field masks one bus's `Voc` alone, asked only once
+            // that bus has left its band.
             if c.compare_zsc {
                 capture_guard::require_capture(
                     "compare_zsc",
@@ -1524,12 +1526,13 @@ pub(crate) fn compare_capture(
                 // NEITHER ran, so without this the whole non-trivial half of
                 // the surface could go quiet and stay green. This is the one
                 // call site that records — the harness' own drives must not.
-                let full = harness::compare_bus_short_circuit(
+                let full = harness::compare_bus_short_circuit_masking_voc(
                     dss,
                     &cp.buses,
                     tol,
                     channel.props_channel(),
                     v_excluded,
+                    &|bus: &str| excluded("voc", Some(bus)),
                     &ctx,
                 );
                 harness::record_sc_study_compare(full);

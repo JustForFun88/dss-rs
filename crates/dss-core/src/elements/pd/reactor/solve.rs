@@ -736,7 +736,7 @@ impl CktElement for Reactor {
         sys: &SysCtx,
         node_v: &[Complex64],
     ) -> (Complex64, Complex64, Complex64) {
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             return (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO);
         }
         let total = self.losses(sys, node_v);

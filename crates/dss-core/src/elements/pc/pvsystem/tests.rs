@@ -523,6 +523,7 @@ fn direct_shortcut_excluded_in_gfm_mode() {
             yp.set(i, i, Complex64::new(0.01, -0.02));
         }
         pv.cd.yprim = Some(yp);
+        pv.cd.terminals[0].set_bus(0);
         pv.cd.set_node_ref(1, &[1, 2, 3, 0]);
         pv.cd.inj_current = vec![inj; n];
         pv.cd.iterminal_solution_count = Some(0); // == solution_count → skip model recompute

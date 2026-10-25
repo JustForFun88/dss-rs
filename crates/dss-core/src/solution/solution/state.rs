@@ -636,29 +636,52 @@ impl Solution {
         y.get_element(i, i).map_err(|e| e.to_string())
     }
 
-    /// Pascal `Converged`: per-node voltage-magnitude error against
-    /// `NodeVbase` (or relative change when no base), exact NaN/Inf checks.
+    /// Whether the iteration has converged: the per-node voltage-magnitude
+    /// change against `node_vbase` (or relative to the magnitude when the node
+    /// has no base) is within the tolerance at every node. A non-finite node
+    /// voltage is never a solution: its error is infinite
+    /// (`non_finite_node_voltages_never_converge`).
     pub(crate) fn converged(&mut self, num_nodes: usize) -> bool {
-        // Pascal `Converged` (`Solution.pas` l.731-734): NCIM has its own test.
+        // NCIM has its own mismatch test.
         if self.algorithm == SolveAlgorithm::Ncim {
-            return self.ncim_converged();
+            let result = self.ncim_converged() && self.non_finite_node(num_nodes).is_none();
+            self.converged_flag = result;
+            return result;
         }
         self.max_error = 0.0;
         for i in 1..=num_nodes {
-            let vmag = self.node_v[i].norm();
+            let v = self.node_v[i];
+            let vmag = v.norm();
             if self.node_vbase[i] > 0.0 {
                 self.error_saved[i] = (vmag - self.vmag_saved[i]).abs() / self.node_vbase[i];
             } else if vmag != 0.0 {
                 self.error_saved[i] = (1.0 - self.vmag_saved[i] / vmag).abs();
+            } else if !self.error_saved[i].is_finite() {
+                // A node without a base back at exactly zero after a non-finite
+                // iteration: converged once it stayed at zero.
+                self.error_saved[i] = if self.vmag_saved[i] == 0.0 {
+                    0.0
+                } else {
+                    f64::INFINITY
+                };
+            }
+            if !(v.re.is_finite() && v.im.is_finite()) || !self.error_saved[i].is_finite() {
+                self.error_saved[i] = f64::INFINITY;
             }
             self.vmag_saved[i] = vmag;
             self.max_error = self.max_error.max(self.error_saved[i]);
         }
-        let result = self.max_error <= self.convergence_tolerance
-            && !self.max_error.is_nan()
-            && !self.max_error.is_infinite();
+        let result = self.max_error <= self.convergence_tolerance;
         self.converged_flag = result;
         result
+    }
+
+    /// The first node (1-based) whose voltage has a non-finite part, or `None`.
+    pub(crate) fn non_finite_node(&self, num_nodes: usize) -> Option<usize> {
+        (1..=num_nodes).find(|&i| {
+            let v = self.node_v[i];
+            !(v.re.is_finite() && v.im.is_finite())
+        })
     }
 
     /// Pascal `TNCIMSolutionHelper.NCIM_Converged` (`NCIMSolutionHelper.pas`
@@ -791,5 +814,119 @@ mod enum_discriminant_tests {
         // is what `Solution::new` seeds — so `default()` must be Gaussian, not
         // the numerically-zero `None`.
         assert_eq!(RandomType::default(), RandomType::Gaussian);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use num_complex::Complex64;
+
+    use super::{Solution, SolveAlgorithm};
+
+    const NAN: f64 = f64::NAN;
+    const INF: f64 = f64::INFINITY;
+
+    /// A solution with three nodes at `v`, each with base `base[i]`, whose
+    /// previous iteration left the magnitudes `saved`.
+    fn three_nodes(v: [Complex64; 3], base: [f64; 3], saved: [f64; 3]) -> Solution {
+        let mut s = Solution::new(60.0);
+        s.convergence_tolerance = 0.0001;
+        s.node_v = std::iter::once(Complex64::ZERO).chain(v).collect();
+        s.node_vbase = std::iter::once(0.0).chain(base).collect();
+        s.vmag_saved = std::iter::once(0.0).chain(saved).collect();
+        s.error_saved = vec![0.0; 4];
+        s
+    }
+
+    fn c(re: f64, im: f64) -> Complex64 {
+        Complex64::new(re, im)
+    }
+
+    /// **Pin.** A non-finite node voltage is no solution: its error is infinite,
+    /// so the iteration never reports it converged, while a finite run within
+    /// the tolerance converges as before.
+    #[test]
+    fn non_finite_node_voltages_never_converge() {
+        let one = c(1.0, 0.0);
+        let mut s = three_nodes([one; 3], [1.0; 3], [1.0; 3]);
+        assert!(s.converged(3), "finite and unchanged");
+        assert_eq!(s.max_error, 0.0);
+        assert!(s.converged_flag);
+
+        for (case, v, base, saved) in [
+            ("a NaN node", [one, c(NAN, 0.0), one], [1.0; 3], [1.0; 3]),
+            (
+                "an infinite node without a base",
+                [one, one, c(INF, 0.0)],
+                [1.0, 1.0, 0.0],
+                [1.0; 3],
+            ),
+            (
+                "a NaN imaginary part",
+                [c(1.0, NAN), one, one],
+                [1.0; 3],
+                [1.0; 3],
+            ),
+            ("a NaN saved magnitude", [one; 3], [1.0; 3], [NAN, 1.0, 1.0]),
+        ] {
+            let mut s = three_nodes(v, base, saved);
+            assert!(!s.converged(3), "{case}: not converged");
+            assert_eq!(s.max_error, INF, "{case}");
+            assert!(!s.converged_flag, "{case}");
+        }
+
+        // A node without a base that is NaN once, then exactly zero: the first
+        // zero iteration still compares against the NaN, the next one has
+        // stayed at zero.
+        let mut s = three_nodes([one, one, c(NAN, 0.0)], [1.0, 1.0, 0.0], [1.0; 3]);
+        assert!(!s.converged(3), "the NaN iteration");
+        s.node_v[3] = Complex64::ZERO;
+        assert!(!s.converged(3), "back at zero after NaN");
+        assert_eq!(s.max_error, INF);
+        assert!(s.converged(3), "stayed at zero");
+        assert_eq!(s.max_error, 0.0);
+
+        // NCIM: finite mismatches but a NaN node.
+        let mut s = three_nodes([one, c(NAN, 0.0), one], [1.0; 3], [1.0; 3]);
+        s.algorithm = SolveAlgorithm::Ncim;
+        s.ncim_delta_f = vec![0.0; 3];
+        assert!(!s.converged(3), "NCIM with a NaN node");
+        assert!(!s.converged_flag);
+        s.node_v[2] = one;
+        assert!(s.converged(3), "NCIM, finite");
+        assert!(s.converged_flag);
+    }
+
+    /// **Pin.** A node without a base at exactly zero keeps the error of its
+    /// previous iteration while that error is finite, so the non-finite rule
+    /// leaves a finite run as it was: a kept error above the tolerance holds
+    /// the iteration, one within it lets the iteration converge.
+    #[test]
+    fn a_zero_node_without_a_base_keeps_its_finite_error() {
+        let one = c(1.0, 0.0);
+        for (kept, converges) in [(0.5, false), (5e-5, true)] {
+            let mut s = three_nodes(
+                [one, one, Complex64::ZERO],
+                [1.0, 1.0, 0.0],
+                [1.0, 1.0, 0.3],
+            );
+            s.error_saved[3] = kept;
+            assert_eq!(s.converged(3), converges, "kept error {kept}");
+            assert_eq!(s.max_error, kept, "kept error {kept}");
+            assert_eq!(s.converged_flag, converges, "kept error {kept}");
+        }
+    }
+
+    /// **Pin.** The direct solve's test names the first node with a NaN or
+    /// infinite part and finds none in a finite vector.
+    #[test]
+    fn non_finite_node_names_the_first_non_finite_node() {
+        let one = c(1.0, 0.0);
+        let s = three_nodes([one; 3], [1.0; 3], [1.0; 3]);
+        assert_eq!(s.non_finite_node(3), None);
+        let s = three_nodes([one, c(0.0, NAN), c(INF, 0.0)], [1.0; 3], [1.0; 3]);
+        assert_eq!(s.non_finite_node(3), Some(2));
+        let s = three_nodes([one, one, c(-INF, 0.0)], [1.0; 3], [1.0; 3]);
+        assert_eq!(s.non_finite_node(3), Some(3));
     }
 }

@@ -203,10 +203,13 @@ impl Sensor {
         }
         metered.get_currents(sys, node_v, &mut self.med.calculated_current);
         let nph = self.med.cd.nphases;
-        // ComputeVterminal: VTerminal[i] = node_v[NodeRef[i]] (1-based Pascal).
+        // The sensed conductors' node voltages. A sensor or a metered element
+        // without a node map reads as connected to no node.
         let mut vterminal = vec![Complex64::ZERO; self.med.cd.nconds.max(nph)];
-        for (i, v) in vterminal.iter_mut().enumerate().take(self.med.cd.nconds) {
-            *v = node_v[self.med.cd.node_ref[i]];
+        if metered.cd().is_mapped() {
+            for (i, v) in vterminal.iter_mut().enumerate().take(self.med.cd.nconds) {
+                *v = node_v[self.med.cd.node_or_ground(i)];
+            }
         }
         if self.f_conn == 1 {
             for i in 0..nph {

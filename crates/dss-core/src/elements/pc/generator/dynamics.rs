@@ -99,11 +99,12 @@ impl Generator {
             }
         }
 
-        // DynamicEqObj <> NIL: seed the user equation's memory and exit (the
-        // shaft GenVars Theta/w0/Mmass/D/Pshaft/Speed are unused — the equation
-        // drives Speed/Theta through DynOut). Pascal generator.pas l.2400.
+        // A linked equation: seed its memory and exit. The equation drives the
+        // speed and the angle through `DynOut`, so the shaft variables are not
+        // seeded.
         if self.dyneq.has_dynamic_eq() {
-            // Initialize the derivative column of every variable to 0.
+            // The constant initial values, then the derivative column at 0.
+            self.dyneq.apply_init_values();
             for row in self.dyneq.dynamic_eq_vals.iter_mut() {
                 row[1] = 0.0;
             }

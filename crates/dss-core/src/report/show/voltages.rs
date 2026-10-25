@@ -336,6 +336,9 @@ fn write_element_voltages(
     ll: bool,
 ) {
     let cd = elem.cd();
+    // An element without a node map (created or enabled after the last bus
+    // rebuild) reads every conductor at node 0: no node number, zero volts.
+    let node = |k: usize| cd.node_or_ground(k);
     let (ncond, nterm) = (cd.nconds, cd.nterms);
     let node_v = &ckt.solution.node_v;
     // Pascal `'ELEMENT = "' + dssclassname + '.' + AnsiUpperCase(Name) + '"'`.
@@ -351,7 +354,7 @@ fn write_element_voltages(
             .unwrap_or("");
         let bus_name = bus_name.to_ascii_uppercase();
         for _ in 0..ncond {
-            let nref = cd.node_ref[k];
+            let nref = node(k);
             k += 1;
             let volts = node_v[nref];
             let vmag = volts.norm() * 0.001;

@@ -63,6 +63,7 @@ pub(crate) fn export_branch_reliability(classes: &[DssClass], ckt: &Circuit) -> 
     for &r in &ckt.pd_elements {
         if let Some(elem) = classes[r.class_ord()].arena.try_ckt_elem(r.index())
             && elem.cd().enabled
+            && elem.cd().is_mapped()
         {
             let ntot = from_bus(elem.cd()).bus_total_num_customers;
             if ntot > max_customers {
@@ -79,7 +80,9 @@ pub(crate) fn export_branch_reliability(classes: &[DssClass], ckt: &Circuit) -> 
             continue;
         };
         let cd = elem.cd();
-        if !cd.enabled {
+        // An element without a node map has no FROM bus and is in no meter zone,
+        // so it is left out with the disabled ones.
+        if !cd.enabled || !cd.is_mapped() {
             continue;
         }
         let bus = from_bus(cd);

@@ -115,6 +115,18 @@ impl CktElement for WindGen {
         self.init_harmonics_impl();
     }
 
+    fn has_dynamic_state(&self) -> bool {
+        true
+    }
+
+    /// userTrip, Pcurtail, vwind, dFrqPuTest, QMode and Qref, in the classic
+    /// layout only.
+    fn setting_variables(&mut self, _sys: &SysCtx, states: &mut [f64]) {
+        if self.classic_variable_layout() {
+            self.write_setting_variables(states);
+        }
+    }
+
     /// Pascal `TWindGenObj.InitStateVars`.
     fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.init_state_vars_impl(sys, node_v);
@@ -209,12 +221,12 @@ impl CktElement for WindGen {
     /// native 22 from the native sources and the model's own from index 23 up.
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         let base = self.variable_base();
-        if self.dyneq.num_variables() != 0 {
+        if self.classic_variable_layout() {
+            self.get_wgen_variables(states);
+        } else {
             for (i, s) in states.iter_mut().enumerate().take(base) {
                 *s = self.dyneq.get_dynamic_eq_val(i);
             }
-        } else {
-            self.get_wgen_variables(states);
         }
         let un = self.user_model_num_vars();
         if un > 0 {
@@ -309,17 +321,13 @@ impl CktElement for WindGen {
     /// in the normal post-solve path the counts match and both engines fill from
     /// the cached `Iterminal`, so the divergence is unobservable.
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
-        // No node references yet: an element declared after the last
-        // `SetNodeRef` sweep has an empty `node_ref` (the port's model of
-        // r4133's `NodeRef := nil`, `Common/CktElement.pas:186`, allocated only
-        // by `SetNodeRef` `:547-558`, which `ReProcessBusDefs` re-runs for
-        // enabled elements at Y build). Answer with the zero vector the base
-        // trait's `get_currents` default returns there, instead of indexing an
-        // empty array: r4133 dereferences the nil pointer and lets the access
-        // violation surface as DSS error 641 out of `TPCElement.GetCurrents`'
-        // `TRY ... EXCEPT` (`PCElements/PCElement.pas:278`, `:304-306`) -- the
-        // same `Curr` vector its `not Enabled` arm writes (`:298-300`).
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        // A disabled element, one without a node map (created or enabled after
+        // the last bus rebuild) and one outside the present dynamics run carry
+        // no current: there is no terminal voltage or no state to drive one.
+        if !self.cd.enabled
+            || !self.cd.is_mapped()
+            || (sys.is_dynamic_model && !self.cd.dynamics_seeded())
+        {
             curr.fill(Complex64::ZERO);
             return;
         }
@@ -373,11 +381,15 @@ impl WindGen {
     /// Create defaults).
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            self.cd.set_nconds(self.cd.nphases);
+        // The copy takes the phases and the connection of `other`, and the
+        // conductors they give.
+        if self.cd.nphases != other.cd.nphases || self.connection != other.connection {
             self.cd.yprim_invalid = true;
         }
+        self.connection = other.connection;
+        self.cd.nphases = other.cd.nphases;
+        let n = nconds_for_connection(self.connection, self.cd.nphases);
+        self.cd.set_shape(n, self.connection as i32);
         self.kv_windgen_base = other.kv_windgen_base;
         self.v_base = other.v_base;
         self.vminpu = other.vminpu;
@@ -389,7 +401,6 @@ impl WindGen {
         self.p_nominal_per_phase = other.p_nominal_per_phase;
         self.pf_nominal = other.pf_nominal;
         self.q_nominal_per_phase = other.q_nominal_per_phase;
-        self.connection = other.connection;
         self.yearly_shape = other.yearly_shape.clone();
         self.daily_shape = other.daily_shape.clone();
         self.duty_shape = other.duty_shape.clone();
@@ -692,7 +703,7 @@ impl DssObject for WindGen {
         match idx {
             CONN => {
                 let n = nconds_for_connection(self.connection, self.cd.nphases);
-                self.cd.set_nconds(n);
+                self.cd.set_shape(n, self.connection as i32);
                 self.update_vbase();
                 self.cd.inj_current = vec![Complex64::ZERO; self.cd.yorder];
             }
@@ -700,7 +711,7 @@ impl DssObject for WindGen {
             KVAR => self.side_effect_kvar(),
             PHASES => {
                 let n = nconds_for_connection(self.connection, self.cd.nphases);
-                self.cd.set_nconds(n); // force reallocation of terminal info
+                self.cd.set_shape(n, self.connection as i32);
             }
             KW | PF => {
                 self.sync_up_power_quantities();

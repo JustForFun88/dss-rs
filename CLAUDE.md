@@ -188,13 +188,18 @@ merged branches separately with `git branch -D`.
 - **Comments are short and say what the code does now.** No history, no
   `<sha>:path:N`. A behaviour choice that needs a justification gets one sentence
   and the name of the test that pins it. The measurement behind it lives in the
-  pin's doc or the record.
+  record, in a ledger entry or in the upstream report, never in a comment.
+- **A test's doc comment is at most two sentences on what is pinned.** No numbers,
+  no oracle readings, no dates, no report numbers. Expected values live only in the
+  assertions, measurements only in `ledger.json`, the records and the upstream
+  reports.
 - **Records are short.** A step record is 5-10 lines: what changed and why, the
   measurement behind it, the ledger exclusions and their pins by name, the commits,
   the gate result. Point at evidence that exists (tests, `ledger.json`, doc
   comments, audit reports). No tables, no narrative.
 - **No gitignored or scratch file as provenance in committed text** (`tmp/`, the
-  session scratchpad, a worktree-local probe): they vanish. Committed provenance is
-  a dated sentence naming the tool and the recipe that re-derives the numbers and,
-  when small, the tracked evidence itself (a pin literal, a golden, a
-  `tests/corpus` file). Local paths go in the report to the coordinator.
+  session scratchpad, a worktree-local probe): they vanish. Committed provenance, in
+  a record or a ledger entry, is a dated sentence naming the tool and the recipe
+  that re-derives the numbers and, when small, the tracked evidence itself (a pin
+  literal, a golden, a `tests/corpus` file). Local paths go in the report to the
+  coordinator.

@@ -289,6 +289,41 @@ pub fn total_power_counts_every_source_terminal(label: &str) -> bool {
     LANE_TOTAL_POWER_ALL_TERMINALS.contains(&label)
 }
 
+/// The corpus cases holding a bank both oracles call a series element and the
+/// engine a shunt, with the bank's lower-cased `Class.name`.
+///
+/// Both oracle engines call a Capacitor or Reactor a series element when its
+/// `bus2` names another bus than `bus1`, also when `bus2` puts every phase on
+/// the ground node, so the power such a bank draws to ground counts as circuit
+/// losses. The engine reads the nodes: the bank is a shunt, a load to ground,
+/// outside the losses. Two arms read this list, and each reds a listed bank
+/// that either side no longer treats so as a stale row:
+/// `aggregates::compare_aggregates` rebuilds the oracle's `Circuit.Losses` over
+/// the port's summands plus the listed banks (an unlisted bank of this kind
+/// reds its membership arm), and `compare_pd_elements` asserts the listed
+/// bank's `is_shunt` as the engine's shunt against the oracle's series element
+/// (an unlisted one reds the exact compare).
+///
+/// Both rows' expected values are pinned in-engine by
+/// `dss_core::exec::tests::aggregates::a_bank_grounded_at_another_bus_is_a_shunt_outside_the_losses`.
+const LANE_GROUNDED_BANKS: &[(&str, &str)] = &[
+    ("solvable_now:Test/REACTORTest.DSS", "reactor.kerstingmotor"),
+    (
+        "solvable_now:Test/Source012Test.dss",
+        "reactor.kerstingmotor",
+    ),
+];
+
+/// The banks both oracles call series elements and the engine reads as shunts
+/// on the corpus case `label` ([`LANE_GROUNDED_BANKS`]).
+pub fn grounded_banks_the_oracles_call_series(label: &str) -> Vec<&'static str> {
+    LANE_GROUNDED_BANKS
+        .iter()
+        .filter(|(case, _)| *case == label)
+        .map(|(_, bank)| *bank)
+        .collect()
+}
+
 /// The oracle event-log capture as the **current lane** expects to see it: the
 /// two Relay label rewrites in *both* lanes, plus — in the default lane only —
 /// the enumerated `%g` re-spellings.
@@ -1017,11 +1052,12 @@ pub fn profile_ll_policy(base: ExportPolicy) -> ExportPolicy {
 #[cfg(test)]
 mod tests {
     use super::{
-        ElemChannels, ITER_SLACK, LANE_SKIP_ELEM_POWERS, LANE_TOTAL_POWER_ALL_TERMINALS,
-        MONITOR_PAD_HITS, MONITOR_PAD_MISSES, Ordering, PARITY, assert_bytes_eq,
-        assert_monitor_pad_is_live, assert_reround_cells_are_live, compare_iterations,
-        compare_iterations_le, compare_report, elem_channels_for, exact_value_policy,
-        expected_eventlog, expected_monitor_channel, strip_monitor_pad,
+        ElemChannels, ITER_SLACK, LANE_GROUNDED_BANKS, LANE_SKIP_ELEM_POWERS,
+        LANE_TOTAL_POWER_ALL_TERMINALS, MONITOR_PAD_HITS, MONITOR_PAD_MISSES, Ordering, PARITY,
+        assert_bytes_eq, assert_monitor_pad_is_live, assert_reround_cells_are_live,
+        compare_iterations, compare_iterations_le, compare_report, elem_channels_for,
+        exact_value_policy, expected_eventlog, expected_monitor_channel,
+        grounded_banks_the_oracles_call_series, strip_monitor_pad,
         total_power_counts_every_source_terminal,
     };
 
@@ -1256,6 +1292,49 @@ mod tests {
         assert!(!total_power_counts_every_source_terminal(
             "modes:newton/newton.dss"
         ));
+    }
+
+    /// The grounded-bank rows are the two KerstingMotor decks, each a case of
+    /// the vendored manifest whose deck writes that Reactor with every phase of
+    /// `bus2` on the ground node of another bus.
+    #[test]
+    fn the_grounded_bank_cases_are_the_two_kersting_motor_decks() {
+        assert_eq!(
+            LANE_GROUNDED_BANKS,
+            &[
+                ("solvable_now:Test/REACTORTest.DSS", "reactor.kerstingmotor"),
+                (
+                    "solvable_now:Test/Source012Test.dss",
+                    "reactor.kerstingmotor"
+                ),
+            ],
+            "a new row needs its own expected-value pin and a record"
+        );
+        let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/corpus");
+        let text = std::fs::read_to_string(corpus.join("manifests/solvable_now.json"))
+            .expect("the solvable_now manifest");
+        let doc: serde_json::Value = serde_json::from_str(&text).expect("the manifest parses");
+        let cases = doc["cases"].as_array().expect("`cases` is an array");
+        for (label, bank) in LANE_GROUNDED_BANKS {
+            assert_eq!(grounded_banks_the_oracles_call_series(label), [*bank]);
+            let path = label
+                .strip_prefix("solvable_now:")
+                .expect("a solvable_now case");
+            assert!(
+                cases.iter().any(|c| c["path"].as_str() == Some(path)),
+                "{label} is not a case of the solvable_now manifest"
+            );
+            let deck = std::fs::read_to_string(corpus.join("electricdss-tst").join(path))
+                .unwrap_or_else(|e| panic!("{path}: {e}"));
+            assert!(
+                deck.contains("Bus1=LoadBus.1.2.3 Bus2=LoadBus2.0.0.0"),
+                "{path}: the KerstingMotor grounded at LoadBus2"
+            );
+        }
+        assert!(
+            grounded_banks_the_oracles_call_series("asymmetric:isource/isource_snap.dss")
+                .is_empty()
+        );
     }
 
     /// The event-log transform touches exactly the two Relay rows and nothing

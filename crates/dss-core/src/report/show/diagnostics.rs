@@ -87,7 +87,7 @@ pub(crate) fn show_variables(
         }
         let names: Vec<String> = (1..=nvar).map(|i| elem.variable_name(i)).collect();
         let mut states = vec![0.0f64; nvar];
-        elem.get_all_variables(sys, node_v, &mut states);
+        elem.read_variables(sys, node_v, &mut states);
         // Pascal writes `pcElem.FullName` (native case).
         s.push_str(&format!("ELEMENT: {name}\n"));
         s.push_str(&format!("No. of variables: {nvar}\n"));
@@ -113,6 +113,11 @@ pub(crate) fn show_mismatch(
     let mut currents = vec![Complex64::ZERO; n];
     let mut max_node = vec![0.0f64; n];
     for_each_enabled_elem(classes, &ckt.ckt_elements, |name, elem| {
+        // An element without a node map is connected to no node, so it adds to
+        // no sum, as a disabled one.
+        if !elem.cd().is_mapped() {
+            return;
+        }
         elem.compute_iterminal(sys, node_v);
         let cd = elem.cd();
         if super::is_autotrans(name) {
@@ -259,7 +264,11 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
             classes[r.class_ord()].props.class_name(),
             obj.data().name()
         );
-        let bus_ref = l.cd.terminals[0].bus_idx();
+        // An element whose node map does not belong to the present bus list has
+        // no bus to compare against.
+        let Some(bus_ref) = l.cd.terminals[0].bus_ref.filter(|_| l.cd.is_mapped()) else {
+            continue;
+        };
         let bus_kv = ckt.buses[bus_ref].kv_base;
         let bus_name = ckt.bus_list.name(bus_ref).unwrap_or("");
         if bus_kv == 0.0 {
@@ -317,7 +326,9 @@ pub(crate) fn show_kvbase_mismatch(classes: &[DssClass], ckt: &Circuit) -> Strin
             classes[r.class_ord()].props.class_name(),
             obj.data().name()
         );
-        let bus_ref = g.cd.terminals[0].bus_idx();
+        let Some(bus_ref) = g.cd.terminals[0].bus_ref.filter(|_| g.cd.is_mapped()) else {
+            continue;
+        };
         let bus_kv = ckt.buses[bus_ref].kv_base;
         let bus_name = ckt.bus_list.name(bus_ref).unwrap_or("");
         if bus_kv == 0.0 {

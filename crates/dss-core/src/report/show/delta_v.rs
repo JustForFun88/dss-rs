@@ -91,12 +91,11 @@ fn write_element_delta_voltages(
     let node_v = &ckt.solution.node_v;
     // Pascal `Pad(dssclassname + '.' + AnsiUpperCase(Name), MaxDeviceNameLength)`.
     let elem_name = format::upper_elem_name(name);
-    // Pascal conductors are 1-based; `Node1 = NodeRef[i]`, `Node2 = NodeRef[i+NCond]`
-    // — the terminal-0 and terminal-1 conductor slices over the flat `node_ref`.
-    let (t0_nodes, t1_nodes) = (cd.term_nodes(0), cd.term_nodes(1));
+    // Conductor `i` (1-based) of terminal 1 and of terminal 2. A conductor of an
+    // element without a node map is at node 0 and bridges no bus.
     for i in 1..=ncond {
-        let n1 = t0_nodes[i - 1];
-        let n2 = t1_nodes[i - 1];
+        let n1 = cd.node_or_ground(i - 1);
+        let n2 = cd.node_or_ground(ncond + i - 1);
         // Ground node (0) → bus 0 (Pascal `if NodeN > 0 then … else Bus := 0`).
         let bus1 = if n1 > 0 {
             ckt.map_node_to_bus[n1].bus_ref

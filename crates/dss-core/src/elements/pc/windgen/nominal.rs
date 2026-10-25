@@ -258,7 +258,7 @@ impl WindGen {
                 2 => {
                     // Volt-var control.
                     let mut vmag_tmp = 0.0_f64;
-                    if !node_v.is_empty() && !self.cd.node_ref.is_empty() {
+                    if !node_v.is_empty() && self.cd.is_mapped() {
                         // Highest local voltage across the phases.
                         let mut vmag = 0.0_f64;
                         for i in 0..self.cd.nphases {

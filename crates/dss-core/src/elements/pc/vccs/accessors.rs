@@ -16,7 +16,7 @@ use crate::obj::arena::ResolvedObj;
 use crate::obj::base::{DssObjData, DssObject};
 use crate::support::cmatrix::CMatrix;
 
-use super::{Vccs, prop};
+use super::{CurveGap, Vccs, prop};
 
 impl CktElement for Vccs {
     fn cd(&self) -> &CktElementData {
@@ -75,6 +75,93 @@ impl CktElement for Vccs {
         self.cd.yprim_invalid = false;
     }
 
+    fn has_dynamic_state(&self) -> bool {
+        true
+    }
+
+    /// The waveform model needs `bp1`, `bp2` and `filter`, the RMS model needs
+    /// `filter`, each a curve with points, and both a finite `fsample`. The
+    /// waveform model also needs one sample in its one-cycle RMS window, so
+    /// `fsample` at least the fundamental. Without them the element has no
+    /// dynamics to integrate (`a_vccs_without_its_curves_refuses_the_dynamics_solve`),
+    /// while a fault study, which reads only the seeded current, still takes it
+    /// (`a_vccs_without_its_curves_takes_part_in_a_fault_study`).
+    fn undefined_dynamics_model(&self) -> Option<String> {
+        fn and_list(items: &[String]) -> String {
+            match items {
+                [] => String::new(),
+                [a] => a.clone(),
+                [init @ .., last] => format!("{} and {last}", init.join(", ")),
+            }
+        }
+        let gaps = self.missing_curves();
+        if gaps.is_empty() {
+            if !self.fsample_freq.is_finite() {
+                return Some(format!(
+                    "VCCS.{} has no dynamics model: its fsample of {} Hz is not a finite number.",
+                    self.cd.obj.name(),
+                    self.fsample_freq
+                ));
+            }
+            let window_has_a_sample = (self.fsample_freq / self.cd.base_frequency).trunc() >= 1.0;
+            return (!self.frms_mode && !window_has_a_sample).then(|| {
+                format!(
+                    "VCCS.{} has no dynamics model: its fsample of {} Hz is below the fundamental of {} Hz, so its one-cycle RMS window holds no sample.",
+                    self.cd.obj.name(),
+                    self.fsample_freq,
+                    self.cd.base_frequency
+                )
+            });
+        }
+        let mut unset = Vec::new();
+        let mut empty = Vec::new();
+        for gap in gaps {
+            match gap {
+                CurveGap::Unset(prop) => unset.push(prop.to_string()),
+                CurveGap::Empty(prop, curve) => empty.push(format!("its {prop} XYcurve.{curve}")),
+            }
+        }
+        let mut parts = Vec::new();
+        if !unset.is_empty() {
+            parts.push(format!("set {} before entering dynamics", and_list(&unset)));
+        }
+        if !empty.is_empty() {
+            let verb = if empty.len() == 1 { "has" } else { "have" };
+            parts.push(format!("{} {verb} no points", and_list(&empty)));
+        }
+        Some(format!(
+            "VCCS.{} has no dynamics model: {}.",
+            self.cd.obj.name(),
+            parts.join(", and ")
+        ))
+    }
+
+    /// Both models run their filter `fsample` times a second, a whole number of
+    /// samples per step, and the VCCS documentation requires the time step to
+    /// be an integer multiple of the sample step: a step of another length
+    /// samples at the wrong rate, and one shorter than the sample step never
+    /// samples and holds the seeded current. `h` and `fsample` each carry the
+    /// rounding of their input, half an ulp, and their product one half ulp
+    /// more, so a step of `N` sample steps reads as `N` within `1.5 ε N`. The
+    /// rule accepts it within `4 ε N`, a stated margin over that bound for a
+    /// unit or an RPN expression that adds a rounding
+    /// (`a_vccs_steps_a_whole_number_of_samples`).
+    fn step_refusal(&self, h: f64) -> Option<String> {
+        let samples = h * self.fsample_freq;
+        let whole = samples.round();
+        if whole >= 1.0 && (samples - whole).abs() <= 4.0 * f64::EPSILON * whole {
+            return None;
+        }
+        let model = if self.frms_mode { "RMS" } else { "waveform" };
+        Some(format!(
+            "VCCS.{} cannot take a step of {h} s: its fsample of {} Hz gives {samples} samples \
+             per step, and the {model} model needs a whole number of them. Set stepsize to \
+             an integer multiple of 1/fsample.",
+            self.cd.obj.name(),
+            self.fsample_freq
+        ))
+    }
+
     /// Pascal `TVCCSObj.InitStateVars`.
     fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.init_state_vars_impl(sys, node_v);
@@ -128,11 +215,21 @@ impl CktElement for Vccs {
         false
     }
 
-    /// Pascal `TVCCSObj.GetCurrents`: `Curr = -InjCurrent` (since `YPrim = 0`,
-    /// `YPrim·V − InjCurrent` reduces to `−InjCurrent`). The recompute goes into
-    /// a local (Pascal's `ComplexBuffer` scratch) — the solver's `InjCurrent`
-    /// stays untouched.
+    /// The terminal current is the negated injection, since an ideal current
+    /// source has a zero primitive admittance. The injection is recomputed into
+    /// a local, so the solver's injection vector stays untouched.
+    ///
+    /// A disabled or unmapped VCCS, and one outside the present dynamics run,
+    /// carries no terminal current
+    /// (`a_vccs_created_after_the_last_solve_reads_as_ground`).
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
+        if !self.cd.enabled
+            || !self.cd.is_mapped()
+            || (sys.is_dynamic_model && !self.cd.dynamics_seeded())
+        {
+            curr.fill(Complex64::ZERO);
+            return;
+        }
         let inj = self.compute_inj_currents(sys, node_v); // present value of inj currents
         for (c, inj) in curr.iter_mut().zip(&inj).take(self.cd.yorder) {
             *c = -*inj;

@@ -223,7 +223,9 @@ pub struct Reactor {
     spec_type: ReactorSpecType,
     is_parallel: bool,
     rp_specified: bool,
-    bus2_defined: bool,
+    /// The bus the user gave terminal 2, kept while a delta connection leaves
+    /// the element one terminal.
+    user_bus2: Option<String>,
     z2_specified: bool,
     z0_specified: bool,
     is_shunt: bool,
@@ -276,7 +278,7 @@ impl Reactor {
             spec_type: ReactorSpecType::Kvar,
             is_parallel: false,
             rp_specified: false,
-            bus2_defined: false,
+            user_bus2: None,
             z2_specified: false,
             z0_specified: false,
             is_shunt: true,

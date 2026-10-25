@@ -57,7 +57,7 @@ impl CktElement for AutoTrans {
     /// double-count the series power (≈ V_X·conj(I_series), ~150 MW here). The
     /// base `losses()` must NOT be used for the auto.
     fn losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Complex64 {
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             return Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);
@@ -90,7 +90,7 @@ impl CktElement for AutoTrans {
         sys: &SysCtx,
         node_v: &[Complex64],
     ) -> (Complex64, Complex64, Complex64) {
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             return (Complex64::ZERO, Complex64::ZERO, Complex64::ZERO);
         }
         let total = self.losses(sys, node_v); // side effect: computes Iterminal
@@ -135,7 +135,7 @@ impl CktElement for AutoTrans {
     fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         {
             let cd = self.cd_mut();
-            if !cd.enabled || cd.node_ref.is_empty() {
+            if !cd.enabled || !cd.is_mapped() {
                 curr.fill(Complex64::ZERO);
                 return;
             }

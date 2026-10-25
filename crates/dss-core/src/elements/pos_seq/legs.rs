@@ -365,18 +365,17 @@ mod tests {
         // An induction machine's legs run over its phases as its stamp joins
         // its conductors: delta legs, line-to-line pairs for a three-phase wye
         // machine, whose star floats, and legs to earth for a one- or
-        // two-phase wye machine. The conductor count `mx` took while it was
-        // wye has no extra conductor, so its last delta leg wraps to conductor
-        // 0, as its stamp does.
+        // two-phase wye machine. `mx`, given wye before delta, takes the
+        // conductors of its final connection.
         let open2 = [(0, Some(1)), (1, Some(2))];
         for (name, nconds, want, v) in [
             ("m3", 3, delta3.to_vec(), 12470.0),
             ("m3w", 3, delta3.to_vec(), 12470.0),
             ("m1d", 2, vec![(0, Some(1))], 12470.0),
             ("m2d", 3, open2.to_vec(), 12470.0),
-            ("m1w", 2, vec![(0, None)], 7200.0),
-            ("m2w", 3, vec![(0, None), (1, None)], v_wye),
-            ("mx", 2, vec![(0, Some(1)), (1, Some(0))], 12470.0),
+            ("m1w", 1, vec![(0, None)], 7200.0),
+            ("m2w", 2, vec![(0, None), (1, None)], v_wye),
+            ("mx", 3, open2.to_vec(), 12470.0),
         ] {
             let what = format!("indmach012.{name}");
             assert_eq!(elem(&dss, "indmach012", name).cd().nconds, nconds, "{what}");

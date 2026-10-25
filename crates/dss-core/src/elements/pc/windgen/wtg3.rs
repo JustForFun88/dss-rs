@@ -740,7 +740,8 @@ impl Wtg3Model {
             }
         }
 
-        // run a load flow
+        // run a load flow, in the frame of a first run (the PLL angle at 0)
+        self.vang = 0.0;
         self.n_iter_lf = 1;
         self.calc_pflow(v, i);
 
@@ -815,6 +816,10 @@ impl Wtg3Model {
         self.d_pinp_wind_inertia = 0.0;
         // swing model
         self.d_wt = self.wt - 1.0;
+        // the run starts at t = 0, where the entry sets the clock, so the
+        // sub-cycle clock starts there as in a first run
+        // (`a_machine_that_ran_before_starts_the_next_run_fresh`)
+        self.tsim = 0.0;
 
         // initialize integrator
         for ii in 0..12 {

@@ -307,7 +307,9 @@ fn write_terminal_power(
             .cell(Cell::right(format::fixed(power_factor(sp), 4), 8))
     };
     let mut saccum = Complex64::ZERO;
-    for (&nref, &ci) in cd.term_nodes(jterm - 1).iter().zip(cd.term_i(jterm - 1)) {
+    let base = (jterm - 1) * cd.nconds;
+    for (c, &ci) in cd.term_i(jterm - 1).iter().enumerate() {
+        let nref = cd.node_or_ground(base + c);
         let mut sp = node_v[nref] * ci.conj();
         if sys.positive_sequence {
             sp *= 3.0;

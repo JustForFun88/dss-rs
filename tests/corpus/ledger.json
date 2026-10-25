@@ -54,7 +54,8 @@
     "di-voltexception-argmin-tie": "The voltage-exception report's `Min LV Bus` column is the ARGMIN of a tied minimum on ckt7. `TEnergyMeterObj.WriteVoltageReport` scans the buses in list order and keeps the FIRST STRICT minimizer (`If Vmagpu < underVmin`, r4133 Version8/Source/Meters/EnergyMeter.pas:3620-3754: the primary arm opens at :3648 and keeps its strict minimum at :3658, the LV arm opens at :3707 on kVBase <= 1 and keeps its own at :3717; citation corrected by the G1.10c audit settlement, finding AT-2), and the port's scan is faithful to it line for line (crates/dss-core/src/solution/meters/demand_interval.rs:866-906 -- same order, same strict `<`, same `> 0.1` neutral guard, same kVBase split). On ckt7 the three service buses s1x_1001577 / s2x_1001577 / s3x_1001577 carry the SAME node magnitudes bit for bit on the oracle (tmp/g110c/probe_tie.py: 0x1.c26d89b2b06a6p-1, 0x1.c5736ad8e99ddp-1, 0x1.c69388d539fa3p-1 at each of the three), so the minimum is attained at three buses at once and which one a strict `<` scan reports is decided by the last bit of the solve: the port's faer solution breaks the tie at s2x_1001577 / s3x_1001577 where both KLU oracles break it at s1x_1001577. Every one of the three is a correct answer, and the VALUE column `Min LV Voltage` agrees inside the voltage class on all 7316 rows -- so the name column carries no information the value column does not. Not a port gap, no engine change; `Min Bus`, `Max Bus` and `Max LV Bus` stay compared and match on every row of every case. Measured GOLDEN_REBASE G1.10c R part 2026-09-11; coordinator decision D42(2).",
     "geometry-weakest-phase": "A LineGeometry rating nobody typed is the weakest phase conductor's, and so is the rating of a Line on it, where both oracles copy conductor 1's. Every phase conductor carries the line current and every loading reader compares the largest phase current with the Line's one rating, so the weakest phase conductor's rating is the largest single rating that never misses an overload (not the exact check of each phase current against its own conductor, which no reader makes). The spacing form already reads it so on the engine and on r4133. The asymmetric geometry oh3 (ACSR_336_4 530 A, ACSR_4-0 340 A, ACSR_1-0 230 A on the phases, emergency ratings 1.5 times) reads 230/345 where both oracles read 530/795. Pinned by exec::tests::ratings::a_geometry_line_is_rated_by_its_weakest_phase_conductor.",
     "two-winding-kva-derives-the-kva-ratings": "A kVA typed at the second winding of a two-winding Transformer, AutoTrans or XfmrCode is the kVA of both windings, and the documentation defaults NormHkVA and EmergHkVA to 110 % and 150 % of winding 1's kVA. The engine derives both kVA ratings from that kVA, as a kVA typed at winding 1 does, while both oracles keep the ratings of the kVA winding 1 held before, so a unit is rated for a kVA it no longer has. Measured 2026-10-25 with the epri-worker on the r4133 DLL and on the pinned dss-python: wdg=2 kva=1000 on a 500 kVA two-winding unit reads NormHkVA 550 and EmergHkVA 750 on both, wdg=1 kva=1000 reads 1100 and 1500. Reported upstream.",
-    "storage-charges-at-the-efficiency-of-its-dc-power": "A Storage charging through an EffCurve stores the AC power times the efficiency the curve gives at the per-unit DC power, P = eta(P / kVA) P_ac, solved on the curve segment that holds it. Both oracles solve it by trial and, when the segment of the AC power is not the segment of the DC power, apply the second segment's efficiency to the DC power of the first pass instead of to the AC power, so the efficiency is applied twice and less energy is stored than the curve allows. Measured 2026-10-25 with the epri-worker on the r4133 DLL and on the pinned dss-python: one charging hour at 100 kW on xarray=[0 0.8 1.2] yarray=[0.9 0.9 0.5] (kVA 120, 2000 kWh stored) stores 2074.21111404038 kWh on dss_capi and 2074.21 on r4133, the flat 0.9 curve 2080.10400007158 on both, the value the engine stores for either. Reported upstream."
+    "storage-charges-at-the-efficiency-of-its-dc-power": "A Storage charging through an EffCurve stores the AC power times the efficiency the curve gives at the per-unit DC power, P = eta(P / kVA) P_ac, solved on the curve segment that holds it. Both oracles solve it by trial and, when the segment of the AC power is not the segment of the DC power, apply the second segment's efficiency to the DC power of the first pass instead of to the AC power, so the efficiency is applied twice and less energy is stored than the curve allows. Measured 2026-10-25 with the epri-worker on the r4133 DLL and on the pinned dss-python: one charging hour at 100 kW on xarray=[0 0.8 1.2] yarray=[0.9 0.9 0.5] (kVA 120, 2000 kWh stored) stores 2074.21111404038 kWh on dss_capi and 2074.21 on r4133, the flat 0.9 curve 2080.10400007158 on both, the value the engine stores for either. Reported upstream.",
+    "vccs-rms-seed-filter-at-rest": "Both oracles seed the input history of the RMS VCCS filter with the RMS voltage, where the filter's input is the current command, so their filter starts out of rest. The engine starts it at rest at the seeded current. An RMS VCCS therefore leaves its seed on another trajectory until the history has decayed, and with it the node voltage a dynamics run saves at its last Y rebuild, which the bus `Voc` reads, while the final node voltages agree. Pinned by exec::tests::dynamics_membership::joining::a_vccs_holds_its_operating_point_at_any_sample_rate and by the pre-fault filter output of exec::tests::vccs::vccs_rmsmode_dynamics_mode3_matches_oracle_1phase and ::vccs_rmsmode_dynamics_mode3_matches_oracle_3phase."
   },
   "entries": [
     {
@@ -2432,6 +2433,94 @@
       "cause_ref": "storage-charges-at-the-efficiency-of-its-dc-power",
       "source": "Measured 2026-10-25 by the live corpus gate on this case (DSS_GATE_ONLY, default lane), one failing cell per round with the entries above in place. The deck charges its seven Storage elements under a StorageController in peakShaveLow through XYCurve.Eff (xarray=[.1 .2 .4 1.0] yarray=[.86 .9 .93 .97]), and the energy Storage.B, C and F hold after the solve the gate adds to the deck's own daily solve (a second day), with the controller's reading of the fleet's energy on r4133, is all that moves. The engine run with the trial loop restored matches both channels, and the same loop with only the charging relation reading the AC power gives the engine's readings exactly. Pinned by exec::tests::rating_refusals::the_dc_power_of_an_efficiency_curve_is_solved_on_the_segment_that_holds_it.",
       "measured": {
+        "date": "2026-10-25"
+      }
+    },
+    {
+      "id": "vccs-rms-seed-at-rest-dgprotfdr-capi-voc",
+      "case": "solvable_now:Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
+      "channel": "capi_v0145",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "voc",
+          "name_re": "(?i)^b2$"
+        },
+        {
+          "field": "voc",
+          "name_re": "(?i)^bt$"
+        },
+        {
+          "field": "voc",
+          "name_re": "(?i)^lat2$"
+        }
+      ],
+      "cause_ref": "vccs-rms-seed-filter-at-rest",
+      "source": "Measured 2026-10-25 by the live corpus gate in seed-ledger mode on the five vendored VCCS decks, both channels, with every bus Voc compared and printed: the RMS VCCS of this deck seeded at rest moves the Voc of exactly these buses past the voltage floor, and with them masked every other compared field of the case, the final node voltages included, matches on this channel. The other three VCCS decks match on both channels.",
+      "measured": {
+        "first_failures": "b2 (111.59397786110839, 115.90132303522962) V against (111.59397637394586, 115.901320628792) V, |d| 2.829e-6 > allowed 2.609e-6; bt (119.85866424958382, 124.49203632465492) V against (119.8586626523175, 124.49203373999237) V; lat2 (111.92516483219694, 115.86053127558624) V against (111.92516333919127, 115.86052886861911) V",
+        "date": "2026-10-25"
+      }
+    },
+    {
+      "id": "vccs-rms-seed-at-rest-dgprotfdr-r4133-voc",
+      "case": "solvable_now:Version8/Distrib/Examples/VCCS/DG_Prot_Fdr.dss",
+      "channel": "r4133",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "voc",
+          "name_re": "(?i)^b2$"
+        },
+        {
+          "field": "voc",
+          "name_re": "(?i)^bt$"
+        },
+        {
+          "field": "voc",
+          "name_re": "(?i)^lat2$"
+        }
+      ],
+      "cause_ref": "vccs-rms-seed-filter-at-rest",
+      "source": "Measured 2026-10-25 by the live corpus gate in seed-ledger mode on the five vendored VCCS decks, both channels, with every bus Voc compared and printed: the RMS VCCS of this deck seeded at rest moves the Voc of exactly these buses past the voltage floor, and with them masked every other compared field of the case, the final node voltages included, matches on this channel. The other three VCCS decks match on both channels.",
+      "measured": {
+        "first_failures": "b2 (111.59397786110839, 115.90132303522962) V against (111.59397637395139, 115.90132062877609) V, |d| 2.829e-6 > allowed 2.609e-6; bt (119.85866424958382, 124.49203632465492) V against (119.85866265232407, 124.49203373997575) V; lat2 (111.92516483219694, 115.86053127558624) V against (111.92516333919679, 115.8605288686032) V",
+        "date": "2026-10-25"
+      }
+    },
+    {
+      "id": "vccs-rms-seed-at-rest-hwpll-capi-voc",
+      "case": "solvable_now:Version8/Distrib/Examples/VCCS/HWPLL.dss",
+      "channel": "capi_v0145",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "voc",
+          "name_re": "(?i)^sourcebus$"
+        }
+      ],
+      "cause_ref": "vccs-rms-seed-filter-at-rest",
+      "source": "Measured 2026-10-25 by the live corpus gate in seed-ledger mode on the five vendored VCCS decks, both channels, with every bus Voc compared and printed: the RMS VCCS of this deck seeded at rest moves the Voc of exactly these buses past the voltage floor, and with them masked every other compared field of the case, the final node voltages included, matches on this channel. The other three VCCS decks match on both channels.",
+      "measured": {
+        "first_failures": "sourcebus (2403.0229353429363, 2.515542215446999) V against (2403.02290697952, 2.515484793184271) V, |d| 6.405e-5 > allowed 2.503e-5",
+        "date": "2026-10-25"
+      }
+    },
+    {
+      "id": "vccs-rms-seed-at-rest-hwpll-r4133-voc",
+      "case": "solvable_now:Version8/Distrib/Examples/VCCS/HWPLL.dss",
+      "channel": "r4133",
+      "kind": "exclusion",
+      "match": [
+        {
+          "field": "voc",
+          "name_re": "(?i)^sourcebus$"
+        }
+      ],
+      "cause_ref": "vccs-rms-seed-filter-at-rest",
+      "source": "Measured 2026-10-25 by the live corpus gate in seed-ledger mode on the five vendored VCCS decks, both channels, with every bus Voc compared and printed: the RMS VCCS of this deck seeded at rest moves the Voc of exactly these buses past the voltage floor, and with them masked every other compared field of the case, the final node voltages included, matches on this channel. The other three VCCS decks match on both channels.",
+      "measured": {
+        "first_failures": "sourcebus (2403.0229353429363, 2.515542215446999) V against (2403.02290697952, 2.515484793184271) V, |d| 6.405e-5 > allowed 2.503e-5",
         "date": "2026-10-25"
       }
     }

@@ -24,7 +24,6 @@ use crate::elements::traits::{CktElement, SysCtx};
 use crate::solution::{USEDAILY, USEDUTY, USEYEARLY};
 use crate::support::complexutil::{c_to_polar, pclx, to_polar};
 use crate::support::dynamics::IterationFlag;
-use crate::support::mathutil::PiCtrl;
 use crate::util::CDOUBLEONE;
 
 use super::PVSystem;
@@ -58,6 +57,41 @@ impl PVSystem {
         }
     }
 
+    /// The panel at the present dynamics hour: samples the load-shape class
+    /// and computes the panel power (both stored as the seed and the
+    /// integrator use them), then returns Irradiance, PanelkW and P_TFactor.
+    pub(super) fn panel_settings(&mut self, sys: &SysCtx) -> (f64, f64, f64) {
+        self.apply_dynamics_load_shape(sys);
+        self.compute_panel_power();
+        (self.present_irradiance(), self.panel_kw, self.temp_factor)
+    }
+
+    /// The inverter ratings the dynamics model derives from the rated data, in
+    /// the seed's operation order: the phase base voltage (line-to-neutral for
+    /// more than one phase), the per-phase current limit and the series
+    /// inductance of the Thevenin reactance (`%X` taken as 50 when it is 0) at
+    /// the fundamental `fundamental`. The seed stores these values and the
+    /// variable readers of a unit outside the run report them.
+    pub(super) fn dynamics_ratings(&self, fundamental: f64) -> (f64, f64, f64) {
+        let nphases = self.cd.nphases;
+        let present_kv = self.kv_pvsystem_base;
+        let base_kv = if nphases > 1 {
+            present_kv / 3.0_f64.sqrt()
+        } else {
+            present_kv
+        };
+        let base_zt = 0.01 * (present_kv * present_kv / self.f_kva_rating) * 1000.0;
+        let i_max_p_phase = (self.f_kva_rating / base_kv) / nphases as f64;
+        let pct_x = if self.base.pct_x == 0.0 {
+            50.0
+        } else {
+            self.base.pct_x
+        };
+        let x_thev = pct_x * base_zt;
+        let ls = x_thev / (2.0 * std::f64::consts::PI * fundamental);
+        (base_kv, i_max_p_phase, ls)
+    }
+
     /// Pascal `TPVsystemObj.InitStateVars` (l.2174) — seed the GFL inverter
     /// state from the present power-flow operating point (+ the `DynamicEqObj <> NIL`
     /// derivative zero-out at the tail). PVSystem `InitStateVars` has NO user-model
@@ -67,16 +101,9 @@ impl PVSystem {
 
         let nphases = self.cd.nphases;
 
-        // Pascal `if (Length(PICtrl)=0) or (Length(PICtrl)<Fnphases)`:
-        // create / resize the PI-controller array.
-        if self.base.pi_ctrl.len() < nphases {
-            self.base.pi_ctrl.resize_with(nphases, PiCtrl::new);
-            for pi in &mut self.base.pi_ctrl {
-                pi.kp = self.base.dyn_vars.kp;
-                pi.k_num = 0.9502;
-                pi.k_den = 0.04979;
-            }
-        }
+        // A new run starts every phase's controller without memory
+        // (`a_machine_that_ran_before_starts_the_next_run_fresh`).
+        self.base.fresh_pi_controllers(nphases);
 
         self.base.dyn_vars.safe_mode = false;
 
@@ -87,9 +114,7 @@ impl PVSystem {
         // `LoadShapeClass` set) leaves `ShapeFactor := CDOUBLEONE`. A whole-feeder
         // dynamics deck that does `set loadshapeclass=daily; set time=(10,0)`
         // therefore starts dynamics at that hour's irradiance, not full sun.
-        self.apply_dynamics_load_shape(sys);
-
-        self.compute_panel_power();
+        self.panel_settings(sys);
 
         // Pascal `NumPhases := Fnphases; NumConductors := Fnconds; Conn := Connection`
         // (these are the PVSystemVars "publicdata" fields; in the port the struct
@@ -98,15 +123,10 @@ impl PVSystem {
         // Size and zero the per-phase dynamics arrays.
         self.base.dyn_vars.init_dyn_arrays(nphases);
 
-        // BasekV: L-N for multi-phase, kV directly for single-phase.
-        let present_kv = self.kv_pvsystem_base;
-        self.base.dyn_vars.base_kv = if nphases > 1 {
-            present_kv / 3.0_f64.sqrt()
-        } else {
-            present_kv
-        };
+        let (base_kv, i_max_p_phase, ls) = self.dynamics_ratings(sys.fundamental);
+        self.base.dyn_vars.base_kv = base_kv;
 
-        let base_kv = self.base.dyn_vars.base_kv;
+        let present_kv = self.kv_pvsystem_base;
         let base_zt = 0.01 * (present_kv * present_kv / self.f_kva_rating) * 1000.0;
         let sm_thresh = self.base.dyn_vars.sm_threshold;
         self.base.dyn_vars.max_vs = (2.0 - sm_thresh / 100.0) * base_kv * 1000.0;
@@ -114,7 +134,7 @@ impl PVSystem {
         self.base.dyn_vars.min_amps =
             (self.base.fpct_cut_out / 100.0) * ((self.f_kva_rating / base_kv) / nphases as f64);
         self.base.dyn_vars.reset_ibr = false;
-        self.base.dyn_vars.i_max_p_phase = (self.f_kva_rating / base_kv) / nphases as f64;
+        self.base.dyn_vars.i_max_p_phase = i_max_p_phase;
 
         if self.base.pct_x == 0.0 {
             self.base.pct_x = 50.0; // Pascal forces 50% in dynamics if not given
@@ -128,10 +148,8 @@ impl PVSystem {
 
         self.compute_iterminal(sys, node_v);
 
-        // `LS = XThev / (2 * PI * DefaultBaseFreq)`. `sys.fundamental` is the
-        // circuit base frequency, equal to `DSS.DefaultBaseFreq` in dynamics.
-        let two_pi_f = 2.0 * std::f64::consts::PI * sys.fundamental;
-        self.base.dyn_vars.ls = x_thev / two_pi_f;
+        // The series inductance `x_thev / (2π f)`, f the circuit's fundamental.
+        self.base.dyn_vars.ls = ls;
 
         let nphases_f = nphases as f64;
         let panel_kw = self.panel_kw;
@@ -163,11 +181,12 @@ impl PVSystem {
             self.base.dyn_vars.ang_delta[i] = 0.0;
         }
 
-        // DynamicEqObj <> NIL: zero the derivative column of the equation memory
-        // (Pascal PVsystem.pas l.2258). Unlike the Generator, the inverter applies
-        // no init-value seeding here — the per-phase `it`/`Vgrid`/`m` seeded by the
-        // classic loop above *are* the state, loaded into `DynOut[0]` each step.
+        // A linked equation gets its constant initial values and a zero
+        // derivative column. The per-phase `it`, `Vgrid` and `m` seeded above
+        // are the state the host loads into `DynOut[0]` each step, so no
+        // calculated initial value is applied.
         if self.base.dyneq.has_dynamic_eq() {
+            self.base.dyneq.apply_init_values();
             for row in self.base.dyneq.dynamic_eq_vals.iter_mut() {
                 row[1] = 0.0;
             }
@@ -187,12 +206,9 @@ impl PVSystem {
             return;
         }
 
-        // Pascal PVsystem.pas l.2281-2299: recompute the panel power each dynamics
-        // step, honoring `Set LoadShapeClass=` (the same `case ActiveLoadShapeClass`
-        // as `InitStateVars`). USENONE (default) → `ShapeFactor := CDOUBLEONE`.
-        self.apply_dynamics_load_shape(sys);
-
-        self.compute_panel_power();
+        // Recompute the panel power each dynamics step, honoring
+        // `Set LoadShapeClass=` as the seed does.
+        self.panel_settings(sys);
 
         let nphases = self.cd.nphases;
         let nphases_f = nphases as f64;
@@ -558,6 +574,37 @@ impl PVSystem {
                 states[i - 1] = self.get_pv_variable(i, sys, node_v);
             }
         }
+    }
+
+    /// The settings of a unit outside the dynamics run, in the classic layout:
+    /// Irradiance, PanelkW, P_TFactor, Efficiency and kW_out_desired from the
+    /// present inputs (the panel at the present dynamics hour and the inverter
+    /// curve at that panel power), then the inverter-dynamics settings. The
+    /// panel and the curve are evaluated on a copy of the unit, so a reading
+    /// changes neither its stored panel values nor the lookup positions of its
+    /// curves and shapes.
+    pub(super) fn write_setting_variables(&self, sys: &SysCtx, states: &mut [f64]) {
+        let mut unit = self.clone();
+        // The temperature of a unit without a load-shape class is its
+        // `Temperature` property, as the power flow before an entry sets it.
+        unit.t_shape_value = unit.f_temperature;
+        let (irradiance, panel_kw, temp_factor) = unit.panel_settings(sys);
+        let efficiency = unit.inverter_curve_efficiency();
+        for (slot, value) in [
+            (0, irradiance),
+            (1, panel_kw),
+            (2, temp_factor),
+            (3, efficiency),
+            (NUM_BASE_PV_VARS - 1, panel_kw * efficiency),
+        ] {
+            if let Some(s) = states.get_mut(slot) {
+                *s = value;
+            }
+        }
+        let (_, i_max_p_phase, ls) = self.dynamics_ratings(sys.fundamental);
+        self.base
+            .dyn_vars
+            .write_setting_variables(states, NUM_BASE_PV_VARS, ls, i_max_p_phase);
     }
 
     /// Pascal `TPVsystemObj.Set_Variable` (l.2489) (1-based). The write side of

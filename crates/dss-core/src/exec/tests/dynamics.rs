@@ -558,6 +558,88 @@ fn generator_dynexp_dynamics_swing_matches_oracle_kundur() {
     );
 }
 
+/// The bits of what a run of the DynamicExp Kundur deck shows: the memory of
+/// `Generator.G1`, its terminal powers and every node voltage.
+/// `pterm` is left out when `with_input` is false: the host loads that input
+/// from the terminal before each step reads it, so at an entry it holds what
+/// the last load left (0 before any run).
+fn dynexp_state(dss: &mut Dss, with_input: bool) -> Vec<u64> {
+    let names = dss.element_variable_names("Generator.G1").expect("G1");
+    let values = dss.element_variables("Generator.G1").expect("G1");
+    let mut bits: Vec<u64> = names
+        .iter()
+        .zip(&values)
+        .filter(|(n, _)| with_input || n.as_str() != "pterm")
+        .map(|(_, v)| v.to_bits())
+        .collect();
+    assert_eq!(
+        bits.len() + usize::from(!with_input),
+        values.len(),
+        "{names:?}"
+    );
+    let g1 = dss
+        .snapshot_elements()
+        .into_iter()
+        .find(|e| e.name.eq_ignore_ascii_case("Generator.G1"))
+        .expect("G1");
+    let complex_bits = |c: &num_complex::Complex64| [c.re.to_bits(), c.im.to_bits()];
+    bits.extend(g1.powers.iter().flat_map(complex_bits));
+    let node_v = &dss.circuit().expect("circuit").solution.node_v;
+    bits.extend(node_v.iter().flat_map(complex_bits));
+    bits
+}
+
+/// A machine linked to a `DynamicExp` starts every run from the initial values
+/// of its assignments, each entry writing the constants into the memory again
+/// and then the calculated ones. After a first run with a fault that drives the
+/// rotor off synchronous speed, `Set mode=snap`, `Solve` and a second entry,
+/// the memory, the Generator's power and every node voltage equal the run from
+/// the start bit for bit, at the entry (but the input `pterm`,
+/// [`dynexp_state`]) and after each step.
+#[test]
+fn a_dynamicexp_machine_starts_every_run_from_its_initial_values() {
+    let entry = "Set mode=dynamic stepsize=0.001 number=1";
+    let mut fresh = kundur_dynexp_dss();
+    let mut second = kundur_dynexp_dss();
+    for line in [
+        "Set mode=dynamic stepsize=0.001 number=50",
+        "New Fault.f1 bus1=HT phases=3 r=50",
+        "Solve",
+    ] {
+        second.command(line);
+    }
+    let speed = second.element_variables("Generator.G1").expect("G1")[0];
+    assert_eq!(format!("{speed:.6}"), "-1.062102", "the first run's speed");
+    for line in ["Disable Fault.f1", "Set mode=snap", "Solve"] {
+        second.command(line);
+    }
+    for dss in [&mut fresh, &mut second] {
+        dss.command(entry);
+    }
+    assert_eq!(
+        second.element_variables("Generator.G1").expect("G1")[0],
+        0.0,
+        "the speed at the second entry"
+    );
+    assert_eq!(
+        dynexp_state(&mut second, false),
+        dynexp_state(&mut fresh, false),
+        "the entry"
+    );
+    for step in 1..=5 {
+        for dss in [&mut fresh, &mut second] {
+            dss.command("Solve");
+        }
+        assert_eq!(
+            dynexp_state(&mut second, true),
+            dynexp_state(&mut fresh, true),
+            "step {step}"
+        );
+    }
+    assert!(fresh.errors().is_empty(), "{:?}", fresh.errors());
+    assert!(second.errors().is_empty(), "{:?}", second.errors());
+}
+
 // ===========================================================================
 // WP7.7 step 2b — PVSystem / Storage grid-following inverter dynamics
 // (InvDynamics.TInvDynamicVars). The classic-+inverter state-variable interface

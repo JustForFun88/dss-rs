@@ -15,6 +15,7 @@
 
 use num_complex::Complex64;
 
+use crate::elements::general::xy_curve::XyCurveObj;
 use crate::elements::traits::{CktElement, SysCtx};
 use crate::support::complexutil::cang;
 use crate::support::dynamics::IterationFlag;
@@ -28,8 +29,20 @@ const TWO_PI: f64 = std::f64::consts::TAU;
 const NUM_VARIABLES: usize = 6;
 
 impl Vccs {
-    /// Pascal `TVCCSObj.InitStateVars` — seed the waveform (or, in `RmsMode`, the
-    /// phasor) history terms from the present terminal voltage/current.
+    /// Seed the waveform (or, in `RmsMode`, the phasor) state from the present
+    /// terminal voltage and current. The state a direct solve reads, the
+    /// current magnitude and the voltage, is written whatever curves the
+    /// element has, so a fault study takes the element at its pre-fault
+    /// current without them
+    /// (`a_vccs_without_its_curves_takes_part_in_a_fault_study`). The filter
+    /// history the integration reads is cleared as a first run finds it and
+    /// then written in every slot from the same operating point, so every run
+    /// starts as the first did whatever the last one left
+    /// (`a_vccs_starts_every_run_with_the_filter_history_of_a_first_run`).
+    /// Every slot holds the sample of its own instant before the entry on the
+    /// waveform the integration continues, for an entry at t = 0, at any
+    /// sample rate and bus angle
+    /// (`a_waveform_vccs_reads_one_current_on_every_phase_and_angle`).
     pub(super) fn init_state_vars_impl(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         if self.frms_mode {
             self.init_phasor_states(sys, node_v);
@@ -46,6 +59,18 @@ impl Vccs {
         self.s6 = 0.0;
         self.s_v1 = Complex64::new(1.0, 0.0);
         self.vlast = self.cd.vterminal[0] / self.base_volt;
+        self.s_idx_u = 0;
+        self.s_idx_y = 0;
+
+        // The waveform history is defined only through `bp1` and `bp2`.
+        let Some((mut fbp1, mut fbp2)) = self.take_breakpoint_curves() else {
+            return;
+        };
+        // Each curve lookup of the new run hunts from the first point, as in a
+        // first run (`a_machine_that_ran_before_starts_the_next_run_fresh`).
+        fbp1.reset_hunt();
+        fbp2.reset_hunt();
+        self.clear_history();
 
         // Initialize the history terms for the HW model (source convention).
         let d = 1.0 / self.fsample_freq;
@@ -55,32 +80,52 @@ impl Vccs {
         let s1 = self.s1;
         let s3 = self.s3;
 
-        let mut fbp1 = self.fbp1.take().expect("filter set ⇒ bp1 set in dynamics");
-        let fbp2 = self.fbp2.take().expect("filter set ⇒ bp2 set in dynamics");
+        // The integration samples `|V| cos(wt - vang)`, so slot `i`, which stands
+        // `ffiltlen - i` samples before the entry, reads the angle plus that lag.
         for i in 1..=ffiltlen {
-            let wt = vang - wd * (ffiltlen - i) as f64;
-            self.whist[i] = fbp1.get_y_value(s1 * wt.cos());
+            let back = wd * (ffiltlen - i) as f64;
+            self.whist[i] = fbp1.get_y_value(s1 * (vang + back).cos());
             self.wlast[i] = self.whist[i];
+            let val = s3 * (iang + back).cos(); // current by the passive sign convention
+            self.z[i] = -fbp2.get_x_value(val); // HW history, generator convention
+            self.zlast[i] = self.z[i];
         }
         for i in 1..=fwinlen {
-            let wt = iang - wd * (fwinlen - i) as f64;
-            let val = s3 * wt.cos(); // current by the passive sign convention
+            let val = s3 * (iang + wd * (fwinlen - i) as f64).cos();
             self.y2[i] = val * val;
-            let k = i as i64 - fwinlen as i64 + ffiltlen as i64;
-            if k > 0 {
-                let k = k as usize;
-                self.z[k] = -fbp2.get_x_value(val); // HW history, generator convention
-                self.zlast[k] = self.z[k];
-            }
         }
         self.fbp1 = Some(fbp1);
         self.fbp2 = Some(fbp2);
-
-        self.s_idx_u = 0;
-        self.s_idx_y = 0;
     }
 
-    /// Pascal `TVCCSObj.InitPhasorStates`.
+    /// Zero every slot of the filter histories and the RMS window, as a new
+    /// element holds them, before the seed writes them.
+    fn clear_history(&mut self) {
+        self.z.clear();
+        self.whist.clear();
+        self.zlast.fill(0.0);
+        self.wlast.fill(0.0);
+        self.y2.fill(0.0);
+    }
+
+    /// Takes `bp1` and `bp2` out of the element when both are set, else leaves
+    /// both in place.
+    fn take_breakpoint_curves(&mut self) -> Option<(XyCurveObj, XyCurveObj)> {
+        match (self.fbp1.take(), self.fbp2.take()) {
+            (Some(bp1), Some(bp2)) => Some((bp1, bp2)),
+            (bp1, bp2) => {
+                self.fbp1 = bp1;
+                self.fbp2 = bp2;
+                None
+            }
+        }
+    }
+
+    /// Seed the phasor state of the RMS model, as [`Self::init_state_vars_impl`]
+    /// seeds the waveform state. The filter starts at rest at the seeded
+    /// current: every input slot holds the current command and every output
+    /// slot the current, both `s4`
+    /// (`a_vccs_holds_its_operating_point_at_any_sample_rate`).
     fn init_phasor_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         self.compute_iterminal(sys, node_v);
         self.s1 = self.cd.vterminal[0].norm() / self.base_volt;
@@ -91,20 +136,14 @@ impl Vccs {
         self.s6 = 0.0;
         self.s_v1 = Complex64::new(1.0, 0.0);
         self.vlast = self.cd.vterminal[0] / self.base_volt;
+        self.clear_history();
 
-        let s1 = self.s1;
         let s4 = self.s4;
         for i in 1..=self.ffiltlen {
-            self.whist[i] = s1;
-            self.wlast[i] = s1;
-        }
-        for i in 1..=self.fwinlen {
-            let k = i as i64 - self.fwinlen as i64 + self.ffiltlen as i64;
-            if k > 0 {
-                let k = k as usize;
-                self.z[k] = s4; // HW history with load convention
-                self.zlast[k] = self.z[k];
-            }
+            self.whist[i] = s4;
+            self.wlast[i] = s4;
+            self.z[i] = s4; // HW history with load convention
+            self.zlast[i] = s4;
         }
         self.s_idx_u = 0;
         self.s_idx_y = 0;
@@ -141,6 +180,15 @@ impl Vccs {
             self.integrate_phasor_states(sys, node_v);
             return;
         }
+        // Without its three curves the waveform model has nothing to integrate.
+        let Some((mut fbp1, mut fbp2)) = self.take_breakpoint_curves() else {
+            return;
+        };
+        let Some(filter) = self.ffilter.take() else {
+            self.fbp1 = Some(fbp1);
+            self.fbp2 = Some(fbp2);
+            return;
+        };
 
         self.compute_iterminal(sys, node_v);
 
@@ -166,9 +214,6 @@ impl Vccs {
             self.whist[k] = self.wlast[k];
         }
 
-        let mut fbp1 = self.fbp1.take().expect("filter set ⇒ bp1 set in dynamics");
-        let mut fbp2 = self.fbp2.take().expect("filter set ⇒ bp2 set in dynamics");
-        let filter = self.ffilter.take().expect("filter set in dynamics");
         let filter_y = filter.y_values();
         let filter_x = filter.x_values();
 
@@ -228,10 +273,15 @@ impl Vccs {
 
     /// Pascal `TVCCSObj.IntegratePhasorStates` — the RMS/phasor (PLL) path.
     fn integrate_phasor_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
+        // Without its filter the RMS model has nothing to integrate.
+        let Some(filter) = self.ffilter.take() else {
+            return;
+        };
         self.compute_iterminal(sys, node_v);
         self.update_sequence_voltage();
         let vpu = self.s_v1.norm() / self.base_volt;
         if vpu <= 0.0 {
+            self.ffilter = Some(filter);
             return;
         }
         let h = sys.dyna_h;
@@ -257,7 +307,6 @@ impl Vccs {
             self.whist[k] = self.wlast[k];
         }
 
-        let filter = self.ffilter.take().expect("filter set in dynamics");
         let filter_y = filter.y_values();
         let filter_x = filter.x_values();
         let s2 = self.s2;

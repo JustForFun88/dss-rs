@@ -97,6 +97,23 @@ impl Monitor {
             (e.cd().nconds, e.cd().yorder)
         };
         let offset = (self.med.metered_terminal as usize - 1) * m_nconds;
+        // The node of each monitored conductor: the monitor's own map, or the
+        // metered terminal's where the monitor has none yet. A metered element
+        // without a node map reads as connected to no node.
+        let nodes: Vec<usize> = {
+            let m = metered.ckt().cd();
+            (0..self.med.cd.nconds)
+                .map(|i| {
+                    if !m.is_mapped() {
+                        0
+                    } else if self.med.cd.is_mapped() {
+                        self.med.cd.node_ref[i]
+                    } else {
+                        m.node_or_ground(offset + i)
+                    }
+                })
+                .collect()
+        };
         let fnphases = self.med.cd.nphases;
         let fnconds = self.med.cd.nconds;
 
@@ -126,8 +143,8 @@ impl Monitor {
                 e.compute_iterminal(sys, node_v);
                 let cd = e.cd();
                 current_buffer[..m_yorder].copy_from_slice(&cd.iterminal[..m_yorder]);
-                for (i, v) in voltage_buffer.iter_mut().enumerate().take(fnconds) {
-                    *v = node_v[self.med.cd.node_ref[i]];
+                for (v, &n) in voltage_buffer.iter_mut().zip(&nodes) {
+                    *v = node_v[n];
                 }
             }
             MonitorBaseMode::Tap => {
@@ -137,15 +154,13 @@ impl Monitor {
                 return;
             }
             MonitorBaseMode::StateVars => {
-                // Pascal `TakeSample` mode 3 (Monitor.pas l.1245-1250): pick up
-                // the metered PC element's state variables —
-                // GetAllVariables(StateBuffer) then AddDblsToBuffer(StateBuffer,
-                // Length(StateBuffer)). `record_size` was set to NumVariables at
-                // header build (`ClearMonitorStream`).
+                // The metered element's variables as every reader sees them
+                // (zero operating point outside a dynamics run). `record_size`
+                // was set to the variable count at header build.
                 let n = self.record_size;
                 let mut states = vec![0.0_f64; n];
                 let e = metered.ckt_mut();
-                e.get_all_variables(sys, node_v, &mut states);
+                e.read_variables(sys, node_v, &mut states);
                 self.add_dbls(&states);
                 return;
             }
@@ -228,12 +243,8 @@ impl Monitor {
                 // flicker/Pst post-processing happens later in `post_process`
                 // (Pascal `DoFlickerCalculations`), not here.
                 let mut flicker_buffer = vec![Complex64::ZERO; fnphases];
-                for (i, v) in flicker_buffer.iter_mut().enumerate() {
-                    // Same unguarded NodeRef read as mode 0 above (the port
-                    // resolves NodeRef at bus-def time; Pascal's l.1261 "NodeRef
-                    // is invalid / solve a snapshot first" except-guard is the
-                    // not-yet-solved safety net, handled upstream in the port).
-                    *v = node_v[self.med.cd.node_ref[i]];
+                for (v, &n) in flicker_buffer.iter_mut().zip(&nodes) {
+                    *v = node_v[n];
                 }
                 convert_to_polar(&mut flicker_buffer, fnphases);
                 for &c in &flicker_buffer {

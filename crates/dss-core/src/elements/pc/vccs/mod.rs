@@ -160,10 +160,22 @@ pub struct Vccs {
     pub spectrum_obj: Option<SpectrumObj>,
 }
 
-/// Pascal helper `MapIdx(idx, len)` — wrap a 1-based ring-buffer index into the
-/// range `1..=len` (`while idx <= 0 do idx += len; idx mod (len+1)`, mapping a 0
-/// result back to 1). Ported with `i64` arithmetic; the inputs can go negative.
+/// A curve the active dynamics model needs and cannot use.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum CurveGap {
+    /// The property (`bp1`, `bp2` or `filter`) names no curve.
+    Unset(&'static str),
+    /// The property names this curve, which has no points.
+    Empty(&'static str, String),
+}
+
+/// Wrap a 1-based ring-buffer index into the range `1..=len` (add `len` while
+/// `idx <= 0`, then `idx mod (len+1)` with a 0 result mapped to 1). The inputs
+/// can go negative. A ring has at least one slot: a VCCS whose filter has no
+/// points, or whose waveform window holds no sample, has no dynamics model, so
+/// it is never integrated.
 fn map_idx(mut idx: i64, len: i64) -> usize {
+    debug_assert!(len > 0, "a ring buffer without slots");
     while idx <= 0 {
         idx += len;
     }
@@ -210,6 +222,11 @@ impl RingBuf {
             buf: vec![0.0; len + 1],
             len: len as i64,
         }
+    }
+
+    /// Set every slot to zero, as [`Self::alloc`] leaves them.
+    fn clear(&mut self) {
+        self.buf.fill(0.0);
     }
 
     /// Pascal `hist^[MapIdx(idx, len)]` — the wrap-around tap read. `idx` may be
@@ -367,6 +384,29 @@ impl Vccs {
             self.wlast = vec![0.0; self.ffiltlen + 1];
             self.zlast = vec![0.0; self.ffiltlen + 1];
         }
+    }
+
+    /// The curves the active dynamics model needs and cannot use: `filter` for
+    /// the RMS model, `bp1`, `bp2` and `filter` (in that order) for the
+    /// waveform model. A curve without points defines no block and no filter.
+    pub(super) fn missing_curves(&self) -> Vec<CurveGap> {
+        let needed: &[(&'static str, &Option<XyCurveObj>, &String)] = if self.frms_mode {
+            &[("filter", &self.ffilter, &self.filter_name)]
+        } else {
+            &[
+                ("bp1", &self.fbp1, &self.bp1_name),
+                ("bp2", &self.fbp2, &self.bp2_name),
+                ("filter", &self.ffilter, &self.filter_name),
+            ]
+        };
+        needed
+            .iter()
+            .filter_map(|&(prop, curve, name)| match curve {
+                None => Some(CurveGap::Unset(prop)),
+                Some(c) if c.num_points() == 0 => Some(CurveGap::Empty(prop, name.clone())),
+                Some(_) => None,
+            })
+            .collect()
     }
 
     /// Pascal `TVCCSObj.UpdateSequenceVoltage` — the positive-sequence terminal

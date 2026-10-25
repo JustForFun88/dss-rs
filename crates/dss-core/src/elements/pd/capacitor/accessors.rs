@@ -5,16 +5,20 @@ use super::{Capacitor, CapacitorSpecType};
 use crate::obj::base::{DssObjData, DssObject};
 
 impl Capacitor {
-    /// Pascal `TCapacitorObj.MakeLike`.
+    /// Make this Capacitor a copy of `other`, keeping its own name and buses.
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);
-        if self.cd.nphases != other.cd.nphases {
-            self.cd.nphases = other.cd.nphases;
-            let n = other.cd.nphases;
-            self.cd.set_nconds(n); // force reallocation of terminals/conductors
-            self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
-        }
+        // The copy takes the phases, the connection, the terminals, the
+        // conductors and the admittance of `other`, as the element written with
+        // its data has them (`the_power_flow_after_a_reshape_solves_the_new_shape`,
+        // `a_copy_solves_as_the_circuit_written_out`).
+        self.cd.yprim_invalid = true;
+        let phases_gained = other.cd.nphases > self.cd.nphases;
+        self.connection = other.connection;
+        self.cd.nphases = other.cd.nphases;
+        self.set_terminals_for_connection(phases_gained);
+        self.cd.set_shape(other.cd.nconds, self.connection);
+        self.cd.yorder = self.cd.nconds * self.cd.nterms;
 
         self.set_num_steps(other.fnumsteps);
         let n = self.n_steps();
@@ -43,6 +47,55 @@ impl Capacitor {
         self.fault_rate = other.fault_rate;
         self.pct_perm = other.pct_perm;
         self.hrs_to_repair = other.hrs_to_repair;
+    }
+
+    /// The terminals of the connection, placed as a new element of that shape
+    /// has them: one in delta, which keeps the `bus2` the user gave for a later
+    /// wye, and two in wye, the second on that `bus2` or else on the ground
+    /// nodes of `bus1`, grounded again for the new count when `phases_gained`
+    /// (`a_wye_capacitor_or_reactor_has_its_second_terminal_where_a_new_one_has_it`).
+    fn set_terminals_for_connection(&mut self, phases_gained: bool) {
+        if self.connection == 1 {
+            self.cd.set_nterms(1);
+        } else if self.cd.nterms != 2 {
+            self.cd.set_nterms(2);
+            match self.user_bus2.clone() {
+                Some(bus) => self.cd.set_bus(2, &bus),
+                None => self.ground_bus2(),
+            }
+        } else if phases_gained && self.user_bus2.is_none() {
+            self.ground_bus2();
+        }
+        self.mark_shunt();
+    }
+
+    /// A shunt unless it has two terminals and the user gave `bus2` on another
+    /// bus than `bus1` with a phase off the ground node
+    /// (`a_bank_moved_by_bus1_keeps_the_bus2_the_user_gave`).
+    fn mark_shunt(&mut self) {
+        self.is_shunt = self.cd.nterms < 2
+            || self.user_bus2.as_deref().is_none_or(|bus2| {
+                strip_extension(self.cd.get_bus(1)).eq_ignore_ascii_case(&strip_extension(bus2))
+                    || grounds_every_phase(bus2, self.cd.nphases)
+            });
+    }
+
+    /// Put terminal 2 of a two-terminal element on the ground nodes of `bus1`,
+    /// one per phase, a grounded-wye shunt.
+    fn ground_bus2(&mut self) {
+        if self.cd.nterms == 2 {
+            let s = self.cd.get_bus(1).to_string();
+            let base = match s.find('.') {
+                Some(p) => s[..p].to_string(),
+                None => s,
+            };
+            let mut s2 = base;
+            for _ in 0..self.cd.nphases {
+                s2.push_str(".0");
+            }
+            self.cd.set_bus(2, &s2);
+            self.cd.obj.clear_seq(super::prop::BUS2); // reset for the save function
+        }
     }
 }
 
@@ -193,62 +246,51 @@ impl DssObject for Capacitor {
     }
 
     fn set_bus_name(&mut self, terminal: usize, value: &str) {
+        if terminal == 2 {
+            self.user_bus2 = Some(value.to_ascii_lowercase());
+        }
         self.cd.set_bus(terminal, value);
     }
+    /// A delta element names the `bus2` the user gave it, which a later wye
+    /// connects.
     fn get_bus_name(&self, terminal: usize) -> String {
-        self.cd.get_bus(terminal).to_string()
+        match &self.user_bus2 {
+            Some(bus) if terminal == 2 && self.cd.nterms < 2 => bus.clone(),
+            _ => self.cd.get_bus(terminal).to_string(),
+        }
     }
 
-    /// Pascal `TCapacitorObj.PropertySideEffects`.
+    /// Apply what the property `idx` changes in the shape, the terminals and
+    /// the specification of the Capacitor.
     fn side_effects(&mut self, idx: usize, prev_int: i32) {
         use super::prop::*;
         match idx {
             BUS1 => {
-                // Default Bus2 to the grounded-zero node of Bus1 (wye shunt) if
-                // Bus2 has not been explicitly set.
-                if !self.bus2_defined && self.cd.nterms == 2 {
-                    let s = self.cd.get_bus(1).to_string();
-                    let base = match s.find('.') {
-                        Some(p) => s[..p].to_string(),
-                        None => s,
-                    };
-                    let mut s2 = base;
-                    for _ in 0..self.cd.nphases {
-                        s2.push_str(".0");
+                if self.user_bus2.is_none() {
+                    self.ground_bus2();
+                }
+                self.mark_shunt();
+            }
+            CONN => {
+                self.set_terminals_for_connection(false);
+                match self.connection {
+                    1 => {
+                        let nc = if self.cd.nphases == 1 || self.cd.nphases == 2 {
+                            self.cd.nphases + 1
+                        } else {
+                            self.cd.nphases
+                        };
+                        self.cd.set_shape(nc, 1);
                     }
-                    self.cd.set_bus(2, &s2);
-                    self.is_shunt = true;
-                    self.cd.obj.clear_seq(BUS2); // reset for the save function
+                    _ => {
+                        let np = self.cd.nphases;
+                        self.cd.set_shape(np, 0);
+                    }
                 }
             }
-            CONN => match self.connection {
-                1 => {
-                    // Delta: force one terminal.
-                    self.cd.set_nterms(1);
-                    let nc = if self.cd.nphases == 1 || self.cd.nphases == 2 {
-                        self.cd.nphases + 1
-                    } else {
-                        self.cd.nphases
-                    };
-                    self.cd.set_nconds(nc);
-                }
-                _ => {
-                    // Wye.
-                    if self.cd.nterms != 2 {
-                        self.cd.set_nterms(2);
-                    }
-                    let np = self.cd.nphases;
-                    self.cd.set_nconds(np);
-                }
-            },
             BUS2 => {
                 self.num_term = 2;
-                if !strip_extension(self.cd.get_bus(1))
-                    .eq_ignore_ascii_case(&strip_extension(self.cd.get_bus(2)))
-                {
-                    self.is_shunt = false;
-                    self.bus2_defined = true;
-                }
+                self.mark_shunt();
             }
             PHASES => {
                 if self.cd.nphases as i32 != prev_int {
@@ -258,8 +300,9 @@ impl DssObject for Capacitor {
                         } else {
                             self.cd.nphases
                         };
-                    self.cd.set_nconds(nc);
+                    self.cd.set_shape(nc, self.connection);
                     self.cd.yorder = self.cd.nterms * self.cd.nconds;
+                    self.set_terminals_for_connection(self.cd.nphases as i32 > prev_int);
                 } else if self.connection == 1 && self.cd.nconds != self.cd.nphases + 1 {
                     self.cd.set_nconds(self.cd.nphases + 1);
                     self.cd.yorder = self.cd.nterms * self.cd.nconds;
@@ -308,4 +351,15 @@ fn strip_extension(s: &str) -> String {
         Some(p) => s[..p].to_string(),
         None => s.to_string(),
     }
+}
+
+/// Whether `bus` puts each of the first `nphases` conductors on the ground node.
+/// A conductor without a node in `bus` takes its own phase node.
+fn grounds_every_phase(bus: &str, nphases: usize) -> bool {
+    let mut nodes = bus.split('.').skip(1);
+    (0..nphases).all(|_| {
+        nodes
+            .next()
+            .is_some_and(|n| n.trim().parse::<i64>() == Ok(0))
+    })
 }

@@ -86,7 +86,10 @@ fn write_element_voltages(
             .map(|b| b.name.to_uppercase())
             .unwrap_or_default();
         s.push_str(&format!("{bus_name},"));
-        for (i, &nref) in cd.term_nodes(j).iter().enumerate() {
+        // A conductor of an element without a node map reads at node 0. `k`
+        // runs over the conductors of every terminal, so it is the map index.
+        for i in 0..ncond {
+            let nref = cd.node_or_ground(k);
             k += 1;
             let volts = node_v[nref];
             let vmag = volts.norm() * 0.001; // kV

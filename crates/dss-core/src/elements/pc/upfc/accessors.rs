@@ -96,7 +96,7 @@ impl CktElement for Upfc {
     #[allow(clippy::needless_range_loop)] // loop-for-loop Pascal port
     fn get_currents(&mut self, _sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         let yorder = self.cd.yorder;
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             curr.iter_mut()
                 .take(yorder)
                 .for_each(|c| *c = Complex64::ZERO);
@@ -122,6 +122,12 @@ impl CktElement for Upfc {
     /// access; `Vbin`/`Vbout` were cached by the last `GetInjCurrents`).
     fn get_all_variables(&mut self, _sys: &SysCtx, _node_v: &[Complex64], states: &mut [f64]) {
         self.get_all_variables_impl(states);
+    }
+    /// ModeUPFC.
+    fn setting_variables(&mut self, _sys: &SysCtx, states: &mut [f64]) {
+        if let Some(s) = states.first_mut() {
+            *s = self.mode_upfc as f64;
+        }
     }
     fn set_variable(&mut self, i: usize, value: f64, _sys: &crate::elements::traits::SysCtx) {
         self.set_variable_impl(i, value);

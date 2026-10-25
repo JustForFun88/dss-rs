@@ -74,6 +74,11 @@
 //! oracle's aggregate itself. Its envelope absorbs the accepted `powers`
 //! divergence summed over **all** of a source's conductors, so an entry that
 //! scopes only `currents` does not switch the arm off.
+//! `Circuit.Losses` takes the port's shunt classification. On the cases
+//! [`lane::grounded_banks_the_oracles_call_series`] lists, both oracles count a
+//! bank whose `bus2` grounds every phase at another bus, which the engine reads
+//! as a shunt, so P1 rebuilds their aggregate over the port's summands plus
+//! those banks, and a listed bank the port counts is a stale row.
 //! The **membership and identity arms do not soften**: P1 and P1b run on
 //! the raw oracle capture on every case, so no deck loses the arms that carry
 //! the teeth. The two `newton*` decks are the lane-policy analogue: their
@@ -345,11 +350,28 @@ pub fn compare_aggregates(
         .map(|e| (e.name.to_lowercase(), (e.loss_w[0], e.loss_w[1])))
         .collect();
     let terms = dss.aggregate_terms();
-    // (label, port summand names, the oracle's aggregate, W->unit scale)
+    let label = ctx.rsplit_once(" step ").map_or(ctx, |(label, _)| label);
+    // The oracles also count the listed banks the engine reads as shunts.
+    let grounded_banks = lane::grounded_banks_the_oracles_call_series(label);
+    for bank in &grounded_banks {
+        assert!(
+            !terms.losses.iter().any(|t| t == bank),
+            "{ctx}: `{bank}` is a Circuit.Losses summand of the port, but `{label}` \
+             lists it by `lane::grounded_banks_the_oracles_call_series` as a shunt the \
+             oracles count: a stale row"
+        );
+    }
+    let oracle_losses_terms: Vec<String> = terms
+        .losses
+        .iter()
+        .cloned()
+        .chain(grounded_banks.iter().map(|b| b.to_string()))
+        .collect();
+    // (label, the oracle's summand names, the oracle's aggregate, W->unit scale)
     let recon_arms: [ReconArm<'_>; 3] = [
         (
             "Circuit.Losses",
-            &terms.losses,
+            &oracle_losses_terms,
             (cap.losses_w[0], cap.losses_w[1]),
             1.0,
         ),
@@ -514,7 +536,6 @@ pub fn compare_aggregates(
     // adds every terminal. Each source's capture is split by the port's own
     // layout (terminal-major, `n_conds` conductors per terminal), whose length
     // `compare_element_channels` has already held the oracle's to.
-    let label = ctx.rsplit_once(" step ").map_or(ctx, |(label, _)| label);
     let mut raw_t1 = (0.0f64, 0.0f64);
     let mut raw_t1_abs = 0.0f64;
     let mut raw_rest = (0.0f64, 0.0f64);
@@ -1091,6 +1112,101 @@ mod tests {
             &tol(),
             ElemChannels::ALL,
             "asymmetric:isource/isource_snap.dss step 0",
+        );
+    }
+
+    /// A Reactor whose `bus2` puts every phase on the ground node of another
+    /// bus, the engine's shunt, in the feeder.
+    const GROUNDED_AT_ANOTHER_BUS: [&str; 1] =
+        ["New Reactor.KerstingMotor phases=3 bus1=b1 bus2=b9.0.0.0 R=60 X=40"];
+
+    /// The [`GROUNDED_AT_ANOTHER_BUS`] capture of an oracle that counts the bank
+    /// in `Circuit.Losses`, as both oracles do.
+    fn oracle_counting_the_grounded_bank()
+    -> (Dss, Vec<ElementSnapshot>, Vec<ElementCap>, AggregatesCap) {
+        let (dss, snaps, elements, mut cap) = solved_deck(&GROUNDED_AT_ANOTHER_BUS);
+        let bank = elements
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case("Reactor.KerstingMotor"))
+            .expect("the bank is captured");
+        assert!(
+            bank.loss_w[0] > 1.0e3,
+            "the drive needs a bank whose power the losses would feel"
+        );
+        cap.losses_w[0] += bank.loss_w[0];
+        cap.losses_w[1] += bank.loss_w[1];
+        (dss, snaps, elements, cap)
+    }
+
+    /// On a case `lane::grounded_banks_the_oracles_call_series` lists, the
+    /// membership arm rebuilds the oracle's `Circuit.Losses` with the listed
+    /// bank, and passes.
+    #[test]
+    fn a_listed_grounded_bank_joins_the_oracle_losses() {
+        let (mut dss, snaps, elements, cap) = oracle_counting_the_grounded_bank();
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "solvable_now:Test/REACTORTest.DSS step 0",
+        );
+    }
+
+    /// The same capture on a case the lane policy does not list reds the
+    /// membership arm.
+    #[test]
+    #[should_panic(expected = "Circuit.Losses membership")]
+    fn a_grounded_bank_the_oracle_counts_on_an_unlisted_case_fails() {
+        let (mut dss, snaps, elements, cap) = oracle_counting_the_grounded_bank();
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "self-test step 0",
+        );
+    }
+
+    /// A listed case whose oracle no longer counts the bank is a stale row and
+    /// reds the membership arm.
+    #[test]
+    #[should_panic(expected = "Circuit.Losses membership")]
+    fn a_listed_bank_the_oracle_leaves_out_is_stale() {
+        let (mut dss, snaps, elements, cap) = solved_deck(&GROUNDED_AT_ANOTHER_BUS);
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "solvable_now:Test/REACTORTest.DSS step 0",
+        );
+    }
+
+    /// A listed bank the port counts as a series element is a stale row.
+    #[test]
+    #[should_panic(expected = "a stale row")]
+    fn a_listed_bank_the_port_counts_is_stale() {
+        let (mut dss, snaps, elements, cap) =
+            solved_deck(&["New Reactor.KerstingMotor phases=3 bus1=b1 bus2=b9 R=60 X=40"]);
+        compare_aggregates(
+            &mut dss,
+            &cap,
+            &snaps,
+            &elements,
+            &BTreeMap::new(),
+            &tol(),
+            ElemChannels::ALL,
+            "solvable_now:Test/REACTORTest.DSS step 0",
         );
     }
 

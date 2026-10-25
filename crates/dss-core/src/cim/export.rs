@@ -102,6 +102,17 @@ const CAP_CTRL_KVAR: i32 = 2;
 const CAP_CTRL_TIME: i32 = 3;
 const CAP_CTRL_PF: i32 = 4;
 
+/// The bus index of each terminal, empty for an element without a node map on
+/// the present bus list, which the export leaves out as it leaves out a disabled
+/// one.
+fn mapped_bus_refs(cd: &crate::elements::ckt::CktElementData) -> Vec<usize> {
+    if cd.is_mapped() {
+        cd.terminals.iter().map(|t| t.bus_idx()).collect()
+    } else {
+        Vec::new()
+    }
+}
+
 /// The Pascal `TDSSCktElement.DSSObjType` integer (`DSSClassDefs.pas`
 /// element-type constant OR the PD/PC/NON-PCPD category bits) for a circuit
 /// element's class, used as the `GetTermUuid` key prefix (`ExportCIMXML.pas:
@@ -2553,7 +2564,7 @@ pub(crate) fn export_cdpsm(
         let Some(vsrc) = classes[r.class_ord()].arena.get::<VSource>(r.index()) else {
             continue;
         };
-        if !vsrc.cd.enabled {
+        if !vsrc.cd.enabled || !vsrc.cd.is_mapped() {
             continue;
         }
         let bus_ref = vsrc.cd.terminals[0].bus_idx();
@@ -2614,7 +2625,7 @@ pub(crate) fn export_cdpsm(
                 o.map(|s| s.data().name().to_string()).unwrap_or_default()
             };
             GenSnap {
-                enabled: g.cd.enabled,
+                enabled: g.cd.enabled && g.cd.is_mapped(),
                 name: g.cd.obj.name().to_string(),
                 nphases: g.cd.nphases,
                 is_delta: g.connection as i32 == 1,
@@ -2624,7 +2635,7 @@ pub(crate) fn export_cdpsm(
                 kva_rating: g.kva_rating,
                 nterm: g.cd.nterms,
                 bus_specs: g.cd.bus_names.clone(),
-                bus_refs: g.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
+                bus_refs: mapped_bus_refs(&g.cd),
                 daily: nm(g.daily_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 duty: nm(g.duty_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 yearly: nm(g.yearly_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
@@ -2765,7 +2776,7 @@ pub(crate) fn export_cdpsm(
                 o.map(|s| s.data().name().to_string()).unwrap_or_default()
             };
             PvSnap {
-                enabled: pv.cd.enabled,
+                enabled: pv.cd.enabled && pv.cd.is_mapped(),
                 name: pv.cd.obj.name().to_string(),
                 nphases: pv.cd.nphases,
                 is_delta: pv.base.connection as i32 == 1,
@@ -2785,7 +2796,7 @@ pub(crate) fn export_cdpsm(
                 kvar_limit_neg_set: pv.base.kvar_limit_neg_set,
                 nterm: pv.cd.nterms,
                 bus_specs: pv.cd.bus_names.clone(),
-                bus_refs: pv.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
+                bus_refs: mapped_bus_refs(&pv.cd),
                 daily: nm(pv
                     .base
                     .daily_shape_obj
@@ -3015,7 +3026,7 @@ pub(crate) fn export_cdpsm(
                 o.map(|s| s.data().name().to_string()).unwrap_or_default()
             };
             BatSnap {
-                enabled: st.cd.enabled,
+                enabled: st.cd.enabled && st.cd.is_mapped(),
                 name: st.cd.obj.name().to_string(),
                 nphases: st.cd.nphases,
                 is_delta: st.base.connection as i32 == 1,
@@ -3035,7 +3046,7 @@ pub(crate) fn export_cdpsm(
                 fkvar_limit_neg: st.f_kvar_limit_neg,
                 nterm: st.cd.nterms,
                 bus_specs: st.cd.bus_names.clone(),
-                bus_refs: st.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
+                bus_refs: mapped_bus_refs(&st.cd),
                 daily: nm(st
                     .base
                     .daily_shape_obj
@@ -3248,7 +3259,7 @@ pub(crate) fn export_cdpsm(
                 .as_ref()
                 .expect("Vsource.z built by RecalcElementData for a solved circuit");
             (
-                vsrc.cd.enabled,
+                vsrc.cd.enabled && vsrc.cd.is_mapped(),
                 vsrc.cd.nphases,
                 vsrc.kv_base,
                 vsrc.per_unit,
@@ -3258,11 +3269,7 @@ pub(crate) fn export_cdpsm(
                 vsrc.cd.obj.name().to_string(),
                 vsrc.cd.nterms,
                 vsrc.cd.bus_names.clone(),
-                vsrc.cd
-                    .terminals
-                    .iter()
-                    .map(|t| t.bus_idx())
-                    .collect::<Vec<_>>(),
+                mapped_bus_refs(&vsrc.cd),
             )
         };
         if !enabled {
@@ -3382,12 +3389,12 @@ pub(crate) fn export_cdpsm(
                 continue;
             };
             CapSnap {
-                term2_nodes: if cap.cd.node_ref.is_empty() || cap.cd.nterms < 2 {
+                term2_nodes: if !cap.cd.is_mapped() || cap.cd.nterms < 2 {
                     Vec::new()
                 } else {
                     cap.cd.term_nodes(1).to_vec()
                 },
-                enabled: cap.cd.enabled,
+                enabled: cap.cd.enabled && cap.cd.is_mapped(),
                 nphases: cap.cd.nphases,
                 total_kvar: cap.total_kvar(),
                 nom_kv: cap.nom_kv(),
@@ -3399,7 +3406,7 @@ pub(crate) fn export_cdpsm(
                 norm_amps: cap.norm_amps(),
                 emerg_amps: cap.emerg_amps(),
                 bus_specs: cap.cd.bus_names.clone(),
-                bus_refs: cap.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
+                bus_refs: mapped_bus_refs(&cap.cd),
             }
         };
         if !snap.enabled {
@@ -3642,7 +3649,10 @@ pub(crate) fn export_cdpsm(
                 mon_obj_type: cktelem_dss_obj_type(classes[mon_ref.class_ord()].props.class_name()),
                 mon_nphases: mon_cd.nphases,
                 mon_bus_spec0: mon_cd.bus_names[0].clone(),
-                mon_bus_kvbase0: ckt.buses[mon_cd.terminals[0].bus_idx()].kv_base,
+                mon_bus_kvbase0: mon_cd.terminals[0]
+                    .bus_ref
+                    .filter(|_| mon_cd.is_mapped())
+                    .map_or(0.0, |b| ckt.buses[b].kv_base),
                 element_terminal: cc.ccd.element_terminal,
                 pt_phase: cc.pt_phase(),
                 control_type: cc.control_type(),
@@ -3817,7 +3827,7 @@ pub(crate) fn export_cdpsm(
             };
             let z = reac.z();
             ReacSnap {
-                enabled: reac.cd.enabled,
+                enabled: reac.cd.enabled && reac.cd.is_mapped(),
                 name: reac.cd.obj.name().to_string(),
                 nterm: reac.cd.nterms,
                 z_re: z.re,
@@ -3825,7 +3835,7 @@ pub(crate) fn export_cdpsm(
                 norm_amps: reac.norm_amps(),
                 emerg_amps: reac.emerg_amps(),
                 bus_specs: reac.cd.bus_names.clone(),
-                bus_refs: reac.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
+                bus_refs: mapped_bus_refs(&reac.cd),
             }
         };
         if !snap.enabled {
@@ -3912,10 +3922,10 @@ pub(crate) fn export_cdpsm(
             let Some(line) = classes[r.class_ord()].arena.get::<Line>(r.index()) else {
                 continue;
             };
-            if !line.cd.enabled {
+            if !line.cd.enabled || !line.cd.is_mapped() {
                 continue;
             }
-            let bus_refs: Vec<usize> = line.cd.terminals.iter().map(|t| t.bus_idx()).collect();
+            let bus_refs = mapped_bus_refs(&line.cd);
             let bus_kvbases: Vec<f64> = bus_refs.iter().map(|&b| ckt.buses[b].kv_base).collect();
             // r4133 `Common/ExportCIMXML.pas:3734`: `if LineCodeSpecified then`
             // — the flag, which an override clears even though `CondCode`
@@ -4445,7 +4455,7 @@ pub(crate) fn export_cdpsm(
             let shape_name = |o: Option<&dyn DssObject>| -> String {
                 o.map(|s| s.data().name().to_string()).unwrap_or_default()
             };
-            let (first_node, neutral_node) = if load.cd.node_ref.is_empty() {
+            let (first_node, neutral_node) = if !load.cd.is_mapped() {
                 (0, 0)
             } else {
                 let nodes = load.cd.term_nodes(0);
@@ -4458,7 +4468,7 @@ pub(crate) fn export_cdpsm(
                 first_node,
                 neutral_node,
                 open_neutral: load.rneut < 0.0,
-                enabled: load.cd.enabled,
+                enabled: load.cd.enabled && load.cd.is_mapped(),
                 load_model: load.load_model,
                 kw_base: load.kw_base,
                 kvar_base: load.kvar_base,
@@ -4470,7 +4480,7 @@ pub(crate) fn export_cdpsm(
                 name: load.cd.obj.name().to_string(),
                 nterm: load.cd.nterms,
                 bus_specs: load.cd.bus_names.clone(),
-                bus_refs: load.cd.terminals.iter().map(|t| t.bus_idx()).collect(),
+                bus_refs: mapped_bus_refs(&load.cd),
                 daily: shape_name(load.daily_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 duty: shape_name(load.duty_shape_obj.as_ref().map(|o| o as &dyn DssObject)),
                 growth: shape_name(load.growth_shape_obj.as_ref().map(|o| o as &dyn DssObject)),

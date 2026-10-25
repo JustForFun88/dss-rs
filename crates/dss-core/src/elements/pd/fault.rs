@@ -482,15 +482,17 @@ impl Fault {
         }
     }
 
-    /// Pascal `TFaultObj.MakeLike`.
+    /// Make this Fault a copy of `other`, keeping its own name and buses.
     pub(crate) fn make_like(&mut self, other: &Self) {
         self.cd.make_like_base(&other.cd);
+        // The copy takes the conductance of `other` whatever its phase count
+        // (`a_copy_solves_as_the_circuit_written_out`).
+        self.cd.yprim_invalid = true;
         if self.cd.nphases != other.cd.nphases {
             self.cd.nphases = other.cd.nphases;
             let n = other.cd.nphases;
             self.cd.set_nconds(n); // force reallocation of terminals/conductors
             self.cd.yorder = self.cd.nconds * self.cd.nterms;
-            self.cd.yprim_invalid = true;
         }
         self.g = other.g;
         self.spec_type = other.spec_type;

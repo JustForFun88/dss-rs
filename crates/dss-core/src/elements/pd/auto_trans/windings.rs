@@ -153,7 +153,7 @@ impl AutoTrans {
         sys: &crate::elements::traits::SysCtx,
     ) -> num_complex::Complex64 {
         use crate::elements::traits::CktElement;
-        if !self.cd.enabled || self.cd.node_ref.is_empty() {
+        if !self.cd.enabled || !self.cd.is_mapped() {
             return num_complex::Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);

@@ -22,6 +22,7 @@ mod derived_totals;
 mod distribute_uuids;
 mod dynamic_eq_memory;
 mod dynamics;
+mod dynamics_membership;
 mod element_extras;
 mod energymeter_registers;
 mod energymeter_zones;

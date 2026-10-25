@@ -610,6 +610,12 @@ reference on the cases `harness::lane::total_power_counts_every_source_terminal`
 lists is the oracle's aggregate plus its sources' accepted terminal-2 powers.
 The arm asserts that list both ways: a case whose sources carry material power
 past terminal 1 must be on it, and a listed case that no longer does is stale.
+`Circuit.Losses` takes the port's shunt classification: on the cases
+`harness::lane::grounded_banks_the_oracles_call_series` lists, a bank whose
+`bus2` puts every phase on the ground node of another bus is a series element to
+both oracles and a shunt to the engine, so the membership arm rebuilds their
+aggregate over the port's summands plus those banks and fails a listed bank the
+port counts.
 The envelope absorbs the accepted `powers` divergence summed over **all** of a
 source's conductors, so an entry that scopes only `currents` does not switch the
 arm off. The membership and identity arms never soften: they run on the raw
@@ -1169,7 +1175,7 @@ the forced split is re-derived and pinned by `FORCED_PDELEMENTS_POPULATION`,
 (length, then the name sequence case-insensitively — the oracle's
 `PDElements.Count` is the raw `ListSize` and is deliberately **not** used) and
 then all fourteen fields **exactly**, `rel = abs = 0`: nothing on this surface is
-computed on either side (derivation in `tests/TOLERANCE_NOTES.md`). Three rules
+computed on either side (derivation in `tests/TOLERANCE_NOTES.md`). Four rules
 come with it.
 
 * **`ParentPDElement` is read last, per element, on both transports.** That read
@@ -1210,6 +1216,15 @@ come with it.
   `#[test]` defines, and `assert_pd_skip_rows_are_live`
   (`crates/dss-test-harness/src/harness/mod.rs::assert_pd_skip_rows_are_live`) fails a row that excluded nothing
   in the whole run. The gate epilogue prints every row's visit/hit counts.
+* **A bank grounded at another bus is the engine's shunt.** Both oracles call a
+  Capacitor or Reactor a series element when its `bus2` names another bus than
+  `bus1`, also when `bus2` puts every phase on the ground node, and the engine
+  reads the nodes. On the cases `harness::lane::grounded_banks_the_oracles_call_series`
+  lists, the listed bank's `is_shunt` is asserted as the engine's shunt against
+  the oracle's series element instead of compared, its other thirteen fields stay
+  compared, and a listed bank either side no longer treats so fails as a stale
+  row. The expected values are pinned by
+  `dss_core::exec::tests::aggregates::a_bank_grounded_at_another_bus_is_a_shunt_outside_the_losses`.
 
 **The bus voltage surface (`compare_bus`, live since G1.4a, 2026-09-04).** Per
 bus, in the engine's own `BusList` order: `Nodes`, `kVBase`, `puVoltages`,
@@ -2698,12 +2713,13 @@ Entry kinds (`kind`):
   in the gate summary and changes nothing about this scope's own node-by-node
   fail-on-stale measurement.)*
 
-Scope `field` must be one of the **17 implemented** handlers — `iterations`,
+Scope `field` must be one of the **19 implemented** handlers — `iterations`,
 `voltages`, `injection`, `element`, `probe`, `property`, `monitor`, `eventlog`,
-`ctrlqueue`, plus the eight **exclusion-only** ones `y`, `y_fingerprint`,
-`yprim`, `meter`, `variables`, `reliability`, `distance`, `run_files` — anything
+`ctrlqueue`, plus the ten **exclusion-only** ones `y`, `y_fingerprint`,
+`yprim`, `meter`, `variables`, `reliability`, `distance`, `run_files`, `di`,
+`voc` — anything
 else (typo or the §1.3-planned but unimplemented `global_result`) is rejected
-loudly at load. Four of the exclusion-only eight name a whole compared artifact rather
+loudly at load. Four of the exclusion-only ten name a whole compared artifact rather
 than a value with a natural envelope (the assembled system Y, its fingerprint,
 one element's YPrim, one EnergyMeter's register block), so `assert_structural`
 refuses them on a `divergence`. `variables` (added by `R4133_PROPS_PLAN.md`
@@ -2725,6 +2741,12 @@ oracle-internal one, and the run-wide `DISTANCE_POPULATION`. `run_files`
 (**G1.10a**) is the fourth of that per-VALUE shape — keyed by one created-file
 name, compared exactly, with the presence rail, the ASCII refusal and the
 engine-scratch census staying unconditional whatever the ledger says.
+`voc` is per-VALUE the same way, keyed by the BUS name: it masks that bus's
+`Voc` array of the short-circuit surface alone, consulted only once the array
+has left its band, while `Isc`, `Zsc`, `Ysc` and every length stay compared. In
+a dynamics run `Voc` reads the node voltage the last Y rebuild saved, an earlier
+instant than the final node voltages, so it can diverge where they do not and a
+deck-wide `voltages` exclusion would be stale.
 Location selectors: `node_re`/`name_re`/`channel_idx` (0-based)/`channels`,
 optional `steps` (0-based). `iterations` takes exact `{rust, oracle}` pairs or
 `policy: "rust_le_oracle"`; `yprim`/`monitor`/`meter`/`probe` exclusions select

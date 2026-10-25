@@ -87,14 +87,20 @@ pub fn solve(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
         }
     };
     if let Err(e) = &result {
-        env.errors.push(crate::diag::DssDiagnostic::msg(
-            format!("Error Encountered in Solve: {e}"),
-            Some(482),
-        ));
-        ckt.solution.solution_abort = true;
+        report_solve_error(ckt, env, e);
         clear_solved(ckt);
     }
     Ok(())
+}
+
+/// Report a failed solve the way every solve command does: the error as
+/// `Error Encountered in Solve: {e}` (code 482), and the solution aborted.
+pub(crate) fn report_solve_error(ckt: &mut Circuit, env: &mut SolveEnv, e: &str) {
+    env.errors.push(crate::diag::DssDiagnostic::msg(
+        format!("Error Encountered in Solve: {e}"),
+        Some(482),
+    ));
+    ckt.solution.solution_abort = true;
 }
 
 /// A solve that failed at any step is neither solved nor converged, whatever

@@ -275,6 +275,7 @@ impl IndMach012 {
         cd.nphases = 3;
         cd.nconds = 3; // delta default; no neutral
         cd.set_nterms(1);
+        cd.set_shape(3, Connection::Delta as i32);
 
         let kw_base = 1000.0;
         let kv_generator_base = 12.47;

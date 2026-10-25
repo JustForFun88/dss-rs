@@ -661,7 +661,7 @@ impl Relay {
         let var_value = if idx >= 1 {
             let n = mon.num_variables();
             let mut states = vec![0.0_f64; n];
-            mon.get_all_variables(ctx.sys, ctx.node_v, &mut states);
+            mon.read_variables(ctx.sys, ctx.node_v, &mut states);
             states.get((idx - 1) as usize).copied().unwrap_or(-9999.99)
         } else {
             -9999.99

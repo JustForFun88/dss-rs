@@ -715,30 +715,52 @@ pub trait CktElement: Send {
         let _ = (sys, node_v);
     }
 
-    /// Pascal `TPCElement.InitStateVars` (`PCElement.pas` l.174): seed this
-    /// machine's dynamic state variables from the present (power-flow) operating
-    /// point. Run once over every enabled PC element when entering dynamics mode
-    /// (`calcInitialMachineStates`, the `OK_for_Dynamics` success path). Default
-    /// no-op — the base `TPCElement` and the elements without dynamic state
-    /// (loads, sources) carry nothing to initialise.
+    /// Whether this element carries states that a dynamics run seeds at its
+    /// entry and integrates.
+    fn has_dynamic_state(&self) -> bool {
+        false
+    }
+
+    /// Why this element has no dynamics model to integrate, or `None`. The
+    /// entry still seeds what a direct solve reads, and only the integrating
+    /// dynamics solve refuses the element. Only the VCCS answers.
+    fn undefined_dynamics_model(&self) -> Option<String> {
+        None
+    }
+
+    /// Why this element cannot integrate a step of `h` seconds, or `None`.
+    /// Only the VCCS answers.
+    fn step_refusal(&self, h: f64) -> Option<String> {
+        let _ = h;
+        None
+    }
+
+    /// Whether this element takes part in the present dynamics run: enabled,
+    /// and, when it has dynamic state, seeded by the present entry with its
+    /// present phase count.
+    fn in_dynamics_run(&self) -> bool {
+        self.cd().enabled && (!self.has_dynamic_state() || self.cd().dynamics_seeded())
+    }
+
+    /// Seed this element's dynamic states from the present power-flow operating
+    /// point. The dynamics entry runs it once for every enabled element the last
+    /// power flow held in its present shape and connection. Default: nothing to
+    /// seed.
     fn init_state_vars(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let _ = (sys, node_v);
     }
 
-    /// Pascal `TPCElement.IntegrateStates` (`PCElement.pas` l.179): advance this
-    /// machine's dynamic states by one predictor or corrector half-step (the
-    /// `Solution.iteration_flag` predictor/corrector selector is surfaced to
-    /// `SysCtx` once a machine consumes it, WP7.7 step 2). Run over every PC
-    /// element twice per dynamics time step (`IntegratePCStates`). Default no-op
-    /// — only machines with dynamic state respond.
+    /// Advance this element's dynamic states by one predictor or corrector
+    /// half-step (`SysCtx::iteration_flag`). The dynamics step runs it twice per
+    /// time step for every element in the run ([`Self::in_dynamics_run`]).
+    /// Default: nothing to integrate.
     fn integrate_states(&mut self, sys: &SysCtx, node_v: &[Complex64]) {
         let _ = (sys, node_v);
     }
 
-    /// Why a dynamics solve cannot integrate this element's states, or `None`
-    /// when it can. The dynamics step loop refuses to start while any PC
-    /// element answers. Default `None` — only an element whose integration can
-    /// be ill-defined by its input (a linked `DynamicExp`) answers.
+    /// Why the input of this element (a linked `DynamicExp`) leaves its
+    /// integration ill-defined, or `None`. The dynamics step refuses to start
+    /// while an enabled element answers. Default `None`.
     fn dynamics_refusal(&self) -> Option<String> {
         None
     }
@@ -757,12 +779,35 @@ pub trait CktElement: Send {
         String::new()
     }
 
-    /// Pascal `TPCElement.GetAllVariables(States)` (`PCElement.pas`): fill `states`
-    /// (length ≥ [`Self::num_variables`]) with the present value of every dynamic
-    /// state variable. Default no-op — non-machine elements write nothing. Run by
-    /// Monitor mode 3 each dynamics sample.
+    /// Fill `states` (length ≥ [`Self::num_variables`]) with the present value
+    /// of every variable. Default no-op: an element without variables writes
+    /// nothing. Readers go through [`Self::read_variables`].
     fn get_all_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
         let _ = (sys, node_v, states);
+    }
+
+    /// Write the variables that are settings of the element (inputs, nominal
+    /// or rated values) into their slots of `states` and leave every other slot
+    /// untouched. A reading changes nothing in the element. Default: no
+    /// variable is a setting.
+    fn setting_variables(&mut self, sys: &SysCtx, states: &mut [f64]) {
+        let _ = (sys, states);
+    }
+
+    /// The variables as every reader sees them. In a dynamics-model mode an
+    /// element outside the run ([`Self::in_dynamics_run`]) is out of the
+    /// model: its operating-point variables read zero and only its settings
+    /// ([`Self::setting_variables`]) keep their value, so no user model or
+    /// equation memory of it is consulted. Otherwise
+    /// [`Self::get_all_variables`]
+    /// (`readers_of_a_disabled_element_read_zero`).
+    fn read_variables(&mut self, sys: &SysCtx, node_v: &[Complex64], states: &mut [f64]) {
+        if sys.is_dynamic_model && !self.in_dynamics_run() {
+            states.fill(0.0);
+            self.setting_variables(sys, states);
+        } else {
+            self.get_all_variables(sys, node_v, states);
+        }
     }
 
     /// Pascal `TPCElement.Set_Variable(i, value)` (`PCElement.pas`): write dynamic
@@ -810,7 +855,7 @@ pub trait CktElement: Send {
     fn get_currents(&mut self, sys: &SysCtx, node_v: &[Complex64], curr: &mut [Complex64]) {
         let _ = sys;
         let cd = self.cd_mut();
-        if !cd.enabled || cd.node_ref.is_empty() {
+        if !cd.enabled || !cd.is_mapped() {
             curr.fill(Complex64::ZERO);
             return;
         }
@@ -905,7 +950,7 @@ pub trait CktElement: Send {
     fn get_term_voltages(&self, iterm: usize, node_v: &[Complex64], vbuffer: &mut [Complex64]) {
         let cd = self.cd();
         let ncond = cd.nconds;
-        if iterm < 1 || iterm > cd.nterms || cd.node_ref.is_empty() {
+        if iterm < 1 || iterm > cd.nterms || !cd.is_mapped() {
             for v in vbuffer.iter_mut().take(ncond) {
                 *v = Complex64::ZERO;
             }
@@ -920,7 +965,7 @@ pub trait CktElement: Send {
     /// into terminal `idx_term` (1-based), summed over its conductors (zero refs
     /// skipped), ×3 under positive sequence.
     fn terminal_power(&mut self, sys: &SysCtx, node_v: &[Complex64], idx_term: usize) -> Complex64 {
-        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+        if !self.cd().enabled || !self.cd().is_mapped() {
             return Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);
@@ -944,7 +989,7 @@ pub trait CktElement: Send {
     /// `Get_Losses`: sum of `NodeV[ref] · conj(Iterminal)` over all
     /// conductors (zero refs skipped), ×3 under positive sequence.
     fn losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Complex64 {
-        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+        if !self.cd().enabled || !self.cd().is_mapped() {
             return Complex64::ZERO;
         }
         self.compute_iterminal(sys, node_v);
@@ -992,7 +1037,7 @@ pub trait CktElement: Send {
     /// runs.
     fn phase_losses(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> Vec<Complex64> {
         let nphases = self.cd().nphases;
-        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+        if !self.cd().enabled || !self.cd().is_mapped() {
             return vec![Complex64::ZERO; nphases];
         }
         self.compute_iterminal(sys, node_v);
@@ -1097,7 +1142,7 @@ pub trait CktElement: Send {
     /// Pascal `TDSSCktElement.MaxTerminalOneIMag` (CktElement.pas l.552): the
     /// max phase-current magnitude on terminal 1. Forces `Iterminal`.
     fn max_terminal_one_imag(&mut self, sys: &SysCtx, node_v: &[Complex64]) -> f64 {
-        if !self.cd().enabled || self.cd().node_ref.is_empty() {
+        if !self.cd().enabled || !self.cd().is_mapped() {
             return 0.0;
         }
         self.compute_iterminal(sys, node_v);

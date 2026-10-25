@@ -11188,7 +11188,9 @@ pub fn pd_skip_counters(channel: &str, class: &str, field: &str) -> Option<(usiz
 ///
 /// The only cells not compared are [`PD_SKIP_FIELDS`]', which the channel reads
 /// out of uninitialized memory; each one is still *visited* and accounted, so a
-/// row that stops excluding a divergence fails the gate.
+/// row that stops excluding a divergence fails the gate. The `is_shunt` of a bank
+/// [`lane::grounded_banks_the_oracles_call_series`] lists is asserted as the
+/// engine's shunt against the oracle's series element instead.
 pub fn compare_pd_elements(dss: &Dss, exp: &[PdElementCap], channel: PropsChannel, ctx: &str) {
     let act = dss.pd_elements();
     let tag = channel.tag();
@@ -11216,15 +11218,32 @@ pub fn compare_pd_elements(dss: &Dss, exp: &[PdElementCap], channel: PropsChanne
             act[k].name, exp[k].name,
         );
     }
+    let label = ctx.rsplit_once(" step ").map_or(ctx, |(label, _)| label);
+    let grounded_banks = lane::grounded_banks_the_oracles_call_series(label);
     for (a, e) in act.iter().zip(exp) {
         let class = pd_class(&e.name);
         // A skip row speaks only about the elements the oracle's zone build
         // wrote through the wrong cursor — see [`pd_skip_applies`].
         let skippable = pd_skip_applies(a);
+        let grounded_bank = grounded_banks
+            .iter()
+            .any(|b| b.eq_ignore_ascii_case(&e.name));
         let av = pd_fields!(a);
         let ev = pd_fields!(e);
         for ((fa, va), (fe, ve)) in av.iter().zip(ev.iter()) {
             debug_assert_eq!(fa, fe, "both extractions are the one `pd_fields!` macro");
+            if grounded_bank && *fa == "is_shunt" {
+                assert!(
+                    a.is_shunt && !e.is_shunt,
+                    "{ctx}: `{}` is listed by `lane::grounded_banks_the_oracles_call_series` \
+                     as the engine's shunt and the oracles' series element, but `{tag}` reads \
+                     Rust is_shunt = {} against oracle {}: a stale row",
+                    e.name,
+                    a.is_shunt,
+                    e.is_shunt,
+                );
+                continue;
+            }
             let equal = va.matches(*ve);
             if let Some(i) = pd_skip_row(tag, class, fa).filter(|_| skippable) {
                 PD_SKIP_VISITS[i].fetch_add(1, AtomicOrd::Relaxed);
@@ -11611,6 +11630,84 @@ mod pd_elements_tests {
                 .unwrap_or_else(|| "<non-string panic>".to_string());
             assert!(msg.contains("force_pdelements"), "{msg}");
         }
+    }
+
+    /// A feeder whose `Reactor.KerstingMotor` grounds every phase of `bus2` at
+    /// another bus, and the capture of an oracle that calls it a series
+    /// element (`oracle_shunt = false`) or a shunt.
+    fn grounded_bank_capture(oracle_shunt: bool) -> (Dss, Vec<PdElementCap>) {
+        let mut dss = Dss::new();
+        for line in [
+            "Clear",
+            "New Circuit.pdtest basekv=12.47 phases=3 bus1=sourcebus",
+            "New Line.l1 bus1=sourcebus bus2=b1 phases=3 r1=0.3 x1=0.9 length=1",
+            "New Reactor.KerstingMotor phases=3 bus1=b1 bus2=b9.0.0.0 R=60 X=40",
+            "Solve",
+        ] {
+            dss.command(line);
+            assert!(dss.errors().is_empty(), "`{line}` -> {:?}", dss.errors());
+        }
+        let exp = dss
+            .pd_elements()
+            .into_iter()
+            .map(|p| PdElementCap {
+                is_shunt: if p.name.eq_ignore_ascii_case("Reactor.KerstingMotor") {
+                    oracle_shunt
+                } else {
+                    p.is_shunt
+                },
+                name: p.name,
+                accumulated_l: p.accumulated_l,
+                from_terminal: p.from_terminal,
+                num_customers: p.num_customers,
+                section_id: p.section_id,
+                fault_rate: p.fault_rate,
+                repair_time: p.repair_time,
+                total_miles: p.total_miles,
+                total_customers: p.total_customers,
+                pct_permanent: p.pct_permanent,
+                lambda: p.lambda,
+                parent_class_index: p.parent_class_index,
+                parent_name: p.parent_name,
+            })
+            .collect();
+        (dss, exp)
+    }
+
+    /// On a case `lane::grounded_banks_the_oracles_call_series` lists, the
+    /// listed bank's `is_shunt` reads the engine's shunt against the oracle's
+    /// series element, and every other field stays compared.
+    #[test]
+    fn a_listed_grounded_bank_reads_its_shunt_against_the_oracles_series_element() {
+        let (dss, exp) = grounded_bank_capture(false);
+        compare_pd_elements(
+            &dss,
+            &exp,
+            PropsChannel::CapiV0145,
+            "solvable_now:Test/REACTORTest.DSS step 0",
+        );
+    }
+
+    /// The same capture on a case the lane policy does not list reds the exact
+    /// compare.
+    #[test]
+    #[should_panic(expected = "field `is_shunt` differs")]
+    fn a_grounded_bank_on_an_unlisted_case_fails_the_exact_compare() {
+        let (dss, exp) = grounded_bank_capture(false);
+        compare_pd_elements(&dss, &exp, PropsChannel::CapiV0145, "self-test step 0");
+    }
+
+    /// A listed bank the oracle calls a shunt is a stale row.
+    #[test]
+    #[should_panic(expected = "a stale row")]
+    fn a_listed_bank_the_oracle_calls_a_shunt_is_stale() {
+        let (dss, exp) = grounded_bank_capture(true);
+        compare_pd_elements(
+            &dss,
+            &exp,
+            PropsChannel::R4133,
+            "solvable_now:Test/REACTORTest.DSS step 0",
+        );
     }
 
     /// The row-liveness guard: both arms fire, and both silences hold.
@@ -12874,6 +12971,33 @@ pub fn compare_bus_short_circuit(
     voltages_excluded: bool,
     ctx: &str,
 ) -> usize {
+    compare_bus_short_circuit_masking_voc(
+        dss,
+        exp,
+        tol,
+        channel,
+        voltages_excluded,
+        &|_| false,
+        ctx,
+    )
+}
+
+/// [`compare_bus_short_circuit`] with the ledger's per-bus `voc` exclusion:
+/// `voc_excluded` is asked about a bus only once that bus's `Voc` has left its
+/// band, so an answer of `true` masks a real divergence and a scope whose
+/// divergence is gone is never asked, which the gate reports as stale. In a
+/// dynamics run `Voc` is the node voltage the last Y rebuild saved, an earlier
+/// instant of the run than the final node voltages, so it can diverge alone.
+/// `Isc` and everything else stay compared.
+pub fn compare_bus_short_circuit_masking_voc(
+    dss: &Dss,
+    exp: &[BusCap],
+    tol: &Tolerances,
+    channel: PropsChannel,
+    voltages_excluded: bool,
+    voc_excluded: &dyn Fn(&str) -> bool,
+    ctx: &str,
+) -> usize {
     let mut full_matrices = 0usize;
     let views = dss.all_bus_short_circuit();
     assert_eq!(
@@ -13133,15 +13257,32 @@ pub fn compare_bus_short_circuit(
             tol.i_abs,
             &format!("{ctx}: bus {} Isc", e.name),
         );
-        assert_complex_close(
-            &interleave(&v.vbus),
-            &e.voc,
-            tol.v_rel,
-            tol.v_abs,
-            &format!("{ctx}: bus {} Voc", e.name),
-        );
+        let voc = interleave(&v.vbus);
+        if !(within_complex_band(&voc, &e.voc, tol.v_rel, tol.v_abs) || voc_excluded(&e.name)) {
+            assert_complex_close(
+                &voc,
+                &e.voc,
+                tol.v_rel,
+                tol.v_abs,
+                &format!("{ctx}: bus {} Voc", e.name),
+            );
+        }
     }
     full_matrices
+}
+
+/// Whether two interleaved complex arrays of one length agree entry by entry
+/// within `abs_floor + rel·|expected|`, the band [`assert_complex_close`]
+/// asserts.
+fn within_complex_band(actual: &[f64], expected: &[f64], rel: f64, abs_floor: f64) -> bool {
+    actual.len() == expected.len()
+        && actual
+            .chunks_exact(2)
+            .zip(expected.chunks_exact(2))
+            .all(|(a, e)| {
+                let diff = ((a[0] - e[0]).powi(2) + (a[1] - e[1]).powi(2)).sqrt();
+                diff <= abs_floor + rel * (e[0] * e[0] + e[1] * e[1]).sqrt()
+            })
 }
 
 #[cfg(test)]
@@ -13458,7 +13599,7 @@ mod bus_comparator_tests {
 mod bus_short_circuit_tests {
     use super::{
         BusCap, CAPI_SC_SENTINEL_LEN, PropsChannel, R4133_SC_SENTINEL_LEN, Tolerances,
-        compare_bus_short_circuit, sc_sentinel_len, tol_for,
+        compare_bus_short_circuit, compare_bus_short_circuit_masking_voc, sc_sentinel_len, tol_for,
     };
     use dss_core::exec::Dss;
     use num_complex::Complex64;
@@ -13844,6 +13985,108 @@ mod bus_short_circuit_tests {
                     "{}: expected {what} in {msg:?}",
                     ch.tag()
                 );
+            }
+        }
+    }
+
+    /// The per-bus `voc` exclusion masks only the `Voc` of the buses it names on
+    /// both channels, and is asked only about a bus whose `Voc` has left its band,
+    /// whose edge the test drives from either side.
+    #[test]
+    fn a_voc_exclusion_masks_only_the_buses_it_names_once_they_diverge() {
+        let mut dss = sc_deck();
+        fault_study(&mut dss);
+        for ch in [PropsChannel::CapiV0145, PropsChannel::R4133] {
+            let asked = std::cell::RefCell::new(Vec::new());
+            let masked = |bus: &str| {
+                asked.borrow_mut().push(bus.to_string());
+                bus == "b2"
+            };
+            let clean = capture(&dss, ch);
+            compare_bus_short_circuit_masking_voc(
+                &dss,
+                &clean,
+                &tol_for("micro"),
+                ch,
+                false,
+                &masked,
+                "clean",
+            );
+            assert!(asked.borrow().is_empty(), "{}: asked {:?}", ch.tag(), asked);
+            let mut exp = capture(&dss, ch);
+            bus_mut(&mut exp, "b2").voc[0] += 1.0;
+            compare_bus_short_circuit_masking_voc(
+                &dss,
+                &exp,
+                &tol_for("micro"),
+                ch,
+                false,
+                &masked,
+                "b2 masked",
+            );
+            assert_eq!(*asked.borrow(), ["b2"], "{}", ch.tag());
+            let mut exp = capture(&dss, ch);
+            bus_mut(&mut exp, "b2").isc[0] += 1.0;
+            let msg = reds(|| {
+                compare_bus_short_circuit_masking_voc(
+                    &dss,
+                    &exp,
+                    &tol_for("micro"),
+                    ch,
+                    false,
+                    &masked,
+                    "b2 Isc",
+                )
+            });
+            assert!(msg.contains("Isc: entry"), "{}: {msg:?}", ch.tag());
+            let other = capture(&dss, ch)
+                .into_iter()
+                .find(|b| b.name != "b2" && !b.voc.is_empty())
+                .expect("a second bus")
+                .name;
+            let mut exp = capture(&dss, ch);
+            bus_mut(&mut exp, &other).voc[0] += 1.0;
+            let msg = reds(|| {
+                compare_bus_short_circuit_masking_voc(
+                    &dss,
+                    &exp,
+                    &tol_for("micro"),
+                    ch,
+                    false,
+                    &masked,
+                    "other bus",
+                )
+            });
+            assert!(msg.contains("Voc: entry"), "{}: {msg:?}", ch.tag());
+
+            // A quarter band inside the edge is compared and never asked about,
+            // a quarter band outside reds unmasked and asks the mask.
+            let tol = tol_for("micro");
+            for (share, inside) in [(0.75, true), (1.25, false)] {
+                let mut exp = capture(&dss, ch);
+                let voc = &mut bus_mut(&mut exp, "b2").voc;
+                let band = tol.v_abs + tol.v_rel * voc[0].hypot(voc[1]);
+                voc[0] += share * band;
+                asked.borrow_mut().clear();
+                compare_bus_short_circuit_masking_voc(
+                    &dss, &exp, &tol, ch, false, &masked, "the edge",
+                );
+                let want: &[&str] = if inside { &[] } else { &["b2"] };
+                assert_eq!(*asked.borrow(), want, "{}: {share} of the band", ch.tag());
+                if !inside {
+                    let msg = reds(|| {
+                        compare_bus_short_circuit_masking_voc(
+                            &dss,
+                            &exp,
+                            &tol,
+                            ch,
+                            false,
+                            &|_| false,
+                            "the edge unmasked",
+                        )
+                    });
+                    assert!(msg.contains("Voc: entry"), "{}: {msg:?}", ch.tag());
+                }
             }
         }
     }

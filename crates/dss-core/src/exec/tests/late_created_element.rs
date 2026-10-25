@@ -166,3 +166,80 @@ fn the_late_element_reports_its_current_once_the_next_solve_maps_it() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **Pin.** A VCCS declared after the last solve is unmapped like the nine
+/// classes above and reads the same zero on every conductor: a current source
+/// the solution has not connected carries no current, so its report computes
+/// no injection from a terminal it does not have.
+#[test]
+fn a_vccs_created_after_the_last_solve_reads_as_ground() {
+    let dir = scratch("vccs");
+    let mut dss = Dss::new();
+    dss.command(&format!("set datapath=\"{}\"", dir.display()));
+    for cmd in [
+        "New Circuit.dp basekv=0.69 phases=3 bus1=srcbus",
+        "New Line.l1 bus1=srcbus bus2=wbus phases=3 r1=0.005 x1=0.02 length=1",
+        "New Load.ld bus1=wbus phases=3 kv=0.69 kW=300 kvar=100",
+        "Set voltagebases=[0.69]",
+        "Calcvoltagebases",
+        "Solve",
+        "New VCCS.e2 phases=1 bus1=wbus.1 Prated=190 Vrated=398 Ppct=89.5",
+    ] {
+        dss.command(cmd);
+    }
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let file = dir.join("dp_EXP_CURRENTS.csv");
+    let _ = std::fs::remove_file(&file);
+    dss.command("export currents");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let text = std::fs::read_to_string(&file).expect("Export Currents wrote its file");
+    let row = text
+        .lines()
+        .find(|l| {
+            l.split(',')
+                .next()
+                .is_some_and(|n| n.trim().eq_ignore_ascii_case("VCCS.e2"))
+        })
+        .unwrap_or_else(|| panic!("VCCS.e2 has a row in\n{text}"));
+    let fields: Vec<&str> = row.split(',').skip(1).map(str::trim).collect();
+    assert!(
+        !fields.is_empty(),
+        "the export row carries the terminal columns"
+    );
+    assert!(
+        fields.iter().all(|f| f.parse::<f64>() == Ok(0.0)),
+        "every terminal current of an unmapped VCCS is zero, got {fields:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **Pin.** A one-phase Line declared after the last solve has no node map, and
+/// `Show Powers Elements` prints it as a two-terminal element of one conductor
+/// does, the line-to-line row of its first terminal and the terminal total, at
+/// node 0 with zero power and unity power factor.
+#[test]
+fn an_unmapped_one_phase_line_shows_zero_power_at_node_0() {
+    let dir = scratch("one_phase_line");
+    let mut dss = solved_feeder(&dir);
+    dss.command("New Line.l3 phases=1 bus1=b.1 bus2=c.1 r1=0.01 x1=0.02 length=1");
+    dss.command("Show Powers Elements");
+    assert!(dss.errors().is_empty(), "{:?}", dss.errors());
+    let text = std::fs::read_to_string(dss.last_show_file()).expect("Show Powers file");
+    let block: Vec<&str> = text
+        .lines()
+        .skip_while(|l| l.trim() != "ELEMENT = \"Line.l3\"")
+        .skip(1)
+        .take_while(|l| !l.trim().is_empty())
+        .collect();
+    assert_eq!(block.len(), 2, "{text}");
+    for row in block {
+        let numbers: Vec<f64> = row
+            .split_whitespace()
+            .filter_map(|f| f.parse().ok())
+            .collect();
+        let (pf, rest) = numbers.split_last().expect("a power factor");
+        assert_eq!(*pf, 1.0, "{row}");
+        assert!(!rest.is_empty() && rest.iter().all(|&v| v == 0.0), "{row}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

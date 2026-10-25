@@ -675,6 +675,7 @@ fn direct_shortcut_selects_yprim_currents() {
     CktElement::calc_yprim(&mut load, &snap);
 
     // 3-phase wye: yorder 4, node refs A/B/C + grounded neutral.
+    load.cd.terminals[0].set_bus(0);
     load.cd.set_node_ref(1, &[1, 2, 3, 0]);
     let vmag = 12.47e3 / 3.0_f64.sqrt();
     let a = Complex64::from_polar(1.0, -2.0 * std::f64::consts::PI / 3.0);

@@ -52,7 +52,10 @@ pub use state::{
 
 pub(crate) use ncim::do_ncim_solution;
 
-pub(crate) use dynamics::calc_initial_machine_states;
+pub(crate) use dispatch::report_solve_error;
+pub(crate) use dynamics::{
+    calc_initial_machine_states, dynamics_mode_word, refusal_of_an_element_outside_the_run,
+};
 pub(crate) use harmonics::initialize_for_harmonics;
 pub(crate) use power_flow::solve_circuit;
 // The `_InitSnap`/`_SolveNoControl`/`_SolveDirect`/`_SolvePFlow` step-solution

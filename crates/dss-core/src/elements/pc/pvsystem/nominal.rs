@@ -95,6 +95,15 @@ impl PVSystem {
             self.f_irradiance * self.base.shape_factor.re * self.f_pmpp * self.temp_factor;
     }
 
+    /// The inverter efficiency at the present panel power: the efficiency
+    /// curve at `PanelkW / kVA`, 1 without a curve.
+    pub(super) fn inverter_curve_efficiency(&mut self) -> f64 {
+        match self.base.inverter_curve_obj.as_mut() {
+            Some(c) => c.get_y_value(self.panel_kw / self.f_kva_rating),
+            None => 1.0,
+        }
+    }
+
     /// Pascal `kWOut_Calc`: clamp the AC kW to the watt-watt request (VW/WV
     /// modes) or to `Pmpp·%Pmpp` otherwise.
     fn kw_out_calc(&mut self) {
@@ -140,9 +149,7 @@ impl PVSystem {
 
         // Set inverter output (100% of PanelkW if no efficiency curve).
         if self.base.inverter_on {
-            if let Some(c) = self.base.inverter_curve_obj.as_mut() {
-                self.eff_factor = c.get_y_value(self.panel_kw / self.f_kva_rating);
-            }
+            self.eff_factor = self.inverter_curve_efficiency();
             self.kw_out_calc();
         } else {
             self.base.kw_out = 0.0;

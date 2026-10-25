@@ -14,6 +14,7 @@ use crate::circuit::Circuit;
 use crate::elements::pd::fault::Fault;
 use crate::support::cmatrix::CMatrix;
 
+use super::dynamics::{dynamics_mode_word, refusal_of_an_element_outside_the_run};
 use super::power_flow::solve_direct;
 use super::{LoadSolutionModel, SolveEnv, SolveResult};
 use crate::elements::traits::TypedStore;
@@ -21,6 +22,12 @@ use crate::elements::traits::TypedStore;
 /// Pascal `TSolutionAlgs.SolveFaultStudy`: open-circuit (Voc) direct solve,
 /// then per-bus `Ysc`/`Zsc`/`Isc`.
 pub(super) fn solve_fault_study(ckt: &mut Circuit, env: &mut SolveEnv) -> SolveResult {
+    // A machine without a state in the run has no fault contribution to give.
+    if let Some(msg) = dynamics_mode_word(ckt.solution.mode)
+        .and_then(|word| refusal_of_an_element_outside_the_run(ckt, env, word, false))
+    {
+        return Err(msg);
+    }
     ckt.solution.load_model = LoadSolutionModel::Admittance;
     disable_all_faults(ckt, env);
 

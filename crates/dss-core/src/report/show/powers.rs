@@ -398,6 +398,9 @@ fn write_powers_element(
     elem.compute_iterminal(sys, node_v);
     let (ncond, nterm, nphases) = (elem.cd().nconds, elem.cd().nterms, elem.cd().nphases);
     let cd = elem.cd();
+    // An element without a node map (created or enabled after the last bus
+    // rebuild) reads every conductor at node 0: no node number, zero volts.
+    let node = |k: usize| cd.node_or_ground(k);
     rep.line(&format!("ELEMENT = {}", format::enclose_quotes(name)));
     // AutoTrans special case (`ShowResults.pas:1190`): only `Nphases` conductor
     // rows per terminal. The Pascal `Inc(k, Ntimes)` at `:1252` sits AFTER the
@@ -429,14 +432,9 @@ fn write_powers_element(
     // terminal-1 line-line voltage `NodeV[nref1] − NodeV[nref2]` (Pascal
     // `ShowResults.pas:1195`, "Added April 6 2020").
     if family == PowersFamily::Pd && nterm == 2 && ncond == 1 {
-        let volts = node_v[cd.node_ref[0]] - node_v[cd.node_ref[1]];
+        let volts = node_v[node(0)] - node_v[node(1)];
         let sp = power(0, volts);
-        row(
-            rep,
-            &bus_name(0),
-            ckt.map_node_to_bus[cd.node_ref[0]].node_num,
-            sp,
-        );
+        row(rep, &bus_name(0), ckt.map_node_to_bus[node(0)].node_num, sp);
         total(rep, sp);
     } else {
         let mut k = 0usize;
@@ -444,14 +442,9 @@ fn write_powers_element(
             let from_bus = bus_name(j);
             let mut saccum = Complex64::ZERO;
             for _ in 0..ntimes {
-                let sp = power(k, node_v[cd.node_ref[k]]);
+                let sp = power(k, node_v[node(k)]);
                 saccum += sp;
-                row(
-                    rep,
-                    &from_bus,
-                    ckt.map_node_to_bus[cd.node_ref[k]].node_num,
-                    sp,
-                );
+                row(rep, &from_bus, ckt.map_node_to_bus[node(k)].node_num, sp);
                 k += 1;
             }
             total(rep, saccum);

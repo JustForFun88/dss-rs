@@ -381,6 +381,62 @@ fn every_host_integrates_an_omitted_nvariables_like_the_written_count() {
     }
 }
 
+/// A Generator starts a second run from the constant initial values of its
+/// assignments, as its first run did: after a run that moves its speed, `Set
+/// mode=snap`, `Solve` and a new entry give the memory (but the input `pterm`,
+/// which the host loads before each step reads it) and the node voltages of a
+/// fresh entry bit for bit, and the step after it gives them all. A WindGen
+/// linked to a `DynamicExp`, whose WTG3 model no entry seeds while an equation
+/// is linked, is the open exception, and the Kundur form with a fault is
+/// `exec::tests::dynamics::a_dynamicexp_machine_starts_every_run_from_its_initial_values`.
+#[test]
+fn a_generator_starts_a_second_run_from_its_constant_initial_values() {
+    let elem = "Generator.e1";
+    let state = |dss: &mut Dss, with_input: bool| -> Vec<u64> {
+        let names = dss.element_variable_names(elem).expect("host");
+        let values = dss.element_variables(elem).expect("host");
+        let mut bits: Vec<u64> = names
+            .iter()
+            .zip(&values)
+            .filter(|(n, _)| with_input || n.as_str() != "pterm")
+            .map(|(_, v)| v.to_bits())
+            .collect();
+        assert_eq!(
+            bits.len() + usize::from(!with_input),
+            values.len(),
+            "{names:?}"
+        );
+        let node_v = &dss.circuit().expect("circuit").solution.node_v;
+        bits.extend(node_v.iter().flat_map(|c| [c.re.to_bits(), c.im.to_bits()]));
+        bits
+    };
+    let mut fresh = linked("Generator", Some(6));
+    let mut second = linked("Generator", Some(6));
+    run_dynamics(&mut second, "Generator");
+    let speed = second.element_variables(elem).expect("host")[0];
+    assert!(
+        speed.is_finite() && speed != 0.05,
+        "the first run left the speed at {speed}"
+    );
+    for line in ["Set mode=snap", "Solve"] {
+        second.command(line);
+    }
+    for dss in [&mut fresh, &mut second] {
+        dss.command("Set mode=dynamic stepsize=0.001 number=1");
+    }
+    assert_eq!(
+        state(&mut second, false),
+        state(&mut fresh, false),
+        "the entry"
+    );
+    for dss in [&mut fresh, &mut second] {
+        dss.command("Solve");
+    }
+    assert_eq!(state(&mut second, true), state(&mut fresh, true), "a step");
+    assert!(fresh.errors().is_empty(), "{:?}", fresh.errors());
+    assert!(second.errors().is_empty(), "{:?}", second.errors());
+}
+
 /// The default holds 20 rows: an equation with 21 `VarNames` integrates while
 /// its equations stay in the first 20, and is refused once one reads the 21st.
 /// The reading equation comes last, since a bare operand in front of `;`

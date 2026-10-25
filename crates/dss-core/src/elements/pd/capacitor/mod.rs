@@ -182,7 +182,9 @@ pub struct Capacitor {
     /// `None` unless `SpecType = 3`.
     cmatrix: Option<Vec<f64>>,
     do_harmonic_recalc: bool,
-    bus2_defined: bool,
+    /// The bus the user gave terminal 2, kept while a delta connection leaves
+    /// the element one terminal.
+    user_bus2: Option<String>,
     /// How the capacitance was specified (see [`CapacitorSpecType`]).
     spec_type: CapacitorSpecType,
     num_term: i32,
@@ -237,7 +239,7 @@ impl Capacitor {
             flast_step_in_service: 1,
             cmatrix: None,
             do_harmonic_recalc: false,
-            bus2_defined: false,
+            user_bus2: None,
             spec_type: CapacitorSpecType::Kvar,
             num_term: 1,
             is_shunt: true,
