@@ -7,10 +7,9 @@
 > no gate, and never reconstruct or guess a source you cannot read. Tell the user it
 > must be re-vendored, then wait.
 
-The 1:1 port of the Pascal DSS C-API to safe Rust is finished. The direction now
-is idiomatic Rust, wasm-sandboxed user models, new methods and models, and
-behaviour that is right by physics. Never argue from "we are a 1:1 port". The
-invariants that bind:
+The direction is idiomatic Rust, wasm-sandboxed user models, new methods and
+models, and behaviour that is right by physics. Fidelity to the Pascal original is
+never an argument. The invariants that bind:
 
 - `#![forbid(unsafe_code)]` in every **product** crate, no C bindings in the
   shipped engine. The one exception is the test-only oracle bridge
@@ -38,8 +37,7 @@ invariants that bind:
 - **Only where physics is indifferent** (the DSS script language, property and
   command semantics, report layout) r4133 is the reference, and only when its
   behaviour is logical and not a bug. "r4133 does it" alone is never evidence.
-- dss_capi 0.14.5 is outdated: a numeric oracle only, never above r4133 or physics.
-  A change taken from the dss_capi 0.15.x branch needs the same proof as any other.
+- dss_capi 0.14.5 is a numeric oracle only, never above r4133 or physics.
 - **Sources.** A behaviour decision checks its derivation against preferably at
   least two independent published sources (a book quoting another counts once).
   Where only one exists, or none, the decision says so. Books by topic are under
@@ -57,8 +55,8 @@ invariants that bind:
   `pi = 3.14159265359`, FPC rounding and formatting, algorithm-identity numerics),
   each marked `TODO(compat):` with the intended clean fix. The tag is used for
   nothing else and stays greppable (`rg "TODO\(compat\)"`). A precision site leaves
-  only with empirical proof. The `oracle-parity` lane that holds them is scheduled
-  for teardown and takes no new kernel.
+  only with empirical proof. The `oracle-parity` lane that holds them takes no new
+  kernel.
 
 ## Launching agents and workflows
 
@@ -67,8 +65,9 @@ invariants that bind:
   the gate queue (`tools/gate/README.md`: waiting tickets mean the machine is full),
   CPU load, free memory and the running `cargo`/`rustc` processes.
 - **Resources free: launch without asking.**
-- **Resources short: ask first.** Tell the user what already runs and that one more
-  will slow everything down, and ask whether to start it now.
+- **Resources short: decide, do not ask.** Wait and re-check, or queue the work
+  behind the gate, and report the decision in one line. The user is asked only when
+  the launch itself widens the scope (work the user did not request).
 - **Ceiling:** about three workflows and three to four building lanes at once. A
   freed lane is not a reason to launch.
 - After stopping a workflow, check that its scripts no longer queue builds.
@@ -121,18 +120,19 @@ knobs and its procedures.
 
 ## Git worktrees — safe deletion (`.inputs`/`.venv` junction hazard)
 
-Worktrees under `.claude/worktrees/` hold Windows **directory junctions** to main's
-`.inputs/` and `.venv/`. `git worktree remove` and any recursive delete (`rm -rf`,
-`Remove-Item -Recurse`, `rmdir /s`) follow them and delete main's copies. This has
-wiped main's `.inputs` twice. **Never batch-remove worktrees.** For each one, in
+Worktrees under `.claude/worktrees/` hold Windows **directory junctions**: to
+main's `.inputs/` and `investigations/`, and to the lane's cargo target.
+`git worktree remove` and any recursive delete (`rm -rf`, `Remove-Item -Recurse`,
+`rmdir /s`) follow them and delete what they point at. This has wiped main's
+`.inputs` twice. **Never batch-remove worktrees.** For each one, in
 **PowerShell only** (under Git Bash `cmd /c rmdir` silently does nothing and exits 0):
 
 1. List the reparse points without following them:
    `Get-ChildItem -LiteralPath <wt> -Recurse -Force | ? { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }`
 2. Drop the **link only**: `$_.Delete()` on the `DirectoryInfo`, or
    `cmd /c rmdir "<path>"` without `/s`.
-3. Prove the links are gone: `Test-Path '<wt>\.inputs'` and
-   `Test-Path '<wt>\tools\opendss\.venv'` must both be **False**.
+3. Prove the links are gone: `Test-Path` of every link step 1 listed must be
+   **False**.
 4. Only then `git worktree remove --force <wt>`, then `git worktree prune`.
 
 After each removal `(gci .inputs -Force | measure).Count` must be unchanged. Delete
@@ -141,17 +141,16 @@ merged branches separately with `git branch -D`.
 ## Conventions
 
 - **Module layout:** keep files focused. A module that grows large or mixes
-  concerns becomes a directory module (`foo/mod.rs` plus concern submodules) by
-  `SPLITTING_RULES.md`, with no behaviour change. Unit tests stay inline as
-  `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the
-  `#[cfg(test)] mod tests;` line right after the module doc. Integration tests are
-  thin drivers over the test-only crate `dss-test-harness`
-  (`use dss_test_harness::harness;`).
+  concerns becomes a directory module (`foo/mod.rs` plus concern submodules), with
+  no behaviour change. Unit tests stay inline as `#[cfg(test)]` modules, in a
+  sibling `tests.rs` only when the file is large, the `#[cfg(test)] mod tests;`
+  line right after the module doc. Integration tests are thin drivers over the
+  test-only crate `dss-test-harness` (`use dss_test_harness::harness;`).
 - 0-based indexing everywhere except the ground node (`NodeRef == 0`), converted
   only at parse and report boundaries. Identifiers are case-insensitive through
   lowercase keys.
-- Behaviour questions are settled by measurement (`tools/golden/probe_val.py`,
-  epri-worker), never by guessing.
+- What an oracle does is measured (`tools/golden/probe_val.py`, epri-worker), never
+  guessed.
 - **A Rust↔oracle gap is a bug until proven otherwise.** "Conditioning" needs
   proof: tighten the loop tolerance (a gap that collapses means a shared fixpoint),
   isolate the suspect in a controlled experiment, dump both trajectories and find
@@ -174,17 +173,13 @@ merged branches separately with `git branch -D`.
   `SeqCurrents: exclude and pin the negative-rating divergence`, not
   `RF-D03-01 settlement + record`. A subject plus at most three short bullets. A
   lane lands as one squash commit, and its `STATUS.md` or record edit rides in it.
-- **Plans and queues are not committed.** `RULINGS_QUEUE.md`, `MAKEPOSSEQ_PLAN.md`,
-  `RETRO_FIXES_PLAN.md` and the step plans are the coordinator's working files,
-  kept in the checkout outside git.
+- **Plans and queues are not committed.** They are the coordinator's working files,
+  kept in the checkout outside the project's git.
 - **No OpenDSS or Pascal source is cited in committed text**: not in code, tests,
   records, `TESTING.md`, `ledger.json` or this file. No `.pas` name, no Pascal
-  line, no `.inputs/` path. A behaviour choice rests on physics (a derivation and a
-  measured balance) or on a measurement named by its recipe and its numbers
-  ("measured 2026-10-17 with the epri-worker on the r4133 DLL"). The upstream
-  reports in `investigations/to_opendss/` (gitignored, written for the OpenDSS
-  developers) are the one place that cites the source. Existing citations leave
-  when their text is next edited.
+  line, no `.inputs/` path. The upstream reports in `investigations/to_opendss/`
+  (gitignored, written for the OpenDSS developers) are the one place that cites
+  the source. Existing citations leave when their text is next edited.
 - **Cite code by name, never by line number.** No `file.rs:N` (nor `:A-B`, `.py:N`,
   `.md:N`) for a file of this repository: from a doc comment an intra-doc link
   (`` [`tol_for`] ``) so `cargo doc` checks it, elsewhere the path plus the item
@@ -193,19 +188,18 @@ merged branches separately with `git branch -D`.
   statement about the past.
 - **Comments are short and say what the code does now.** No history, no
   `<sha>:path:N`. A behaviour choice that needs a justification gets one sentence
-  and the name of the test that pins it. The measurement behind it lives in the
-  record, in a ledger entry or in the upstream report, never in a comment.
+  and the name of the test that pins it.
 - **A test's doc comment is at most two sentences on what is pinned.** No numbers,
   no oracle readings, no dates, no report numbers. Expected values live only in the
-  assertions, measurements only in `ledger.json`, the records and the upstream
-  reports.
+  assertions.
+- **Measurements live only in `ledger.json`, the records and the upstream
+  reports**, never in a comment or a test doc. Committed provenance is a dated
+  sentence naming the tool and the recipe that re-derives the numbers and, when
+  small, the tracked evidence itself (a pin literal, a golden, a `tests/corpus`
+  file). A gitignored or scratch file (`tmp/`, the session scratchpad, a
+  worktree-local probe) is never provenance: it vanishes. Local paths go in the
+  report to the coordinator.
 - **Records are short.** A step record is 5-10 lines: what changed and why, the
   measurement behind it, the ledger exclusions and their pins by name, the commits,
   the gate result. Point at evidence that exists (tests, `ledger.json`, doc
   comments, audit reports). No tables, no narrative.
-- **No gitignored or scratch file as provenance in committed text** (`tmp/`, the
-  session scratchpad, a worktree-local probe): they vanish. Committed provenance, in
-  a record or a ledger entry, is a dated sentence naming the tool and the recipe
-  that re-derives the numbers and, when small, the tracked evidence itself (a pin
-  literal, a golden, a `tests/corpus` file). Local paths go in the report to the
-  coordinator.
