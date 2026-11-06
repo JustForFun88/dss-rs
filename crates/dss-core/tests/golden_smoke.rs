@@ -88,19 +88,13 @@ fn ieee13_known_values_spot_check() {
     );
 }
 
-/// RETRO_FIXES RF-I00-04: the harness is its own crate (`dss-test-harness`)
-/// with no lane feature, and `harness::lane::PARITY` is the
-/// `dss_core::compat::ORACLE_PARITY` of the dss-core it links. This test crate
-/// is compiled with (or without) `--features dss-core/oracle-parity` itself, so
-/// the pin holds only if cargo built ONE dss-core for both: the feature
-/// unification every lane branch of the harness relies on. Were the harness
-/// ever linked against a second, default-lane dss-core, the parity lane would
-/// silently run the default policies; this fails first, in either lane.
+/// The harness reads the lane of the dss-core this driver links, so every lane
+/// branch of the harness runs the policy of the engine under test.
 #[test]
 fn the_harness_crate_reads_the_lane_this_driver_was_built_in() {
     assert_eq!(
         harness::lane::PARITY,
-        cfg!(feature = "oracle-parity"),
+        dss_core::compat::OPENDSS_PARITY,
         "dss-test-harness and the dss-core test crate disagree about the lane"
     );
 }

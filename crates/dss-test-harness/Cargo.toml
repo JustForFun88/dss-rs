@@ -8,7 +8,7 @@ description = "Test-only: the golden/oracle comparison harness of the dss-core i
 # The golden/oracle comparison harness of `crates/dss-core/tests/*.rs`: one
 # library, a dev-dependency of dss-core, compiled once per lane, whose
 # self-tests run once per lane, in its own lib test binary. No `[features]`:
-# the lane is dss-core's, read through `dss_core::compat::ORACLE_PARITY`
+# the lane is dss-core's, read through `dss_core::compat::OPENDSS_PARITY`
 # (`harness/lane.rs`), and cargo builds ONE dss-core for the drivers and this
 # crate, so both see the same lane.
 [dependencies]

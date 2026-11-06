@@ -157,7 +157,7 @@ fn nconds_past_the_integer_range_is_stored_as_converted() {
         ],
     );
     assert!(errs.is_empty(), "{errs:?}");
-    let stored = if crate::compat::ORACLE_PARITY {
+    let stored = if crate::compat::OPENDSS_PARITY {
         "1215752191"
     } else {
         "2147483647"

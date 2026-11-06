@@ -251,7 +251,7 @@ fn rec(w: &mut impl Write, kind: &str, key: &str, values: &[f64]) {
 fn dump(out: &Path) {
     let file = File::create(out).unwrap_or_else(|e| panic!("create {}: {e}", out.display()));
     let mut w = BufWriter::new(file);
-    let lane = if dss_core::compat::ORACLE_PARITY {
+    let lane = if dss_core::compat::OPENDSS_PARITY {
         "parity"
     } else {
         "default"
@@ -420,9 +420,9 @@ fn diff(a: &Path, b: &Path) {
                 if ka == "lane" {
                     // The two headers must name *different* lanes, and between
                     // them exactly {default, parity}: otherwise two dumps of one
-                    // lane (a Cargo slip that stops `oracle-parity` reaching the
-                    // example, or a stale `parity.dump` under `-SkipDump`) diff
-                    // clean and read as a "bit-identical" run that proved nothing.
+                    // lane (a build without `dss-compat/opendss-parity`, or a
+                    // stale `parity.dump` under `-SkipDump`) diff clean and read
+                    // as a "bit-identical" run that proved nothing.
                     lanes = Some((key_a.clone(), key_b.clone()));
                     continue;
                 }

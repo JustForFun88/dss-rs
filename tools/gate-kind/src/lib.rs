@@ -24,10 +24,9 @@
 //!   is `Code`, and so is any change to a file whose tokens hold `line!`,
 //!   `column!`, `Location::caller` or `stringify!` (its text keeps the source
 //!   spacing, which the token comparison cannot see). The rules read the edited
-//!   file only: the forms that move another file's value (a `macro_rules!` body
-//!   holding `line!`, `column!` or `stringify!`, a caller-location read) are
-//!   kept out of the workspace by the cfg gate's
-//!   `the_gate_kind_premises_hold_across_files`.
+//!   file only, so they assume the workspace holds no form that moves another
+//!   file's value: a `macro_rules!` body holding `line!`, `column!` or
+//!   `stringify!`, or a caller-location read.
 //! - **The strip-compare** ([`classify_rs`]). Both sides are normalized as
 //!   rustc does before lexing (`\r\n` → `\n`, a leading BOM dropped). Equal
 //!   bytes are [`RsKind::Same`]. Otherwise every `doc` attribute the syntax
@@ -102,10 +101,9 @@ impl From<RsKind> for GateKind {
     }
 }
 
-/// The `.rs` files a lib unit test outside the RAILS register reads as text,
-/// so a comment-only edit of one can red a test only the full gate runs. The
-/// list is measured and railed by `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
-/// (`gate_rails_are_exactly_the_measured_readers`, RF-I00-05 part 2). Today one
+/// The `.rs` files a lib unit test outside RAILS (`TESTING.md`, "Which gate to
+/// run") reads as text, so a comment-only edit of one can red a test only the
+/// full gate runs. Today one
 /// file: dss-core's
 /// `exec::tests::in_show_results::the_export_bracket_has_no_early_exit_between_its_two_statements`
 /// reads `do_export_cmd`'s body, comments included.

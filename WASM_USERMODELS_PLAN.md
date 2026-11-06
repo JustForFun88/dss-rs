@@ -431,7 +431,7 @@ the real native twin — never "the Rust engine agrees with itself".
   like the Pascal `UserModel: TGenUserModel` field) — no global registry, no shared
   `Store` — so MULTITHREADING M3's disjoint-`&mut` `par_iter_mut` pattern holds
   without redesign (wasmi stores are `Send`).
-- DE_PASCALIZE Stage F (`oracle-parity` lane): WASM user models are **additive**
+- DE_PASCALIZE Stage F (`opendss-parity` lane): WASM user models are **additive**
   behavior with no upstream-observable counterpart on the pinned decks; the
   `wasm_usermodels` goldens gate both lanes identically. No lane split needed.
 - UPGRADE interplay: none of the four Pascal units changed across

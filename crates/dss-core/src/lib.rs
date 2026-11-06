@@ -29,7 +29,7 @@ pub mod util;
 // substrate are `Send`. Ownership is a clean tree rooted at `Dss` with all
 // cross-refs as index handles; the `: Send` supertraits on
 // `DssObject`/`CktElement`/`ElemStore` make the trait-object storage `Send`, and
-// nothing uses `Rc`/`RefCell`/statics (kept that way by the P7 grep gate).
+// nothing uses `Rc`/`RefCell`/statics.
 const fn assert_send<T: Send>() {}
 const _: () = assert_send::<crate::exec::Dss>();
 const _: () = assert_send::<crate::obj::arena::Elements>();

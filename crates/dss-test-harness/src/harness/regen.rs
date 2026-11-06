@@ -138,7 +138,7 @@ impl Anchor {
 /// `golden_lock.rs::ProducedBy`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum ProducedBy {
-    /// Rendered by the `oracle-parity` lane (the strictest byte contract while
+    /// Rendered by the parity lane (the strictest byte contract while
     /// the print-emulation kernels live).
     #[serde(rename = "parity")]
     Parity,
@@ -178,7 +178,7 @@ impl Lane {
     /// switch, exactly like the harness-wide `lane::PARITY`; the two are
     /// asserted equal by `lane_current_tracks_the_build`.
     pub fn current() -> Lane {
-        if dss_core::compat::ORACLE_PARITY {
+        if dss_core::compat::OPENDSS_PARITY {
             Lane::Parity
         } else {
             Lane::Default
@@ -195,7 +195,7 @@ impl Lane {
     /// The cargo invocation that produces this lane.
     fn build_flag(self) -> &'static str {
         match self {
-            Lane::Parity => "--features dss-core/oracle-parity",
+            Lane::Parity => "--features dss-compat/opendss-parity",
             Lane::Default => "(no features)",
         }
     }

@@ -335,10 +335,7 @@ impl PropFlags {
     /// (`tests/golden/reports/dump_*.txt`, written by
     /// [`report::save::dump`](crate::report::save::dump)), **2** are AltDSS-JSON
     /// captures and **3** are schema walks (`tests/golden/json/*.json`) — no
-    /// text table among them. The population is pinned by name and by surface
-    /// directory in
-    /// `oracle_parity_cfg_gate::the_hide_flag_escape_population_is_pinned_by_surface`,
-    /// so this classification fails rather than rots.
+    /// text table among them.
     ///
     /// F.4 therefore opens no self-golden event these 13 could ride, and F.3aa's
     /// "not a second one in F.3" reasoning loses its first one. That left two

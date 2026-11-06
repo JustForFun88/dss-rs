@@ -62,11 +62,11 @@ python tools/wasm_usermodel/twin_probe.py $env:TEMP\indmach012a_native_twin\IndM
   reproduced as `(3.0f32/746.0f32) as f64`.
 
   Those three are DE_PASCALIZE Stage F **escapes**, not oversights: this crate is
-  workspace-excluded (plan §2.6), so `dss-core/oracle-parity` cannot reach it and
-  a lane split here would mean a second committed `.wasm` fixture, not a `cfg`
-  alias. Each flip was run in isolation against the native-FPC-twin pins and each
-  breaks a bit-exact one; the numbers are at the sites and in
-  `oracle_parity_cfg_gate::ESCAPE_REGISTER`.
+  workspace-excluded (plan §2.6), so the lane switch `dss-compat/opendss-parity`
+  cannot reach it and a lane split here would mean a second committed `.wasm`
+  fixture, not a lane alias. Each flip was run in isolation against the
+  native-FPC-twin pins and each breaks a bit-exact one; the numbers are at the
+  sites.
 - The debug-trace file (`IndMach012_Trace.CSV`) is a no-op in the sandbox (no
   filesystem — ABI §6); `option=debug` still toggles the flag.
 - RPN inline math inside quoted `UserData=` values is not implemented: a real

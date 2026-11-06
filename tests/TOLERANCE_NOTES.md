@@ -3219,7 +3219,7 @@ expected values, not tolerances. The exclusion masks the whole column (the `di` 
 `di_pins::the_masked_kvarh_column_is_pinned_whole` — again expected values (the annual net
 and absolute sums, both extremes, two censuses), never a band: the sums and the two extreme
 values are recorded through that file's own `assert_records` identity (1e-9 relative, the
-epsilon every literal there carries) because the `oracle-parity` lane writes the column's
+epsilon every literal there carries) because the parity lane writes the column's
 last printed digit differently on a few hours and its annual net sum is
 `4432951.126747187` against the default lane's `4432951.126747186` — ONE ulp at 4.4e6
 (2.1e-16 relative; measured in the settlement's own gate, `tmp/g110c/settle_gate_*.log`).
@@ -3380,7 +3380,7 @@ the fudging this file forbids.
 DE_PASCALIZE Stage F was that "one pass" (PORTING_PLAN.md §4.1 / §6). Its
 outcome is not a deletion but a **lane split**: each resolved inexactness became
 a `crate::compat::` row with two always-compiled impls, the parity lane
-(`--features dss-core/oracle-parity`) keeping the upstream answer its goldens
+(`--features dss-compat/opendss-parity`) keeping the upstream answer its goldens
 pin and the default lane taking the clean fix. Consequences for tolerance work:
 
 - **The parity lane's floors never move.** It is the oracle-compared lane, so
@@ -3395,6 +3395,4 @@ pin and the default lane taking the clean fix. Consequences for tolerance work:
   is the live example. A tolerance is never widened to cover either shape; if
   you find yourself wanting to, the row is mis-scoped.
 - A marker still spelled `TODO(compat)` in the tree is one Stage F **escaped**
-  with a measured blocker, and every survivor is registered in
-  `oracle_parity_cfg_gate::ESCAPE_REGISTER` with its owner.
-<!-- line-citations: 23 -->
+  with a measured blocker; `rg "TODO\(compat\)"` lists every survivor.

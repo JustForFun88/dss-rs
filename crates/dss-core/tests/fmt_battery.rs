@@ -22,7 +22,7 @@
 //! 3. [`fmt_g_is_the_lane_kernel`] — the seam really selects the lane's kernel,
 //!    so the two assertions above cannot collapse onto the same function.
 
-use dss_core::compat::ORACLE_PARITY;
+use dss_core::compat::OPENDSS_PARITY;
 use dss_core::report::format::fpc_sci_w;
 use dss_core::util::{float_to_str, fmt_g, fmt_g_fpc_impl, fmt_g_native_impl};
 
@@ -258,7 +258,7 @@ fn fmt_g_is_the_lane_kernel() {
     let v = 0.8258283333333335_f64;
     assert_eq!(fmt_g_fpc_impl(v, 15), "0.825828333333334");
     assert_eq!(fmt_g_native_impl(v, 15), "0.825828333333333");
-    let want = if ORACLE_PARITY {
+    let want = if OPENDSS_PARITY {
         "0.825828333333334"
     } else {
         "0.825828333333333"

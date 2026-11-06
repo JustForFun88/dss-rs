@@ -89,7 +89,7 @@ function Invoke-Lane {
 
 if (-not $SkipDump) {
     Invoke-Lane -Lane "default" -Features @() -DumpPath $defaultDump
-    Invoke-Lane -Lane "parity" -Features @("dss-core/oracle-parity") -DumpPath $parityDump
+    Invoke-Lane -Lane "parity" -Features @("dss-compat/opendss-parity") -DumpPath $parityDump
 }
 foreach ($p in @($defaultDump, $parityDump)) {
     if (-not (Test-Path $p)) { throw "missing dump $p (run without -SkipDump)" }

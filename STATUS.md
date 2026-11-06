@@ -33,7 +33,7 @@ referee-certified (2026-07-11); `PORTING_PLAN.md` is history. The order of all
 active work is `PLAN_SEQUENCE.md`; the binding conventions and the seven-command
 gate are `CLAUDE.md`. The 2026-08-02 user policy is in force: **EPRI r4133 is
 the behavioral authority, the pinned dss_capi 0.14.5 is a numeric oracle only,
-and upstream bugs are never reproduced in any lane** — the `oracle-parity` lane
+and upstream bugs are never reproduced in any lane** — the parity lane
 has shrunk to a precision-compat lane and is scheduled for full teardown.
 
 **In flight.** `GOLDEN_REBASE_PLAN.md` **WP-G1** on **`update`**, its sub-step chains running since 2026-09-04 in parallel `lane-*` worktree branches that a
@@ -265,9 +265,7 @@ rows below. Details in *Standing open follow-ups*.
 
 ### Live escape register — the 15 surviving `TODO(compat)` markers
 
-The register itself is executable: `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER` (+
-`EXIT_POPULATION`) checks it **both ways** — an unregistered marker fails, a registered
-marker that no longer exists fails. Rows below are the prose index; the site comment carries
+Rows below are the index, `rg "TODO\(compat\)"` lists the markers; the site comment carries
 each row's measured cost.
 
 | Owner | Site | Row |
@@ -516,8 +514,7 @@ no-op (real `ShowResults` in WP8.4), `Plot`/`Visualize` are headless no-ops
 
 **2026-09-03 correction.** The 2026-07-17 count above is history and must not be
 re-derived from it. The live population is the 15-row escape register in section
-1, enforced both ways by `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER` (+
-`EXIT_POPULATION`); re-measure with `rg "TODO\(compat\)"`. The Stage-F and
+1; re-measure with `rg "TODO\(compat\)"`. The Stage-F and
 `HIDE_015X` handoffs that sentence assumes were executed by DE_PASCALIZE Stage F
 and finished by GOLDEN_REBASE WP-G2/WP-G4. Since the 2026-08-02 policy the tag
 covers **precision/convention sites only** — logic bugs are fixed outright in
@@ -531,11 +528,11 @@ both lanes and never tagged.
 # Gate (must be green before any commit; the seven commands of CLAUDE.md "## Gate")
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+cargo clippy --workspace --all-targets --features dss-compat/opendss-parity -- -D warnings
 cargo nextest run --workspace
-cargo nextest run --workspace --features dss-core/oracle-parity
+cargo nextest run --workspace --features dss-compat/opendss-parity
 cargo test --workspace --doc
-cargo test --workspace --doc --features dss-core/oracle-parity
+cargo test --workspace --doc --features dss-compat/opendss-parity
 
 # Run a script
 cargo run -p dss-cli -- path\to\script.dss
@@ -616,7 +613,7 @@ and this file; none was rewritten.
 | `golden-rebase.md` (appended 2026-09-03) | section 1's `### GOLDEN_REBASE` WP-G0 / WP-G2 and WP-G1 condensed record blocks |
 | `phase-index.md` (appended 2026-09-03) | round 1's own 2026-08-05 archive note, listing the files that round created |
 | `golden-rebase.md` | GOLDEN_REBASE WP-G0 (G0.1/G0.2) and WP-G2 (G2.0, G2.1a–h) full records — the source of §1's condensations |
-| `depascalize-stagef.md` | DE_PASCALIZE Stage F: the `oracle-parity` lane split, F.1 → F.5 and the wave-4 settlement (incl. the escape-register steps F.3, F.3aa–F.3ag) |
+| `depascalize-stagef.md` | DE_PASCALIZE Stage F: the parity lane split, F.1 → F.5 and the wave-4 settlement (incl. the escape-register steps F.3, F.3aa–F.3ag) |
 | `depascalize-w3.md` | DE_PASCALIZE wave 3 (W3.1–W3.5), the wave-2a settler, R3iv, P3 |
 | `depascalize-r2b-r3.md` | R2b + R3: the `ElemRef → ElemId` store flip, typed accessors, the `Any`/`as_ckt_element` removal |
 | `depascalize-r1-r2.md` | R1 typed arenas (`Idx<T>`/`ElemId`/`Elements`) and the R2 injection seam |

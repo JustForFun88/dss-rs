@@ -53,10 +53,8 @@ never an argument. The invariants that bind:
   `investigations/to_opendss/`.
 - Only precision quirks may be reproduced (truncated constants such as
   `pi = 3.14159265359`, FPC rounding and formatting, algorithm-identity numerics),
-  each marked `TODO(compat):` with the intended clean fix. The tag is used for
-  nothing else and stays greppable (`rg "TODO\(compat\)"`). A precision site leaves
-  only with empirical proof. The `oracle-parity` lane that holds them takes no new
-  kernel.
+  each marked `TODO(compat):` with the intended clean fix. A precision site leaves
+  only with empirical proof. The parity lane that holds them takes no new kernel.
 
 ## Launching agents and workflows
 
@@ -77,36 +75,32 @@ never an argument. The invariants that bind:
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+cargo clippy --workspace --all-targets --features dss-compat/opendss-parity -- -D warnings
 cargo nextest run --workspace
-cargo nextest run --workspace --features dss-core/oracle-parity
+cargo nextest run --workspace --features dss-compat/opendss-parity
 cargo test --workspace --doc
-cargo test --workspace --doc --features dss-core/oracle-parity
+cargo test --workspace --doc --features dss-compat/opendss-parity
 ```
 
 Commands 4-5 run the pinned `cargo-nextest` of `.config/nextest.toml` (each test in
-its own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-7
-run the doctests. On a shared machine every command goes through the queue,
+its own process, no retries), and commands 6-7 run the doctests. On a shared machine every command goes through the queue,
 `python tools/gate/gatelock.py --label "<who>" -- cargo <args>`.
 
 A landing reuses the gate its tree already passed. When the lane head passed the
 seven commands, `update` has not moved past the lane's base and
 `git diff --stat <lane head> <landing commit>` shows only `STATUS.md` and the
-record, run `cargo fmt --all --check` and the doc rails
-(`cargo nextest run -p dss-core --test oracle_parity_cfg_gate`), then push.
+record, run `cargo fmt --all --check`, then push.
 Otherwise the landing runs the full gate.
 
 The engine ships in two lanes and both must be green:
 
-- **parity** (`--features dss-core/oracle-parity`): the precision-compat engine,
+- **parity** (`--features dss-compat/opendss-parity`): the precision-compat engine,
   byte-exact on the goldens, exact iteration counts and discrete state.
 - **default** (no features): the product. The same oracle floors on continuous
   quantities, discrete state exact, iteration counts within ±1.
 
-The lane policy lives in `crates/dss-test-harness/src/harness/lane.rs`.
-`#[cfg(feature = "oracle-parity")]` appears only in the three `compat` modules and
-in test code (`oracle_parity_cfg_gate.rs`). The default-lane report policy has no
-tolerance (`rel = abs = 0`). `pwsh -File tools/lanes/lane_diff.ps1` compares the
+The lane policy lives in `crates/dss-test-harness/src/harness/lane.rs`. The
+default-lane report policy has no tolerance (`rel = abs = 0`). `pwsh -File tools/lanes/lane_diff.ps1` compares the
 two lanes' solved states on demand (`TESTING.md` §"The parity↔default differential
 gate"): run it whenever a `compat` kernel, a lane alias or the solver changes.
 

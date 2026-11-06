@@ -53,8 +53,7 @@
 //! (`crates/dss-epri/src/capture.rs`), and a contaminated capture would still
 //! *look* fine — it would simply compare the port against the parent's numbers.
 //! The four static tests below therefore read both capture sources and assert
-//! the read sequence and the call-site slot literally, in the
-//! `oracle_parity_cfg_gate.rs` citation-walk idiom;
+//! the read sequence and the call-site slot literally;
 //! [`the_read_order_guard_rejects_a_contaminated_capture`] proves the scan is not
 //! vacuous by re-running it over a deliberately corrupted copy of each body.
 //! The r4133 side additionally has a *behavioural* proof in

@@ -54,7 +54,7 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               goldens, i.e. it belongs to the next oracle-surface
                               switch, not to any Stage F step (F.3ag re-homing,
                               commit 1936f638). Tracked in ORPHANED_GAPS.md §2; two
-                              pins in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`
+                              pins in the structural cfg-gate test (deleted)
                               trip on any partial touch of the bundle.
  5. DE_PASCALIZE_PLAN.md      COMPLETE (2026-07-31, branch depas-stagef).
                               Merged: wave 1 2026-07-17 (R0 + P1-partial + P2 + P6,
@@ -67,7 +67,7 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               All of the above [A]/bit-neutral, parallel worktrees +
                               opus audits; records docs/phase-records/depascalize-*.md
                               + STATUS. **Stage F** (the only [C] stage — the
-                              `oracle-parity` feature split, parity target r4133)
+                              `opendss-parity` feature split, parity target r4133)
                               executed 2026-07-26…31: F.1 seam → F.2 lane test policy
                               → F.3 kernel flips + TODO(compat) sweep (117 → 18, every
                               survivor a registered escape) → F.4 F-FMT → F.5 (the
@@ -140,7 +140,7 @@ post-acceptance stage 3 per the user's 2026-07-07 request (its WP-U0 infra pre-l
                               504 out-of-scope cells remain, each owned by a named
                               pin or record); **4 499 passed / 0 failed / 5 ignored**
                               per lane (4 498 at the closing commit — the +1 is
-                              the thirteenth `oracle_parity_cfg_gate` test the
+                              the thirteenth structural cfg-gate test (deleted) the
                               RP5.2 settlement added). **The gating-case
                               outcome**: the unmask
                               compares `all_properties` on the r4133 channel
@@ -313,7 +313,7 @@ Supporting documents (not stages — referenced throughout):
 Key cross-plan dependencies (why the order is what it is):
 - **Stage F before RESONANCE & MULTITHREADING-M3c:** both need the lane split — the
   default build takes the improvement (refinement / parallel LU, iteration counts free to
-  differ), the `oracle-parity` build keeps every 1:1 gate bitwise-green forever.
+  differ), the `opendss-parity` build keeps every 1:1 gate bitwise-green forever.
 - **DE_PASCALIZE Parts I–III before Stage F:** the bit-neutral rewrites use the
   still-stable byte-exact goldens as their free equivalence proof; Stage F is the single
   default-lane re-baseline event.

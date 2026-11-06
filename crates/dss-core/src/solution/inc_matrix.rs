@@ -228,9 +228,8 @@ fn add_series_caps(b: &mut FlatBuilder, classes: &[DssClass]) {
 /// `upstream_row_index` before comparing).
 ///
 /// Two further defects of this same walk stay **reproduced** here — they decide
-/// *which element becomes a row*, not how rows are indexed, so they are registered
-/// (WP-G2 teardown register + `investigations/to_opendss/`) rather than fixed in a
-/// comparison sub-step:
+/// *which element becomes a row*, not how rows are indexed, so a comparison
+/// change does not fix them:
 /// * a 1-terminal reactor's `GetBus(2)` is `''`, so `ansipos('.0', '') = 0`
 ///   classifies it "series"; the bus search then misses and
 ///   [`FlatBuilder::find_col_and_upload`] falls back to column `NumBuses - 1`.

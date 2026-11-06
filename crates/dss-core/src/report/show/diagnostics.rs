@@ -421,7 +421,7 @@ mod tests {
     //! queue (oracle-probed), so no golden reaches it. Pin it here against the
     //! Pascal `WriteQueue` format string instead.
     use super::queue_row_line;
-    use crate::compat::{CONTROL_QUEUE_SEC_DIGITS, ORACLE_PARITY};
+    use crate::compat::{CONTROL_QUEUE_SEC_DIGITS, OPENDSS_PARITY};
 
     #[test]
     fn control_queue_row_format() {
@@ -450,13 +450,13 @@ mod tests {
     fn control_queue_sec_digits_is_the_lane_kernel() {
         assert_eq!(
             CONTROL_QUEUE_SEC_DIGITS,
-            if ORACLE_PARITY { 6 } else { 15 },
+            if OPENDSS_PARITY { 6 } else { 15 },
             "the Sec column's digit count is the lane's"
         );
         let row = queue_row_line(9, 2, 1200.0 / 7.0, 4, 0, "regcontrol.rg1");
         assert_eq!(
             row,
-            if ORACLE_PARITY {
+            if OPENDSS_PARITY {
                 "9, 2, 171.429, 4, 0, regcontrol.rg1 \n"
             } else {
                 "9, 2, 171.428571428571, 4, 0, regcontrol.rg1 \n"

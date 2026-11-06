@@ -310,11 +310,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dss-compat"
+version = "0.1.0"
+
+[[package]]
 name = "dss-core"
 version = "0.1.0"
 dependencies = [
  "comfy-table",
  "criterion",
+ "dss-compat",
  "dss-epri",
  "dss-metis",
  "dss-parser",
@@ -348,6 +353,7 @@ version = "0.1.0"
 name = "dss-parser"
 version = "0.1.0"
 dependencies = [
+ "dss-compat",
  "serde",
  "serde_json",
 ]
@@ -356,6 +362,7 @@ dependencies = [
 name = "dss-sparse"
 version = "0.1.0"
 dependencies = [
+ "dss-compat",
  "faer",
  "num-complex",
 ]

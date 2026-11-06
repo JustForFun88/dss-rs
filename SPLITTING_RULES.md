@@ -110,11 +110,11 @@ won't match a bare `^fn` grep.
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+cargo clippy --workspace --all-targets --features dss-compat/opendss-parity -- -D warnings
 cargo nextest run --workspace
-cargo nextest run --workspace --features dss-core/oracle-parity
+cargo nextest run --workspace --features dss-compat/opendss-parity
 cargo test --workspace --doc
-cargo test --workspace --doc --features dss-core/oracle-parity
+cargo test --workspace --doc --features dss-compat/opendss-parity
 ```
 
 All three green, including the live-oracle `corpus_live` gate — a pure file move

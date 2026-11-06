@@ -2,7 +2,7 @@
 //! Part IV.2, implemented once here and shared by every golden driver.
 //!
 //! The engine ships in two builds. The **parity lane**
-//! (`--features dss-core/oracle-parity`) selects the bit-compat kernels of
+//! (`--features dss-compat/opendss-parity`) selects the bit-compat kernels of
 //! `dss_core::compat` and must keep EVERY existing oracle gate green forever —
 //! byte goldens, checkpoint Y, corpus floors, iteration counts, discrete
 //! states; it never re-baselines. The **default lane** (no features) is the
@@ -66,16 +66,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::{ColSel, ColTol, ElemChannels, ExportPolicy, GateSpec, RowPolicy, compare_export};
 
-/// `true` in the parity build (`--features dss-core/oracle-parity`), `false` in
-/// the default build.
+/// `true` in the parity build (`--features dss-compat/opendss-parity`), `false`
+/// in the default build.
 ///
 /// The single lane switch of the test suite: every policy in this module
 /// branches on this `const`, so **both arms always compile** (and both are
 /// type-checked in both lanes) exactly like the engine's `compat` kernels.
-/// The lane is read from `dss_core::compat::ORACLE_PARITY` (this crate has no
+/// The lane is read from `dss_core::compat::OPENDSS_PARITY` (this crate has no
 /// lane feature). Its agreement with each driver's build is pinned by
 /// `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in`.
-pub const PARITY: bool = dss_core::compat::ORACLE_PARITY;
+pub const PARITY: bool = dss_core::compat::OPENDSS_PARITY;
 
 /// Default-lane slack on an iteration count compared against an **oracle**
 /// golden, in iterations.
@@ -463,8 +463,8 @@ static REROUND_HITS: [AtomicUsize; EVENTLOG_REROUNDED.len()] =
 /// corpus gate.
 ///
 /// A cell whose case was compared but which never fired is exempting a number
-/// that is no longer there — the staleness the ledger, `ESCAPE_REGISTER` and
-/// [`expected_rerounded`] are all guarded against, and the one this list lacked
+/// that is no longer there — the staleness the ledger and
+/// [`expected_rerounded`] are both guarded against, and the one this list lacked
 /// until F-settle W4 (probe: two invented rows, one with a key occurring
 /// nowhere in the corpus, passed the whole gate unremarked — while the module
 /// doc above already claimed this helper was fail-on-stale).

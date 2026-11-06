@@ -354,9 +354,7 @@ impl LedgerRuntime {
     /// `y_fingerprint`, `yprim`, `meter`, `injection`, `monitor`, `probe`,
     /// `element`) — re-deriving a verdict for them would mean a second copy of
     /// each comparator inside the ledger, i.e. a new drift surface, so their
-    /// anti-rot guard stays the expected-value pin the entry's `cause` names
-    /// (mandatory, and registered both ways in
-    /// `oracle_parity_cfg_gate.rs::TORN_DOWN_ROWS`).
+    /// anti-rot guard stays the expected-value pin the entry's `cause` names.
     fn has_measurable_scope(e: &Entry) -> bool {
         e.scopes.iter().any(|s| s.field == "voltages")
     }

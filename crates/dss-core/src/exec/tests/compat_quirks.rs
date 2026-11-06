@@ -180,7 +180,7 @@ fn device_name_column_is_sized_from_its_content() {
 ///    this pins at a report the executive actually produced.
 #[test]
 fn show_table_layout_is_the_lane_kernel() {
-    let parity = crate::compat::ORACLE_PARITY;
+    let parity = crate::compat::OPENDSS_PARITY;
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
@@ -296,7 +296,7 @@ fn show_table_layout_is_the_lane_kernel() {
 ///    asserted here on a report the executive really produced.
 #[test]
 fn show_voltage_table_layout_is_the_lane_kernel() {
-    let parity = crate::compat::ORACLE_PARITY;
+    let parity = crate::compat::OPENDSS_PARITY;
     let mut dss = Dss::new();
     dss.command("clear");
     dss.command("new circuit.probe basekv=12.47 pu=1.0 phases=3 bus1=sourcebus");
@@ -348,7 +348,7 @@ fn show_voltage_table_layout_is_the_lane_kernel() {
 /// the oracle it is defined to reproduce.
 #[test]
 fn set_time_hour_is_the_lane_kernel() {
-    let parity = crate::compat::ORACLE_PARITY;
+    let parity = crate::compat::OPENDSS_PARITY;
     // (deck value, oracle/parity hour, default-lane saturating hour)
     let cases: [(&str, i64, i64); 5] = [
         ("3e9", -1_294_967_296, i32::MAX as i64),
@@ -409,7 +409,7 @@ fn apply_round_out_of_range_is_the_lane_kernel() {
         .parse()
         .expect("the first year element is numeric");
 
-    let expected = if crate::compat::ORACLE_PARITY {
+    let expected = if crate::compat::OPENDSS_PARITY {
         -9_223_372_036_854_775_808.0 // i64::MIN as f64
     } else {
         1e20
@@ -423,7 +423,7 @@ fn apply_round_out_of_range_is_the_lane_kernel() {
         ((first - expected) / expected).abs() < 1e-12,
         "ApplyRound writes Round's Int64 back into the Double: got {first:e}, \
          expected {expected:e} (lane parity = {})",
-        crate::compat::ORACLE_PARITY
+        crate::compat::OPENDSS_PARITY
     );
 
     // The in-range element is untouched in both lanes — so this pins the
@@ -663,7 +663,7 @@ fn export_profile_ll_pu_is_the_lane_kernel() {
 
     for (i, (&a, &b)) in ln.iter().zip(ll.iter()).enumerate() {
         assert!(a > 0.9 && a < 1.1, "row {i}: implausible L-N pu {a}");
-        let expected = if crate::compat::ORACLE_PARITY {
+        let expected = if crate::compat::OPENDSS_PARITY {
             // Parity keeps `1732.0`: every L-L pu is the balanced L-N pu scaled
             // up by the truncation.
             a * ratio
@@ -674,12 +674,12 @@ fn export_profile_ll_pu_is_the_lane_kernel() {
         assert!(
             (b - expected).abs() <= read_floor,
             "row {i}: L-L pu {b} is not the lane's expectation {expected} \
-             (L-N pu {a}, ORACLE_PARITY = {})",
-            crate::compat::ORACLE_PARITY
+             (L-N pu {a}, OPENDSS_PARITY = {})",
+            crate::compat::OPENDSS_PARITY
         );
         // And the *other* lane's value must be distinguishable, or this test
         // would pass in both builds and pin nothing.
-        let other = if crate::compat::ORACLE_PARITY {
+        let other = if crate::compat::OPENDSS_PARITY {
             a
         } else {
             a * ratio

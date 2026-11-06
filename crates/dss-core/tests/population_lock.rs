@@ -761,8 +761,7 @@ fn the_drift_guard_scanners_see_every_visibility_and_every_flag_row() {
 /// (`GOLDEN_REBASE_PLAN.md` G1.0): every `compare_*` manifest field owns a rigor
 /// token, every token is actually emitted, and no table row is orphaned.
 ///
-/// A **source-text** gate (the `oracle_parity_cfg_gate.rs` pattern) because what
-/// it polices is exactly what a compiled mirror cannot see: this test binary
+/// A **source-text** gate because what it polices is exactly what a compiled mirror cannot see: this test binary
 /// deserializes its own [`Case`], so a `compare_*` field added to
 /// `corpus_gate::SolvableCase` and *not* mirrored here compiles, loads, and
 /// silently drops out of the fingerprint. WP-G1 adds ten such fields

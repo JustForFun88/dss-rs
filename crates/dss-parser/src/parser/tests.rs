@@ -222,7 +222,7 @@ fn make_integer_rounds_ties_to_even() {
 /// pinned literally.
 #[test]
 fn make_integer_out_of_range_is_the_lane_kernel() {
-    let parity = crate::compat::ORACLE_PARITY;
+    let parity = crate::compat::OPENDSS_PARITY;
     for (s, fpc, saturating) in [
         ("inf", 0, i32::MAX),
         ("-inf", 0, i32::MIN),
@@ -307,7 +307,7 @@ fn rpn_degree_trig_is_the_lane_kernel() {
         p.make_double(&vars).unwrap()
     };
 
-    let expected = if crate::compat::ORACLE_PARITY {
+    let expected = if crate::compat::OPENDSS_PARITY {
         0.5000000000000299
     } else {
         0.49999999999999994

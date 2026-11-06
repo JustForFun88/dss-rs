@@ -3,7 +3,7 @@
 Typed arenas + `enum ElemId` (eliminate downcasting) · **index elimination** (flat-offset
 arithmetic, 1-based remnants, parallel arrays, sentinels) · integer-constant families →
 enums · bitfield → typed flags · borrow hygiene · miette diagnostics · case-fidelity
-cleanups · **Stage F: the `oracle-parity` feature split** (idiomatic default build;
+cleanups · **Stage F: the `opendss-parity` feature split** (idiomatic default build;
 bit-compat verification build) **+ F-FMT native report rendering** · a (small) keep list
 of genuine product semantics · thread-readiness design constraints. Master ordering across
 all plan documents: `PLAN_SEQUENCE.md` (this is stage 5 — it runs after UPGRADE Rungs 1–2,
@@ -78,7 +78,7 @@ Every work package is tagged with a stratum:
   0-basing, `Option`-ification, enum-ification.)
 - **[C] arithmetic-changing** — accumulation order or algorithms change. Lands in
   **Stage F** (Part IV): the idiomatic kernel becomes the **default build**, the
-  bit-compat kernel moves behind `#[cfg(feature = "oracle-parity")]`, and only the default
+  bit-compat kernel moves behind `#[cfg(feature = "opendss-parity")]`, and only the default
   lane re-baselines. Nothing is deleted, so 1:1 verifiability against the pinned oracle
   never rots.
 
@@ -107,7 +107,7 @@ divergence — far worse than stopping. This gate runs **ahead of the tier/refus
    команду.» and stop. (Protocol defined in `PLAN_SEQUENCE.md`.)
 1. **Gate green** — `cargo fmt --all --check` · `cargo clippy --workspace --all-targets
    -- -D warnings` · `cargo test --workspace` (all goldens + the always-on live corpus
-   gate). **After Stage F lands: both lanes** (default and `--features oracle-parity`) +
+   gate). **After Stage F lands: both lanes** (default and `--features dss-compat/opendss-parity`) +
    the parity↔default differential job. No `#[ignore]`, no name-filter that greens on zero
    matches; a red test blocks the commit.
 2. **Update `STATUS.md`** (frontier + phase record), **commit** (code + STATUS together).
@@ -154,7 +154,7 @@ STATUS §"R3 handoff".)*
 2. Never loosen any tolerance, anywhere, for any reason.
 3. Never reorder floating-point accumulation "because it's cleaner" — order changes are
    Stage F's job, behind the feature.
-4. Never write `#[cfg(feature = "oracle-parity")]` outside the `compat` modules.
+4. Never write `#[cfg(feature = "opendss-parity")]` outside the `compat` modules.
 5. Never delete a compat kernel or a `TODO(compat)` site outside Stage F.
 6. Never change class registration order or any Part IV.1 semantic order.
 7. Never introduce `Rc`/`RefCell`/`Mutex`/statics (Part V; P7's grep gate enforces it).
@@ -189,8 +189,8 @@ macro_rules! with_all_classes { ($m:ident) => { $m! {
 // dss-core/src/compat.rs — the ONLY file in the crate allowed to contain the cfg string.
 pub fn cdiv_fpc_impl(a: Complex64, b: Complex64) -> Complex64 { /* Smith, moved as-is */ }
 pub fn cdiv_std_impl(a: Complex64, b: Complex64) -> Complex64 { a / b }
-#[cfg(feature = "oracle-parity")]      pub use cdiv_fpc_impl as cdiv;
-#[cfg(not(feature = "oracle-parity"))] pub use cdiv_std_impl as cdiv;
+#[cfg(feature = "opendss-parity")]      pub use cdiv_fpc_impl as cdiv;
+#[cfg(not(feature = "opendss-parity"))] pub use cdiv_std_impl as cdiv;
 // Same alias pattern for: round_i32, PI, stddev_single_point, SymComp variant,
 // the two bug-fix branches, the solver Par/refinement knobs (dss-sparse), and the
 // F-FMT rendering seam (compat::g / compat::g_w / … — parity = fmt_g family as-is,
@@ -1047,7 +1047,7 @@ than faer's hashing dedup *and* parity-correct), so Stage F has **no** dedup dua
 
 ---
 
-# Part IV — Permanent semantics, and Stage F: the `oracle-parity` feature split
+# Part IV — Permanent semantics, and Stage F: the `opendss-parity` feature split
 
 ## IV.1 Permanent semantics (both build modes — product behavior, not porting artifacts)
 
@@ -1147,23 +1147,23 @@ right formalization of that spec is **data, not grammar**:
   with P5 as its natural continuation ("P5b: schema-driven property core").
   Before Stage F only layer 1 above (the `\n` guard in `command()`) may land.
 
-## IV.2 Stage F — the `oracle-parity` feature split (absorbs the `TODO(compat)` sweep)
+## IV.2 Stage F — the `opendss-parity` feature split (absorbs the `TODO(compat)` sweep)
 
 **Idea (user, 2026-07-06).** Everything we kept *only for bit-parity with the pinned
 oracle* is neither deleted (that loses 1:1 verifiability forever) nor kept as the product
-(that freezes Pascal warts). It moves behind `#[cfg(feature = "oracle-parity")]`:
+(that freezes Pascal warts). It moves behind `#[cfg(feature = "opendss-parity")]`:
 
 - **default build** (no features) — idiomatic Rust everywhere: `num_complex` division,
   `f64::consts::PI`, `round_ties_even`, upstream bugs *fixed*,
   parallelism and (later) iterative refinement allowed;
-- **parity build** (`--features oracle-parity`) — the exact 1:1 engine: every existing
+- **parity build** (`--features dss-compat/opendss-parity`) — the exact 1:1 engine: every existing
   oracle gate (byte goldens, checkpoint Y, `corpus_live` floors, **iteration counts**)
   stays green, permanently re-runnable against pinned dss-python.
 
 **Dual-kernel inventory** — the **shared arithmetic kernels**, small and closed;
 this is the entire list *of that class*:
 
-| Item | parity kernel (`oracle-parity`) | default kernel (idiomatic) |
+| Item | parity kernel (`opendss-parity`) | default kernel (idiomatic) |
 |---|---|---|
 | complex division | `cdiv_fpc` (FPC Smith) | ~~`num_complex` `/`~~ → ***no split*, measured** (F.3e) — note ¹ |
 | dense inverse | `CMatrix::invert`/`etk_invert` no-row-exchange GJ | ~~partial-pivot (or faer dense)~~ → ***no split*, measured** (F.3f→F.3i) — note ¹ |
@@ -1184,13 +1184,13 @@ else (`ISOURCE_BUS2_NEVER_LATCHES`, `LINECODE_SYM_CLEAR_OMITS_C0`,
 `SYM_MATRIX_GETTER_RENDERS_ZEROS`, the CIM writer's three, …). They are **not**
 inventions against the rule above: `PORTING_PLAN.md` §4.1 rule 4 (Update
 2026-07-06) rules that "compat quirks are **not deleted** — each becomes a dual
-kernel behind `#[cfg(feature = "oracle-parity")]`", which is exactly this class,
+kernel behind `#[cfg(feature = "opendss-parity")]`", which is exactly this class,
 and `crates/dss-core/src/compat.rs` states the membership test they must each
 pass. They are enumerated where they live, not here, because the list is
 per-site and moves with the code; what keeps it honest is mechanical rather than
-editorial — `oracle_parity_cfg_gate.rs` pins `SPLIT_ALIAS_POPULATION` (38 as of
+editorial — the structural cfg-gate test (deleted) pins `SPLIT_ALIAS_POPULATION` (38 as of
 the wave-4 settlement) and requires every row to carry an expected-value pin
-that branches on `compat::ORACLE_PARITY`.
+that branches on `compat::OPENDSS_PARITY`.
 
 **¹ Three rows resolved to *no split* — the proposal was disproven by
 measurement, not quietly dropped (F.3, 2026-07-26/28).** Stage F is the only
@@ -1240,15 +1240,15 @@ and `report text rendering`, which is F.4's.
 **Mechanism — no cfg spaghetti, and both kernels always compiled:**
 - One `compat` module per affected crate — as executed, three:
   `dss-core/src/compat.rs`, `dss-parser/src/compat.rs`, `dss-sparse/src/compat.rs` —
-  holds *all* `#[cfg(feature = "oracle-parity")]`-selected definitions; call sites are
+  holds *all* `#[cfg(feature = "opendss-parity")]`-selected definitions; call sites are
   unconditional (`compat::cdiv(a, b)`, `compat::round_i32(x)`, `compat::PI`). CI grep
   gate: the cfg string appears **only** inside `compat` modules (plus test attributes).
 - **Both implementations of every dual kernel are always compiled** (plain sibling
   functions, e.g. `cdiv_fpc_impl` / `cdiv_std_impl`); the cfg selects only which one the
   `compat::` alias points at. This is what makes them unit-testable against each other in
   *any* build, and prevents the unselected path from bit-rotting.
-- The feature is additive and propagates workspace-wide (`dss-core/oracle-parity` enables
-  `dss-sparse/oracle-parity`); `dss-cli` exposes it as a build option.
+- The feature lives in the crate `dss-compat` alone (`dss-compat/opendss-parity`); every
+  crate selects by its constant `OPENDSS_PARITY`, and `dss-cli` builds either lane.
 
 **What actually drifts in the default build (the drift model — testing follows from it):**
 
@@ -1311,7 +1311,7 @@ hand-measuring column widths (~16k lines in `report/` today, much of it layout
 arithmetic).
 
 **Two validation lanes (both in CI, permanently) + the differential gate:**
-- **Parity lane:** `cargo test --workspace --features oracle-parity` — the entire existing
+- **Parity lane:** `cargo test --workspace --features dss-compat/opendss-parity` — the entire existing
   gate as-is: byte-exact goldens, checkpoint captures, `corpus_live` calibrated floors,
   iteration-count/discrete-state exactness. This lane never re-baselines.
 - **Default lane:** `cargo test --workspace` — per the drift-model table: oracle floors on
@@ -1378,7 +1378,7 @@ test.* See §Verification for the full wording and the tests that enforce it.
    The drift model sanctions field-scoped exclusions only; a whole-case skip is a coverage
    trade no Stage F step may grant. Measured per row (the bill is at each site).
 3. **The 3 `WasmGuest` markers** (`WASM_USERMODELS_PLAN`) — they live in a
-   workspace-excluded reference model where `dss-core/oracle-parity` does not reach; a lane
+   workspace-excluded reference model where `dss-compat/opendss-parity` does not reach; a lane
    split there is a second `.wasm` fixture, not a cfg alias. Each flip was run against the
    crate's native-FPC-twin pins and fails a bit-exact generated pin.
 
@@ -1496,7 +1496,7 @@ on behavior traits is the target architecture, not a leftover.
    created there) — de-indexing + solver hot-path hygiene                       [A]
    ── all [A] stages BEFORE Stage F: the still-stable byte-exact goldens are the free
       equivalence proof for every [A] rewrite ──
-4. Stage F (Part IV.2) ✅ 2026-07-31 — the `oracle-parity` feature split, last. F.1
+4. Stage F (Part IV.2) ✅ 2026-07-31 — the `opendss-parity` feature split, last. F.1
    seam (bit-neutral) → F.2 default-lane drift-model test policy → F.3 kernel flips +
    the TODO(compat) sweep (117 sites in `crates/dss-core/src` at the 2026-07-26
    measurement → 15, all registered escapes) → F.4 F-FMT (number seam, `Show` tables
@@ -1517,7 +1517,7 @@ lane) — see `PLAN_SEQUENCE.md` for the cross-plan order.
 - **Gate at every stage:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets
   -- -D warnings` · `cargo test --workspace` (includes the unconditional live-oracle corpus
   comparison — the permanent behavior contract). **From Stage F on, each of the two latter
-  commands runs twice** — once per lane (`--features dss-core/oracle-parity`); `CLAUDE.md`
+  commands runs twice** — once per lane (`--features dss-compat/opendss-parity`); `CLAUDE.md`
   carries the canonical five-command form.
 - **Strata discipline:** [A] stages — goldens byte-identical, zero test churn (that *is* the
   equivalence proof; a failing golden in an [A] stage means the rewrite changed arithmetic —
@@ -1526,9 +1526,9 @@ lane) — see `PLAN_SEQUENCE.md` for the cross-plan order.
   parity-vs-default kernel bounds. *(Executed: the one sanctioned re-baseline came back
   **empty** — F.3ab measured it, F.3's close re-verified it, and F.4 landed F-FMT without
   regenerating a single golden.)*
-- **Stage F gates (all live):** both lanes green; `#[cfg(feature = "oracle-parity")]` appears
+- **Stage F gates (all live):** both lanes green; `#[cfg(feature = "opendss-parity")]` appears
   only inside `compat` modules and test code
-  (`oracle_parity_cfg_gate.rs::oracle_parity_cfg_appears_only_in_compat_modules_and_tests`);
+  (the structural cfg-gate test, deleted);
   every lane-split alias is pinned by an expected-value test at an observable
   (`every_lane_split_alias_is_pinned_by_an_expected_value_test`, 37 split + 2
   declared-not-wired); the surviving compat markers are exactly the recorded escape register
@@ -1552,7 +1552,7 @@ lane) — see `PLAN_SEQUENCE.md` for the cross-plan order.
   owns it. Current population: **18** markers = 11 `UpgradeRung` + 4 `WholeCase` + 3
   `WasmGuest`, plus the single non-marker escape (the `HIDE_015X` bundle, → `UPGRADE_PLAN`
   §5).
-- **Success metrics — now executable** (`crates/dss-core/tests/depascalize_metrics_gate.rs`,
+- **Success metrics — were executable** (the metrics test, deleted;
   added in F.5; each metric below is one test, counting **code** only, i.e. ignoring the
   documentation that names the banned shapes). Values re-measured 2026-07-31 on
   `depas-stagef`:

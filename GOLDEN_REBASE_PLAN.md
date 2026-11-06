@@ -43,7 +43,7 @@ trusting any gate result (the mingw shadow trap).
 >    number/string rendering: `fmt_g`, `fixed_w_script`, `json_float`,
 >    `JSON_LINE_BREAK`, `CONTROL_QUEUE_SEC_DIGITS`, `render_rows` are torn down
 >    kernel-by-kernel with a reviewed regen of the affected (by then self-anchored)
->    families. What stays in `oracle-parity` is **numeric** precision-compat only:
+>    families. What stays in `opendss-parity` is **numeric** precision-compat only:
 >    truncated constants (`PI`, `kv_base_search_scale`, `profile_ll_pu_divisor`) and
 >    FPC `Round` semantics in computation (`round_f64`, `round_i32`). Census
 >    trajectory: `SPLIT_ALIAS_POPULATION` 31 → **11** (after WP-G2) → **5** (after
@@ -101,9 +101,9 @@ DE_PASCALIZE Stage-F group-fixer pattern is explicitly rescinded for this plan).
 2. **Gate green** — the five mandatory commands:
    `cargo fmt --all --check`;
    `cargo clippy --workspace --all-targets -- -D warnings`;
-   `cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings`;
+   `cargo clippy --workspace --all-targets --features dss-compat/opendss-parity -- -D warnings`;
    `cargo test --workspace`;
-   `cargo test --workspace --features dss-core/oracle-parity`.
+   `cargo test --workspace --features dss-compat/opendss-parity`.
    Plus `pwsh -File tools/lanes/lane_diff.ps1` for any sub-step touching a compat
    kernel, a lane alias, or the solver. No `#[ignore]`, no name-filter that can
    green on zero matches; a red test blocks the commit.
@@ -211,7 +211,7 @@ audits on `opus-xhigh` exec rows are themselves `opus-xhigh`.
 | G4.1 | `opus-xhigh` | `opus-xhigh` | `opus-xhigh` | `fmt_g` — the widest blast radius (all report text + event-log fold) |
 | G4.2–G4.5 | `opus-high+` | `opus-high+` | `opus-high+` | one print kernel each (G4.3: two), categorical regen diff |
 | G4.6 | `opus-high+` | `opus-high+` | `opus-high+` | closure: `fmt_battery` retirement + census |
-| G5.1, G5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by `oracle_parity_cfg_gate.rs:1310` |
+| G5.1, G5.2 | `opus-high+` | `opus-high+` | `opus-high+` | doc surgery validated by the structural cfg-gate test (deleted) |
 
 *(**2026-09-04**, coordinator decision **D8**: **G1.4a** ran at `opus-xhigh`, not the
 `G1.4` row's `opus-high+` — three engine-semantics triggers, a new engine accessor and
@@ -321,7 +321,7 @@ any entry that cannot be given a pin) is a stop-and-report. Seeding:
   parity-only byte arm — `lane::compare_report` (parity `assert_bytes_eq`, default
   `compare_export`; `harness/lane.rs:623-637`) and `lane::compare_json` (parity raw
   `assert_eq!`, no CRLF normalization; `lane.rs:477-481`) — the producing lane is
-  the **parity** lane (`DSS_UPDATE_GOLDENS=1` + `--features dss-core/oracle-parity`):
+  the **parity** lane (`DSS_UPDATE_GOLDENS=1` + `--features dss-compat/opendss-parity`):
   parity-rendered bytes are what the parity byte arm already passes, and the
   default lane's `exact_value_policy` (rel=abs=0) passes against that same
   rendering today, so both gates stay green with zero comparator surgery. The lock
@@ -398,7 +398,7 @@ modeled on `crates/dss-core/tests/population_lock.rs`: (1) every file has a row;
 (2) every row has a file (closes the `props_roundtrip.rs:209-211` hole — today it
 asserts only non-emptiness); (3) every digest matches; (4) every `anchor: "self"`
 row has a non-empty reason and the `self` set equals a `DEANCHORED` register const
-in the test (the `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER` both-ways
+in the test (the structural cfg-gate test (deleted), both-ways
 discipline). The `DEANCHORED` register is kept per **family/glob** with one
 reason per family (a per-file list would be a second copy of the lock); its two
 initial entries (`adiakoptics/`, `json/schema_full_port.json`) are recorded as
@@ -1885,14 +1885,14 @@ G2.4 (a dss-python wrapper artifact — no engine-bug report exists) and G2.6 (i
 report does not exist yet and is written inside the sub-step). Bookkeeping
 in every commit (all fail-on-stale):
 
-- `SPLIT_ALIAS_POPULATION` (`oracle_parity_cfg_gate.rs:804`, 31 → **11** across the
+- `SPLIT_ALIAS_POPULATION` (the structural cfg-gate test (deleted), 31 → **11** across the
   WP), `ESCAPE_REGISTER`/`EXIT_POPULATION`, `TAG_PATH_CITATIONS`, `ledger.json` +
   `population.lock.json` where a fix diverges from an oracle channel.
 - **`TORN_DOWN_ROWS` register** (created empty in G2.0): every teardown commit adds
   its row **plus the greppable markers of G2.0(b)** at every new unconditional
   exclusion site and pin — every G2 sub-step, not only G2.1.
 - **Doc-surface alias references, in the SAME commit as the alias deletion.**
-  `oracle_parity_cfg_gate.rs::operational_docs_cite_the_compat_machinery_accurately`
+  the structural cfg-gate test (deleted)
   (`:1310`) has two independent failure modes over CLAUDE.md / TESTING.md /
   `tests/TOLERANCE_NOTES.md` / `tests/corpus/ledger.json` /
   `tests/corpus/**/manifest.json` / `tools/**/*.{md,py}`: (a) `bad_alias`
@@ -1906,7 +1906,7 @@ in every commit (all fail-on-stale):
   lock field moves). Each sub-step strikes its own citations; G2.0 pre-seeds the
   floor. Precedent: `4f977d9e` struck CLAUDE.md/TOLERANCE_NOTES/gen_json.py
   sentences in the very commit that deleted the arms.
-- **Pin-walk non-vacuity re-anchor**: `oracle_parity_cfg_gate.rs:1087-1108` anchors
+- **Pin-walk non-vacuity re-anchor**: the structural cfg-gate test (deleted) anchors
   `every_lane_split_alias_is_pinned_by_an_expected_value_test` on
   `IRESIDUAL_FROM_TERMINAL_1` — G2.2a must re-point it at one of the five
   **numeric** survivors (`PI`, `round_f64`, `round_i32`, `kv_base_search_scale`,
@@ -1940,7 +1940,7 @@ in every commit (all fail-on-stale):
 
 **Acceptance criterion for the whole WP:** `git diff --stat -- tests/golden` is
 **empty**, `TORN_DOWN_ROWS` names every torn-down row with an existing pin, and
-`oracle_parity_cfg_gate` is green at **every intermediate commit** (not just at
+the structural cfg-gate test (deleted) is green at **every intermediate commit** (not just at
 the WP's end). Expected final register counts for this WP: 20 `Kind::SplitAlias`
 (31 → 11) + 3 `Kind::WholeCase` (4 → 1).
 
@@ -1959,8 +1959,8 @@ statement about a row that is still lane-split, and must **not** contain the
 literal tag `TODO(compat)` together with a `*.rs` path on the same line (that
 trips the `unregistered` assert at `:1441` unless a `TAG_PATH_CITATIONS` row is
 added). Verify in the same commit:
-`cargo test -p dss-core --test oracle_parity_cfg_gate` (both lanes).
-(b) **`TORN_DOWN_ROWS` register.** Extend `oracle_parity_cfg_gate.rs` (NOT a new
+the structural cfg-gate test (deleted) (both lanes).
+(b) **`TORN_DOWN_ROWS` register.** Extend the structural cfg-gate test (deleted) (NOT a new
 test file — the needed helpers `repo_root`/`rust_sources`/`test_region`/
 `names_token` are private to that binary, and the file already is the
 compat-machinery register):
@@ -1981,7 +1981,7 @@ a site.
 
 Each row: delete the parity arm, single kernel in both lanes, the row's
 expected-value pin becomes unconditional (the pin is the test the pin walk —
-`oracle_parity_cfg_gate.rs:1013-1043` — associates with the alias today; copy its
+the structural cfg-gate test (deleted) — associates with the alias today; copy its
 `path::name` into the `TORN_DOWN_ROWS` row), `SPLIT_ALIAS_POPULATION` −1, marker
 comments per G2.0(b). None of the eight is cited on the doc surface (measured —
 the 7 live references all belong to G2.2/G2.3), so no doc edits. Zero golden
@@ -2012,7 +2012,7 @@ transform is `expected_cim` since G2.2c renamed it.)
   Move `tests/TOLERANCE_NOTES.md:642-653` (**as executed:** rewritten in place —
   see the G5.1 doc list for why); strike CLAUDE.md:104 and
   TOLERANCE_NOTES.md:643 in the same commit; **re-anchor the pin-walk non-vacuity
-  const (`oracle_parity_cfg_gate.rs:1087-1108`) onto one of the five numeric
+  const (the structural cfg-gate test, deleted) onto one of the five numeric
   survivors (the G2.0(a) list).**
 - `BUS_INT_DURATION_WALKS_ALL_BUSES` (`:615`; issue-02): `duration` column mask
   (`golden_reports.rs:4085-4094`) unconditional; literal pin at `:4125-4168` stays;
@@ -2026,7 +2026,7 @@ transform is `expected_cim` since G2.2c renamed it.)
   CLAUDE.md:147.
 - `ISOURCE_BUS2_NEVER_LATCHES` (`:743`; issue-14): `LANE_SKIP_SCENARIO_PROPS`
   (`props_roundtrip.rs:133`) becomes unconditional by dropping the
-  `!ORACLE_PARITY` guard at `:246-252` (the guard is NOT at `:133` — that line is
+  `!OPENDSS_PARITY` guard at `:246-252` (the guard is NOT at `:133` — that line is
   the data); its stale-entry guard (`:216-225`) stays; surviving pin
   `elements::pc::isource::tests::bus2_latching_is_the_lane_kernel`; strike
   `tools/golden/gen_props.py:2795`. **`LANE_SKIP_PROP_VALUE_CELLS = 33`
@@ -2146,7 +2146,7 @@ MMF plain-text accept-set (`elements/general/load_shape/compute.rs:896`; issue-0
 exclusion + an expected-value pin, the ledger note citing the pin. `shape_mmf.dss`
 exists to observe the quirk — add a sibling deck preserving its sng/dbl MMF-reader
 coverage before excluding. Remove the three `Escape::WholeCase` rows
-(`oracle_parity_cfg_gate.rs:500-534`; `Escape::WholeCase` 4 → 1, the survivor
+(the structural cfg-gate test (deleted); `Escape::WholeCase` 4 → 1, the survivor
 being the deferred model-6 item); each fix joins `TORN_DOWN_ROWS` with its ledger
 key.
 
@@ -2182,7 +2182,7 @@ the default kernel already equals the authority. Teardown:
   drops); anything that does move gets a field-scoped exclusion, never a
   re-baseline. Zero golden bytes move.
 - Bookkeeping: `SPLIT_ALIAS_POPULATION` −1 (→ 11 at WP end); the F-FMT narrative
-  `oracle_parity_cfg_gate.rs:488-498` ("F.4b took the seventh…"); a tenth row in
+  the structural cfg-gate test (deleted) ("F.4b took the seventh…"); a tenth row in
   `investigations/to_opendss/NOT-APPLICABLE-TO-R4133.md` with the
   Circuit.pas-field citation; STATUS's "7 F-FMT rendering markers" → 6;
   `TORN_DOWN_ROWS` row; this row has **no** `issue-*` report and no registry
@@ -2197,7 +2197,7 @@ the default kernel already equals the authority. Teardown:
 **Standing acceptance, every G3 sub-step:** `golden_lock.rs` green; the commit
 body names every moved artifact with its cause; the artifact count by anchor is
 recorded in STATUS; snapshots are produced in the **parity** lane
-(`DSS_UPDATE_GOLDENS=1` + `--features dss-core/oracle-parity`, §1.2) and the gate
+(`DSS_UPDATE_GOLDENS=1` + `--features dss-compat/opendss-parity`, §1.2) and the gate
 is green in BOTH lanes plus the cross-lane lane-invariance check before commit.
 
 ### G3.1 — twin audit
@@ -2355,7 +2355,7 @@ impl → delete the kernel and its lane scaffolding → regenerate the affected
 spelling moves to Rust shortest-round-trip" / "line endings LF" / …) and every
 moved artifact named per R4 → census (`SPLIT_ALIAS_POPULATION` −1 per kernel, −2
 in G4.3), lock, STATUS. Regen runs in the **parity** lane
-(`DSS_UPDATE_GOLDENS=1` + `--features dss-core/oracle-parity`) through G4.5 — a
+(`DSS_UPDATE_GOLDENS=1` + `--features dss-compat/opendss-parity`) through G4.5 — a
 family touched by a not-yet-flipped kernel is still lane-divergent; after each
 flip the flipped family's lane-invariance is proven by the §1.2 cross-lane
 scratch regen; G4.6 flips every family's `produced_by` to lane-invariant and
@@ -2372,7 +2372,7 @@ rel=abs=0) against the frozen bytes in the sub-step that flips its kernel; G4.1
 opens with a measurement pass listing every non-`self` family with a
 print-dependent comparator. Doc surface: G2.0's citations name numeric survivors
 only, so no doc-citation moves here — each sub-step re-verifies
-`oracle_parity_cfg_gate` regardless. The registry entry for the whole family is
+the structural cfg-gate test (deleted) regardless. The registry entry for the whole family is
 `investigations/TODO_COMPAT_REGISTRY.md` §3.31 (11 code sites behind the seven
 rendering rows — six rows after G2.6; category «соглашение») — each kernel flip
 updates its «Судьба» line (local docs, never skipped).
@@ -2461,7 +2461,7 @@ from the enum.
   it describes the `SeqCurrents` compare policy, and §Deliberately-reproduced
   upstream inexactnesses, the move target the sub-step text named, is about
   reproductions, which that row no longer is; STATUS records the deviation).
-- Every edit keeps `oracle_parity_cfg_gate.rs:1310`
+- Every edit keeps the structural cfg-gate test (deleted)
   (`operational_docs_cite_the_compat_machinery_accurately`) green — including its
   `alias_refs >= 4` floor (the G2.0 citations must survive every edit);
   `TAG_PATH_CITATIONS` updated in the same commit.

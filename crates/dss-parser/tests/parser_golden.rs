@@ -95,7 +95,7 @@ fn replay_parser_golden_from_oracle() {
     // lane replaces exactly the rows below. Tracked so a stale row (one whose
     // case/index moved because the golden was regenerated) fails the test
     // instead of silently disarming the exception.
-    let parity = dss_parser::compat::ORACLE_PARITY;
+    let parity = dss_parser::compat::OPENDSS_PARITY;
     let mut divergences_hit = vec![false; DEFAULT_LANE_DIVERGENCES.len()];
 
     for case in &golden.cases {

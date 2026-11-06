@@ -642,7 +642,7 @@ fn the_two_sig_trace_columns_are_declined_on_both_channels() {
     // `5.4`, and the Delphi-built r4133 `5.45`. Three renders of one number,
     // none of them wrong at the precision the column is printed with — which is
     // the whole reason this column set is declined instead of banded.
-    let port_losses = if cfg!(feature = "oracle-parity") {
+    let port_losses = if dss_core::compat::OPENDSS_PARITY {
         "5.5"
     } else {
         "5.4"

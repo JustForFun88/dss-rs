@@ -63,8 +63,7 @@
 //!    [`FPC_ARTIFACT`], [`R3723_TREE`], with `capi_v0145` as the residue — are
 //!    the invariant: every row's `anchor` and `reason` must equal what
 //!    [`seed_metadata`] derives for its path, and every register entry must cover
-//!    at least one locked row (fail-on-stale in both directions, exactly like
-//!    `oracle_parity_cfg_gate.rs::ESCAPE_REGISTER`). Re-anchoring an artifact is
+//!    at least one locked row (fail-on-stale in both directions). Re-anchoring an artifact is
 //!    therefore a reviewable *code* edit in a register, never a lock hand-edit
 //!    and never a side effect of a regen run. Additionally `anchor == self` holds
 //!    if and only if `produced_by` is set, and a `self` row's `produced_by` is
@@ -191,7 +190,7 @@ enum Anchor {
 /// produces those bytes at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum ProducedBy {
-    /// Rendered by the `oracle-parity` lane (the strictest byte contract while
+    /// Rendered by the parity lane (the strictest byte contract while
     /// the print-emulation kernels live).
     #[serde(rename = "parity")]
     Parity,

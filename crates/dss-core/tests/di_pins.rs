@@ -1119,7 +1119,7 @@ fn the_masked_kvarh_column_is_pinned_whole() {
     // deterministic reduction, recorded through the file's own `assert_records`
     // identity (1e-9 relative — the epsilon every literal in this file is
     // recorded at, not a comparison band). Measured 2026-09-12 in the
-    // settlement's own gate: the `oracle-parity` lane writes this column's last
+    // settlement's own gate: the parity lane writes this column's last
     // printed digit differently on a handful of hours, so its annual net sum is
     // 4432951.126747187 against the default lane's 4432951.126747186 — ONE ulp
     // at 4.4e6 (2.1e-16 relative), the precision-compat kernels' own footprint.

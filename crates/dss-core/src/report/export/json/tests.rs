@@ -10,7 +10,7 @@
 //! [`json_line_break_is_the_lane_kernel`].
 
 use super::*;
-use crate::compat::{JSON_LINE_BREAK, ORACLE_PARITY, json_float};
+use crate::compat::{JSON_LINE_BREAK, OPENDSS_PARITY, json_float};
 
 /// The oracle's float table: `(value, the pinned oracle's bytes)`, captured from
 /// its XYcurve dump.
@@ -59,7 +59,7 @@ fn json_float_is_the_lane_kernel() {
         assert_eq!(json_float_shortest_impl(v), shortest[i], "value {v}");
         assert_eq!(
             json_float(v),
-            if ORACLE_PARITY { oracle } else { shortest[i] },
+            if OPENDSS_PARITY { oracle } else { shortest[i] },
             "the seam must select the lane's spelling for {v}"
         );
         // Same number, either way — the whole claim of the row.
@@ -74,7 +74,7 @@ fn json_float_is_the_lane_kernel() {
 /// emits no whitespace at all.
 #[test]
 fn json_line_break_is_the_lane_kernel() {
-    assert_eq!(JSON_LINE_BREAK, if ORACLE_PARITY { "\r\n" } else { "\n" });
+    assert_eq!(JSON_LINE_BREAK, if OPENDSS_PARITY { "\r\n" } else { "\n" });
     let tree = Json::Obj(vec![("a".into(), Json::Int(1))]);
     let mut pretty = String::new();
     write_pretty(&tree, 0, &mut pretty);

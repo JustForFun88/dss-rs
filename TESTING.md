@@ -10,11 +10,11 @@ triage a divergence into the ledger, re-vendor the r4133 binary).
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+cargo clippy --workspace --all-targets --features dss-compat/opendss-parity -- -D warnings
 cargo nextest run --workspace
-cargo nextest run --workspace --features dss-core/oracle-parity
+cargo nextest run --workspace --features dss-compat/opendss-parity
 cargo test --workspace --doc
-cargo test --workspace --doc --features dss-core/oracle-parity
+cargo test --workspace --doc --features dss-compat/opendss-parity
 ```
 
 Commands 4-5 run the pinned **`cargo-nextest` 0.9.146** (RETRO_FIXES RF-I00-01;
@@ -22,14 +22,9 @@ Commands 4-5 run the pinned **`cargo-nextest` 0.9.146** (RETRO_FIXES RF-I00-01;
 cargo-nextest --version 0.9.146 --locked` or the prebuilt from `get.nexte.st`):
 every test in its own process, `retries = 0`, `fail-fast = false`, a `slow-timeout` that reports a
 test every 600 s and terminates it at 1800 s (`terminate-after = 3`),
-and nothing else (no override, test group, `default-filter`, `run-extra-args` or setup script) -
-pinned by the allowlist rail `the_nextest_profile_never_retries_and_serializes_nothing`
-(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`: those four settings, one line each, and any
-other line reds it however TOML spells it) and, for what no config text shows (`NEXTEST_RETRIES`,
-`--retries`, a profile picked on the command line), at run time by
-`this_run_gives_every_test_one_attempt_and_no_test_group`. nextest does not run
-doctests, hence commands 6-7. The RETRO_FIXES gate and CI run commands 4-5
-with `DSS_ORACLE_TIMEOUT_SECS=600`. Process-per-test changes one cost: a
+and nothing else (no override, test group, `default-filter`, `run-extra-args` or setup script).
+nextest does not run doctests, hence commands 6-7. The corpus gate gives each request to an
+OpenDSS engine 600 s by default (`DSS_OPENDSS_TIMEOUT_SECS`). Process-per-test changes one cost: a
 per-binary `OnceLock` memo is now per test *process*. `di_pins::PORT` (the five
 DI decks) is recomputed by each of the six tests that read it, measured at
 ~155 s each, all six concurrently (RETRO_FIXES RF-I00-01 part 3), where
@@ -117,14 +112,18 @@ a unit test outside RAILS reads as text), a file whose tokens hold `line!`, `col
 attribute macro outside the tool's allowlist, a doc edit inside a macro invocation, and any tool
 error. The module doc of `tools/gate-kind/src/lib.rs` holds the full list (symlinks, mode
 changes and non-UTF-8 sides included). RAILS are the tests that read a repository `.md` or `.rs`
-at run time or include one at compile time. They are listed once, in the `GATE_RAILS` register
-of `crates/dss-core/tests/oracle_parity_cfg_gate.rs` (package, target, optional exact nextest
-filterset, lanes: both, or once for a package that does not depend on `dss-core`), whose rail
-re-measures the reader needles (a path literal ending in `.md` or `.rs`, an extension
-comparison, an `include_str!`, a `file!()`) over every test target of the workspace and reds
-when the register differs. A directory walk shows no needle: `WALK_SITES` beside the register
-counts the `read_dir` calls of every test source and reds on a new one until it is classified.
-No document or script copies the list. A tree without the tool, a tool that does not build or prints no `GATE_KIND=` line, and a
+at run time or include one at compile time, each run with `cargo nextest run` in both lanes:
+
+- `-p dss-core` with `--test capture_order`, `--test golden_json`, `--test pd_elements_pins`,
+  `--test population_lock`, `--test props_r4133_evidence_lock`, `--test props_r4133_replay` and
+  `--test reliability_pins`;
+- `-p dss-core --test corpus_gate` filtered to its five readers,
+  `-E 'test(=the_bus_capture_reads_in_one_fixed_order_on_both_transports) | test(=the_short_circuit_capture_reads_in_one_fixed_order_on_both_transports) | test(=the_sequence_and_line_to_line_capture_reads_in_one_fixed_order_on_both_transports) | test(=the_at_bus_capture_reads_last_in_one_fixed_order_on_both_transports) | test(=scratch::tests::the_copy_removal_budget_is_25_attempts_200_ms_apart)'`;
+- `-p dss-test-harness --lib` (its parity run adds `-p dss-compat`, see below);
+- `-p gate-kind`, once, without the lane feature (the package does not depend on `dss-core`).
+
+A test that starts reading a repository `.md` or `.rs` joins this list in the same change. A
+tree without the tool, a tool that does not build or prints no `GATE_KIND=` line, and a
 diff that touches `tools/gate-kind/` run the seven commands, and in doubt the gate is full.
 
 ### The build/test queue
@@ -148,17 +147,22 @@ variables.
 `DE_PASCALIZE_PLAN.md` Part IV.2 split the engine into two builds of the same
 source. The difference is confined to three `compat` modules
 (`crates/{dss-core,dss-parser,dss-sparse}/src/compat.rs`), each of which selects
-between two always-compiled sibling implementations; `oracle_parity_cfg_gate.rs`
-fails if the cfg string appears anywhere else.
+between two always-compiled sibling implementations by `dss_compat::OPENDSS_PARITY`.
+Only `crates/dss-compat` declares the feature `opendss-parity`, so a `cfg` on it in
+any other crate is an `unexpected_cfgs` warning, an error under the gate's `-D warnings`.
+With `-p <package>` cargo takes `--features dss-compat/opendss-parity` only when the package
+is `dss-compat` or depends on it directly (`dss-core`, `dss-parser`, `dss-sparse`); for any
+other package add `-p dss-compat`, e.g.
+`cargo nextest run -p dss-test-harness -p dss-compat --lib --features dss-compat/opendss-parity`.
 
 | lane | build | what it asserts |
 |---|---|---|
-| **parity** | `--features dss-core/oracle-parity` | the bit-compat engine: byte goldens, checkpoint Y, corpus tier floors, **exact** iteration counts and discrete state, every upstream quirk reproduced. This lane is the permanent 1:1 record and **never re-baselines**. |
+| **parity** | `--features dss-compat/opendss-parity` | the bit-compat engine: byte goldens, checkpoint Y, corpus tier floors, **exact** iteration counts and discrete state, every upstream quirk reproduced. This lane is the permanent 1:1 record and **never re-baselines**. |
 | **default** | no features | the idiomatic product: the F.3 upstream-bug fixes are live, report text is rendered natively (F.4). Continuous quantities keep the **same** oracle floors, discrete state stays exact, iteration counts get a documented ±1 band, and each deliberate divergence is excluded field-by-field and pinned by its own expected-value test. |
 
 The whole lane policy lives in **one** file, `crates/dss-test-harness/src/harness/lane.rs`
 (`PARITY`, `ITER_SLACK`, `compare_report`, `expected_eventlog`, the
-field-scoped exclusion lists) — no golden driver reads the cfg directly bar two tests, `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in` (which compares it with `lane::PARITY`) and `run_file_contents_pins.rs::the_two_sig_trace_columns_are_declined_on_both_channels`, and
+field-scoped exclusion lists) — no golden driver reads the lane directly bar two tests, `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in` (which compares it with `lane::PARITY`) and `run_file_contents_pins.rs::the_two_sig_trace_columns_are_declined_on_both_channels`, and
 the module's own unit tests assert the *split itself* (a rendering-only
 difference must pass in the default lane and fail in the parity lane, in
 whichever lane the suite runs). Stage F introduces **no** tolerance: the
@@ -193,37 +197,9 @@ The middle column is the pinned dss_capi 0.14.5 kernel, which is what the parity
 lane reproduces; every row but `compat::round_f64` is the same statement in the
 r4133 behavioural authority, cited inline.
 
-Four rails keep the operational documents honest as the teardown proceeds, all
-in `crates/dss-core/tests/oracle_parity_cfg_gate.rs`: every `compat::` alias any
-operational document names must still be declared by a compat module (so the
-sentences above cannot survive their rows), and `TORN_DOWN_ROWS` records every
-row that *left* the split — its census decrement, the evidence in the tree, and
-the expected-value pin that became unconditional. Teardown commits mark their
-sites with the greppable comments `// LANE-EXCLUSION(<row>): <why>` at an
-exclusion made unconditional and `// EXPECTED-VALUE-PIN(<row>): <why>` at the
-pin. Both are checked against the register in either direction: a marker naming
-an unregistered row fails, a registered row whose pin file lost its marker
-fails, and so does one whose evidence declares a harness exclusion that carries
-no marker. The register also re-reads what a teardown is *for* — the recorded
-pin must be a declared `#[test]` whose body no longer branches on the lane,
-because once the row leaves the census nothing else looks at that test.
-
-The third and fourth rails are about *citations* rather than rows, and run in
-both directions. `operational_docs_line_citations_point_at_the_line_they_name`
-(§RP5.1's settlement) covers this file and `tests/TOLERANCE_NOTES.md` wherever
-they name a Rust line: every `<file>.rs:<line>` — and every bare `` `:<line>` ``
-continuation — must name exactly one file, land on a line that exists and is
-not blank, and sit within ±3 lines of something the sentence itself backticks;
-since §RP5.2's settlement an *unanchored* citation **fails** too, so nothing is
-checked for existence only. Since G1.7's audit settlement a `:A-B` **range** is
-read whole: the end must be a real line of the same file and not precede the
-start, and the anchor must sit inside the range rather than near its start — a
-range that has drifted off the block it names now reds (a range still
-overlapping that block does not, so a re-point still needs reading). The fourth,
-`rust_comments_citing_a_record_line_point_at_the_passage_they_name`, runs the
-other way: a Rust comment citing `<record>.md:LO-HI` must land inside that
-record, on a passage it quotes, inside the `§`section it names, or sharing a
-backticked symbol with it. Floors keep both walks from going vacuous.
+Teardown commits mark their sites with the greppable comments
+`// LANE-EXCLUSION(<row>): <why>` at an exclusion made unconditional and
+`// EXPECTED-VALUE-PIN(<row>): <why>` at the pin.
 
 ### The parity↔default differential gate
 
@@ -318,13 +294,13 @@ no `[features]`): the module `crates/dss-test-harness/src/harness/` (`mod.rs`,
 `lane.rs`, `scenario.rs`, `scratch.rs`, `regen.rs`, `props_norm.rs`, `di.rs`,
 `run_files.rs`, `run_file_contents.rs`, `topology.rs`, `inc_matrix.rs`,
 `aggregates.rs`, `capture_guard.rs`, `export_policies.rs`), moved with `git mv`, line-neutrally bar the 14-line test deleted from `lane.rs`,
-from `crates/dss-core/tests/harness/`. `dss-core` takes it as a dev-dependency (a normal dependency of a product crate reds `oracle_parity_cfg_gate.rs::no_product_crate_links_a_test_only_crate`), 27
+from `crates/dss-core/tests/harness/`. `dss-core` takes it as a dev-dependency (never a normal dependency of a product crate), 27
 drivers under `crates/dss-core/tests/` import it with
 `use dss_test_harness::harness;` (`props_r4133_pins.rs` imports only
 `harness::scratch`), so it compiles once per lane and its 408 self-tests run once
 per lane, in the `dss-test-harness` test binary (as a `mod harness;` in 27 drivers
 it was compiled 27 times and ran each self-test 27 times). The crate has no lane
-feature: `harness::lane::PARITY` is the `dss_core::compat::ORACLE_PARITY` of the
+feature: `harness::lane::PARITY` is the `dss_core::compat::OPENDSS_PARITY` of the
 one `dss-core` cargo builds per lane, pinned by
 `golden_smoke.rs::the_harness_crate_reads_the_lane_this_driver_was_built_in`, and
 `[profile.dev.package.dss-test-harness]` keeps it at `opt-level = 3`, the level it
@@ -443,8 +419,7 @@ The module tree under `crates/dss-core/tests/corpus_gate/`:
   (`WorkerPool` = `python -u oracle_server.py`, `EpriPool` = `epri-worker`),
   both speaking the same line-JSON `ping`/`run`/`quit` protocol and returning
   the identical `CaseResult` shape; one-shot variants back `isolate`/serial
-  runs. Per-request deadline (`DSS_ORACLE_TIMEOUT_SECS`, default 120 s, 600 s
-  in the gate and CI) →
+  runs. Per-request deadline (`DSS_OPENDSS_TIMEOUT_SECS`, default 600 s) →
   kill/respawn/retry-once-then-fail-the-case. Workers are **recycled after
   every case by default** (`DSS_GATE_RECYCLE_AFTER` default 1): each case sees
   a never-used engine process, which is what makes the gate deterministic
@@ -566,10 +541,6 @@ reply that is not exactly two doubles rather than padding it into a plausible
 `(0, 0)` (`complex_pair_refuses_a_reply_that_is_not_two_doubles`). Both booleans
 are the same value on every corpus checkpoint measured, so their two-sidedness is
 witnessed in-engine instead: `the_two_boolean_solution_flags_take_both_values`.
-The G1.9 pin names these docs cite are machine-checked by
-`the_g1_9_pins_the_docs_cite_exist_exactly_once`
-(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`), so renaming one reds the
-gate instead of silently falsifying this file.
 
 Two quantities on the surface's list are captured or witnessed but deliberately
 **not** compared a second time. `Solution.Totaliterations` *is*
@@ -1552,9 +1523,8 @@ against each other on a METERED `both` case
 `0.0` there), added the population guard's growth direction
 (`the_distance_guard_is_silent_on_the_measured_population` /
 `the_distance_guard_fires_when_a_deck_stops_building_its_meter_zone` /
-`the_distance_guard_fires_when_a_metered_case_arrives`) and registered every
-G1.4b name in `G1_4B_PINS` (`oracle_parity_cfg_gate.rs`, the `G1_9_PINS`
-precedent), including the capture-order claim
+`the_distance_guard_fires_when_a_metered_case_arrives`). The G1.4b names include the
+capture-order claim
 `the_distance_surface_is_order_free_in_the_mode_table` and the four engine-side
 identities `bus_distance_is_the_zone_walk_accumulator`,
 `a_meterless_circuit_has_no_distances`, `all_bus_distances_is_the_bus_list_order`
@@ -1923,9 +1893,7 @@ persistent-parallel-shuffled — and all 523 labels are bit-identical; no `write
 strip rule is owed for capi's `+1` cell, because the transport drops it before the
 checkpoint exists.
 
-**The G1.8 pins, by name** — registered in
-`oracle_parity_cfg_gate.rs::the_g1_8_pins_the_docs_cite_exist_exactly_once`, so a rename
-or a deletion reds here instead of leaving this section stale. Transport and getter
+**The G1.8 pins, by name.** Transport and getter
 shape, in `crates/dss-core/tests/inc_matrix_pins.rs`:
 `capi_incmatrix_carries_one_trailing_zero` and
 `capi_and_r4133_incmatrix_lengths_differ_by_one` state the two raw lengths a later
@@ -2173,9 +2141,7 @@ is removed while it still runs, mutation-checked). New refusal rails:
 `a_parent_reference_resolves_inside_the_copy`, `a_relative_reference_that_leaves_the_corpus_is_listed`,
 `the_external_closures_are_the_pinned_population`,
 `the_dss_epri_ieee13_copy_carries_the_computed_closure` and
-`engines::di_sidecar_tests::the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy`. The registry
-`oracle_parity_cfg_gate.rs::the_rf_i00_01_rails_the_docs_name_exist_exactly_once` reds on a
-rename or deletion of any of them.
+`engines::di_sidecar_tests::the_di_sidecar_is_keyed_by_the_vendored_deck_not_the_copy`.
 
 **That teardown `clear` is guarded (D33(1)).** The pinned dss_capi 0.14.5 faults on a second `clear`
 after an AutoAdd solve — `DSSException (#303) … ProcessCommand … clear … Access violation`,
@@ -2699,9 +2665,8 @@ Entry kinds (`kind`):
   engine fix it paid for always moves node voltages — that is what makes an
   entry of this kind necessary). The coarser scopes carry no verdict — the
   runner skips the artifact instead of comparing it — so for them the anti-rot
-  guard is the **expected-value pin** the `cause` names, which is mandatory and
-  registered both ways in `oracle_parity_cfg_gate.rs::TORN_DOWN_ROWS`: revert
-  the engine fix and the pin reds, whether or not the corpus gate notices.
+  guard is the **expected-value pin** the `cause` names, which is mandatory:
+  revert the engine fix and the pin reds, whether or not the corpus gate notices.
   A scope may carry only its **selectors** — `max_rel`/`max_abs`/`num_rel`/
   `rust`/`oracle`/`policy`/`line_re` on an `exclusion` are refused at load,
   because the exclusion path ignores them and they would read as a promise the
@@ -3094,7 +3059,7 @@ this file exists to make loud. `RIGOR_FLAG_TOKENS`
 `every_manifest_compare_flag_has_a_rigor_token` reads both source files and
 refuses drift in either direction — a field with no row, a row with no field, a
 token the `format!` string does not actually emit, a duplicate token. It is a
-source-text gate in the `oracle_parity_cfg_gate.rs` style, so the *eleventh*
+source-text gate, so the *eleventh*
 flag is safe even though nobody will remember this rule (GOLDEN_REBASE G1.0).
 Its scanners strip **any** visibility keyword, not just `pub(crate) ` — a
 `pub compare_x: bool` used to escape every assertion, one spelling of the very
@@ -3981,7 +3946,7 @@ All verified against the consumers named. The `DSS_GATE_*` knobs live in
 | var | consumer | meaning |
 |---|---|---|
 | `DSS_ORACLE_PYTHON` | corpus_gate | interpreter for the **pinned** oracle (default `python`) |
-| `DSS_ORACLE_TIMEOUT_SECS` | corpus_gate | per-request worker deadline in seconds (default 120, while the gate's commands 4-5 and CI use 600) |
+| `DSS_OPENDSS_TIMEOUT_SECS` | corpus_gate | per-request worker deadline in seconds (default 600) |
 | `DSS_EPRI_WORKER` | corpus_gate | path of the `epri-worker` binary (default `target/<profile>/epri-worker`, auto-built via `cargo build -p dss-epri` if missing) |
 | `DSS_EPRI_ACTOR_TIMEOUT_SECS` | dss-epri (`dss.rs::wait_for_actor`) | deadline for a wedged r4133 solve-actor (default 300); on expiry the case fails instead of hanging the worker |
 | `DSS_EPRI_DLL` | dss-epri (`src/smoke.rs::dll_path`) | override the r4133 DLL path (default the git-tracked `tools/opendss/bin/r4133/OpenDSSDirect.dll`) |
@@ -4290,7 +4255,7 @@ those runs, bypass or rails:
 
 Mechanics, once WP-G3 has wired a family's driver to the rails: run that driver
 in the family's producing lane with the knob set —
-`DSS_UPDATE_GOLDENS=1 cargo test -p dss-core --features dss-core/oracle-parity --test <driver> -- --nocapture` —
+`DSS_UPDATE_GOLDENS=1 cargo test -p dss-core --features dss-compat/opendss-parity --test <driver> -- --nocapture` —
 review the resulting artifact diff against the prediction R2 required, then
 `DSS_UPDATE_GOLDEN_LOCK=1 cargo test -p dss-core --test golden_lock -- --nocapture`,
 then re-run the full seven-command gate (both lanes). **`-- --nocapture` is not
@@ -4576,13 +4541,10 @@ Widening a band to admit a handful of cells is refused: a row-scale term on the 
 would have admitted the 20 `kvarh` cells with 0 ledger rows and 1.4–2.6× margin, and would
 have widened every energy cell on every `large` deck by ≈ 5e-3 (50× the class's own `abs`).
 
-### The name index the pin registry checks
+### The name index of the DI and run-file pins
 
-Every name below is one the pin registry
-(`crates/dss-core/tests/oracle_parity_cfg_gate.rs`, `G1_10_PINS` / `G1_10_CONSTS`) checks: each
-exists exactly once in the tree (the presence rail's drive twice — each of `harness/di.rs` and
-`harness/run_files.rs` owns a twin) and is cited here, so a rename or a deletion reds in the cfg
-gate instead of leaving a documented claim with no prover.
+The pins and constants that prove the claims of the two sections above (the presence rail's
+drive exists twice: each of `harness/di.rs` and `harness/run_files.rs` owns a twin).
 
 * **The four pins and their two comparator drives** (`crates/dss-core/tests/di_pins.rs`):
   `the_ckt7_hourly_kvarh_is_a_cross_engine_indeterminate`,
@@ -4665,4 +4627,3 @@ gate instead of leaving a documented claim with no prover.
 - `tools/opendss/README.md` — the r4133 binary artifact + the `dss-epri` bridge.
 - `tools/oracle/README.md` — the pinned capi oracle server protocol.
 - `UNIFIED_GATE_PLAN.md` — the unified-gate design decisions (D1–D10) + phases.
-<!-- line-citations: 209 -->

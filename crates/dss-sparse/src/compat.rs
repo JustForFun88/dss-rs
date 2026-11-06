@@ -1,11 +1,5 @@
-//! Stage F lane split — the `oracle-parity` knobs of `dss-sparse`
-//! (`DE_PASCALIZE_PLAN.md` Part IV.2, row "solver execution").
-//!
-//! **The only file in `dss-sparse` allowed to contain the
-//! `#[cfg(feature = "oracle-parity")]` string** (enforced by `dss-core`'s
-//! `tests/oracle_parity_cfg_gate.rs`). See `dss-core/src/compat.rs` for the
-//! lane model; the feature reaches this crate through
-//! `dss-core/oracle-parity → dss-sparse/oracle-parity`.
+//! The precision-compat knobs of `dss-sparse`, the "solver execution" row.
+//! See `dss-core/src/compat.rs` for the lane model.
 //!
 //! Unlike the arithmetic kernels there is no pair of `*_impl` functions here:
 //! the row is a pair of **execution knobs** the parity lane must keep pinned —
@@ -32,25 +26,14 @@
 #[cfg(test)]
 mod tests;
 
-/// Which lane this crate was compiled in — `true` under `oracle-parity`.
-///
-/// Nothing in the solver reads it. It exists so `dss-core`'s compat tests can
-/// *measure* that `dss-core/oracle-parity` really reaches this crate: both
-/// knobs below currently hold the same value in either lane (they are
-/// declarations awaiting M3c / WP-R1), so without this const a broken feature
-/// edge would be invisible here until the day it silently un-pinned the
-/// solver.
-#[cfg(feature = "oracle-parity")]
-pub const ORACLE_PARITY: bool = true;
-
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub const ORACLE_PARITY: bool = false;
+/// Which lane this crate was compiled in, `true` in the parity lane. Nothing in
+/// the solver reads it yet: the knobs below hold the parity value in both lanes.
+pub use dss_compat::OPENDSS_PARITY;
 
 /// Parity lane: factorization must be reproducible — no parallel LU.
 ///
 /// **A declaration awaiting M3c, not a contract the build honours today.** No
-/// call site reads it, and both arms alias to it, so today *both* lanes
+/// call site reads it, and both lanes take it, so today *both* lanes
 /// factorize under faer's global parallelism: `Lu::try_new_with_symbolic`
 /// (faer 0.24.0 `src/sparse/solvers.rs`) takes no `Par` and calls
 /// `get_global_parallelism()`, which initializes to `Par::rayon(0)` under
@@ -61,12 +44,9 @@ pub const PARALLEL_FACTORIZATION_PARITY_IMPL: bool = false;
 /// Default lane: faer's parallel LU is permitted (M3c).
 pub const PARALLEL_FACTORIZATION_DEFAULT_IMPL: bool = true;
 
-#[cfg(feature = "oracle-parity")]
-pub use PARALLEL_FACTORIZATION_PARITY_IMPL as PARALLEL_FACTORIZATION;
-// F.1 staging: the default lane still declares the parity value; M3c flips it
-// together with the code that reads it.
-#[cfg(not(feature = "oracle-parity"))]
-pub use PARALLEL_FACTORIZATION_PARITY_IMPL as PARALLEL_FACTORIZATION;
+/// The lane's parallel-factorization knob. Both lanes hold the parity value
+/// until the code that reads it selects by [`OPENDSS_PARITY`].
+pub const PARALLEL_FACTORIZATION: bool = PARALLEL_FACTORIZATION_PARITY_IMPL;
 
 /// Parity lane: no iterative refinement — the oracle's iterate paths (and the
 /// gated iteration counts) are pinned exactly.
@@ -74,8 +54,6 @@ pub const ITERATIVE_REFINEMENT_PARITY_IMPL: bool = false;
 /// Default lane: WP-R1 iterative refinement is permitted.
 pub const ITERATIVE_REFINEMENT_DEFAULT_IMPL: bool = true;
 
-#[cfg(feature = "oracle-parity")]
-pub use ITERATIVE_REFINEMENT_PARITY_IMPL as ITERATIVE_REFINEMENT;
-// F.1 staging: see above — WP-R1 flips it together with its implementation.
-#[cfg(not(feature = "oracle-parity"))]
-pub use ITERATIVE_REFINEMENT_PARITY_IMPL as ITERATIVE_REFINEMENT;
+/// The lane's iterative-refinement knob. Both lanes hold the parity value until
+/// the refinement code that reads it selects by [`OPENDSS_PARITY`].
+pub const ITERATIVE_REFINEMENT: bool = ITERATIVE_REFINEMENT_PARITY_IMPL;

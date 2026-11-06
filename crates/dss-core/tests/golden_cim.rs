@@ -38,7 +38,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(kind: &str, tag: &str) -> Self {
-        let lane = if cfg!(feature = "oracle-parity") {
+        let lane = if dss_core::compat::OPENDSS_PARITY {
             "parity"
         } else {
             "default"

@@ -1,25 +1,19 @@
-//! Stage F lane split — the `oracle-parity` compat kernels of `dss-core`
-//! (`DE_PASCALIZE_PLAN.md` Part IV.2).
-//!
-//! **This is the only file in `dss-core` allowed to contain the
-//! `#[cfg(feature = "oracle-parity")]` string** (enforced by
-//! `tests/oracle_parity_cfg_gate.rs`; test attributes and the test harness are
-//! the only other sanctioned places workspace-wide).
+//! The precision-compat kernels of `dss-core`.
 //!
 //! Two build lanes, one engine:
 //!
-//! - **parity lane** (`--features dss-core/oracle-parity`) — the exact 1:1
-//!   engine: every existing oracle gate (byte goldens, checkpoint Y, corpus
-//!   floors, iteration counts, discrete states) stays green forever. It never
-//!   re-baselines.
-//! - **default lane** (no features) — idiomatic Rust kernels; re-baselines once
-//!   at Stage F landing (self-goldens only).
+//! - **parity lane** (`--features dss-compat/opendss-parity`) — the
+//!   precision-compat engine: byte-exact on the goldens, exact iteration counts
+//!   and discrete state.
+//! - **default lane** (no features) — the product.
 //!
 //! **Mechanism.** Both implementations of every dual kernel are *always
-//! compiled* as plain sibling `*_impl` functions; the cfg selects only which
-//! one the short `compat::` alias points at. That is what keeps them
-//! unit-testable against each other in *any* build and stops the unselected
-//! path from bit-rotting. Call sites are unconditional (`compat::cdiv(a, b)`).
+//! compiled* as plain sibling `*_impl` functions, and the short `compat::` name
+//! calls one of them by [`OPENDSS_PARITY`], with an ordinary `if`. That keeps
+//! them unit-testable against each other in *any* build and stops the
+//! unselected path from bit-rotting. Call sites are unconditional
+//! (`compat::cdiv(a, b)`). Only the `dss-compat` crate declares the lane
+//! feature, so a `cfg` on it in this crate is an `unexpected_cfgs` warning.
 //!
 //! **Flip state (F.3 flips one kernel family per commit).** The `Row` column
 //! below records which lane each alias resolves to *today*; an unflipped row
@@ -67,19 +61,14 @@
 //! gate's snapshot reader only — every other cache-aware reader kept it until
 //! RF-D00-01 moved the repair into the solver.
 //!
-//! The last row is likewise not a new *kernel*. IV.2's table enumerates the
-//! shared arithmetic kernels — the primitives called from hundreds of sites —
-//! and that list is closed. The compat-marker population it does **not**
-//! enumerate is governed by `PORTING_PLAN.md` §4.1 rule 4 as updated
-//! 2026-07-06, which is the plan text that defers *every* compat marker to this
-//! stage and already prescribes its disposition verbatim: "Compat quirks are
-//! **not deleted** — each becomes a dual kernel behind `#[cfg(feature =
-//! "oracle-parity")]`: the default build gets the correct/precise
-//! implementation, the parity build keeps the quirk so every 1:1 oracle gate
-//! stays permanently re-runnable." Each such site is argued individually
-//! against the Pascal, carries its own expected-value test asserted against
-//! [`ORACLE_PARITY`] (so the test is meaningful in *both* lanes), and is listed
-//! in the *Single-site upstream quirks* section below.
+//! The last row is likewise not a new *kernel*: the table above enumerates the
+//! shared arithmetic kernels, the primitives called from hundreds of sites. A
+//! single-site precision quirk becomes a dual kernel selected by
+//! [`OPENDSS_PARITY`]: the default build gets the precise implementation, the
+//! parity build keeps the quirk. Each such site carries its own expected-value
+//! test asserted against [`OPENDSS_PARITY`] (so the test is meaningful in
+//! *both* lanes), and is listed in the *Single-site upstream quirks* section
+//! below.
 //!
 //! **Dense inverse — why that row resolves to *no split* (F.3f → F.3i,
 //! measured 2026-07-26/27).** IV.2's table proposed a partial-pivot (or faer)
@@ -206,22 +195,13 @@ mod tests;
 // ---------------------------------------------------------------------------
 
 /// Which lane this engine was compiled in: `true` under
-/// `--features oracle-parity` (the bit-compat kernels above are selected),
-/// `false` in the default product build.
+/// `--features dss-compat/opendss-parity` (the precision-compat kernels are
+/// selected), `false` in the default product build.
 ///
-/// Not read by the engine — it exists so a *consumer* can tell the lanes apart.
-/// Its test-harness reader is `crates/dss-test-harness/src/harness/lane.rs`'s
-/// `PARITY`, which `golden_smoke.rs` pins to each driver's own lane feature: if
-/// the feature ever stopped reaching the harness's `dss-core`, every lane
-/// branch in the suite would silently run the default policy against a parity
-/// engine and the parity gate would evaporate. F.5's differential job reads it
-/// to label its two builds.
-#[cfg(feature = "oracle-parity")]
-pub const ORACLE_PARITY: bool = true;
-
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub const ORACLE_PARITY: bool = false;
+/// Every alias below selects its kernel by it. The test harness reads it as
+/// `harness::lane::PARITY`, and `examples/lane_dump.rs` reads it to label its
+/// two builds.
+pub use dss_compat::OPENDSS_PARITY;
 
 // ---------------------------------------------------------------------------
 // Complex division (IV.2 row 1)
@@ -586,7 +566,7 @@ pub use etk_invert_gj_no_exchange_impl as etk_invert;
 // upstream mistake whose clean fix its own compat marker had already
 // named, argued here against the Pascal and split by lane. Parity keeps the
 // quirk (so every existing oracle gate stays re-runnable); the default lane
-// gets the fix and an expected-value test pinned against `ORACLE_PARITY`.
+// gets the fix and an expected-value test pinned against `OPENDSS_PARITY`.
 //
 // Membership rule, so this section cannot become a dumping ground: a site
 // qualifies only if (i) upstream's behavior is deterministic and defined (UB is
@@ -740,10 +720,16 @@ pub fn kv_base_search_scale_exact_impl() -> f64 {
     crate::util::sqrt3() / 1000.0
 }
 
-#[cfg(not(feature = "oracle-parity"))]
-pub use kv_base_search_scale_exact_impl as kv_base_search_scale;
-#[cfg(feature = "oracle-parity")]
-pub use kv_base_search_scale_truncated_impl as kv_base_search_scale;
+/// The lane's search scale: [`kv_base_search_scale_truncated_impl`] in the
+/// parity lane, [`kv_base_search_scale_exact_impl`] in the default lane.
+#[inline]
+pub fn kv_base_search_scale() -> f64 {
+    if OPENDSS_PARITY {
+        kv_base_search_scale_truncated_impl()
+    } else {
+        kv_base_search_scale_exact_impl()
+    }
+}
 
 /// The divisor `Export Profile` uses to turn a **line-to-line** volt magnitude
 /// into per-unit: upstream's truncated `1000·√3`.
@@ -787,10 +773,17 @@ pub fn profile_ll_pu_divisor_exact_impl() -> f64 {
     1000.0 * crate::util::sqrt3()
 }
 
-#[cfg(not(feature = "oracle-parity"))]
-pub use profile_ll_pu_divisor_exact_impl as profile_ll_pu_divisor;
-#[cfg(feature = "oracle-parity")]
-pub use profile_ll_pu_divisor_truncated_impl as profile_ll_pu_divisor;
+/// The lane's L-L per-unit divisor: [`profile_ll_pu_divisor_truncated_impl`]
+/// in the parity lane, [`profile_ll_pu_divisor_exact_impl`] in the default
+/// lane.
+#[inline]
+pub fn profile_ll_pu_divisor() -> f64 {
+    if OPENDSS_PARITY {
+        profile_ll_pu_divisor_truncated_impl()
+    } else {
+        profile_ll_pu_divisor_exact_impl()
+    }
+}
 
 // The **LoadShape MMF plain-text accept-set** row is gone too
 // (`GOLDEN_REBASE_PLAN.md` G2.5). Its witness was always as strong as this
@@ -854,15 +847,15 @@ pub use profile_ll_pu_divisor_truncated_impl as profile_ll_pu_divisor;
 /// Pinned at its observable by `crates/dss-core/tests/fmt_battery.rs`, which
 /// asserts the parity kernel byte-for-byte against the real FPC RTL in *both*
 /// lanes and measures the exact population where the default kernel disagrees.
-#[cfg(feature = "oracle-parity")]
-pub use crate::util::fmt_g_fpc_impl as fmt_g;
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub use crate::util::fmt_g_native_impl as fmt_g;
+#[inline]
+pub fn fmt_g(v: f64, sig: usize) -> String {
+    if OPENDSS_PARITY {
+        crate::util::fmt_g_fpc_impl(v, sig)
+    } else {
+        crate::util::fmt_g_native_impl(v, sig)
+    }
+}
 
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub use crate::report::format::fixed_w as fixed_w_script;
 /// Fixed-point rendering of a number embedded in **emitted DSS script** — the
 /// AltDSS whole-circuit `PostCommands` (`Set ueweight=%8.2f`,
 /// `Set lossweight=%8.2f`, `CAPI_Obj.pas:2593-2594`).
@@ -875,12 +868,15 @@ pub use crate::report::format::fixed_w as fixed_w_script;
 ///   both lanes.
 ///
 /// Pinned by `report::format::tests::fixed_w_script_is_the_lane_kernel`.
-#[cfg(feature = "oracle-parity")]
-pub use crate::report::format::fixed_w_fpc_impl as fixed_w_script;
+#[inline]
+pub fn fixed_w_script(v: f64, width: usize, decimals: usize) -> String {
+    if OPENDSS_PARITY {
+        crate::report::format::fixed_w_fpc_impl(v, width, decimals)
+    } else {
+        crate::report::format::fixed_w(v, width, decimals)
+    }
+}
 
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub use CONTROL_QUEUE_SEC_DIGITS_DEFAULT_IMPL as CONTROL_QUEUE_SEC_DIGITS;
 /// How many significant digits a `Show ControlQueue` row prints its `Sec`
 /// column with (`ControlQueue.pas:496`, `Format('%d, %d, %-.g, …')`).
 ///
@@ -896,8 +892,11 @@ pub use CONTROL_QUEUE_SEC_DIGITS_DEFAULT_IMPL as CONTROL_QUEUE_SEC_DIGITS;
 /// rendering rather than a reconstruction of an unobservable one.
 ///
 /// Pinned by `report::show::diagnostics::tests::control_queue_row_format`.
-#[cfg(feature = "oracle-parity")]
-pub use CONTROL_QUEUE_SEC_DIGITS_PARITY_IMPL as CONTROL_QUEUE_SEC_DIGITS;
+pub const CONTROL_QUEUE_SEC_DIGITS: usize = if OPENDSS_PARITY {
+    CONTROL_QUEUE_SEC_DIGITS_PARITY_IMPL
+} else {
+    CONTROL_QUEUE_SEC_DIGITS_DEFAULT_IMPL
+};
 
 /// The 6-significant-digit stand-in for FPC's `%-.g` — see
 /// [`CONTROL_QUEUE_SEC_DIGITS`].
@@ -921,15 +920,15 @@ pub const CONTROL_QUEUE_SEC_DIGITS_DEFAULT_IMPL: usize = 15;
 /// kernel. What changes is only how a consumer sees it.
 ///
 /// Pinned by `report::export::json::tests::json_float_is_the_lane_kernel`.
-#[cfg(feature = "oracle-parity")]
-pub use crate::report::export::json::fpjson_float_fpc_impl as json_float;
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub use crate::report::export::json::json_float_shortest_impl as json_float;
+#[inline]
+pub fn json_float(x: f64) -> String {
+    if OPENDSS_PARITY {
+        crate::report::export::json::fpjson_float_fpc_impl(x)
+    } else {
+        crate::report::export::json::json_float_shortest_impl(x)
+    }
+}
 
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub use JSON_LINE_BREAK_DEFAULT_IMPL as JSON_LINE_BREAK;
 /// The line break fpjson's pretty writer puts between members.
 ///
 /// fpjson emits the RTL platform `sLineBreak`, so the oracle's own output — and
@@ -939,8 +938,11 @@ pub use JSON_LINE_BREAK_DEFAULT_IMPL as JSON_LINE_BREAK;
 /// line breaks and is identical in both lanes.
 ///
 /// Pinned by `report::export::json::tests::json_line_break_is_the_lane_kernel`.
-#[cfg(feature = "oracle-parity")]
-pub use JSON_LINE_BREAK_PARITY_IMPL as JSON_LINE_BREAK;
+pub const JSON_LINE_BREAK: &str = if OPENDSS_PARITY {
+    JSON_LINE_BREAK_PARITY_IMPL
+} else {
+    JSON_LINE_BREAK_DEFAULT_IMPL
+};
 
 /// The Windows `sLineBreak` fpjson wrote into the goldens — see
 /// [`JSON_LINE_BREAK`].
@@ -967,8 +969,11 @@ pub const JSON_LINE_BREAK_DEFAULT_IMPL: &str = "\n";
 /// whitespace or a comma, so every token lives in a cell and the table kernel
 /// cannot drop one. Pinned by `report::table::tests::both_kernels_tokenize_alike`
 /// and, at the report level, by the `Show` goldens in both lanes.
-#[cfg(feature = "oracle-parity")]
-pub use crate::report::table::render_rows_pad_impl as render_rows;
-/// See the parity-lane twin above.
-#[cfg(not(feature = "oracle-parity"))]
-pub use crate::report::table::render_rows_table_impl as render_rows;
+#[inline]
+pub fn render_rows(rows: &[crate::report::table::Row]) -> String {
+    if OPENDSS_PARITY {
+        crate::report::table::render_rows_pad_impl(rows)
+    } else {
+        crate::report::table::render_rows_table_impl(rows)
+    }
+}

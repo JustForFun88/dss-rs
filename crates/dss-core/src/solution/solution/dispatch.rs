@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(exact, sqrt3() / 1000.0);
         assert_eq!(
             compat::kv_base_search_scale(),
-            if compat::ORACLE_PARITY { trunc } else { exact },
+            if compat::OPENDSS_PARITY { trunc } else { exact },
             "the alias must resolve to this build's lane kernel"
         );
         // The documented bound: the truncated literal searches 2.93e-5 low.
@@ -241,7 +241,7 @@ mod tests {
         dss.command("calcvoltagebases");
         assert!(dss.errors().is_empty(), "{:?}", dss.errors());
 
-        let picked = if compat::ORACLE_PARITY {
+        let picked = if compat::OPENDSS_PARITY {
             TIE_BASES[0]
         } else {
             TIE_BASES[1]

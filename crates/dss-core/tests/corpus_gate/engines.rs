@@ -260,15 +260,15 @@ pub(crate) struct Checkpoint {
     pub(crate) inc_matrix: Option<IncMatrixCap>,
 }
 
-/// The per-case wall-clock deadline for a single oracle request
-/// (`DSS_ORACLE_TIMEOUT_SECS`, default 120s), shared by the one-shot and pooled
-/// paths so a pathological/hanging case is recorded as a failure, not a stall.
+/// The per-case wall-clock deadline for a single request to an OpenDSS engine
+/// (`DSS_OPENDSS_TIMEOUT_SECS`, default 600 s), shared by the one-shot and
+/// pooled paths so a hanging case is recorded as a failure, not a stall.
 pub(crate) fn oracle_timeout() -> Duration {
     Duration::from_secs(
-        std::env::var("DSS_ORACLE_TIMEOUT_SECS")
+        std::env::var("DSS_OPENDSS_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(120),
+            .unwrap_or(600),
     )
 }
 

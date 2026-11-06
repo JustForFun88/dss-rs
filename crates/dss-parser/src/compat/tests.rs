@@ -4,15 +4,13 @@
 
 use super::*;
 
-/// The pi row **is** flipped (F.3d): the alias resolves to the truncated Pascal
-/// literal under `oracle-parity` and to `f64::consts::PI` otherwise. Asserted
-/// against both impls, which genuinely differ, so neither lane can pass
-/// vacuously.
+/// `PI` is the truncated Pascal literal in the parity lane and
+/// `f64::consts::PI` in the default lane, asserted against both impls.
 #[test]
 fn pi_alias_is_the_lane_kernel() {
     assert_ne!(PI_FPC_TRUNCATED_IMPL, PI_STD_IMPL);
 
-    let expected = if ORACLE_PARITY {
+    let expected = if OPENDSS_PARITY {
         PI_FPC_TRUNCATED_IMPL
     } else {
         PI_STD_IMPL
@@ -20,21 +18,14 @@ fn pi_alias_is_the_lane_kernel() {
     assert_eq!(PI, expected);
 }
 
-/// The round row **is** flipped: the alias must resolve to the parity kernel
-/// under `oracle-parity` and to the saturating one otherwise — asserted on
-/// `inf`, where the two impls disagree (0 vs `i32::MAX`), so neither lane can
-/// pass by accident.
-///
-/// This doubles as the feature-propagation guard for this crate: if
-/// `dss-core/oracle-parity → dss-parser/oracle-parity` ever stopped
-/// propagating, [`ORACLE_PARITY`] would go false in a parity build and the
-/// alias would silently become the default kernel — caught here.
+/// `round_i32` is the FPC kernel in the parity lane and the saturating one in
+/// the default lane, asserted on `inf`, where the two impls disagree.
 #[test]
 fn round_alias_is_the_lane_kernel() {
     assert_eq!(round_i32_fpc_impl(f64::INFINITY), 0);
     assert_eq!(round_i32_saturating_impl(f64::INFINITY), i32::MAX);
 
-    let expected = if ORACLE_PARITY { 0 } else { i32::MAX };
+    let expected = if OPENDSS_PARITY { 0 } else { i32::MAX };
     assert_eq!(round_i32(f64::INFINITY), expected);
 }
 
@@ -51,7 +42,7 @@ fn round_f64_alias_is_the_lane_kernel() {
     assert_eq!(round_f64_fpc_impl(f64::INFINITY), SENTINEL);
     assert_eq!(round_f64_native_impl(f64::INFINITY), f64::INFINITY);
 
-    let expected = if ORACLE_PARITY { SENTINEL } else { 1e20 };
+    let expected = if OPENDSS_PARITY { SENTINEL } else { 1e20 };
     assert_eq!(round_f64(1e20), expected);
 }
 

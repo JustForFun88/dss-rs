@@ -4,10 +4,8 @@
 
 use super::*;
 
-/// F.1 staging: both lanes still declare the parity values, so the seam is
-/// bit-neutral. The consumers (M3c parallel LU, WP-R1 refinement) flip the
-/// `not(oracle-parity)` arms together with the code that reads them; this
-/// assertion is what forces that to be a deliberate edit.
+/// Both lanes hold the parity values of the execution knobs, so the seam is
+/// bit-neutral until the code that reads them selects by lane.
 #[test]
 fn f1_staging_both_lanes_declare_the_parity_execution_knobs() {
     const { assert!(!PARALLEL_FACTORIZATION) };

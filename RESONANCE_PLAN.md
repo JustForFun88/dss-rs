@@ -23,9 +23,9 @@ divergence — far worse than stopping. This gate runs **ahead of the tier/refus
 > upstream bug — we are hitting a numerical-conditioning limit).
 >
 > **Sequencing (see `PLAN_SEQUENCE.md`):** this plan runs **after `DE_PASCALIZE_PLAN.md`
-> Stage F** (the `oracle-parity` feature split) and **before `MULTITHREADING_PLAN.md`**.
+> Stage F** (the `opendss-parity` feature split) and **before `MULTITHREADING_PLAN.md`**.
 > Stage F is what lets WP-R1 land cleanly: refinement is **on in the default build** and
-> `#[cfg(feature = "oracle-parity")]`-**off in the parity build**, so every 1:1 oracle
+> `#[cfg(feature = "opendss-parity")]`-**off in the parity build**, so every 1:1 oracle
 > gate stays untouched while the product gets the accuracy win.
 
 ## 1. Context
@@ -194,7 +194,7 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
   5. **Gate on `rcond` / residual norm** (both already exposed): well-conditioned corpus
      solves skip refinement entirely → bit-identical to today. During the port: off
      entirely. Post-acceptance: the on/off switch lives in the Stage-F `compat` module —
-     **on in the default build, off under `oracle-parity`** (the parity lane's oracle
+     **on in the default build, off under `opendss-parity`** (the parity lane's oracle
      gates never see it; the default lane pins the improvement with its own
      analytical-value tests from the Acceptance bullet above).
   **Limit (= §2.3):** rescue needs `u·κ(Y) ≲ 1`, not merely nonsingularity. A truly
@@ -232,7 +232,7 @@ KLUSolveX-style extensions `rcond()` / `singular_col()` (`PORTING_PLAN.md` §2.4
 
 - Land **after** 1:1 acceptance (`PORTING_PLAN.md` §6) **and after `DE_PASCALIZE_PLAN.md`
   Stage F** (position 4 in `PLAN_SEQUENCE.md`, before `MULTITHREADING_PLAN.md`). With the
-  `oracle-parity` split, WPs no longer regenerate parity goldens at all: the divergence
+  `opendss-parity` split, WPs no longer regenerate parity goldens at all: the divergence
   lives in the **default lane only** (its self-goldens + the analytical-value acceptance
   tests), while the parity lane remains byte-stable.
 - WP-R1 is solver-internal and broadly beneficial (any ill-conditioned system, not only

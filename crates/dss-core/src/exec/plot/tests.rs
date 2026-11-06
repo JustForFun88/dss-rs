@@ -12,9 +12,7 @@ use crate::exec::Dss;
 /// A capturing plot callback backed by a shared `Vec<String>`. `Arc<Mutex>`
 /// (not the pre-R1 `Rc<RefCell>`) so the registered closure is `Send` — the
 /// engine is now `Send` (P7 rider, `assert_send::<Dss>()`), so the plot-callback
-/// bound is `+ Send`. This is a test-only sink: it swaps the `Rc`/`RefCell` the
-/// P7 grep gate targets out for `Arc`/`Mutex` (outside that pattern) and adds no
-/// ambient engine state.
+/// bound is `+ Send`. This is a test-only sink and adds no ambient engine state.
 type Cap = Arc<Mutex<Vec<String>>>;
 
 fn dss_with_capture() -> (Dss, Cap) {

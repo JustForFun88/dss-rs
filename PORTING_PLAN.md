@@ -473,7 +473,7 @@ Rules:
    > **Update (2026-07-06, supersedes rule 4's "replace" — rules 1–3 unchanged):** the
    > sweep is now **Stage F of `DE_PASCALIZE_PLAN.md`** (Part IV.2). Compat quirks are
    > **not deleted** — each becomes a dual kernel behind `#[cfg(feature =
-   > "oracle-parity")]`: the default build gets the correct/precise implementation, the
+   > "opendss-parity")]`: the default build gets the correct/precise implementation, the
    > parity build keeps the quirk so every 1:1 oracle gate stays permanently re-runnable.
    > Only the default lane re-baselines. See `PLAN_SEQUENCE.md` for the post-acceptance
    > order (DE_PASCALIZE → RESONANCE → MULTITHREADING).
@@ -511,8 +511,8 @@ export-diff suites green on IEEE 13/34/37/123/8500.
 
 > **Update (2026-07-06) — verification after acceptance.** Final acceptance itself is
 > unchanged (it runs on the 1:1 engine — the configuration that becomes the
-> `oracle-parity` build). From `DE_PASCALIZE_PLAN.md` Stage F onward, verification is
-> **two permanent CI lanes**: the **parity lane** (`--features oracle-parity`) keeps this
+> `opendss-parity` build). From `DE_PASCALIZE_PLAN.md` Stage F onward, verification is
+> **two permanent CI lanes**: the **parity lane** (`--features dss-compat/opendss-parity`) keeps this
 > section's full gate — byte goldens, calibrated floors, exact discrete states and
 > iteration counts — bitwise-green forever; the **default lane** (idiomatic kernels,
 > upstream bugs fixed, parallel LU / iterative refinement allowed) keeps the same floors

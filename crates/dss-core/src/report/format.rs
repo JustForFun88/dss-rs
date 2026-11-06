@@ -354,7 +354,7 @@ mod tests {
     /// while a single correct rounding of the true value gives `2.67`.
     #[test]
     fn fixed_w_script_is_the_lane_kernel() {
-        use crate::compat::{ORACLE_PARITY, fixed_w_script};
+        use crate::compat::{OPENDSS_PARITY, fixed_w_script};
         for (v, parity, default) in [
             (0.125_f64, "    0.13", "    0.12"),
             (2.675, "    2.68", "    2.67"),
@@ -362,9 +362,9 @@ mod tests {
         ] {
             assert_eq!(
                 fixed_w_script(v, 8, 2),
-                if ORACLE_PARITY { parity } else { default },
+                if OPENDSS_PARITY { parity } else { default },
                 "fixed_w_script({v}) in the {} lane",
-                if ORACLE_PARITY { "parity" } else { "default" }
+                if OPENDSS_PARITY { "parity" } else { "default" }
             );
             assert_ne!(parity, default, "the two kernels must actually differ");
         }

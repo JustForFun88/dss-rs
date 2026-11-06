@@ -10,7 +10,7 @@ Send bounds, the injection compute/scatter split — see its Part IV constraints
 `DE_PASCALIZE_PLAN.md` Stage F splits the build into two lanes, and every parallel stage is
 judged against both:
 
-- **Parity lane** (`--features oracle-parity`): the full historical gate — byte-exact
+- **Parity lane** (`--features dss-compat/opendss-parity`): the full historical gate — byte-exact
   goldens, checkpoint captures, `corpus_live` calibrated floors, **iteration counts** —
   stays green bitwise. Stages that are bit-identical by construction (M3a/M3b: parallel
   compute + sequential ordered commit) may be enabled here too; anything that can shift
@@ -55,7 +55,7 @@ divergence — far worse than stopping. This gate runs **ahead of the tier/refus
    сессию (/model + reasoning effort) и повтори команду.» and stop
    (`PLAN_SEQUENCE.md` §Model-tier protocol).
 1. **Gate green** — fmt · clippy `-D warnings` · `cargo test --workspace` in **both lanes**
-   (default and `--features oracle-parity`) + the parity↔default differential job + this
+   (default and `--features dss-compat/opendss-parity`) + the parity↔default differential job + this
    plan's determinism tests (`RAYON_NUM_THREADS=1` vs `=8` bitwise for bit-neutral stages;
    fixed-thread run-to-run bitwise for M3c). A red test blocks the commit.
 2. **Update `STATUS.md`**, **commit** (code + STATUS together).
@@ -296,7 +296,7 @@ deterministic so a parallel run equals the sequential run scenario-for-scenario.
 graph TD
     P7["DE_PASCALIZE P7 / M0 — Send bounds + assert"]
     R2["DE_PASCALIZE R1+R2 — typed arenas,<br/>inj compute/scatter split, per-elem y-changed flag"]
-    F["DE_PASCALIZE Stage F — oracle-parity lane split"]
+    F["DE_PASCALIZE Stage F — opendss-parity lane split"]
     M1["M1 — criterion baseline"]
     M2["M2 — actor mode (std::thread + crossbeam-channel)"]
     M3a["M3a — parallel yprim sweep (rayon)"]
@@ -321,7 +321,7 @@ Cross-plan position: this plan runs **last** — see `PLAN_SEQUENCE.md`.
 
 ## Verification summary
 
-- Mandatory gate at every stage: **both lanes** (`--features oracle-parity` = the full
+- Mandatory gate at every stage: **both lanes** (`--features dss-compat/opendss-parity` = the full
   historical gate incl. `corpus_live` and iteration-count pins; default = tolerance lane +
   run-to-run determinism); **no tolerance changes in either lane** — a parallel version
   that needs a looser tolerance is wrong by definition.

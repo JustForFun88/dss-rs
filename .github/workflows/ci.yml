@@ -52,16 +52,12 @@ jobs:
       - name: Clippy (default lane)
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Clippy (parity lane)
-        run: cargo clippy --workspace --all-targets --features dss-core/oracle-parity -- -D warnings
+        run: cargo clippy --workspace --all-targets --features dss-compat/opendss-parity -- -D warnings
       - name: Test (default lane)
-        env:
-          DSS_ORACLE_TIMEOUT_SECS: "600"
         run: cargo nextest run --workspace
       - name: Test (parity lane)
-        env:
-          DSS_ORACLE_TIMEOUT_SECS: "600"
-        run: cargo nextest run --workspace --features dss-core/oracle-parity
+        run: cargo nextest run --workspace --features dss-compat/opendss-parity
       - name: Doctests (default lane)
         run: cargo test --workspace --doc
       - name: Doctests (parity lane)
-        run: cargo test --workspace --doc --features dss-core/oracle-parity
+        run: cargo test --workspace --doc --features dss-compat/opendss-parity

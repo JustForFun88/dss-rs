@@ -113,7 +113,7 @@ fn lane_expected_json(oracle: &str) -> (String, usize, usize) {
     let mut out = oracle.replace(CKT_MODEL_PARITY, CKT_MODEL_DEFAULT);
     let ckt_model = oracle.matches(CKT_MODEL_PARITY).count();
     let mut weights = 0usize;
-    if !dss_core::compat::ORACLE_PARITY {
+    if !dss_core::compat::OPENDSS_PARITY {
         for (from, to) in WEIGHT_TIES_AWAY {
             weights += out.matches(from).count();
             out = out.replace(from, to);
@@ -479,7 +479,7 @@ fn json_circuit_positive_seq() {
 ///    then holds the engine to it byte-for-byte.
 #[test]
 fn json_ckt_model_is_rewritten_to_the_correct_value() {
-    let parity = dss_core::compat::ORACLE_PARITY;
+    let parity = dss_core::compat::OPENDSS_PARITY;
     let mut oracle_hits = 0usize;
     let mut rewrites = 0usize;
     let mut weight_hits = 0usize;

@@ -19377,17 +19377,10 @@ mod reliability_tests {
 /// the same reason [`run_files`] is (the `r4133` transport is a Win64 DLL); the
 /// corpus gate refuses `compare_di` loudly elsewhere.
 ///
-/// Declared here rather than beside [`run_files`] deliberately: a module
-/// declaration at the top of this 19 000-line file shifts every `mod.rs:LINE`
-/// citation TESTING.md and `tests/TOLERANCE_NOTES.md` anchor into it
-/// (`oracle_parity_cfg_gate::operational_docs_line_citations_point_at_the_line_they_name`),
-/// and re-pointing ~80 of them to add one `mod` line would be a far larger and
-/// more merge-hostile edit than this placement.
 #[cfg(windows)]
 pub mod di;
 
 /// `RETRO_FIXES_PLAN.md` RF-I00-01: the per-run scratch copies every test
 /// binary that runs a vendored deck compiles instead of `tests/corpus/` (the
-/// corpus gate re-exports it as `crate::scratch`). Declared last for the
-/// reason [`di`] is.
+/// corpus gate re-exports it as `crate::scratch`).
 pub mod scratch;

@@ -1,5 +1,5 @@
 //! The strip-compare on fixture pairs (`tests/fixtures/<case>/base.rs.txt` and
-//! `head.rs.txt`, stored as `.txt` so neither the cfg-gate walk nor cargo's
+//! `head.rs.txt`, stored as `.txt` so neither a source walk nor cargo's
 //! target discovery sees them; `tests/fixtures/.gitattributes` keeps their
 //! bytes). Every case asserts its exact kind and, for `Comments`, whether a
 //! doc attribute moved.
