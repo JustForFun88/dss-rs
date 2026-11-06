@@ -978,17 +978,12 @@ mod tests {
     use super::*;
     use crate::exec::Dss;
 
-    /// The load-bearing R1 invariant: the arena/`ElemId` variant order is
-    /// exactly the `exec/construct.rs` registration order. A drift here silently
-    /// breaks bare-name `find_ckt_element` / `ForeignClasses` tie-breaking.
+    /// The class order of `ElemId`, the live arenas and `Elements` is the
+    /// registration order, which bare-name lookup relies on.
     #[test]
     fn arena_order_matches_registry() {
         let dss = Dss::new();
         let names = dss.registered_class_names();
-        // The LIVE runtime storage: each `DssClass::arena`'s selected variant, in
-        // registration order — the path that actually runs (the standalone
-        // `Elements` is R2 scaffolding, so it alone would not prove the live
-        // arenas are correctly ordered).
         let live = dss.live_arena_class_names();
         let elems = Elements::new();
 
@@ -1014,7 +1009,6 @@ mod tests {
                 "class {i}: ElemId::CLASS_NAMES = {:?} but registry = {reg:?}",
                 ElemId::CLASS_NAMES[i]
             );
-            // Load-bearing: the live per-`DssClass` arena variant at slot `i`.
             assert!(
                 live[i].eq_ignore_ascii_case(reg),
                 "class {i}: live DssClass::arena = {:?} but registry = {reg:?}",
@@ -1028,12 +1022,8 @@ mod tests {
         }
     }
 
-    /// The `Elements` aggregate's disjoint mutable-borrow helpers
-    /// (`pair_mut`/`triple_mut`, the R2/M3 substrate) across **every**
-    /// class-aliasing branch. R1 leaves `Elements` production-dead (the ownership
-    /// flip lives on `DssClass::arena`); this pins the borrow case-analysis so it
-    /// is verified, not "correct by inspection", before R2 adopts it. Object
-    /// identity is checked by name (`push_new` stores the lowercased name).
+    /// `pair_mut` and `triple_mut` hand out the requested objects for every mix of
+    /// same-class and cross-class references.
     #[test]
     fn elements_disjoint_borrows_cover_all_branches() {
         let cls = |name: &str| {
@@ -1054,17 +1044,14 @@ mod tests {
         assert_eq!(e.push_new(load, "d0"), 0);
         assert_eq!(e.push_new(cap, "c0"), 0);
 
-        // pair — same class.
         {
             let (a, b) = e.pair_mut(r(line, 0), r(line, 1));
             assert_eq!((a.data().name(), b.data().name()), ("l0", "l1"));
         }
-        // pair — cross class.
         {
             let (a, b) = e.pair_mut(r(line, 0), r(load, 0));
             assert_eq!((a.data().name(), b.data().name()), ("l0", "d0"));
         }
-        // triple — all same class.
         {
             let (a, b, c) = e.triple_mut(r(line, 0), r(line, 1), r(line, 2));
             assert_eq!(
@@ -1072,7 +1059,6 @@ mod tests {
                 ("l0", "l1", "l2")
             );
         }
-        // triple — a.cls == b.cls, c distinct.
         {
             let (a, b, c) = e.triple_mut(r(line, 0), r(line, 1), r(load, 0));
             assert_eq!(
@@ -1080,7 +1066,6 @@ mod tests {
                 ("l0", "l1", "d0")
             );
         }
-        // triple — a.cls == c.cls, b distinct.
         {
             let (a, b, c) = e.triple_mut(r(line, 0), r(load, 0), r(line, 1));
             assert_eq!(
@@ -1088,7 +1073,6 @@ mod tests {
                 ("l0", "d0", "l1")
             );
         }
-        // triple — b.cls == c.cls, a distinct.
         {
             let (a, b, c) = e.triple_mut(r(load, 0), r(line, 0), r(line, 1));
             assert_eq!(
@@ -1096,7 +1080,6 @@ mod tests {
                 ("d0", "l0", "l1")
             );
         }
-        // triple — all three classes distinct.
         {
             let (a, b, c) = e.triple_mut(r(line, 0), r(load, 0), r(cap, 0));
             assert_eq!(
@@ -1106,8 +1089,7 @@ mod tests {
         }
     }
 
-    /// The aliasing guard fires (Pascal has no equivalent — this is the R2/M3
-    /// safety net that a control loop never hands the same object twice).
+    /// `pair_mut` refuses to hand out the same object twice.
     #[test]
     #[should_panic(expected = "aliasing refs")]
     fn elements_pair_mut_rejects_aliasing() {
@@ -1121,12 +1103,10 @@ mod tests {
         let _ = e.pair_mut(a, a);
     }
 
-    /// `Idx<T>` and the `class_ord`/`index` tag accessors agree with the live
-    /// registry, and `ElemId::new` is their inverse (the `{cls, idx}` pair the
-    /// pre-R3 tag struct carried as fields).
+    /// `ElemId`'s class and index accessors agree with the registry, and
+    /// `ElemId::new` is their inverse.
     #[test]
     fn elemid_ref_bridge_round_trips() {
-        // Line is class 18 in registration order (0-based).
         let names = Dss::new().registered_class_names();
         let line_cls = names
             .iter()
@@ -1136,17 +1116,12 @@ mod tests {
         assert_eq!(id.class_name(), "Line");
         assert_eq!(id.class_ord(), line_cls);
         assert_eq!(id.index(), 7);
-        // `new` is the inverse of the `class_ord`/`index` pair — round-trip in
-        // both directions.
         assert_eq!(ElemId::new(line_cls, 7), id);
         assert_eq!(ElemId::new(id.class_ord(), id.index()), id);
     }
 
-    /// `ElemId::new` selects the correct variant for **every** registered class
-    /// ordinal (the full match the spine rests on), and round-trips through
-    /// `class_ord`/`index` back to the same `{cls, idx}` — checked against the
-    /// live registry so any drift in the class list or registration order is
-    /// caught.
+    /// `ElemId::new` picks the right variant for every registered class and
+    /// round-trips through its class and index accessors.
     #[test]
     fn elem_id_new_covers_every_class_and_round_trips() {
         let names = Dss::new().registered_class_names();
@@ -1168,17 +1143,13 @@ mod tests {
         }
     }
 
-    /// Every typed accessor ([`ArenaClass`] / [`ClassArena::get`] /
-    /// [`ClassArena::get_mut`] / [`ClassArena::clone_ckt`]) agrees, for **every**
-    /// registered class, with the stored object itself (the address the
-    /// removed `Any` downcast to `&T` used to hand back) and with the
-    /// `ckt`/`data` tag. Generated from the one class list, so a new
-    /// class is covered automatically. This is the equivalence that lets the
-    /// typed store replace the `Any` round-trip.
+    /// For every registered class the typed accessors return the stored object
+    /// at the given index, `None` past the end, and agree with the class's
+    /// `ckt`/`data` tag.
     macro_rules! typed_accessor_equivalence {
         ( $( $cname:literal $variant:ident $ty:ty , $kind:ident ; )* ) => {
             #[test]
-            fn typed_accessors_match_the_any_downcast_for_every_class() {
+            fn typed_accessors_return_the_stored_object_for_every_class() {
                 let mut covered = 0usize;
                 $({
                     let cls = <$ty as ArenaClass>::CLASS_ORD;
@@ -1191,19 +1162,11 @@ mod tests {
                     assert!(<$ty as ArenaClass>::CLASS_NAME.eq_ignore_ascii_case($cname));
 
                     let mut e = Elements::new();
-                    // TWO objects per class: with a single one every index in
-                    // the test would be 0, so a class-generic `get(0)`-instead-
-                    // of-`get(idx)` slip inside the accessors would pass. Both
-                    // slots are address-checked below.
+                    // Two objects, so an accessor that ignores the index fails.
                     e.push_new(cls, "x");
                     e.push_new(cls, "y");
                     let arena = &mut e.arenas[cls];
 
-                    // The typed read IS the very object the generic `dyn`
-                    // view hands out (same address, no reinterpretation) --
-                    // the equivalence the removed `Any` downcast used to
-                    // establish. Checked at BOTH indices, so the typed
-                    // accessor must honour the index it is given.
                     for i in 0..2usize {
                         let typed = arena.get::<$ty>(i).expect("typed read") as *const $ty
                             as *const ();
@@ -1228,18 +1191,14 @@ mod tests {
                             $cname
                         );
                     }
-                    // The two slots are distinct objects (the index channel is
-                    // live, not a constant fold onto slot 0).
                     assert!(!std::ptr::eq(
                         arena.get::<$ty>(0).unwrap() as *const $ty as *const (),
                         arena.get::<$ty>(1).unwrap() as *const $ty as *const (),
                     ));
-                    // Out of range is `None`, not a panic (like `objects.get`).
                     assert!(arena.get::<$ty>(2).is_none());
                     assert!(arena.get_mut::<$ty>(2).is_none());
                     assert_eq!(arena.all::<$ty>().expect("typed slice").len(), 2);
 
-                    // Handle ⇄ class round-trip, at both indices.
                     for i in 0..2usize {
                         let id = <$ty as ArenaClass>::id(i);
                         assert_eq!(id.class_ord(), cls);
@@ -1250,7 +1209,6 @@ mod tests {
                         );
                     }
 
-                    // The concrete `ckt`/`data` views agree with the arena tag.
                     let is_ckt = arena.try_ckt_elem(0).is_some();
                     assert_eq!(arena.try_ckt_elem(1).is_some(), is_ckt);
                     assert_eq!(arena.try_ckt_elem_mut(1).is_some(), is_ckt);
@@ -1267,8 +1225,7 @@ mod tests {
     }
     with_all_classes!(typed_accessor_equivalence);
 
-    /// A handle/arena of the wrong class narrows to `None` — the other half of
-    /// the downcast's contract (the half the per-class loop above cannot state).
+    /// A typed accessor asked for the wrong class returns `None`.
     #[test]
     fn typed_accessors_reject_a_foreign_class() {
         use crate::elements::pc::load::Load;
@@ -1280,15 +1237,12 @@ mod tests {
         e.push_new(line_cls, "l0");
         e.push_new(load_cls, "d0");
 
-        // Wrong arena → None (never a wrong-typed reinterpretation).
         assert!(e.arenas[line_cls].get::<Load>(0).is_none());
         assert!(e.arenas[load_cls].get::<Line>(0).is_none());
         assert!(e.arenas[line_cls].all::<Load>().is_none());
         assert!(e.arenas[line_cls].get_mut::<Load>(0).is_none());
-        // Wrong handle → None.
         assert!(Load::idx_of(Line::id(0)).is_none());
         assert!(Line::idx_of(Load::id(0)).is_none());
-        // A data class has no controlled-transformer view either.
         assert!(
             e.arenas[line_cls]
                 .try_controlled_transformer_mut(0)
@@ -1296,19 +1250,8 @@ mod tests {
         );
     }
 
-    /// The `ckt`/`data` tag drives [`ClassArena::try_ckt_elem`]'s direct upcast;
-    /// it MUST agree, class for class, with the **independent** column in
-    /// `exec/construct.rs`: a circuit-element class is registered through
-    /// `DssClass::ckt_class` (which carries an [`ElemKind`]), a plain
-    /// `DSS_OBJECT` through `dss_object` (`kind == None`). Before R3.3 the
-    /// oracle here was the `DssObject::as_ckt_element` trait method, which that
-    /// step removed; the registry column is the surviving independent one (a
-    /// `ckt` tag on a class whose type does not `impl CktElement` cannot
-    /// compile, so only a `ckt` class mis-tagged `data` is silent — exactly
-    /// what this catches). Also pins the count of circuit-element classes at 35
-    /// (the 15 `DSS_OBJECT` classes are `data`).
-    ///
-    /// [`ElemKind`]: crate::circuit::ElemKind
+    /// Each class's `ckt`/`data` arena tag agrees with how the registry registers
+    /// it, and 35 classes are circuit elements.
     #[test]
     fn arena_tag_matches_registry_ckt_classes() {
         let is_ckt_col = crate::exec::Dss::new().registered_class_is_ckt();
@@ -1316,7 +1259,6 @@ mod tests {
         assert_eq!(is_ckt_col.len(), n);
         let mut ckt_count = 0;
         for (cls, &registry_is_ckt) in is_ckt_col.iter().enumerate() {
-            // The registry's own registration column is the oracle.
             if registry_is_ckt {
                 ckt_count += 1;
             }

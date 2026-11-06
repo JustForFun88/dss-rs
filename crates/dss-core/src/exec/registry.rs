@@ -337,11 +337,8 @@ mod tests {
     use super::*;
     use crate::exec::Dss;
 
-    /// R1 Risks-section guard: a bare-name `find_ckt_element` on an object name
-    /// shared across classes must still resolve to the **first-registered**
-    /// class (registration-order tie-break) after the ownership flip — the arena
-    /// layout preserves `construct.rs` order, so `Line` (registered before
-    /// `Load`) wins over a same-named `Load`.
+    /// A bare name shared by objects of several classes resolves to the
+    /// first-registered class, so `Line` wins over a same-named `Load`.
     #[test]
     fn find_ckt_element_tie_breaks_by_registration_order() {
         let mut dss = Dss::new();
@@ -374,12 +371,10 @@ mod tests {
         );
     }
 
-    /// The R3.2 typed store accessors over a **live** `ClassStore`: `typed`/
-    /// `typed_mut` return the very object the removed `Any` downcast returned, the
-    /// control pair/triple getters hand out the same objects the untyped
-    /// `pair_mut`/`triple_mut` do, and a foreign class narrows to `None`.
+    /// On a live `ClassStore` the typed accessors and the control pair and triple
+    /// getters return the requested objects, and a target of the wrong class is `None`.
     #[test]
-    fn typed_store_accessors_match_the_untyped_pair_and_downcast() {
+    fn typed_store_accessors_return_the_stored_objects() {
         use crate::elements::control::cap_control::CapControl;
         use crate::elements::control::reg_control::RegControl;
         use crate::elements::meter::monitor::Monitor;
@@ -421,8 +416,6 @@ mod tests {
             classes: &mut dss.classes,
         };
 
-        // `typed` hands back the very stored object (the address the removed
-        // removed `Any` downcast returned), and the same `None`s.
         assert!(std::ptr::eq(
             store.typed::<RegControl>(rc_ref).unwrap() as *const RegControl as *const (),
             store.obj(rc_ref) as *const dyn DssObject as *const (),
@@ -430,19 +423,16 @@ mod tests {
         assert!(store.typed::<Capacitor>(rc_ref).is_none());
         assert!(store.typed_mut::<Line>(cap_ref).is_none());
 
-        // RegControl ⇄ Transformer: the ControlledTransformer proxy view.
         {
             let (rc, tr) = store.typed_transformer_pair_mut::<RegControl>(rc_ref, tr_ref);
             assert_eq!(rc.data().name(), "rc");
             assert_eq!(tr.expect("t1 is a Transformer").name(), "t1");
         }
-        // A non-transformer target is `None`, not a panic (the dispatch abort).
         {
             let (_rc, tr) = store.typed_transformer_pair_mut::<RegControl>(rc_ref, cap_ref);
             assert!(tr.is_none());
         }
 
-        // CapControl ⇄ Capacitor (both concrete) + monitored element.
         {
             let (cc, cap) = store.typed_pair_mut::<CapControl, Capacitor>(cc_ref, cap_ref);
             assert_eq!(cc.data().name(), "cc");
@@ -455,13 +445,11 @@ mod tests {
             assert_eq!(cap.expect("c1 is a Capacitor").data().name(), "c1");
             assert_eq!(mon.expect("l1 is a circuit element").cd().obj.name(), "l1");
         }
-        // A target of the wrong class yields `None` (the "not a Capacitor" abort).
         {
             let (_cc, cap) = store.typed_pair_mut::<CapControl, Capacitor>(cc_ref, line_ref);
             assert!(cap.is_none());
         }
 
-        // The control/ckt pair hands out the same objects as untyped `pair_mut`.
         {
             let (cc, target) = store.typed_ckt_pair_mut::<CapControl>(cc_ref, cap_ref);
             assert_eq!(cc.data().name(), "cc");
@@ -478,10 +466,7 @@ mod tests {
             assert_eq!(mon.expect("ckt").cd().obj.name(), "l1");
         }
 
-        // R3.2(e): the meter/generic-object pair (`Monitor::take_sample`) hands
-        // out the very same two objects the untyped `pair_mut` does — in both
-        // the cross-arena branch (monitor ⇄ line) and the same-arena one
-        // (monitor ⇄ monitor, reachable via `element=monitor.…`).
+        // Monitor ⇄ Line crosses arenas, Monitor ⇄ Monitor stays in one.
         for (a_ref, b_ref, b_name) in [(m1_ref, line_ref, "l1"), (m1_ref, m2_ref, "m2")] {
             let (untyped_a, untyped_b) = store.pair_mut(a_ref, b_ref);
             let (pa, pb) = (
