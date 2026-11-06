@@ -58,6 +58,12 @@ Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (vendored deck
 - **C3.** No code is frozen: passing tests are the only contract. A module that grows large or mixes concerns becomes a directory module (`foo/mod.rs` plus submodules) with no behaviour change.
 - **C4.** Unit tests stay inline as `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the `#[cfg(test)] mod tests;` line right after the module doc. Integration tests are thin drivers over `dss-test-harness`.
 
+## Never crash
+An engineer's study must not die on a bad script.
+- **N1. No new panic in non-test code**: no `unwrap()`, `expect()`, `panic!`, `unreachable!`, `todo!`, `unimplemented!`. An error is a `Result` through the crate's error type and `?`. An unfinished feature returns an error, never panics.
+- **N2. Numbers from input are checked at the boundary.** Input is the DSS script and the files it names (LoadShape files, curves, JSON). The check runs when a token is parsed and when a property or command is applied: ranges, sizes and counts (`phases=`, `Redirect` nesting), quantities derived from input once at setup. A bad value is refused with an error at the edit. Inside the solve values are right by construction and are not checked again.
+- **N3. A result that is not finite is not a solution.** A solve that yields NaN or infinity (a singular matrix, a divergence) has not converged and reports an error.
+
 ## OpenDSS comparison and tests
 Two OpenDSS engines check the numbers we print. They share code and bugs, so their agreement proves the code path, not the physics.
 - **T1. Channels.** `capi_v0145` is the dss-python pinned in `tools/golden/PIN.txt`, which also produced `tests/golden/` (regenerated only by hand through `tools/golden/*.py`). `r4133` is the EPRI binary at `tools/opendss/bin/r4133/`, driven through `epri-worker` (`tools/opendss/README.md`).
