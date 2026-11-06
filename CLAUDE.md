@@ -44,7 +44,7 @@ Engineers act on the numbers this engine prints, so a number is right by physics
 | L2 | `dss-core` | the engine: turns a script into a circuit, solves it, reports it |
 | L3 | `dss-cli` | the command-line binary |
 | test | `dss-epri`, `dss-test-harness` | run the OpenDSS engines and compare their numbers with ours |
-| tool | `gate-kind` | grades a diff for the gate (G1) |
+| tool | `gate-kind` | grades a diff for the gate (G4) |
 
 A crate depends only on lower layers. Inside `dss-core` a script flows from the command executive (`exec`) into objects and their properties (`obj`), which make up the circuit (`circuit`, `elements`). `solution` builds the nodal matrix and iterates, `report` writes what was solved. A new element is one more module under `elements` and changes none of this.
 
@@ -56,7 +56,7 @@ Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (vendored deck
 - **C1.** `#![forbid(unsafe_code)]` in every product crate. `dss-epri` is the one exception (`publish = false`, `#[cfg(windows)]`, `#![deny(unsafe_op_in_unsafe_fn)]`, `// SAFETY` docs) and never ships.
 - **C2.** Write idiomatic Rust.
 - **C3.** No code is frozen: passing tests are the only contract. A module that grows large or mixes concerns becomes a directory module (`foo/mod.rs` plus submodules) with no behaviour change.
-- **C4.** Unit tests stay inline as `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the `#[cfg(test)] mod tests;` line right after the module doc. Integration tests are thin drivers over `dss-test-harness`.
+- **C4.** Unit tests stay inline as `#[cfg(test)]` modules, in a sibling `tests.rs` only when the file is large, the `#[cfg(test)] mod tests;` line right after the module doc. Integration tests are thin drivers over `dss-test-harness`. No test reads a document (`.md`).
 
 ## Never crash
 An engineer's study must not die on a bad script.
@@ -74,7 +74,7 @@ Two OpenDSS engines check the numbers we print. They share code and bugs, so the
 - **T6.** What an OpenDSS engine does is measured, never guessed: `tools/opendss/epri_worker.py` for r4133 (builds `epri-worker` on first use), the pinned dss-python for capi (pattern `tools/golden/probe_val.py`).
 
 ## Gate
-- **G1. Every commit runs the gate its diff needs**, graded by `cargo run -p gate-kind -- --base <rev>` against the commit it builds on: `None` runs nothing, `Docs` the tests that read a changed file (grep its name in the tests), `Comments` commands 1–3 and 6–8, `Code` all eight, the tests of both lanes included. In doubt, all eight. A work branch landing on `update` or `main` is graded against that target, on the tree that lands (G4).
+- **G1. `update` and `main` are always green on all eight commands below**, the tests of both lanes included. Every commit that enters them runs all eight on the tree that enters. The one exception: a work branch whose base is the current head of the target and whose head passed all eight lands as one squash commit without running them again, since the squash holds the same tree.
 - **G2. Every cargo command that builds or tests, `gate-kind` included, goes through the queue**: `python tools/gate/gatelock.py --label "<who>" -- cargo <args>`. `cargo fmt` does not. The machine is shared, and unqueued runs slow each other until the OpenDSS runs time out.
 
 1. `cargo fmt --all --check`
@@ -87,7 +87,7 @@ Two OpenDSS engines check the numbers we print. They share code and bugs, so the
 8. `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" cargo doc --workspace --no-deps --document-private-items`
 
 - **G3.** Two lanes. **parity** (the commands with the parity feature) reproduces the OpenDSS precision and is byte-exact on the goldens. **default** is the product. The comparison policy of each lives in `crates/dss-test-harness/src/harness/lane.rs`. After a change to a `compat.rs` kernel, `dss-sparse` or the `solution` module, run `pwsh -File tools/lanes/lane_diff.ps1`: it must exit 0, the two lanes agreeing within the bounds of `crates/dss-core/examples/lane_dump.rs`.
-- **G4. A landing reuses its branch's gate.** When the branch head itself passed the gate the landing needs (G1) and the target (`update` or `main`) has not moved since the work branch was created from it, the squash commit holds the same tree as the branch head and is pushed without running the gate again. If the target moved, the merged tree is new and runs that gate.
+- **G4. A commit on a work branch passes the gate its diff needs**, graded by `cargo run -p gate-kind -- --base <rev>` against the commit it builds on: `None` and `Docs` run nothing, `Comments` commands 1–3 and 6–8, `Code` all eight. In doubt, all eight.
 
 ## Writing
 Every agent reads these texts, so a stale or long sentence costs every session.
