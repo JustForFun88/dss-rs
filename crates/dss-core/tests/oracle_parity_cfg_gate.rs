@@ -13,13 +13,11 @@
 //! Failure means: move the branch into the crate's `compat` module and let the
 //! call site use an unconditional `compat::` alias.
 //!
-//! The same file also polices the **compat tag** (`CLAUDE.md`: "it must stay
-//! greppable"): the tag is an *index* of the places that deliberately reproduce
-//! an upstream inexactness, and Stage F's exit criterion is a count of it.
-//! Prose mentions — cross-references, "this is NOT one of those" disclaimers,
-//! continuation lines — inflate that count and make the grep unusable as an
-//! index, so they are rejected here. (This file spells the tag only at runtime,
-//! so it does not trip its own gate.)
+//! The same file also polices the **compat tag**: the tag is an index of the
+//! places that deliberately reproduce an upstream inexactness, and a prose
+//! mention (a cross-reference, a "this is not one of those" disclaimer, a
+//! continuation line) adds an entry that is not a site. (This file spells the
+//! tag only at runtime, so it does not trip its own gate.)
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -102,9 +100,8 @@ fn tree_files(root: &Path) -> Vec<PathBuf> {
 /// Every `.rs` file in the repository.
 ///
 /// Deliberately the **whole tree**, not just `crates/*/{src,tests,benches,
-/// examples}`. The compat tag is an index of the ported Rust that deliberately
-/// reproduces an upstream inexactness, and `CLAUDE.md` says all of them are
-/// absorbed in one pass — not "all of them under `crates/`". F.3ac found three
+/// examples}`. The compat tag indexes every deliberate reproduction of an
+/// upstream inexactness in the tree, not only those under `crates/`. F.3ac found three
 /// markers living outside that prefix: `tools/wasm_usermodel/models/
 /// indmach012a` is a real hand-ported Rust crate (the WM.2 reference user
 /// model) that is **workspace-excluded by design** — it carries its own empty
@@ -552,14 +549,9 @@ fn compat_tag() -> String {
     format!("TODO{}compat{}", "(", ")")
 }
 
-/// The compat tag is an index, not prose: every occurrence must open a marker.
-///
-/// Concretely — the tag must sit inside a comment and be followed immediately
-/// by `": "`, i.e. `<tag>: <why>`. That is what makes a grep for it count
-/// *reproduction sites* and nothing else, which is the form `CLAUDE.md`
-/// mandates and the number `DE_PASCALIZE_PLAN.md` Part IV.2 drives to zero. To
-/// point at a site from elsewhere, write "compat-tagged at …" / "see the compat
-/// marker at …" instead of repeating the tag.
+/// Every compat tag opens a marker `<tag>: <why>` inside a comment, so a grep
+/// for the tag lists reproduction sites and nothing else. Elsewhere a site is
+/// named as "compat-tagged at …".
 #[test]
 fn compat_tag_is_only_ever_a_marker_never_prose() {
     let root = repo_root();
@@ -591,10 +583,9 @@ fn compat_tag_is_only_ever_a_marker_never_prose() {
 
     assert!(
         offenders.is_empty(),
-        "the compat tag must always open a marker (`{tag}: <why>`) inside a \
-         comment — a prose mention breaks the greppable index CLAUDE.md \
-         requires and inflates the Stage F exit count. Reword it as \
-         \"compat-tagged at …\":\n{}",
+        "the compat tag must open a marker (`{tag}: <why>`) inside a comment: \
+         a prose mention makes a grep for the tag list a site that is not one. \
+         Reword it as \"compat-tagged at …\":\n{}",
         offenders.join("\n")
     );
 
