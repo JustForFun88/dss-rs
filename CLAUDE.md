@@ -7,10 +7,10 @@
 > no gate, and never reconstruct or guess a source you cannot read. Tell the user it
 > must be re-vendored, then wait.
 
-The 1:1 port of the Pascal DSS C-API to safe Rust is finished (accepted
-2026-07-11). The direction now is idiomatic Rust, wasm-sandboxed user models, new
-methods and models, and behaviour that is right by physics. Never argue from "we
-are a 1:1 port". The invariants that bind:
+The 1:1 port of the Pascal DSS C-API to safe Rust is finished. The direction now
+is idiomatic Rust, wasm-sandboxed user models, new methods and models, and
+behaviour that is right by physics. Never argue from "we are a 1:1 port". The
+invariants that bind:
 
 - `#![forbid(unsafe_code)]` in every **product** crate, no C bindings in the
   shipped engine. The one exception is the test-only oracle bridge
@@ -28,7 +28,7 @@ are a 1:1 port". The invariants that bind:
   measured divergence is pinned in `tests/corpus/ledger.json` (fail-on-stale).
 - Any code may be refactored freely: passing tests are the only contract.
 
-## Policy: physics is the only authority, bugs are never reproduced (user decisions 2026-08-02 and 2026-10-03)
+## Policy: physics is the only authority, bugs are never reproduced
 
 - **No engine is an authority.** A behaviour question is decided by physics and
   power engineering, a derivation plus a measured balance: conservation of complex
@@ -40,6 +40,12 @@ are a 1:1 port". The invariants that bind:
   behaviour is logical and not a bug. "r4133 does it" alone is never evidence.
 - dss_capi 0.14.5 is outdated: a numeric oracle only, never above r4133 or physics.
   A change taken from the dss_capi 0.15.x branch needs the same proof as any other.
+- **Sources.** A behaviour decision checks its derivation against preferably at
+  least two independent published sources (a book quoting another counts once).
+  Where only one exists, or none, the decision says so. Books by topic are under
+  `E:\1_WORK\Изучить\` (catalog `_каталог.md` there), standards under
+  `D:\OneDrive\0_NORMS\` (IEC, IEEE, CIGRE). Run `pdf_info` before reading a PDF:
+  one without a text layer hangs pdf-mcp's OCR and search.
 - A doubtful case goes to the user with the physical argument.
 - **Upstream bugs are never reproduced, in any lane.** The engine computes the
   correct value. Each divergence from an oracle channel is excluded field by field
@@ -54,7 +60,7 @@ are a 1:1 port". The invariants that bind:
   only with empirical proof. The `oracle-parity` lane that holds them is scheduled
   for teardown and takes no new kernel.
 
-## Launching agents and workflows (user rule 2026-10-03)
+## Launching agents and workflows
 
 - **Check the machine before every launch** of an agent or a workflow, also when
   the user has just asked for the work: the workflows and building lanes in flight,
@@ -84,10 +90,10 @@ its own process, no retries) with `DSS_ORACLE_TIMEOUT_SECS=600`, and commands 6-
 run the doctests. On a shared machine every command goes through the queue,
 `python tools/gate/gatelock.py --label "<who>" -- cargo <args>`.
 
-A landing reuses the gate its tree already passed (user decision 2026-10-03). When
-the lane head passed the seven commands, `update` has not moved past the lane's
-base and `git diff --stat <lane head> <landing commit>` shows only `STATUS.md` and
-the record, run `cargo fmt --all --check` and the doc rails
+A landing reuses the gate its tree already passed. When the lane head passed the
+seven commands, `update` has not moved past the lane's base and
+`git diff --stat <lane head> <landing commit>` shows only `STATUS.md` and the
+record, run `cargo fmt --all --check` and the doc rails
 (`cargo nextest run -p dss-core --test oracle_parity_cfg_gate`), then push.
 Otherwise the landing runs the full gate.
 
