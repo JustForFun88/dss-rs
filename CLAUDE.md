@@ -60,7 +60,7 @@ Where things are: `tests/golden/` (byte goldens), `tests/corpus/` (vendored deck
 
 ## Never crash
 An engineer's study must not die on a bad script.
-- **N1. No new panic in non-test code**: no `unwrap()`, `expect()`, `panic!`, `unreachable!`, `todo!`, `unimplemented!`. An error is a `Result` through the crate's error type and `?`. An unfinished feature returns an error, never panics.
+- **N1. No panic in non-test code**: no `unwrap()`, `expect()`, `panic!`, `unreachable!`, `todo!`, `unimplemented!` or `assert!`, no indexing `a[i]` or `a[i..j]`, no panicking std method (`split_at`, `copy_from_slice`, `chunks(n)`, `remove`, `insert`, `swap`…). Access goes through iterators, `get`, `get_mut` and `zip`. An error is a `Result` through the crate's error type and `?`. An unfinished feature returns an error, never panics. A default replaces a value only when it is the right one (the documented default of a property). Otherwise the error goes up with `?`: `unwrap_or`, `unwrap_or_default`, `.ok()` or `let _ =` over an error that matters hides the symptom (H2). A step that may fail without stopping the run still reports why.
 - **N2. Numbers from input are checked at the boundary.** Input is the DSS script and the files it names (LoadShape files, curves, JSON). The check runs when a token is parsed and when a property or command is applied: ranges, sizes and counts (`phases=`, `Redirect` nesting), quantities derived from input once at setup. A bad value is refused with an error at the edit. Inside the solve values are right by construction and are not checked again.
 - **N3. A result that is not finite is not a solution.** A solve that yields NaN or infinity (a singular matrix, a divergence) has not converged and reports an error.
 
