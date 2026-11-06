@@ -37,9 +37,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT = REPO_ROOT / "tests" / "golden" / "ieee8500.json"
 SCHEMA = 1
 
-# Master path. This generator (manual, maintainer-only) reads the master from
-# `.inputs/electricdss-tst`; the gate (`golden_ieee8500.rs`) reads the same
-# relative path from the vendored `tests/corpus/electricdss-tst` copy.
+# Master path, relative to the vendored `tests/corpus/electricdss-tst` copy: the
+# same bytes the gate (`golden_ieee8500.rs`) compiles.
 MASTER_REL = "Version8/Distrib/IEEETestCases/8500-Node/Master.dss"
 
 # Replayed after `Compile <master>` (the harness issues the compile itself).
@@ -112,7 +111,7 @@ def main() -> None:
     oracle = check_pin()
     from dss import DSS as d
 
-    master_abs = (REPO_ROOT / ".inputs" / "electricdss-tst" / MASTER_REL).resolve()
+    master_abs = (REPO_ROOT / "tests" / "corpus" / "electricdss-tst" / MASTER_REL).resolve()
     if not master_abs.is_file():
         sys.exit(f"master not found: {master_abs}")
 

@@ -1,13 +1,10 @@
-"""Generate golden reference JSON for the Rust port, using dss-python as oracle.
-
-dss-python wraps the very same dss_capi engine whose Pascal source lives in
-.inputs/dss_capi, so its outputs are the ground truth the Rust engine must
-reproduce (see PORTING_PLAN.md, Phase 0 / Testing Strategy).
+"""Generate golden reference JSON with the pinned dss-python (the `capi_v0145` channel).
 
 Usage:
     python tools/golden/generate.py [case-name ...]   # default: all cases
 
-Reads  tools/golden/cases.json
+Reads  tools/golden/cases.json and the decks of the vendored corpus
+       tests/corpus/electricdss-tst (the bytes the gate compiles)
 Writes tests/golden/<name>.json
 
 Regeneration is manual and must use the exact versions in tools/golden/PIN.txt.
@@ -20,7 +17,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TST_ROOT = REPO_ROOT / ".inputs" / "electricdss-tst"
+TST_ROOT = REPO_ROOT / "tests" / "corpus" / "electricdss-tst"
 OUT_DIR = REPO_ROOT / "tests" / "golden"
 SCHEMA = 1
 

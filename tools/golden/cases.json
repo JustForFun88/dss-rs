@@ -1,5 +1,5 @@
 {
-  "comment": "Each case: compile <dir>/<master> relative to .inputs/electricdss-tst, then run 'post' commands. 'props' controls the full per-element property dump (the property-system oracle).",
+  "comment": "Each case: compile <dir>/<master> relative to tests/corpus/electricdss-tst, then run 'post' commands. 'props' controls the full per-element property dump (the property-system oracle).",
   "cases": [
     {
       "name": "ieee13",
